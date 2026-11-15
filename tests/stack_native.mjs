@@ -8,6 +8,7 @@
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
 import { messagePreview } from '../web/message-preview.mjs';
+import { pngPixels } from './png-bands.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -129,20 +130,26 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // An agent's reply and a person's (item 430: the rule for a card that is no agent's is checked too).
   await check('reading dossier look gives a saved fold the read material before its read marker catches up', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = `dossier-material-${device}`, ids = await dossierSeed(topic);
-      await dossierFold(topic, ids.middle);
+      ids.human = (await control({ method: 'agent_message', operation_id: topic + '-human', topic_id: topic, source: 'topic', sender: 'fixture-other-person', join: true,
+        reply_to: ids.root, addressees: [facts.actor], body: 'A person\'s reply, folded.' })).result.message_id;
+      await dossierFold(topic, ids.middle); await dossierFold(topic, ids.human);
       const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;'); await dossierOpen(p, device, ids.root); await away(p);
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        const fill = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.middle))}),probe=document.createElement('span');
-          probe.style.background='color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))';c.append(probe);
-          const pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
-            result={read:c.hasAttribute('data-read'),actual:pixel(getComputedStyle(c).backgroundColor),expected:pixel(getComputedStyle(probe).backgroundColor)};probe.remove();return result})()`);
-        assert.equal(fill.read, false, 'the fixture retains its unread marker, so readNow cannot make this pass');
-        assert.deepEqual(fill.actual, fill.expected, `${device} ${theme}: a saved fold uses read material without a read marker`);
-        observations.push({ name: 'dossier folded read material', engine, device, theme, ...fill });
+        for (const [key, material] of [['middle', 'color-mix(in srgb,var(--agent-card) var(--read-tint),var(--read-card))'], ['human', 'var(--read-card)']]) {
+          const fill = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids[key]))}),probe=document.createElement('span');
+            probe.style.background=${JSON.stringify(material)};c.append(probe);
+            const pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+              result={read:c.hasAttribute('data-read'),folded:c.dataset.folded,agent:c.classList.contains('agent-card'),inDossier:c.closest('.reply-stack')?.dataset.single==='false',actual:pixel(getComputedStyle(c).backgroundColor),expected:pixel(getComputedStyle(probe).backgroundColor)};probe.remove();return result})()`);
+          assert.equal(fill.read, false, 'the fixture retains its unread marker, so readNow cannot make this pass');
+          assert.deepEqual([fill.folded, fill.agent, fill.inDossier], ['true', key === 'middle', true], `${device} ${theme}: ${key} is a saved fold in the dossier, ${key === 'middle' ? 'an agent\'s' : 'a person\'s'}`);
+          assert.deepEqual(fill.actual, fill.expected, `${device} ${theme}: a saved fold (${key}) uses read material without a read marker`);
+          observations.push({ name: 'dossier folded read material', engine, device, theme, key, ...fill });
+        }
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
@@ -314,10 +321,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const said = p => p.evaluate(`document.getElementById('stack-said')?.textContent ?? ''`);
   const alertColour = p => p.evaluate(`(()=>{const s=document.createElement('span');s.style.color='var(--alert)';document.body.append(s);const c=getComputedStyle(s).color;s.remove();return c})()`);
   const focusedOn = p => p.evaluate(`document.activeElement?.closest?.('[data-id]')?.dataset.id ?? null`);
-  // The ⋯ menu of a message, from its bar, and the words of its items.
+  // A right click (two fingers' click on a trackpad) on target, where a person opens a message's menu with no bar.
+  const rightClick = async (p, selector) => {
+    await centre(p, selector);
+    const b = await p.box(selector), x = b.x + Math.min(12, b.width / 2), y = b.y + b.height / 2;
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
+  };
+  // The ⋯ menu of a message, from its bar, and the words of its items. A dossier's folded row has no bar (item 471):
+  // on a laptop its menu is the right click's.
   const menuOf = async (p, device, id) => {
     await light(p, device, id);
-    await press(p, device, '.message-bar [data-act=more]');
+    if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id) + ' > .message-folded > .folded-author');
+    else await press(p, device, '.message-bar [data-act=more]');
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: ⋯ opens the menu`);
     return p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
   };
@@ -812,29 +829,43 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await q.close(); await p.close();
   });
 
-  if (engine === 'chrome') await check('reading stacks below More uses a real swipe on chrome and the last visible message but folds other messages', async () => {
+  // Item 472: a swipe right on any message of a dossier, its last visible one included, folds that message in place;
+  // only the title bar (its head row) moves the dossier below More, and a swipe left there brings it back.
+  if (engine === 'chrome') await check('reading stacks below More uses a real swipe on chrome on the title bar alone: a swipe on the last visible message folds it in place, as on any other message', async () => {
     const topic = 'stack-aside-swipe';
     const ids = await seed(topic, [['root', {sender:other,join:true,addressees:[facts.actor],body:'A dossier to swipe.'}],
       ['one', {sender:other,reply_to:'root',addressees:[facts.actor],body:'First visible reply.'}],
       ['two', {sender:other,reply_to:'root',addressees:[facts.actor],body:'Last visible reply.'}]]);
-    const p = await open('stack-aside-swipe', 'phone', topic, ids.root);
-    const drag = async selector => {
-      await centre(p, selector); const b=await p.box(selector), y=b.y+b.height/2, t=Date.now()/1000;
-      await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+30,y}],timestamp:t});
-      for (const part of [1,2,3,4]) await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:b.x+30+35*part,y}],timestamp:t+part*.08});
+    let p = await open('stack-aside-swipe', 'phone', topic, ids.root);
+    const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+    const drag = async (selector, way = 1) => {
+      await centre(p, selector); const b=await p.box(selector), y=b.y+b.height/2, t=Date.now()/1000, from=way>0?b.x+30:b.x+Math.min(b.width-30,170);
+      await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:from,y}],timestamp:t});
+      for (const part of [1,2,3,4]) await p.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:from+way*35*part,y}],timestamp:t+part*.08});
       await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[],timestamp:t+.6});
     };
+    const shown = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(section)});return Boolean(s?.getClientRects().length)&&[...s.querySelectorAll(':scope > .stack-replies .message-card[data-id]')].filter(c=>c.getClientRects().length).map(c=>c.dataset.id+(c.dataset.folded==='true'?':row':''))})()`);
     await drag(card(ids.one));
-    await until(async () => (await actsOf(topic,ids.one))?.folded, 'a non-last message folds');
+    await until(async () => (await actsOf(topic,ids.one))?.folded, 'a swipe on a message that is not the last folds it');
     assert.equal((await actsOf(topic,ids.root))?.aside??null,null);
     await drag(card(ids.two));
-    await until(async () => (await actsOf(topic,ids.root))?.aside>0, 'the last visible message puts the dossier aside');
-    assert.equal((await actsOf(topic,ids.two))?.folded??false,false,'the last message itself is not folded');
+    await until(async () => (await actsOf(topic,ids.two))?.folded, 'a swipe on the last visible message folds it, in Core');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    assert.equal((await actsOf(topic,ids.root))?.aside??null,null,'and leaves the dossier where it is, above More');
+    assert.equal((await actsOf(topic,ids.two,'aim-ux'))?.folded??false,false,'another reader\'s view of it is unchanged');
+    await becomes(shown, [ids.one+':row', ids.two+':row'], 'both replies are their rows, in their places, in the dossier on show');
+    await shot(p,'stack-aside-swipe-folded');
+    // A reload finds the order and the folds as Core holds them.
+    await p.close(); p = await open('stack-aside-swipe-reload', 'phone', topic, ids.root);
+    await becomes(shown, [ids.one+':row', ids.two+':row'], 'after a reload, the same rows in the same order');
+    // The title bar alone moves the dossier: below More, and back with a swipe left there.
+    await drag(`${section} .stack-head`);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0, 'a swipe on the dossier\'s title bar puts it below More');
+    assert.equal((await actsOf(topic,ids.root))?.folded??false,false,'and folds no message of it');
     await press(p,'phone','.stack-more');
-    await menuOf(p,'phone',ids.two); await choose(p,'phone','Move or join…'); await choose(p,'phone','Bring back above More');
-    await until(async () => (await actsOf(topic,ids.root))?.aside===null,'brought back');
-    await drag(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`);
-    await until(async () => (await actsOf(topic,ids.root))?.aside>0, 'the dossier header puts the whole dossier aside too');
+    await drag(`${section} .stack-head`, -1);
+    await until(async () => (await actsOf(topic,ids.root))?.aside===null,'a swipe left on its title bar below More brings it back');
+    assert.deepEqual([(await actsOf(topic,ids.one))?.folded, (await actsOf(topic,ids.two))?.folded], [true, true], 'moving the dossier changed no fold');
     assert.deepEqual(p.errors,[]); await shot(p,'stack-aside-swipe'); await p.close();
   });
 
@@ -1076,7 +1107,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       }
       await press(p, 'laptop', stack + ' > .stack-toggle');
       await until(async () => (await look(p, ids, 'root')).fold === 'open', 'the original shows');
-      await p.point(selector + ' .author-name');
+      // In a dossier a press on the author's name folds the message (item 471): the color is chosen from the participants.
+      const chip = `#participants .pill-name[title="Change ${other}'s color"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(chip)})?.getClientRects().length)`), `${other} is in the participants`);
+      await p.point(chip);
       await until(() => p.evaluate("Boolean(document.querySelector('.color-picker'))"), 'the color picker opens');
       await p.point('.color-picker [aria-label="rose"]');
       await until(() => p.evaluate(`!document.querySelector('.color-picker')&&document.querySelector(${JSON.stringify(selector)}).classList.contains('agent-rose')`), 'the chosen color is on the card');
@@ -3009,9 +3043,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
     await centre(p, card(ids.three));
     await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) !== null, 'the pointer lights the folded row, with its bar');
-    await press(p, 'laptop', '.message-bar [data-act=more]');
-    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), '⋯ opens the folded message\'s menu');
+    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
+    await rightClick(p, card(ids.three) + ' > .message-folded > .folded-author');
+    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
     const offered = await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
     assert.ok(offered.includes('Unfold') && !offered.includes('Fold'), `a folded message offers Unfold: ${offered}`);
     await choose(p, 'laptop', 'Star for me');
@@ -3019,16 +3053,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(async () => (await folded(p, ids.three)).whole, true, 'and it reads whole');
     assert.ok(!(await menuOf(p, 'laptop', ids.three)).includes('Fold'), 'a starred message offers no Fold');
     await p.key('Escape');
-    // The stack's first message folds to its head row alone; a press on the row unfolds it.
+    // The stack's first message folds as any message does (item 471): to its own row under the head row, which stays
+    // the dossier's title and says nothing of the fold; a press on the row unfolds it.
     await menuOf(p, 'laptop', ids.root);
     await choose(p, 'laptop', 'Fold');
     await until(async () => await foldOf(topic, ids.root), 'the first message is folded, in Core');
-    await until(async () => { const v = await look(p, ids, 'root'); return v.fold === 'open' && v.headOpen === 'false' && !v.full; }, 'fully open, its first message shows only as the head row');
-    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root) + ' > .stack-head > .stack-folded')})?.textContent`), 'Folded', 'which says it is folded');
-    assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(card(ids.root) + ' .message-folded')}).length`), 0, 'and no second row doubles it');
-    await p.point(card(ids.root) + ' > .stack-head > .stack-who');
-    await until(async () => !await foldOf(topic, ids.root), 'a press on the head row unfolds it');
+    await until(async () => { const v = await look(p, ids, 'root'); return v.fold === 'open' && v.headOpen === 'true' && !v.full; }, 'fully open, the dossier keeps its title open and the first message is not whole');
+    await becomes(() => folded(p, ids.root), { row: true, words: `${other}The root of the folder.Folded`, whole: false }, 'the first message is its own folded row');
+    assert.deepEqual(await p.evaluate(`(c=>[...c.children].filter(e=>e.getClientRects().length).map(e=>e.className.split(' ')[0]))(document.querySelector(${JSON.stringify(card(ids.root))}))`),
+      ['stack-head', 'message-folded'], 'under the head row, once');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.root) + ' > .stack-head > .stack-folded')}))`), false, 'and the head row says no Folded');
+    await p.point(card(ids.root) + ' > .message-folded > .folded-words');
+    await until(async () => !await foldOf(topic, ids.root), 'a press on its row unfolds it');
     await until(async () => (await look(p, ids, 'root')).full, 'and it shows whole');
+    assert.equal(await readerOn(p), null, 'opening no Reader');
     assert.deepEqual(p.errors, []);
     assert.deepEqual(q.errors, []);
     await p.close(); await q.close();
@@ -3245,12 +3283,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal((await folded(p, ids.one)).whole, true, 'two fingers right with Ctrl held fold nothing');
       assert.equal(await folds(), 0, 'and send no fold');
     }
+    // Item 472: the last visible message folds in place as any message does, and the dossier stays.
     await reload();
     await fingers(card(ids.last), RIGHT);
-    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the last visible message puts the dossier aside');
-    await becomes(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.last))})?.getClientRects().length)`),false,'the whole dossier is below More');
-    await p.key('z',4);
-    await until(async () => (await actsOf(topic,ids.root))?.aside===null,'Command-Z brings the trackpad-moved dossier back');
+    await until(async () => await foldOf(topic, ids.last), 'a trackpad swipe on the last visible message folds it, in Core');
+    await becomes(async () => (await folded(p, ids.last)).row, true, 'it is its row');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'and the dossier stays above More');
+    assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'wide', 'kept', 'last'], 'every reply in its place');
     await reload();
     await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
     await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the header moves its dossier too');
@@ -3285,11 +3325,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // scrolling: fingers moving right give a negative deltaX); done once the window has heard every delta, which it gives back.
   const HEARD_WHEELS = `addEventListener('wheel',e=>{(window.wheels??=[]).push({x:e.deltaX,y:e.deltaY,prevented:e.defaultPrevented})},{passive:true})`;
   const SWIPE_RIGHT = [[-30, 0], [-30, 0], [-30, 0], [-30, 0], [-18, 0], [-10, 0], [-5, 0], [-2, 0], [-1, 0]];
-  const trackpad = async (p, selector, steps) => {
+  // modifiers: the keys held, as CDP numbers them (1 Option, 2 Ctrl); Safari's engine in this harness turns the wheel with none.
+  const trackpad = async (p, selector, steps, modifiers = 0) => {
     await centre(p, selector);
     const b = await p.box(selector), x = b.x + b.width / 2, y = Math.max(b.y, 0) + Math.min(b.height / 2, 40);
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    for (const [deltaX, deltaY] of steps) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY });
+    for (const [deltaX, deltaY] of steps) await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX, deltaY, modifiers });
     const sum = steps.reduce((all, [dx, dy]) => [all[0] + dx, all[1] + dy], [0, 0]), got = [];
     await until(async () => { got.push(...await p.evaluate('(window.wheels??[]).splice(0)')); return got.reduce((all, w) => all + w.x, 0) === sum[0] && got.reduce((all, w) => all + w.y, 0) === sum[1]; },
       `the window heard the gesture over ${selector}`);
@@ -3447,52 +3488,54 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  // Item 388 on a dossier's original message. Folded, it is its head row, at every state of the dossier; x on that
-  // row unfolds it, whether x or the person's reply (item 377) folded it, and at latest and unread it does as a
-  // press on the row does, opening the dossier so the message reads whole. So x then x always comes back.
-  await check('reading stacks x folds a dossier\'s original message to its head row and x again unfolds it, after x or the person\'s reply folded it, fully open or at latest and unread', async () => {
+  // Item 388 on a dossier's original message, which item 471 makes a message like any other: x folds it to its own row
+  // under the head row, the dossier staying fully open, and x again unfolds it, whether x or the person's reply (item
+  // 377) folded it. At latest and unread the head shows only its row, the dossier's title, and x there does nothing.
+  await check('reading stacks x folds a dossier\'s original message to its own row under the head row and x again unfolds it, after x or the person\'s reply folded it, as on any message; at latest and unread x on the title row does nothing', async () => {
     const topic = 'stack-fold-key-head';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original message.', read: true }],
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
       ['two', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two.', read: true }]]);
     const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
-    const head = async () => { const l = await look(p, ids, 'root'); return [l.fold, l.headOpen]; };
+    const head = async () => { const l = await look(p, ids, 'root'); return [l.fold, l.headOpen, l.full]; };
     const p = await open(topic, 'laptop', topic, ids.root);
     await fullyOpen(p, 'laptop', ids);
     await keyTo(p, ids.root);
-    assert.deepEqual(await head(), ['open', 'true'], 'fully open, the original message reads whole');
+    assert.deepEqual(await head(), ['open', 'true', true], 'fully open, the original message reads whole');
     const sent = await foldsSent(p);
     await typeX(p);
     await until(async () => await foldOf(topic, ids.root), 'x folds the original message, in Core');
-    await becomes(head, ['open', 'false'], 'it is its head row, the dossier still fully open');
+    await becomes(head, ['open', 'true', false], 'the dossier stays fully open, its title row open');
+    await becomes(async () => (await folded(p, ids.root)).row, true, 'and the message is its own row');
     assert.equal(await focusedOn(p), ids.root, 'the keys stay on it');
     await typeX(p);
     await until(async () => !await foldOf(topic, ids.root), 'x again unfolds it, in Core');
-    await becomes(head, ['open', 'true'], 'and it reads whole');
+    await becomes(head, ['open', 'true', true], 'and it reads whole');
     assert.equal(await foldsSent(p), sent + 2, 'one fold sent for each x');
     assert.equal(await focusedOn(p), ids.root, 'the keys still on it');
-    // The person's reply to it folds it (item 377); x on its head row unfolds it.
+    // The person's reply to it folds it (item 377); x on its row unfolds it.
     ids.mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor,
       reply_to: ids.root, addressees: [other], body: 'My answer to the original.' })).result.message_id;
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))})) && window.fetchesOut === 0`), 'my reply is drawn');
     await until(async () => await foldOf(topic, ids.root), 'my reply folds the original message, in Core');
-    await becomes(async () => (await look(p, ids, 'root')).headOpen, 'false', 'the page shows it as its head row');
+    await becomes(async () => (await folded(p, ids.root)).row, true, 'the page shows it as its row');
     await keyTo(p, ids.root);
     await typeX(p);
     await until(async () => !await foldOf(topic, ids.root), 'x unfolds what my reply folded, in Core');
-    await becomes(head, ['open', 'true'], 'and it reads whole');
-    // At latest and unread a folded first message is its head row too: x unfolds it and opens the dossier.
+    await becomes(head, ['open', 'true', true], 'and it reads whole');
+    // At latest and unread the head shows only its row, the dossier's title: x there neither folds nor unfolds.
     await typeX(p);
     await until(async () => await foldOf(topic, ids.root), 'x folds it once more');
     await centre(p, toggle); await press(p, 'laptop', toggle);
-    await becomes(head, ['folded', 'false'], 'the dossier at latest and unread, its head one row');
+    await becomes(head, ['folded', 'false', false], 'the dossier at latest and unread, its head one row');
     await keyTo(p, ids.root);
-    await typeX(p);
-    await until(async () => !await foldOf(topic, ids.root), 'x on the head row unfolds the folded first message, in Core');
-    await becomes(head, ['open', 'true'], 'and opens the dossier, so the message reads whole');
-    assert.equal(await focusedOn(p), ids.root, 'the keys stay on it');
-    await typeX(p);
-    await until(async () => await foldOf(topic, ids.root), 'and x again folds it');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out');
+    const before = await foldsSent(p);
+    await typeX(p); await twoFrames(p);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out after x');
+    assert.equal(await foldsSent(p), before, 'x on the title row sends nothing');
+    assert.equal(await foldOf(topic, ids.root), true, 'and the first message stays folded, in Core');
+    assert.deepEqual(await head(), ['folded', 'false', false], 'and the dossier stays at latest and unread');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
@@ -3500,19 +3543,22 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   await check('reading stacks a folded message\'s row carries its 👍: pressed once given, with the count, given and taken back without unfolding, reached by Tab, named, and 44px under a finger', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-fold-thumb-' + device;
+      // One is a message on its own, as is the person's own; bare and two are replies in a dossier (item 471).
       const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root.', read: true }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one, folded.', read: true }],
+        ['bare', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply bare, folded, no thumbs-up.', read: true }],
         ['two', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, folded, thumbed by another.', read: true }],
+        ['one', { sender: other, addressees: [facts.actor], body: 'A message on its own, folded.', read: true }],
         ['mine', { sender: facts.actor, addressees: [other], body: 'My own message, folded.', read: true }]]);
       await control({ method: 'agent_thumb', sender: other, message_id: ids.two, operation_id: topic + '-their-thumb' });
       assert.equal(await thumbedBy(ids.two, other), true, 'another gives reply two a thumbs-up');
-      for (const id of [ids.one, ids.two, ids.mine]) await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: topic + '-fold-' + id, args: { folded: true } });
+      for (const id of [ids.bare, ids.one, ids.two, ids.mine]) await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: topic + '-fold-' + id, args: { folded: true } });
       const p = await open(topic, device, topic, ids.root);
       await fullyOpen(p, device, ids);
-      await becomes(async () => [(await folded(p, ids.one)).row, (await folded(p, ids.two)).row, (await folded(p, ids.mine)).row], [true, true, true], `${device}: three folded rows`);
+      await becomes(async () => [(await folded(p, ids.bare)).row, (await folded(p, ids.one)).row, (await folded(p, ids.two)).row, (await folded(p, ids.mine)).row], [true, true, true, true], `${device}: four folded rows`);
       const pick = thumb => thumb && (({ text, pressed, label, title, role }) => ({ text, pressed, label, title, role }))(thumb);
       assert.deepEqual(pick(await thumbOn(p, ids.one)), { text: '👍', pressed: 'false', label: 'Thumbs up', title: 'Thumbs up', role: 'button' }, `${device}: a folded row's 👍, named and titled`);
       assert.deepEqual(pick(await thumbOn(p, ids.two)), { text: '👍 1', pressed: 'false', label: 'Thumbs up (1)', title: 'Thumbs up', role: 'button' }, `${device}: with the count once someone else has given one`);
+      assert.equal(await thumbOn(p, ids.bare), null, `${device}: in a dossier a row shows a 👍 only once someone has given one (item 471)`);
       assert.equal(await thumbOn(p, ids.mine), null, `${device}: the person's own message takes no thumbs-up from them, so its row has none`);
       // Only the card names its message (data-id): what finds a message's card finds that card alone, not its 👍 too.
       assert.equal(await p.evaluate(`document.querySelectorAll(${JSON.stringify(`#messages [data-id="${ids.one}"]`)}).length`), 1, `${device}: the folded row's 👍 names no message of its own`);
@@ -3566,12 +3612,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const want = { reply: his, quote: '“Release 69 shipped at 1:06 AM: the dossiers moved below More.”', list: 'Here is the plan: fold the shipped list by release.',
       file: 'Attached: cabin-notes.txt', lone: his };
     // Each folded row's words, and whether the row keeps to one line inside its card, its words shortened by the
-    // page's ellipsis rather than pushing Folded out; and whether anything scrolls sideways.
+    // page's ellipsis rather than pushing Folded (or, in a dossier, where "Folded" is said to a screen reader only, its
+    // 👍, item 471) out; and whether anything scrolls sideways.
     const rows = (p, ids) => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},out={};
       for(const key of ${JSON.stringify(Object.keys(want))}){const c=document.querySelector('#messages .message-card[data-id="'+ids[key]+'"]'),r=c?.querySelector(':scope > .message-folded');
         if(!r||!r.getClientRects().length){out[key]=null;continue}
-        const box=e=>e.getBoundingClientRect(),cb=box(c),w=r.querySelector('.folded-words'),a=r.querySelector('.folded-author'),f=r.querySelector('.folded-cue');
-        out[key]={words:w.textContent,oneLine:Math.abs(box(w).top-box(a).top)<4&&Math.abs(box(f).top-box(a).top)<6,inCard:box(f).right<=cb.right+0.5&&box(w).right<=box(f).left+0.5&&box(a).left>=cb.left-0.5}}
+        const box=e=>e.getBoundingClientRect(),cb=box(c),w=r.querySelector('.folded-words'),a=r.querySelector('.folded-author'),f=[...r.children].filter(e=>e!==w&&e!==a&&box(e).width>1).at(-1),end=f?box(f):null;
+        out[key]={words:w.textContent,oneLine:Math.abs(box(w).top-box(a).top)<4&&(!end||Math.abs(end.top+end.height/2-(box(a).top+box(a).height/2))<6),
+          inCard:(end?end.right<=cb.right+0.5&&box(w).right<=end.left+0.5:box(w).right<=cb.right+0.5)&&box(a).left>=cb.left-0.5}}
       return {rows:out,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     const named = (p, id) => p.evaluate(`(()=>{const c=document.querySelector('#messages .message-card[data-id="${id}"]'),n=c?.querySelector(':scope > .stack-head > .stack-name');
       if(!n)return null;const b=n.getBoundingClientRect(),s=c.closest('.reply-stack').getBoundingClientRect();
@@ -3625,9 +3673,299 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: his words typed in unchanged send nothing`);
         assert.equal((await actsOf(topic, ids.named))?.name ?? null, null, `${device}: and Core holds no typed name`);
       }
-      // Its first message folded: the head row stands for it, with the same words and Folded.
+      // Its first message folded: the head row is still the dossier's title, with the same words and nothing of the
+      // fold (item 471); the message itself is its own row.
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.named, operation_id: `${topic}-fold-named`, args: { folded: true } });
-      await becomes(async () => { const n = await named(p, ids.named); return n && [n.name, n.folded]; }, [his, true], `${device}: folded, its head row keeps his words and says Folded`);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.named))}).dataset.folded === 'true'`), `${device}: the first message is folded on the page`);
+      assert.deepEqual(await named(p, ids.named), { name: his, folded: false, inStack: true, toggle: true }, `${device}: folded, its head row keeps his words and says nothing of the fold`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Items 471, 472 and 430: how a dossier shows its messages. Each is a way of showing the dossier and loses nothing in
+  // it: every message stays reachable in place, and what Core stores (the order, the names, the folds) changes only by
+  // the reader's own acts, never by how the page shows them. Phones are checked at 320, 375 and 390 wide.
+  const PHONES = [320, 375, 390];
+  const widthsOf = device => (device === 'phone' ? PHONES : [DEVICES.laptop.width]);
+  const atWidth = (p, device, width) => (device === 'phone' ? p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true }) : null);
+  const storedActs = async topic => (await view('message_acts', { topic_id: topic })).items.map(item => [item.message_id, Boolean(item.acts.folded), Boolean(item.acts.starred), item.acts.name?.text ?? null]).sort();
+  // A press on target that the phone's first tap would only light: on a phone, a tap lights the message first, and the
+  // tap after it acts, as a person taps twice.
+  const twoTaps = async (p, device, id, selector) => {
+    if (device === 'phone' && !(await lit(p)).includes(id)) { await tap(p, selector); await until(async () => (await lit(p)).includes(id), `phone: the first tap lights ${id}`); }
+    await press(p, device, selector);
+  };
+
+  await check('reading stacks inside a dossier (item 471) a name is plain words with no agent tag, and a folded row has no Folded pill and a 👍 only once someone gave one, at 320, 375 and 390 wide and on a laptop, light and dark; a message on its own keeps its tag, pill and 👍; and a reload finds order, names and folds unchanged', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-inside-look-' + device;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The dossier\'s first message.', read: true }],
+        ['bare', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'A folded reply nobody gave a thumbs-up.', read: true }],
+        ['thumbed', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A folded reply another gave a thumbs-up.', read: true }],
+        ['whole', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'A reply shown whole.', read: true }],
+        ['lone', { sender: other, addressees: [facts.actor], body: 'A folded message on its own.', read: true }],
+        ['loneWhole', { sender: 'aim-ux', addressees: [facts.actor], body: 'A message on its own, shown whole.', read: true }]]);
+      await control({ method: 'agent_thumb', sender: 'aim-ux', message_id: ids.thumbed, operation_id: topic + '-thumb' });
+      for (const key of ['bare', 'thumbed', 'lone']) await dossierFold(topic, ids[key]);
+      const stored = await storedActs(topic);
+      let p = await open(topic, device, topic, ids.root);
+      await fullyOpen(p, device, ids);
+      const face = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+        shown=e=>Boolean(e&&e.getClientRects().length&&e.getBoundingClientRect().width>1),painted=e=>!['rgba(0, 0, 0, 0)','transparent'].includes(getComputedStyle(e).backgroundColor);
+        const name=id=>{const n=c(id).querySelector(':scope > .message-author > .author-name');return {text:n.textContent,tag:painted(n),inset:parseFloat(getComputedStyle(n).paddingLeft)}};
+        const row=id=>{const r=c(id).querySelector(':scope > .message-folded'),t=r.querySelector('.folded-thumb'),f=r.querySelector('.folded-cue');
+          return {author:r.querySelector('.folded-author').textContent,pill:shown(f),cue:f.textContent,thumb:shown(t)?t.textContent:null}};
+        const s=c(ids.root).closest('.reply-stack');
+        return {root:name(ids.root),whole:name(ids.whole),loneWhole:name(ids.loneWhole),bare:row(ids.bare),thumbed:row(ids.thumbed),lone:row(ids.lone),
+          title:s.querySelector('.stack-head > .stack-name').textContent,
+          order:[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>Object.keys(ids).find(k=>ids[k]===e.dataset.id)),
+          reachable:Object.keys(ids).filter(k=>shown(c(k))),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      let seen = null;
+      for (const width of widthsOf(device)) {
+        await atWidth(p, device, width);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme); await away(p);
+          const now = await face();
+          const at = `${device} ${width}px ${theme}`;
+          assert.deepEqual([now.root.tag, now.root.inset, now.whole.tag, now.whole.inset], [false, 0, false, 0], `${at}: in a dossier an agent's name is plain words, no tag: ${JSON.stringify(now)}`);
+          assert.equal(now.loneWhole.tag, true, `${at}: a message on its own keeps its agent tag`);
+          assert.deepEqual(now.bare, { author: 'aim-ux', pill: false, cue: 'Folded', thumb: null }, `${at}: a folded row in a dossier: no pill ("Folded" is said to a screen reader), no 👍 nobody gave`);
+          assert.deepEqual(now.thumbed, { author: other, pill: false, cue: 'Folded', thumb: '👍 1' }, `${at}: its 👍 shows once someone gave one`);
+          assert.deepEqual(now.lone, { author: other, pill: true, cue: 'Folded', thumb: '👍' }, `${at}: a folded message on its own keeps its pill and its 👍`);
+          assert.deepEqual(now.reachable, Object.keys(ids), `${at}: every message is on show in place, whole or as its row`);
+          assert.equal(now.sideways, false, `${at}: nothing scrolls sideways`);
+          if (seen) assert.deepEqual([now.order, now.title], [seen.order, seen.title], `${at}: the same order and title at every width and theme`);
+          seen = now;
+          await shot(p, `stack-inside-look-${device}-${width}-${theme}`);
+        }
+      }
+      assert.deepEqual(await storedActs(topic), stored, `${device}: showing the dossier stored nothing`);
+      // A reload finds the stored order, names and folds as they were.
+      await p.close();
+      p = await open(topic + '-reload', device, topic, ids.root);
+      await fullyOpen(p, device, ids);
+      const again = await face();
+      assert.deepEqual([again.order, again.title, again.root.text, again.whole.text, again.bare, again.thumbed, again.lone],
+        [seen.order, seen.title, seen.root.text, seen.whole.text, seen.bare, seen.thumbed, seen.lone], `${device}: after a reload, the same order, names and folds`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading stacks inside a dossier (item 471) a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row has no bar, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of widthsOf(device)) {
+      const topic = `stack-inside-press-${device}-${width}`;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original message.', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
+        ['two', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'Reply two.', read: true }],
+        ['lone', { sender: other, addressees: [facts.actor], body: 'A message on its own.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await atWidth(p, device, width);
+      await fullyOpen(p, device, ids);
+      const at = `${device} ${width}px`;
+      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-author`;
+      const nothingElse = async what => {
+        assert.equal(await readerOn(p), null, `${at}: ${what} opens no Reader`);
+        assert.equal(await p.evaluate(`Boolean(document.querySelector('.color-picker'))`), false, `${at}: nor the color picker`);
+      };
+      // A reply shown whole: a press on its header folds it, for the reader alone.
+      await centre(p, card(ids.one));
+      await twoTaps(p, device, ids.one, header(ids.one));
+      await until(async () => await foldOf(topic, ids.one), `${at}: a press on the header folds the reply, in Core`);
+      await becomes(async () => (await folded(p, ids.one)).row, true, `${at}: it is its row, in its place`);
+      assert.equal(await foldOf(topic, ids.one, 'aim-ux'), false, `${at}: another reader's view is unchanged`);
+      await nothingElse('the header press');
+      if (device === 'laptop') {
+        // Folded, its row lights under the pointer with no bar.
+        await p.point(row(ids.one), 'move');
+        await until(async () => (await lit(p)).includes(ids.one) && await bar(p) === null, `${at}: the folded row lights, with no bar`);
+      }
+      // A press on its row unfolds it; a press on its words opens the Reader, folding nothing.
+      await press(p, device, row(ids.one));
+      await until(async () => !await foldOf(topic, ids.one), `${at}: a press on the row unfolds it, in Core`);
+      await becomes(async () => (await folded(p, ids.one)).whole, true, `${at}: and it reads whole`);
+      await twoTaps(p, device, ids.one, words(ids.one));
+      await until(async () => (await readerOn(p))?.startsWith('Reply one'), `${at}: a press on its words opens the Reader`);
+      await closeReader(p, device);
+      assert.equal(await foldOf(topic, ids.one), false, `${at}: opening it folded nothing`);
+      // The first message, as any message: its bar, a press on its header folds it under the title row, its row unfolds it.
+      await centre(p, card(ids.root));
+      if (device === 'laptop') {
+        await p.point(words(ids.root), 'move');
+        await until(async () => (await lit(p)).includes(ids.root) && await bar(p) !== null, `${at}: the first message lights with its bar`);
+      }
+      await twoTaps(p, device, ids.root, header(ids.root));
+      await until(async () => await foldOf(topic, ids.root), `${at}: a press on the first message's header folds it, in Core`);
+      await becomes(async () => { const l = await look(p, ids, 'root'); return [l.fold, l.headOpen, l.full, (await folded(p, ids.root)).row]; }, ['open', 'true', false, true],
+        `${at}: the dossier stays fully open, its title row open, the first message its own row`);
+      await nothingElse('the first message\'s header press');
+      await press(p, device, row(ids.root));
+      await until(async () => !await foldOf(topic, ids.root), `${at}: a press on its row unfolds it, in Core`);
+      await becomes(async () => (await look(p, ids, 'root')).full, true, `${at}: and it reads whole`);
+      if (device === 'laptop') {
+        await keyTo(p, ids.root);
+        await typeX(p);
+        await until(async () => await foldOf(topic, ids.root), `${at}: x folds the first message`);
+        await typeX(p);
+        await until(async () => !await foldOf(topic, ids.root), `${at}: and x again unfolds it`);
+      }
+      // The title row stays the one special row: a press on it shows latest and unread and back, folding no message.
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${at}: nothing is out`);
+      const sent = await foldsSent(p);
+      await press(p, device, `${card(ids.root)} > .stack-head .stack-who`);
+      await becomes(async () => (await look(p, ids, 'root')).fold, 'folded', `${at}: a press on the title row shows latest and unread`);
+      await press(p, device, `${card(ids.root)} > .stack-head .stack-who`);
+      await becomes(async () => (await look(p, ids, 'root')).fold, 'open', `${at}: and again every message`);
+      assert.equal(await foldsSent(p), sent, `${at}: the title row folds no message`);
+      // A message on its own is no dossier: a press on its header's time opens it.
+      await centre(p, card(ids.lone));
+      await twoTaps(p, device, ids.lone, `${card(ids.lone)} > .message-author > .message-time`);
+      await until(async () => (await readerOn(p))?.startsWith('A message on its own'), `${at}: a message on its own opens from its header`);
+      await closeReader(p, device);
+      assert.equal(await foldOf(topic, ids.lone), false, `${at}: and folds nothing`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-inside-press-${device}-${width}-${theme}`); }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  if (engine === 'chrome') await check('reading stacks Option held with two fingers right on the trackpad folds the message and every message before it in its dossier, for the reader alone as a plain fold; later and starred messages stay whole, ⌘Z unfolds them all, and without Option only the message folds (item 472)', async () => {
+    const topic = 'stack-fold-through';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original message.', read: true }],
+      ['r1', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply one.', read: true }],
+      ['r2', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply two, starred.', read: true }],
+      ['r3', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply three, swiped.', read: true }],
+      ['r4', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Reply four, after it.', read: true }]]);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r2, operation_id: topic + '-star', args: { starred: true } });
+    let p = await open(topic, 'laptop', topic, ids.root, HEARD_WHEELS);
+    await fullyOpen(p, 'laptop', ids);
+    const folds = async () => Object.fromEntries(await Promise.all(['root', 'r1', 'r2', 'r3', 'r4'].map(async key => [key, await foldOf(topic, ids[key])])));
+    const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ['root','r1','r2','r3','r4'].map(k=>{const c=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]');return k+(c.dataset.folded==='true'?':row':'')})})()`);
+    await trackpad(p, card(ids.r3), SWIPE_RIGHT, 1);
+    await becomes(folds, { root: true, r1: true, r2: false, r3: true, r4: false }, 'Option and a swipe right fold the message and every one before it, the starred one aside, in Core');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    assert.equal(await said(p), '3 messages folded to one line, for you only');
+    assert.deepEqual(await rows(), ['root:row', 'r1:row', 'r2', 'r3:row', 'r4'], 'each folded message is its row, in its place');
+    assert.equal((await look(p, ids, 'root')).fold, 'open', 'and the dossier stays fully open');
+    for (const key of ['root', 'r1', 'r3']) assert.equal(await foldOf(topic, ids[key], 'aim-ux'), false, `another reader's view of ${key} is unchanged`);
+    assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'nothing moved below More');
+    await p.key('z', 4);
+    await becomes(folds, { root: false, r1: false, r2: false, r3: false, r4: false }, '⌘Z unfolds them all, in Core');
+    await becomes(rows, ['root', 'r1', 'r2', 'r3', 'r4'], 'and each reads whole');
+    // Without Option, a swipe folds the message alone.
+    await trackpad(p, card(ids.r3), SWIPE_RIGHT);
+    await becomes(folds, { root: false, r1: false, r2: false, r3: true, r4: false }, 'a plain swipe folds only the message under it');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
+    // A reload finds what Core holds.
+    const stored = await storedActs(topic);
+    await p.close();
+    p = await open(topic + '-reload', 'laptop', topic, ids.root);
+    await fullyOpen(p, 'laptop', ids);
+    await becomes(rows, ['root', 'r1', 'r2', 'r3:row', 'r4'], 'after a reload, the same messages in the same order, the same folded');
+    assert.deepEqual(await storedActs(topic), stored, 'and Core holds the same');
+    await shot(p, 'stack-fold-through');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 430: the next card covers the lit card's bottom edge by its 12px overlap. The ring keeps its bottom side over
+  // it, a reply's and the first message's, read from the screen: the pixel just below the lit card's box is the ring's.
+  await check('reading stacks the lit card\'s ring keeps its bottom side above the next card, a reply\'s and the first message\'s, at 320, 375 and 390 wide and on a laptop, light and dark (item 430)', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-ring-${device}`, ids = await dossierSeed(topic, false, true);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      for (const width of widthsOf(device)) {
+        await atWidth(p, device, width);
+        for (const key of ['root', 'middle']) {
+          await centre(p, card(ids[key]));
+          await light(p, device, ids[key]);
+          for (const theme of ['light', 'dark']) {
+            await dossierTheme(p, theme);
+            await until(async () => (await lit(p)).includes(ids[key]), `${device} ${width}px ${theme}: ${key} is lit`);
+            await twoFrames(p);
+            const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids[key]))}),b=c.getBoundingClientRect(),probe=document.createElement('span');
+              probe.style.background='var(--stack-ring)';c.append(probe);const ring=getComputedStyle(probe).backgroundColor;probe.remove();
+              const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
+              return {left:b.left,right:b.right,bottom:b.bottom,covered:c.dataset.stackCovered??c.closest('[data-stack-covered]')?.dataset.stackCovered,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth}})()`);
+            assert.equal(box.covered, 'true', `${device} ${width}px ${theme}: the next card overlaps ${key}`);
+            const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+            const scale = image.width / box.innerWidth, y = Math.floor((box.bottom + 1) * scale);
+            const xs = [0.3, 0.5, 0.7].map(f => Math.floor((box.left + (box.right - box.left) * f) * scale));
+            const got = xs.map(x => image.pixel(x, y));
+            const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 24);
+            assert.ok(got.every(px => near(px, box.ring)), `${device} ${width}px ${theme}: the ring's bottom side shows over the next card below ${key}: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(got)}`);
+            observations.push({ name: 'stack lit ring bottom', engine, device, width, theme, key, ring: box.ring, got });
+            if (key === 'middle') await shot(p, `stack-ring-${device}-${width}-${theme}`);
+          }
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 430: a message between others is one quiet line in a dossier too, and its line answers the pointer and shows
+  // when it is open, as it does anywhere.
+  await check('reading stacks a fold line in a dossier answers the pointer and shows it is open, at 320, 375 and 390 wide and on a laptop, light and dark (item 430)', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-fold-line-${device}`;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The dossier\'s first message.', read: true }],
+        ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [other], body: 'Between the agents, to aim-core.', read: true }],
+        ['last', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest reply.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
+      const line = `#messages .message-fold[data-id="${ids.between}"] > .fold-line`;
+      const paint = () => p.evaluate(`(()=>{const l=document.querySelector(${JSON.stringify(line)}),probe=document.createElement('span');
+        const read=v=>{probe.style.background=v;l.append(probe);const c=getComputedStyle(probe).backgroundColor;probe.remove();return c};
+        const s=getComputedStyle(l);return {background:s.backgroundColor,color:s.color,soft:read('var(--soft)'),ink:read('var(--ink)'),expanded:l.getAttribute('aria-expanded'),inDossier:l.closest('.reply-stack')?.dataset.single==='false'}})()`);
+      for (const width of widthsOf(device)) {
+        await atWidth(p, device, width);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme); await centre(p, line); await away(p);
+          const at = `${device} ${width}px ${theme}`;
+          const rest = await paint();
+          assert.deepEqual([rest.inDossier, rest.expanded], [true, 'false'], `${at}: the line is in a dossier, shut`);
+          assert.notEqual(rest.color, rest.ink, `${at}: shut, at rest, its words are quiet`);
+          if (device === 'laptop') {
+            await p.point(line, 'move');
+            await becomes(async () => { const now = await paint(); return [now.background, now.color]; }, [rest.soft, rest.ink], `${at}: the pointer over it gives it the soft fill and full ink`);
+            await away(p);
+            await becomes(async () => { const now = await paint(); return [now.background, now.color]; }, [rest.background, rest.color], `${at}: and leaving puts it back`);
+          }
+          await press(p, device, line);
+          await becomes(async () => { const now = await paint(); return [now.expanded, now.color]; }, ['true', rest.ink], `${at}: open, the line shows it in full ink`);
+          await shot(p, `stack-fold-line-${device}-${width}-${theme}`);
+          await press(p, device, line);
+          await becomes(async () => (await paint()).expanded, 'false', `${at}: a press shuts it again`);
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 430's open question (warp's review): whether a saved fold the reader marks unread keeps the read material.
+  // Reproduced and reported, the rule unchanged: an unread folded reply is marked unread in Core, beside an unread
+  // twin nobody touched; what each shows is recorded.
+  await check('reading dossier look: a saved fold the reader marks unread beside an unread twin, recorded for the spec (item 430)', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `dossier-marked-fold-${device}`;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The dossier\'s first message.', read: true }],
+        ['folded', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'An unread reply, folded, then marked unread.' }],
+        ['twin', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'An unread reply nobody touched.' }]]);
+      await dossierFold(topic, ids.folded);
+      await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids.folded], marked: true });
+      const p = await open(topic, device, topic, ids.root, 'window.holdReads=true;'); await dossierOpen(p, device, ids.root); await away(p);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const seen = await p.evaluate(`(()=>{const c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+          pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+          face=id=>({folded:c(id).dataset.folded==='true',read:c(id).hasAttribute('data-read'),fill:pixel(getComputedStyle(c(id)).backgroundColor)});
+          return {folded:face(${JSON.stringify(ids.folded)}),twin:face(${JSON.stringify(ids.twin)})}})()`);
+        assert.deepEqual([seen.folded.folded, seen.folded.read, seen.twin.folded, seen.twin.read], [true, false, false, false], `${device} ${theme}: a saved fold and an unread twin`);
+        const same = seen.folded.fill.join() === seen.twin.fill.join();
+        observations.push({ name: 'dossier marked-unread saved fold', engine, device, theme, keepsReadMaterial: !same, ...seen });
+        console.log(`observation: ${engine} ${device} ${theme}: a saved fold marked unread ${same ? 'shows the unread twin\'s material' : 'keeps the read material'} (${seen.folded.fill} beside ${seen.twin.fill})`);
+      }
+      await shot(p, `dossier-marked-fold-${device}`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
