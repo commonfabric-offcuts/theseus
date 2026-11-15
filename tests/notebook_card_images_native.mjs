@@ -327,7 +327,10 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     const b=i?getComputedStyle(i):null,edge=b?parseFloat(b.borderLeftWidth)+parseFloat(b.borderRightWidth):0;
     return {name:f.querySelector(':scope > .page-image-name').textContent,shown:Boolean(i&&!i.hidden&&i.complete&&i.naturalWidth>0),width:i?i.clientWidth:0,height:i?i.clientHeight:0,
       natural:i?i.naturalWidth:0,room:inner-(b?.boxSizing==='border-box'?edge:0)}})`);
-  const imageReads = (p, from) => p.calls.slice(from).filter(call => call.url.endsWith('/api/media/read')).map(call => [call.payload?.media_id, call.payload?.source_ref?.kind, call.payload?.source_ref?.id]);
+  // Every read of the page's own images (its attachment, and the one it does not carry), by whatever source; the
+  // topic's other images (its messages', the right rail's) are its own business.
+  const imageReads = (p, id) => p.calls.filter(call => call.url.endsWith('/api/media/read') && [`${id}-media-0`, `gone-${id}`].includes(call.payload?.media_id))
+    .map(call => [call.payload.media_id, call.payload.source_ref?.kind, call.payload.source_ref?.id]);
   // An image at the size it reads at: as wide as it is, or as the words when it is wider, never a thumbnail.
   const readingSize = (image, said) => {
     // A browser counts a box's width in whole pixels (clientWidth), so the room it fills may round either way.
@@ -352,7 +355,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       assert.deepEqual(words.code, [`![code.png](attachment:${id}-media-0)`], `${label}: the line in a code span stays words`);
       // An image from the web is words, as in any message: its name a link to its address, and no picture.
       assert.deepEqual([words.text.includes('!web.png'), words.web, words.pictures], [true, ['web.png'], 1], `${label}: an image from the web stays words`);
-      assert.deepEqual(imageReads(p, 0), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
+      assert.deepEqual(imageReads(p, id), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
       assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
       await shot(p, `notebook-card-image-reader-${label}`);
       assert.deepEqual(p.errors, []); await p.close();
@@ -391,7 +394,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       const text = await p.evaluate(`document.querySelector(${JSON.stringify(BODY)}).textContent`);
       assert.ok(!text.includes('![wide.png](') && !text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(text)}`);
       assert.ok(text.includes(`\`![code.png](attachment:${id}-media-0)\`\n![web.png](https://example.invalid/web.png)`), `${label}: the lines that are words stay words: ${JSON.stringify(text)}`);
-      assert.deepEqual(imageReads(p, 0), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
+      assert.deepEqual(imageReads(p, id), [[`${id}-media-0`, 'memory', id]], `${label}: the image is read through the page, and nothing is read for the one not on it`);
       assert.equal(await sideways(p), false, `${label}: nothing scrolls sideways`);
       await p.evaluate(`document.querySelector('#page-here').scrollIntoView({block:'start',behavior:'instant'})`);
       await shot(p, `notebook-card-image-in-place-${label}`);
