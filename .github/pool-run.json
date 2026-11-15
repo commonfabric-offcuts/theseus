@@ -1,0 +1,9 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading edit build on one build, words typed while a move reads",
+  "reading edit build words typed while a move reads the build and kept"
+ ],
+ "label": "red3-chrome-2d178660-1",
+ "snapshot": "2d1786601e9ba3dd353b17fc0523b543f3ab7e59"
+}
