@@ -1057,3 +1057,7 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
 
 .feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
+
+/* "Theseus updated" (a move that found a new build while writing was not yet safe, in-place-navigation.mjs): one line, with Reload in it, a finger's size on a phone. */
+.updated-reload{margin-left:.35rem;padding:.15rem .6rem}
+@media(pointer:coarse),(max-width:760px){.updated-reload{min-height:2.75rem;min-width:2.75rem}}

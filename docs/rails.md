@@ -167,7 +167,8 @@ moves to it as Return does, and once its run is up opens its New message box
 ### What a move ends, and what it leaves
 
 A run is `app.mjs` alone. Every other module is loaded once for the whole
-visit, before the first run begins, and keeps its own state across every run.
+visit, before the first run begins, and keeps its own state across every run,
+which is why a visit stays on one build (below).
 Two rules follow, so nothing a module remembers disagrees with what a move
 ends.
 
@@ -242,6 +243,43 @@ up when their turn comes.
 The rails read one read at a time (`oneAtATime`), so they never crowd the
 page's own reads out of the server's admission lanes. The outline reads in
 the foreground lane. The right rail reads in the background lane.
+
+### One build per document
+
+A fresh run of `app.mjs` finds every other module already loaded, from the
+build the document was opened on. After a deploy, a run of the new release's
+`app.mjs` would call the old release's modules: the next release's Edit
+called `start()` on release 76's `MessageEditWriting`, which had none
+("writing.start is not a function"). So every module a document loads is of one build, and a
+move to another build is a load.
+
+- The server reads `web/` once as it starts and names what it serves with a
+  stamp, a hash of those bytes (`aim_next/web_build.py`). A deploy restarts the
+  server, so a new release is a new stamp. `GET /api/build` says it, without a
+  session.
+- Every module is served under its build, `/b/<stamp>/<name>`. `index.html`
+  names its entry that way, so each relative import, the run's
+  `./app.mjs?place=N` included, carries the build. An import map before the
+  entry sends an absolute address (`/api.mjs`, as a check imports it) to the
+  same build. The page's Content-Security-Policy allows that one inline script
+  by its hash.
+- An address under another build is refused (404), and so is a module asked
+  for with a query outside a build: the run of a page opened before builds
+  were stamped. A module asked for plainly outside a build is still the file
+  as it stands, for a document that is not a page.
+- Before a move, the shell reads the served build. On the document's own build
+  the move goes in place. If the read fails, the move goes on, and the refusal
+  above is what stops a run of another build. On another build the place is
+  loaded (`shell.leave`), so the new release's modules load together. While a
+  guard holds (writing not yet safe), the page stays instead. It says
+  "Theseus updated." with Reload, by the topic line and in the Reader or New
+  message sheet when one is open, and puts back a back or forward that found
+  the new build. Reload goes through the browser's own ask while the guard
+  holds, and the words are kept as a load keeps them.
+
+Native checks open a page on release 76 (`bb3a46da`), serve this build, move
+once, and Edit; they move on one build and on another at 320, 375 and 390 by
+touch and on a laptop; and they hold writing and press Reload.
 
 ## Known gaps
 

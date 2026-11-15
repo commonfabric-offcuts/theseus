@@ -48,6 +48,9 @@ const phases = { started: Date.now(), cases: [] };
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 const baseline = process.env.AIM_FRESHNESS_BASELINE === 'ba4a00e';
 const legacyAdmission = process.env.AIM_FRESHNESS_LEGACY === '1';
+// The page's module and its upload cleanup, as its document loads them: under the build the server serves
+// (aim_next/web_build.py, /b/<build>/name), and not a move in place's run of app.mjs (?place=N).
+const instrumented = url => { const u = new URL(url); return u.origin === facts.origin && !u.search && /^\/b\/[^/]+\/(?:app|upload-cleanup)\.mjs$/.test(u.pathname); };
 const liveUpdatesFixture = ['--freshness', '--inline', '--navigation', '--live', '--colors', '--asks', '--whispers', '--work', '--light', '--list', '--notebook', '--duties', '--sources', '--wakes', '--header', '--rail', '--conversation', '--forms', '--pipeline', '--targets', '--health', '--reading'].includes(mode);
 assert.ok(!(baseline && legacyAdmission), 'the shared-two baseline is distinct from single-slot fallback');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
@@ -176,7 +179,7 @@ try {
         const handle = async () => {
           let payload; try { payload = JSON.parse(event.request.postData); } catch { payload = null; }
           calls.push({ url: event.request.url, payload, headers: event.request.headers, at: Date.now() });
-          if (['--freshness', '--live'].includes(mode) && [facts.origin + '/app.mjs', facts.origin + '/upload-cleanup.mjs'].includes(event.request.url)) {
+          if (['--freshness', '--live'].includes(mode) && instrumented(event.request.url)) {
             const response = await send('Fetch.getResponseBody', { requestId: event.requestId });
             const source = response.base64Encoded ? Buffer.from(response.body, 'base64').toString() : response.body;
             await send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 200,
@@ -319,7 +322,7 @@ try {
       connectedPages.set(targetId, connectedPage);
       if (liveUpdatesFixture) {
         freshnessPages.set(targetId, connectedPage);
-        await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(['--freshness', '--live'].includes(mode) ? [{ urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
+        await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(['--freshness', '--live'].includes(mode) ? [{ urlPattern: facts.origin + '/b/*/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/b/*/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
         await setup.beforeNavigate?.(connectedPage);
       }
       await send('Page.navigate', { url: setup.url ?? facts.origin + '/?topic=t1' });

@@ -66,14 +66,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     return ids;
   };
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
-  // query: the page's address after the origin, the topic's page unless given.
-  const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic) => {
+  // query: the page's address after the origin, the topic's page unless given. before(q): more to do to the page
+  // before it is opened, once its size and touch are set (what serves its files, say).
+  const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic, before = null) => {
     const metrics = DEVICES[device];
     const p = await page(name, null, true, { url: facts.origin + query, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
       await q.send('Emulation.setDeviceMetricsOverride', metrics);
       if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      if (before) await before(q);
     } });
     await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(first))}))`), name + ': the topic is drawn');
     return p;

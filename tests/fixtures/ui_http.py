@@ -433,10 +433,11 @@ def main():
         # One for the instance, kept across a server restart.
         gate = CommandGate()
 
-        def serve(port=0):
+        def serve(port=0, web=None):
             """The real server, with a session of its own: a restart (server_stop,
-            then server_start) brings it back at the same address with a new one."""
-            server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
+            then server_start) brings it back at the same address with a new one.
+            web: the page's files to serve, as a deploy brings another build; the checkout's own by default."""
+            server = create_server(store, instance, actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
                                    max_reads=max_reads, port=port,
                                    live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
             if "--live" in sys.argv:
@@ -591,7 +592,7 @@ def main():
                         answer = {"stopped": True}
                     elif request["method"] == "server_start":
                         assert server is None, "Stop the server before starting it again"
-                        server = serve(port)
+                        server = serve(port, request.get("web"))
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}

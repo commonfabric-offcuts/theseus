@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { asksIn, rowCount, totals, elsewhere, elsewhereWords, shownUnder, Opened } from '../web/outline-rail.mjs';
-import { movesInPlace, Places, Scope, Shell, Superseded, oneAtATime } from '../web/in-place-navigation.mjs';
+import { movesInPlace, Places, Scope, Shell, Superseded, oneAtATime, buildOf, servedBuild } from '../web/in-place-navigation.mjs';
 import { linksIn, pullRequest, isPreview, thingsIn, waitingFor, SectionFolds } from '../web/things-rail.mjs';
 
 const asks = n => ({ light: 'waiting', short: { kind: 'asks', count: n } });
@@ -136,12 +136,12 @@ test('the rails read one at a time, each after the one before has settled, and s
 });
 
 // A shell with its page up, without a document: what go and popstate decide.
-function shellAt(href, { guard = () => true } = {}) {
+function shellAt(href, { guard = () => true, build = null, served = undefined } = {}) {
   const h = history();
   // order: each load in turn, the page departing (api.mjs depart) before it,
   // and the page staying (stay). The window hears what the shell heeds.
   const win = Object.assign(new EventTarget(), { location: { href: 'http://aim.test/' + href, reload() { win.reloads += 1; win.order.push('reload'); }, assign(to) { win.assigned.push(to); win.order.push(to); } }, history: h, reloads: 0, assigned: [], order: [] });
-  const shell = new Shell({ doc: null, win, load: async () => {}, reads: { depart: () => win.order.push('depart'), stay: () => win.order.push('stay') } });
+  const shell = new Shell({ doc: null, win, load: async () => {}, reads: { depart: () => win.order.push('depart'), stay: () => win.order.push('stay') }, build, ...(served ? { served } : {}) });
   shell.heed();
   shell.installed = true; shell.places = new Places(h); shell.feed = true;
   const moves = [], opened = [];
@@ -236,6 +236,95 @@ test('a back, a forward, a place chosen or a link pressed while a run is on its 
   assert.deepEqual([await pending, broken.win.assigned], [false, ['?topic=t5']], 'the place chosen loads');
   broken.goTo('?topic=t1'); await broken.shell.popstate({ state: { aimPlace: 0 } });
   assert.equal(broken.win.reloads, 1, 'and a back loads');
+});
+
+// One build per document (item 523, docs/rails.md): a move reads the build the server serves first, and moves
+// in place only on its own; on another it loads the place afresh, or, while writing is not yet safe, stays and says so.
+// answer(build): a served() whose answer the test gives, and how many times it was asked.
+const answerable = () => {
+  const asked = [];
+  const served = () => new Promise(resolve => asked.push(resolve));
+  return { served, asked, answer: async build => { asked.shift()(build); for (let n = 0; n < 4; n++) await Promise.resolve(); } };
+};
+
+test('a module served under a build names it; the build the server serves is read once, and a failed read is no build', async () => {
+  assert.equal(buildOf('http://aim.test/b/08eebbec4a52f0e974bc/in-place-navigation.mjs'), '08eebbec4a52f0e974bc');
+  assert.equal(buildOf('http://aim.test/in-place-navigation.mjs'), null, 'a module served outside a build');
+  assert.equal(buildOf('file:///repo/web/in-place-navigation.mjs'), null, 'a module loaded from disk, as these tests load it');
+  assert.equal(buildOf('http://aim.test/x/b/abc/in-place-navigation.mjs'), null, 'only the leading /b/<build>/ names one');
+  const asked = [];
+  const answer = body => async (...args) => { asked.push(args); return body; };
+  assert.equal(await servedBuild(answer({ ok: true, json: async () => ({ build: 'B1' }) })), 'B1');
+  assert.deepEqual(asked[0], ['/api/build', { cache: 'no-store', credentials: 'same-origin' }]);
+  assert.equal(await servedBuild(answer({ ok: false, json: async () => ({ build: 'B1' }) })), null, 'a refusal is no build');
+  assert.equal(await servedBuild(answer({ ok: true, json: async () => ({}) })), null, 'an answer with no build is none');
+  assert.equal(await servedBuild(answer({ ok: true, json: async () => ({ build: '' }) })), null);
+  assert.equal(await servedBuild(async () => { throw new TypeError('Failed to fetch'); }), null, 'an unreached server is no build');
+});
+
+test('a move on this document\'s own build reads the served build first and moves in place; on another it loads the place afresh, with no entry of its own', async () => {
+  const same = answerable(), here = shellAt('?topic=t1', { build: 'A', served: same.served });
+  assert.equal(here.shell.go({ kind: 'topic', id: 't2' }), true);
+  assert.deepEqual([same.asked.length, here.moves.length, here.h.entries], [1, 0, []], 'nothing moves while the read is out');
+  assert.equal(here.shell.between, true, 'the move is under way meanwhile');
+  assert.equal(here.shell.go({ kind: 'topic', id: 't3' }), false, 'and is not stacked');
+  await same.answer('A');
+  assert.deepEqual([here.moves, here.h.entries, here.win.order], [['http://aim.test/?topic=t1'], ['?topic=t2'], []], 'its own build: in place, with its entry, no load');
+
+  const next = answerable(), there = shellAt('?topic=t1', { build: 'A', served: next.served });
+  assert.equal(there.shell.go({ kind: 'topic', id: 't2' }), true);
+  await next.answer('B');
+  assert.deepEqual([there.moves, there.h.entries, there.win.order], [[], [], ['depart', '?topic=t2']], 'another build: the place loads, as a link loads it');
+  assert.equal(there.shell.moving, false);
+
+  const unread = answerable(), blind = shellAt('?topic=t1', { build: 'A', served: unread.served });
+  blind.shell.go({ kind: 'topic', id: 't2' });
+  await unread.answer(null);
+  assert.deepEqual([blind.moves.length, blind.win.order], [1, []], 'a build that could not be read: the move goes on, its import naming this build');
+
+  const none = shellAt('?topic=t1', { served: () => assert.fail('a document with no build reads none') });
+  none.shell.go({ kind: 'topic', id: 't2' });
+  assert.deepEqual([none.moves.length, none.h.entries], [1, ['?topic=t2']], 'with no build of its own, the move is made at once');
+});
+
+test('a move that finds another build while writing is not yet safe stays where it is and says so, Reload asks the browser\'s guard, and a back is put back', async () => {
+  const read = answerable(), held = shellAt('?topic=t1', { build: 'A', served: read.served });
+  let holds = false, reloads = [];
+  held.shell.page.updated = reload => reloads.push(reload);
+  held.shell.guard(() => holds);
+  held.shell.go({ kind: 'topic', id: 't2' });
+  holds = true;
+  // A place chosen while the read is out waits for it.
+  const chosen = held.shell.open({ kind: 'topic', id: 't9' }, 'Nine');
+  await read.answer('B');
+  assert.deepEqual([held.moves, held.h.entries, held.win.order, held.win.reloads], [[], [], [], 0], 'the page stays: no load, no move, no entry');
+  assert.equal(reloads.length, 1, 'and says Theseus updated, with Reload');
+  assert.deepEqual([held.page.opened.map(t => t.id), read.asked.length], [['t9'], 1], 'what was chosen meanwhile goes through the page as it stands, and reads the build again');
+  await read.answer('B');
+  assert.equal(await chosen, true);
+  assert.deepEqual([held.moves, held.win.order, reloads.length, held.shell.moving], [[], [], 2, false], 'it stays too, and says so again');
+  reloads[0]();
+  assert.deepEqual(held.win.order, ['reload'], 'Reload loads with no departure while the guard holds: the browser asks the person first');
+  holds = false;
+  reloads[0]();
+  assert.deepEqual(held.win.order, ['reload', 'depart', 'reload'], 'once the writing is safe, it departs and loads');
+
+  const back = answerable(), popped = shellAt('?topic=t1', { build: 'A', served: back.served });
+  popped.shell.page.updated = () => {};
+  popped.shell.guard(() => true);
+  popped.shell.places.push('?topic=t2'); popped.goTo('?topic=t2'); popped.shell.at = JSON.stringify(['topic', 't2']);
+  popped.goTo('?topic=t1');
+  const going = popped.shell.popstate({ state: { aimPlace: 0 } });
+  await going;
+  await back.answer('B');
+  assert.deepEqual([popped.h.went, popped.win.reloads, popped.moves.length], [[1], 0, 0], 'a back that found another build is put back, once');
+
+  const free = answerable(), loads = shellAt('?topic=t1', { build: 'A', served: free.served });
+  loads.shell.places.push('?topic=t2'); loads.goTo('?topic=t2'); loads.shell.at = JSON.stringify(['topic', 't2']);
+  loads.goTo('?topic=t1');
+  await loads.shell.popstate({ state: { aimPlace: 0 } });
+  await free.answer('B');
+  assert.deepEqual([loads.h.went, loads.win.order], [[], ['depart', 'reload']], 'with nothing to keep, a back loads the place it reached');
 });
 
 // The page asks Theseus nothing more from the moment it decides to load

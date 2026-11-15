@@ -1495,8 +1495,34 @@ test('the page begins its run of the shell as it starts, with its own way to ope
   const begun = [];
   fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {} } });
   assert.equal(begun.length, 1, 'once, as the page starts');
-  assert.deepEqual(Object.keys(begun[0]).sort(), ['open', 'retire']);
-  assert.ok(begun.every(page => typeof page.open === 'function' && typeof page.retire === 'function'));
+  // updated (item 523): the page's way to say a move found another build while its writing is not yet safe.
+  assert.deepEqual(Object.keys(begun[0]).sort(), ['open', 'retire', 'updated']);
+  assert.ok(begun.every(page => typeof page.open === 'function' && typeof page.retire === 'function' && typeof page.updated === 'function'));
+});
+
+test('a move that found another build says Theseus updated with a Reload that reloads, by the topic line and in the Reader or New message sheet that is open', () => {
+  for (const open of [null, 'reader', 'new-message-sheet']) {
+    const begun = [], reloads = [], scrolled = [];
+    const f = fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {} } });
+    if (open) f.get(open).open = true;
+    f.get('topic-navigation-status').scrollIntoView = how => scrolled.push(JSON.stringify(how));
+    begun[0].updated(() => reloads.push('reload'));
+    const said = id => { const line = f.get(id); return [line.textContent, line.children.filter(c => typeof c === 'object' && c.tagName === 'BUTTON')]; };
+    const [words, [button]] = said('topic-navigation-status');
+    assert.equal(words, 'Theseus updated.', open);
+    assert.deepEqual([button.textContent, button.className, button.title, button.type], ['Reload', 'updated-reload', 'Reload Theseus', 'button']);
+    button.onclick();
+    assert.deepEqual(reloads, ['reload'], 'Reload asks for the load');
+    const near = { reader: 'reader-notice', 'new-message-sheet': 'inline-notice' }[open];
+    if (near) {
+      const [there, [again]] = said(near);
+      assert.equal(there, 'Theseus updated.', 'said where the person is writing');
+      again.onclick();
+      assert.deepEqual([reloads.length, scrolled], [2, []]);
+    } else {
+      assert.deepEqual([said('reader-notice')[0], said('inline-notice')[0], scrolled], ['', '', ['{"block":"nearest"}']], 'with nothing open, only the topic line says it, brought into view');
+    }
+  }
 });
 
 test('every application route reloads a restored closed document before accepting input',async()=>{
