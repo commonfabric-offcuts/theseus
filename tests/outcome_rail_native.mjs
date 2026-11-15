@@ -2354,6 +2354,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // is told is counted too.)
   const ACTED = "(window.__spoken??=(o=>(new MutationObserver(ms=>{for(const m of ms)if((m.target.nodeType===1?m.target:m.target.parentElement)?.closest('[aria-live]'))o.n++}).observe(document.body,{subtree:true,childList:true,characterData:true}),o))({n:0})).n+'|'+[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length+'|'+[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).length+'|'+document.querySelectorAll('#messages [hidden]').length";
   const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
+  // A control a redraw replaced (a message drawn again as a stack switched) is the same node as before: known by
+  // its message and its place among that message's controls, or by its id; each step marks such a control again.
+  const SIG = "(e=>{const m=e.closest('#messages [data-id]');if(m)return 'm:'+m.dataset.id+':'+(e===m?'self':[...m.querySelectorAll('a[href],button,summary,input,select,textarea,[tabindex]')].indexOf(e));return e.id?'id:'+e.id:null})";
+  const REMARK = `(()=>{const sig=${SIG},known=window.__arrowSig??={};for(const e of document.querySelectorAll('a[href],button,summary,input,select,textarea,[tabindex]')){const k=sig(e);if(!k)continue;if(e.dataset.arrowNode&&!e.dataset.arrowNode.startsWith('tree')){known[k]??=e.dataset.arrowNode}else if(!e.dataset.arrowNode&&known[k])e.dataset.arrowNode=known[k]}})()`;
+  // A tree is one node: its rows as they are drawn now, by the tree's place on the page.
+  const treeRows = id => `[...(document.querySelectorAll('[role=tree]')[${Number(id.slice(4))}]?.querySelectorAll('[role=treeitem]')??[])].filter(e=>e.checkVisibility())`;
   const arrowClosure = async (p, scope, start, skip = null) => {
     const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
       const shown=e=>e.checkVisibility({visibilityProperty:true})&&!e.disabled&&!e.closest('[inert],[aria-hidden=true]')&&e.getBoundingClientRect().width>0;
@@ -2361,11 +2367,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const trees=[...document.querySelectorAll('[role=tree]')],tree=e=>e.getAttribute('role')==='treeitem'?'tree'+Math.max(0,trees.indexOf(e.closest('[role=tree]'))):null;
       const out=[];all.forEach((e,i)=>{const id=tree(e)??'n'+i;e.dataset.arrowNode=id;
         if(!out.some(o=>o.id===id))out.push({id,label:id.startsWith('tree')?'the tree '+(e.closest('[role=tree]')?.getAttribute('aria-label')??''):(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
+    await p.evaluate(REMARK);
     const label = id => nodes.find(node => node.id === id)?.label ?? id;
     // Where a press lands; a control that was not marked (the feed itself, a row drawn since, a tree whose rows
     // took their tree words since) is marked as it is found, and the arrows are pressed from it too.
-    const landed = async () => { const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
-      if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound}return e.dataset.arrowNode})(document.activeElement)`);
+    const landed = async () => { await p.evaluate(REMARK); const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
+      if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound;const k=${SIG}(e);if(k)(window.__arrowSig??={})[k]??=e.dataset.arrowNode}return e.dataset.arrowNode})(document.activeElement)`);
       if (at !== 'page' && at !== 'out' && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
       return at; };
     const explore = [...nodes];
@@ -2376,16 +2383,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const node = explore[i];
       if (node.id.startsWith('tree')) {
         for (const [home, key] of [['Home', 'ArrowUp'], ['End', 'ArrowDown']]) {
-          await p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()))`);
+          const on = await p.evaluate(`(rows=>{const row=rows.find(e=>e.tabIndex===0)??rows[0];row?.focus();return Boolean(row)&&document.activeElement===row})(${treeRows(node.id)})`);
+          assert.equal(on, true, `${label(node.id)}: the keys are put on one of its rows`);
           await p.key(home); await p.key(key);
           const to = await landed();
           edges.push({ from: node.id, key, to });
           if (to === node.id) { const lies = await p.evaluate(LIES(key)); if (lies.length) dead.push(`${label(node.id)} ${home} then ${key} stays; lies that way: ${lies.join(' | ')}`); }
         }
         // → from each open row that holds a control of its own (the Notebook row's pencil).
-        const holders = await p.evaluate(`[...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()&&e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility())).length`);
+        const holders = await p.evaluate(`${treeRows(node.id)}.filter(e=>e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility())).length`);
         for (let n = 0; n < holders; n++) {
-          await p.evaluate(`[...document.querySelectorAll('[data-arrow-node=${node.id}]')].filter(e=>e.checkVisibility()&&e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility()))[${n}]?.focus()`);
+          await p.evaluate(`${treeRows(node.id)}.filter(e=>e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility()))[${n}]?.focus()`);
           await p.key('ArrowRight');
           edges.push({ from: node.id, key: 'ArrowRight', to: await landed() });
         }
@@ -2394,6 +2402,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // ↓ last: through a box that scrolls it reads to the end, and ← and → are pressed where it stood when reached.
       // A select's ↑ and ↓ are its own, choosing among its options (and opening its menu on a Mac): only ← and →.
       for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
+        await p.evaluate(REMARK);
         const ok = await p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||(e.matches('select')&&${key === 'ArrowUp' || key === 'ArrowDown'}))return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${node.id}"]'))`);
         if (!ok) continue;
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
