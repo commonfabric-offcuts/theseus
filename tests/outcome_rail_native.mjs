@@ -2179,6 +2179,21 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await q.send('Emulation.setDeviceMetricsOverride', SIZE_HEAD[size]);
       if (SIZE_HEAD[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
     } });
+    // Earlier checks leave news and questions in other outcomes, and "☰ Outcomes" totals every outcome the outline has
+    // read; so the case starts by having the person read, and answer, every open topic that holds news or a question,
+    // and then the Conversation of any outcome that still does, and fails here, naming them, if any outcome still does.
+    const asks = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? item.light.short.count : 0;
+    const busy = async () => { const listed = await view('workspaces', { limit: 100 });
+      assert.equal(listed.next_cursor ?? null, null, 'every outcome is on one page of the list');
+      return listed.items.filter(item => item.unread > 0 || asks(item) > 0); };
+    const settle = async () => {
+      const answer = topic => control({ method: 'agent_message', operation_id: `rail-head-clear-${topic}`, sender: 'person', topic_id: topic, whole_topic: true, read: true, body: 'Read, thanks.' });
+      for (const item of await busy()) for (const topic of (await view('workspace_topics', { workspace_id: item.id, limit: 100 })).items)
+        if (topic.unread > 0 || topic.asks?.length) await answer(topic.id);
+      for (const item of await busy()) { const topic = (await view('conversation', { workspace_id: item.id })).conversation?.topic_id; if (topic) await answer(topic); }
+      const left = await busy();
+      assert.deepEqual(left.map(item => ({ id: item.id, unread: item.unread, asks: asks(item) })), [], 'the case starts with nothing new and nothing waiting in any outcome');
+    };
     // Each part of the header row as drawn, or null where it takes no room: its box (unrounded widths, so a fit is
     // judged as layout judges it), whether its content is wider than its box (clipped), and how many lines its words
     // take (text boxes whose middles are within 8px are a line). For the name, also where its words start and how wide
@@ -2195,6 +2210,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const natural=e=>{const s=getComputedStyle(e),g=document.createElement('canvas').getContext('2d');g.font=[s.fontStyle,s.fontWeight,s.fontSize,s.fontFamily].join(' ');return g.measureText(e.textContent).width;};
       const s=getComputedStyle(row);
       return {count:Number(c.querySelector('.unread-count:not([hidden])')?.textContent??0),light:Boolean(c.querySelector('.outcome-light:not([hidden])')),
+        rows:[...document.querySelectorAll('#outline .ol-outcome')].map(li=>li.dataset.workspaceId),
         outcomes:part(c),pages:part(el('things-open')),name:part(el('workspace-name')),words:words(el('workspace-name')),natural:natural(el('workspace-name')),
         row:row.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),rowTop:Math.round(row.getBoundingClientRect().top+parseFloat(s.paddingTop)),gap:parseFloat(s.columnGap)||0,
         scroll:document.documentElement.scrollWidth,width:innerWidth};})()`);
@@ -2213,7 +2229,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // state: its words, which counts and light it is, and at 320 whether the two pills and one gap fit the row
     // ("Pipeline & pages" shares the line). Both engines give the same answer at 320 in every state; at 375 and 390
     // they fit in every state.
-    const measure = async ({ state, is, fitsAt320 }) => {
+    // rows: the outcomes the outline must have drawn, so the total is read from them and not before they are read.
+    const measure = async ({ state, is, fitsAt320, rows = ['w1', 'rail-head-o'] }) => {
       assert.equal(typeof fitsAt320, 'boolean', `${state}: the case says whether the two pills fit at 320`);
       for (const size of [320, 375, 390, 1024, 'laptop']) for (const theme of ['light', 'dark']) {
         const at = `${state}, ${size} ${theme}`, phone = SIZE_HEAD[size].mobile;
@@ -2221,7 +2238,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         // The count and the light on "☰ Outcomes" are painted at every width (it only shows on a phone), and on a
         // middle or phone width "Pipeline & pages" is in the header before the row is measured.
         let last = null;
-        const seen = await until(async () => { const h = last = await header(p); return is(h) && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" shows ${state}, and the header is drawn`)
+        const seen = await until(async () => { const h = last = await header(p); return is(h) && rows.every(id => h.rows.includes(id)) && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" shows ${state}, and the header is drawn`)
           .catch(error => { throw Error(`${error.message} (last drawn: ${JSON.stringify(last)})`); });
         const far = await rightmost(p);
         const drawn = JSON.stringify({ ...seen, far }), screen = SIZE_HEAD[size].width;
@@ -2274,7 +2291,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.close();
       }
     };
-    await measure({ state: 'nothing', is: h => h.count === 0 && !h.light, fitsAt320: true });
+    await settle();
+    await measure({ state: 'nothing', is: h => h.count === 0 && !h.light, fitsAt320: true, rows: ['w1'] });
     await control({ method: 'light_outcome', outcome: 'rail-head-o', title: 'Header outcome', topic: { id: 'rail-head-t', title: 'Header topic' } });
     await news(0, 3);
     await measure({ state: 'a count', is: h => h.count >= 1 && h.count <= 9 && !h.light, fitsAt320: true });
