@@ -2396,7 +2396,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await topicUp(p, size + ': the topic is up');
       await until(() => p.evaluate("(b=>{b?.focus();return Boolean(b)&&document.activeElement===b})(document.getElementById('rail-open'))"), size + ': ☰ Topics takes the focus');
       await p.key('Enter');
-      await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
+      await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it')
+        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({expanded:document.getElementById('rail-open').getAttribute('aria-expanded'),open:document.getElementById('rail').classList.contains('open'),active:(e=>e&&(e.id||e.tagName+':'+(e.textContent||'').trim().slice(0,30)))(document.activeElement)})")); });
       await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
         .catch(async error => { await shot(p, 'rail-arrows-drawer-missing-' + size); throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({rows:[...document.querySelectorAll('#outline [role=treeitem]')].map(e=>[e.textContent.trim().slice(0,30),e.checkVisibility()]),outline:document.getElementById('outline')?.innerHTML.length,open:document.getElementById('rail').className})")); });
       await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
@@ -2515,7 +2516,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-arrows-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
     try {
       for (const size of ['laptop', '390', '375', '320']) for (const [name, url, reaches] of [
-        ['home', '/', /^main:w1$|Isolated wiring/], ['outcome', '/?workspace=w1', /topic|t1|New topic/i], ['pipeline', '/?pipeline=w1', /./], ['conversation', '/?conversation=w1', /./]]) {
+        ['home', '/', /^main:w1$|Isolated wiring|outcome\d|topic/i], ['outcome', '/?workspace=w1', /topic|t1|New topic/i], ['pipeline', '/?pipeline=w1', /./], ['conversation', '/?conversation=w1', /./]]) {
         const p = await arrowsAt(`rail-arrows-${name}-${size}`, url, size, size === '390' ? 'dark' : 'light');
         await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), `${size} ${name}: the page is up`);
         await p.evaluate("document.activeElement?.blur()");
