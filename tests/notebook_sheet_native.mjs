@@ -834,7 +834,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await until(() => p.evaluate('globalThis.heldSave===true'), 'the save is on its way and held');
     assert.equal((await view('memory_current', { item_id: id })).body.includes('Before the reload.'), false, 'Core does not have it yet');
     await p.send('Page.reload', {});
-    await until(async () => { try { return await p.evaluate(`document.body.dataset.ready==='true' && !globalThis.heldSave && Boolean(document.querySelector(${JSON.stringify(card(id))}))`); } catch { return false; } }, 'the page loads again');
+    await until(async () => { try { return await p.evaluate(`document.body.dataset.ready==='true' && !globalThis.heldSave`); } catch { return false; } }, 'the page loads again');
+    // The page is the topic's newest, which may be past the Notebook's first pages: More brings it, as before the reload.
+    await listed(p, card(id), 'the topic\'s Notebook lists its page again');
     await press(p, card(id));
     await waitFor(p, s => s.open && s.box?.focused && s.box.words === 'Notes\nDan reviews. Before the reload.', { open: true, box: { words: 'Notes\nDan reviews. Before the reload.', focused: true } },
       'the card is open again to write, with what was written before the reload');
