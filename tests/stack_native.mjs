@@ -883,6 +883,128 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 378, the count where Core's dossier is drawn as more than one stack: its first message is older than the page
+  // loaded, and two of its replies on the page are two stacks. The button moves the whole dossier, both stacks, so its
+  // count names both stacks' messages; a message of another dossier stays where it is.
+  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, where the page draws it as two stacks, its first message not loaded', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-archive-split-' + device;
+      const said = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'An old question everyone answers.', read: true }]];
+      for (let n = 0; n < 30; n++) said.push(['f' + n, { sender: other, addressees: [facts.actor], body: `Filler ${n}, a message of its own.`, read: true }]);
+      said.push(['a', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First answer to the old question.' }]);
+      said.push(['b', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second answer to the old question.' }]);
+      const ids = await seed(topic, said);
+      const p = await open(topic, device, topic, ids.b);
+      const shownId = id => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${id}"]')?.getClientRects().length)`);
+      const drawn = () => p.evaluate(`[${JSON.stringify(ids.a)},${JSON.stringify(ids.b)},${JSON.stringify(ids.f29)}].map(id=>Boolean(document.querySelector('#messages [data-id="'+id+'"]')?.getClientRects().length))`);
+      await becomes(drawn, [true, true, true], `${device}: both answers and the newest filler are drawn`);
+      // The page as this case needs it: the dossier's first message not loaded, and its two answers in two stacks.
+      assert.deepEqual(await p.evaluate(`(()=>{const own=id=>document.querySelector('#messages [data-id="'+id+'"]'),stackOf=id=>own(id).closest('.reply-stack')?.dataset.stack??id;
+        return {root:Boolean(own(${JSON.stringify(ids.root)})),apart:stackOf(${JSON.stringify(ids.a)})!==stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, apart: true },
+        `${device}: the old question is not loaded, and its two answers are two stacks`);
+      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed')}))(document.querySelector('#reader-aside'))`);
+      await openReader(p, device, ids.b, 'Second answer');
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        await becomes(button, { shown: true, name: 'Move below More: 2 messages', title: 'Move below More: 2 messages', count: '2', pressed: 'false' },
+          `${device} ${width}: the button names both answers, the two messages that move`);
+      }
+      await press(p, device, '#reader-aside');
+      await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, `${device}: Core holds the dossier below More`);
+      await becomes(button, { shown: true, name: 'Bring back above More: 2 messages', title: 'Bring back above More: 2 messages', count: '2', pressed: 'true' }, `${device}: pressed, it brings back the same 2`);
+      await closeReader(p, device);
+      await becomes(drawn, [false, false, true], `${device}: both answers went below More, as the count said, and the filler stays`);
+      assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.f29] })).items[0].stack_position.below, false, `${device}: Core moved no other dossier`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
+  // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
+  const asideButton = p => p.evaluate(`(b=>({hidden:b.hidden,shown:b.getClientRects().length>0,name:b.getAttribute('aria-label')}))(document.querySelector('#reader-aside'))`);
+  const noAsideAtEachWidth = async (p, device, said) => {
+    for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+      await becomes(async () => { const b = await asideButton(p); return [b.hidden, b.shown]; }, [true, false], `${device} ${width}: no archive button for ${said}`);
+      await shot(p, `stack-archive-none-${said.replace(/\W+/g, '-')}-${device}-${width}`);
+    }
+    if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+  };
+  await check('reading stacks the Reader\'s archive button shows for no message of the topic opened alone from its link, and shows for one the page\'s stacks hold', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-archive-alone-' + device;
+      const ids = await seed(topic, Array.from({ length: 36 }, (_, n) => ['m' + n, { sender: other, ...(n ? {} : { join: true }), addressees: [facts.actor], body: `Message ${n}, of a long topic.`, read: true }]));
+      const p = await open(topic, device, `${topic}&message=${ids.m0}`, ids.m35);
+      await until(async () => (await readerOn(p))?.startsWith('Message 0,'), `${device}: the link opens the oldest message in the Reader`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.m0))}))`), false, `${device}: the page has not loaded its card: it opened alone`);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#reader-star').getClientRects().length)`), `${device}: its star shows, its acts read`);
+      await noAsideAtEachWidth(p, device, 'a message opened alone');
+      await closeReader(p, device);
+      await openReader(p, device, ids.m35, 'Message 35,');
+      await becomes(async () => { const b = await asideButton(p); return [b.shown, b.name]; }, [true, 'Move below More: 1 message'], `${device}: a message the stacks hold has the button`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  await check('reading stacks the Reader\'s archive button goes when the Reader moves from a message the stacks hold to another topic\'s message, from its About link', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const name = 'stack-archive-about-' + device;
+      const ids = await seed(name, [['other', { sender: 'aim-ux', join: true, body: 'Here to read the message.' }],
+        ['elsewhere', { sender: 'aim-core', join: true, body: 'A message in another topic, read by another reader.' }]]);
+      await control({ method: 'navigation_workspaces', workspaces: [{ id: name, title: name, team: ['fable'], coordinator: 'fable' }] });
+      const topic = (await view('conversation', { workspace_id: name })).conversation.topic_id;
+      const reply = (await control({ method: 'agent_message', operation_id: name + '-about', topic_id: topic, sender: 'person', reply_to: ids.elsewhere, body: 'About the message elsewhere.' })).result.message_id;
+      const p = await open(name, device, topic, reply, '', '/?conversation=' + name);
+      await openReader(p, device, reply, 'About the message elsewhere');
+      await becomes(async () => (await asideButton(p)).shown, true, `${device}: the reply the stacks hold has the button`);
+      await closeReader(p, device);
+      const about = card(reply) + ' .about-line .item-link';
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(about)}))`), `${device}: the reply's About line links to the message`);
+      await centre(p, about);
+      if (device === 'laptop') await p.point(about);
+      else {
+        // As on any card, a phone's first tap lights the reply (the Reader closing lit it already); the next follows the link.
+        if (!(await lit(p)).includes(reply)) { await tap(p, about, 'first'); await until(async () => (await lit(p)).includes(reply), `${device}: the first tap lights the reply`); }
+        await tap(p, about, 'first');
+      }
+      await until(async () => (await readerOn(p))?.startsWith('A message in another topic'), `${device}: the About link opens the Reader on the message`);
+      await noAsideAtEachWidth(p, device, 'another topic\'s message');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  await check('reading stacks the Reader\'s archive button shows for no Notebook page in the Reader, and shows for a message of the topic', async () => {
+    const page = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
+    for (const device of Object.keys(DEVICES)) {
+      const message = (await control({ method: 'agent_message', operation_id: 'stack-archive-page-' + device, topic_id: 't1', source: 'topic', sender: other, addressees: [facts.actor], body: `A message beside the Notebook page, on a ${device}.` })).result.message_id;
+      const p = await open('stack-archive-page-' + device, device, 't1', message, '', `/?topic=t1&page=${page}&revision=1`);
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent !== 'Message' && document.querySelector('#source-body').textContent.length > 0`), `${device}: the Reader shows the Notebook page`);
+      await noAsideAtEachWidth(p, device, 'a Notebook page');
+      await closeReader(p, device);
+      await openReader(p, device, message, 'A message beside the Notebook page');
+      await becomes(async () => { const b = await asideButton(p); return [b.shown, b.name]; }, [true, 'Move below More: 1 message'], `${device}: a message the stacks hold has the button`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // A message whose dossier Core has not placed: every position taken out of what the page reads, as Core would send
+  // a message with none. ⋯ offers no move for it, and the button does not show.
+  const UNPLACED = `(()=>{const own=window.fetch;window.fetch=async function(input,init){const answer=await own.call(this,input,init);
+    if(!String(input?.url??input).endsWith('/api/view'))return answer;
+    const text=await answer.text(),drop=v=>{if(Array.isArray(v))v.forEach(drop);else if(v&&typeof v==='object'){delete v.stack_position;Object.values(v).forEach(drop);}return v;};
+    let body=text;try{body=JSON.stringify(drop(JSON.parse(text)));}catch{}
+    return new Response(body,{status:answer.status,statusText:answer.statusText,headers:answer.headers});};})()`;
+  await check('reading stacks the Reader\'s archive button shows for no message whose dossier Core has not placed', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-archive-unplaced-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A dossier Core has not placed.' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Its only reply.' }]]);
+      const p = await open(topic, device, topic, ids.root, UNPLACED);
+      await openReader(p, device, ids.one, 'Its only reply');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#reader-star').getClientRects().length)`), `${device}: its star shows, its acts read`);
+      await noAsideAtEachWidth(p, device, 'a message Core has not placed');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 378, the button's busy and refused states: pressed, it shows the move at once while Core has it (busy), and
   // a refusal puts it back unpressed, saying so, with the dossier above More again and nothing moved in Core. On a
   // laptop and at 320, 375 and 390 by a finger. Chrome holds Core's answer; Safari's harness cannot.
@@ -990,6 +1112,46 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await p.key(key);
           assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('.composer-home'))`), true, `${key} on the resting composer's + leaves the focus in the composer`);
         }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 465, where the feed is not drawn: a topic the reader can no longer read hides its messages, and the composer
+  // that rests among them would go with them, and come up unseen. It rests at the page's end instead, where it shows,
+  // its writing kept, put back first if it was up; ✎ brings it up where it shows. On a laptop and at 320, 375 and 390.
+  await check('reading stacks the New message composer, the topic no longer readable, rests at the page\'s end where it shows, and ✎ brings it up where it shows', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-composer-denied-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'A message before the topic closes to the reader.' }]]);
+      const p = await open(topic, device, topic, ids.a);
+      // The sheet as it shows: open, modal, where it is, whether it is drawn, and whether a press on its middle reaches it.
+      const sheet = () => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),r=d.getBoundingClientRect(),at=r.width&&r.height?document.elementFromPoint(r.left+r.width/2,r.top+Math.min(r.height/2,40)):null;
+        return {open:d.open,modal:d.matches(':modal'),parent:d.parentElement.id,drawn:d.getClientRects().length>0&&r.width>0&&r.height>0,takes:Boolean(at&&d.contains(at)),
+          words:document.querySelector('#inline-writing-body').value,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await p.evaluate('scrollTo(0, 0)');
+      await press(p, device, '#new-message');
+      await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device}: ✎ puts the composer up, ready to type`);
+      await p.send('Input.insertText', { text: 'Writing kept as the topic closes.' });
+      // The topic closes to the reader while the composer is up: the next read of what changed is refused.
+      await control({ method: 'read_fault', name: 'changes', status: 200, body: { instance_id: facts.instance_id, error: { code: 'FORBIDDEN', message: 'Fixture FORBIDDEN', retryable: false } }, count: 1 });
+      await control({ method: 'agent_message', operation_id: topic + '-news', topic_id: topic, source: 'topic', sender: other, body: 'News the reader may no longer read.' });
+      await until(() => p.evaluate("document.getElementById('topic-title').textContent==='Topic unavailable'"), `${device}: the page says the topic is unavailable`);
+      assert.equal(await p.evaluate(`document.querySelector('#messages').hidden`), true, `${device}: the messages are not drawn`);
+      await becomes(async () => { const s = await sheet(); return [s.open, s.parent, s.drawn, s.words]; }, [false, 'main', true, 'Writing kept as the topic closes.'],
+        `${device}: the composer is put back and rests at the page's end, drawn, its writing kept`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        await p.evaluate('scrollTo(0, 0)');
+        await press(p, device, '#new-message');
+        await until(async () => (await sheet()).modal, `${device} ${width}: ✎ puts the composer up`);
+        const up = await sheet();
+        assert.deepEqual([up.drawn, up.takes, up.sideways], [true, true, false], `${device} ${width}: up where it shows, and a press reaches it: ${JSON.stringify(up)}`);
+        await shot(p, `stack-composer-denied-${device}-${width}`);
+        await press(p, device, '#new-message-close');
+        await until(async () => !(await sheet()).open, `${device} ${width}: ✕ puts it back`);
+        const back = await sheet();
+        assert.deepEqual([back.parent, back.drawn, back.words], ['main', true, 'Writing kept as the topic closes.'], `${device} ${width}: back at the page's end, drawn, the writing kept: ${JSON.stringify(back)}`);
       }
       assert.deepEqual(p.errors, []); await p.close();
     }

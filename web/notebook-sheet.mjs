@@ -149,9 +149,6 @@ export class NotebookSheet {
     }
     if (!page.host.isConnected) this.body.append(page.host);
     this.show(page);
-    // The sheet rests in the feed, just above More (reply-stacks.mjs, item 465). Where the feed is not drawn (an
-    // outcome's page, Health), what holds it shows nothing, a modal in it included: it goes up from the page's end.
-    if (!this.dialog.open && !this.dialog.parentElement?.getClientRects().length) this.doc.getElementById('main')?.append(this.dialog);
     if (!this.dialog.open) this.dialog.showModal();
     const kept = first ? take(WRITING + id) : null;
     page.readAt = undefined;

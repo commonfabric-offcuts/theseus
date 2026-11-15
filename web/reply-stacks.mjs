@@ -479,7 +479,8 @@ function paintStack(section, stack, byId, context) {
 // home: the page's New message composer at rest (#new-message-sheet, item
 // 465), drawn just above More, under the last dossier shown above it; it is
 // never moved while it is up over the page, and goes to its place when next
-// drawn after it is put back.
+// drawn after it is put back. While the list is hidden it rests after it, at
+// the page's end.
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, home = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
@@ -518,8 +519,11 @@ export function arrangeStacks(list, messages, options = {}) {
     state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
     state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
   }
-  const resting = home && !home.open;
+  // Where the feed is not drawn (app.mjs drawFeed), the composer at rest goes
+  // to the page's end instead, as a dialog in a box not drawn shows nothing.
+  const resting = home && !home.open && !list.hidden;
   if (resting) top.push(home);
+  else if (home && !home.open && home.parentElement === list) list.parentElement.append(home);
   if (shownAside) {
     state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${shownAside} put aside`;
     state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));

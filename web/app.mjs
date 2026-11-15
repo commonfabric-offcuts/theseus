@@ -761,7 +761,7 @@ function paintViews(kind) {
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
+    drawFeed(true);
     paintMoreMessages();
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
@@ -879,6 +879,20 @@ function feedOf() {
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
   return stackFeed;
+}
+// The topic's feed, its Notebook and its Team, drawn or not, with any other
+// parts of the page named. The New message sheet rests in the feed, just above
+// More (item 465), and a dialog in a box that is not drawn shows nothing, up
+// over the page or not: where the feed is not drawn (an outcome's page, Health,
+// a topic the reader can no longer read) the sheet rests at the page's end
+// instead, put back first if it was up in the feed, its writing kept
+// (arrangeStacks, which takes it back above More once the feed is drawn).
+function drawFeed(on, ...parts) {
+  const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
+  for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on === inFeed) return;
+  if (!on && sheet.open) sheet.close();
+  if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
 }
 // The conversation's own word on a message: its item and the asks that wait,
 // as the conversation's newest read says, else as the page's messages say.
@@ -1556,7 +1570,7 @@ function updateStatus(state) {
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
+    drawFeed(false);
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();
@@ -2539,7 +2553,7 @@ async function initializeOutcomePage(route) {
   const shown=route.page?{id:route.page,revision:route.revision??null}:null;
   if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   sentHost=$('sent-to-you');
@@ -2662,7 +2676,7 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
 // Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('pipeline-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
@@ -2687,7 +2701,7 @@ async function initializePipelinePage(route) {
 // says at once when the live feed drops.
 async function initializeHealthPage() {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   $('health-link').setAttribute('aria-current','page');
@@ -2706,7 +2720,7 @@ async function initializeHealthPage() {
 // back to the page in its topic or outcome. The deck reads again on commits.
 async function initializeDeckPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   // The way back names the page's topic or outcome, or says only "The page" when that read fails.
@@ -2727,7 +2741,7 @@ async function initializeDeckPage(route) {
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('measurements-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
@@ -2831,7 +2845,7 @@ function enableNewTopic(workspace) {
   topicLine={workspace,line};
 }
 async function initializeOpeningPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -2881,7 +2895,7 @@ async function initializeUnfinished(route) {
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer','topic-navigation');
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
   outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});

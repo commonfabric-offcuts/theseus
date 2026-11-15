@@ -27,16 +27,19 @@ export const sheetHead = p => p.evaluate(`(()=>{const d=document.querySelector('
 
 export async function notebookSheetChecks({ check, page, until, control, view, facts, shot }) {
   const SHEET = '#new-message-sheet', PAGE = `${SHEET} .notebook-sheet-page:not([hidden])`;
-  // What the sheet shows: whether it is open as a Notebook page, its title, whether the Reader is open over the
-  // feed instead, the cards that show, how many pages it holds, and the card box with its words, cursor and focus.
+  // What the sheet shows: whether it is open as a Notebook page, whether it is on screen (drawn, and a press on its
+  // title reaches it: a dialog in a box that is not drawn is open and shows nothing), its title, whether the Reader is
+  // open over the feed instead, the cards that show, how many pages it holds, and the card box with its words, cursor
+  // and focus.
   const state = p => p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(SHEET)}),pg=d.querySelector('.notebook-sheet-page:not([hidden])'),f=pg?.querySelector('.deck-writing textarea');
-    return {open:d.open&&d.classList.contains('notebook-mode'),title:d.querySelector('.notebook-sheet-title')?.textContent??null,reader:document.querySelector('#reader').open,
+    const t=d.querySelector('.notebook-sheet-title')?.getBoundingClientRect(),at=t&&t.width&&t.height?document.elementFromPoint(t.left+Math.min(t.width/2,40),t.top+t.height/2):null;
+    return {open:d.open&&d.classList.contains('notebook-mode'),seen:d.getClientRects().length>0&&Boolean(at&&d.contains(at)),title:d.querySelector('.notebook-sheet-title')?.textContent??null,reader:document.querySelector('#reader').open,
       cards:[...(pg?.querySelectorAll('.deck-card:not([hidden]) .deck-title')??[])].map(e=>e.textContent),pages:d.querySelectorAll('.notebook-sheet-page').length,
       box:f?{words:f.value,at:[f.selectionStart,f.selectionEnd],focused:document.activeElement===f}:null}})()`);
   const waitFor = (p, probe, want, words) => until(async () => probe(await state(p)), words)
     .catch(async error => { assert.deepEqual(await state(p), want, words); throw error; });
-  const opened = (p, title, cards) => waitFor(p, s => s.open && s.title === title && !s.reader && JSON.stringify(s.cards) === JSON.stringify(cards),
-    { open: true, title, reader: false, cards }, `the page ${title} opens in the New message sheet over the feed, not in the Reader`);
+  const opened = (p, title, cards) => waitFor(p, s => s.open && s.seen && s.title === title && !s.reader && JSON.stringify(s.cards) === JSON.stringify(cards),
+    { open: true, seen: true, title, reader: false, cards }, `the page ${title} opens in the New message sheet over the feed, on screen, not in the Reader`);
   const closed = p => waitFor(p, s => !s.open, { open: false }, 'the sheet closes');
   const words = p => p.evaluate(`document.querySelector(${JSON.stringify(PAGE + ' .notebook-text')})?.value ?? null`);
   const settle = p => p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(r,50))))');

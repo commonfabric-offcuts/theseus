@@ -455,13 +455,18 @@ export class StackFeed {
   }
   // What the Reader's archive button offers for the dossier a message is in
   // (item 378): Move below More, or Bring back once it is there, the same act
-  // as ⋯'s (setAside), with how many messages of the stack go with it. Null
+  // as ⋯'s (setAside), with how many of the page's messages go with it. The
+  // act moves Core's whole dossier, which the page draws as more than one
+  // stack where its first message is not loaded (two replies to it are two
+  // stacks), so the count is of every stack drawn from that dossier. Null
   // where ⋯ offers neither: no stack drawn holds the message, or Core sent no
   // position for it.
   asideOffer(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     const position = stack && positionOf(stack);
-    return position ? { stack, below: position.below, count: 1 + stack.replies.length } : null;
+    if (!position) return null;
+    const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
+    return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.
