@@ -222,7 +222,9 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     await open(0);
     await p.point(`${SHEET} .deck-writing .deck-image-remove`);
     await p.key('Escape');
-    // The next act writes after every act before it, so what the page carries then is what × left.
+    // The revision × writes keeps the image card B shows, and so does the next act.
+    const written = await holds(id, page => lines(page.body).length === 1, 'card A no longer names it');
+    assert.deepEqual(written.attachments.map(a => a.id), [media], 'the revision × writes keeps the image card B shows');
     await open(1);
     await p.key('e', 2); await p.send('Input.insertText', { text: ' More.' }); await p.key('Escape');
     const kept = await holds(id, page => page.body.includes('Two. More.'), 'the next card\'s words are saved');
