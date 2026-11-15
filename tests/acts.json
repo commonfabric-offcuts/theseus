@@ -14216,7 +14216,67 @@
   },
   {
    "item": 473,
-   "act": "The message bar is never wider than the window: a go-ahead ask's seven buttons, or Link copied on its ⋯, stay in a 320px window",
+   "act": "The message bar keeps to one row in the window: at 320 pixels a go-ahead ask its card cuts off puts Fold behind its ⋯",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (!button.hidden) { button.hidden = true; this.behind.add(button); }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "What the message bar put behind its ⋯ comes back once there is room again",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    for (const button of this.behind) button.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Where there is room the message bar puts nothing behind its ⋯",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (this.bar.offsetWidth <= room) return;",
+     "      if (this.bar.offsetWidth <= room - 1000) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The ⋯ menu offers Show full message, which the message bar puts behind its ⋯ for want of room",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message',",
+     "  if (false) items.push({ label: 'Show full message',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Where even one row is too wide, the message bar is never wider than the window",
    "break": [
     [
      "web/aim.css",
@@ -14231,27 +14291,12 @@
   },
   {
    "item": 473,
-   "act": "Bounded by the window, the message bar's buttons wrap to a second row, each in the window and 44px by touch",
+   "act": "Where even one row is too wide, the message bar's buttons wrap, each in the window",
    "break": [
     [
      "web/aim.css",
      "display:flex;flex-wrap:wrap;justify-content:flex-end;",
      "display:flex;justify-content:flex-end;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "go-ahead ask's bar keeps every button"
-   }
-  },
-  {
-   "item": 473,
-   "act": "A message bar that fits in one row stays one row",
-   "break": [
-    [
-     "web/aim.css",
-     "flex-wrap:wrap;justify-content:flex-end;width:max-content;",
-     "flex-wrap:wrap;justify-content:flex-end;width:min-content;"
     ]
    ],
    "check": {

@@ -353,7 +353,10 @@ two more: Show full message (two arrows pointing out), only while the card
 cuts the message off, showing it whole there as ⋯'s Show full message does;
 and Fold (arrows pointing in to a line), Unfold once the message is folded,
 none on a starred message, for the reader alone as ⋯'s Fold is. Tab goes
-through them as through the rest of the bar.
+through them as through the rest of the bar. With these a go-ahead ask its
+card cuts off has seven buttons, too wide for a 320px window by touch: the bar
+puts Fold, then Show full message, behind its ⋯, which offers both, and keeps
+to one row (docs/interaction.md, "The light").
 
 Nothing a glyph does is new: each is an act the menu or the keys already make,
 with the same record in Core, so how a dossier is shown stores nothing, and
@@ -578,6 +581,7 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | the title bar's glyphs: shown under the pointer or once selected by touch, named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
 | the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |
 | the message bar's Reply glyph, Show full message only on a cut-off message, Fold and Unfold, none on a starred message | `tests/stack_native.mjs`, "reading stacks the message bar's Reply is a glyph …", in Chrome and Safari's engine |
+| the message bar in the window: a go-ahead ask's bar, short and cut off, plain and with "Link copied", in one row at 390, 375 and 320 pixels with Fold and Show full message behind its ⋯ where they do not fit and back once they do, nothing put away on a laptop, wrapping only narrower still | `tests/topic_reading_native.mjs`, "reading a go-ahead ask's bar keeps every button in the window …", in Chrome and Safari's engine |
 | a folder in its agent's colour, following the reader's choice; a person's neutral; no edge | `tests/ui_folder_colour.test.mjs` (contrast for every palette colour, light and dark); `tests/stack_native.mjs`, "reading stacks a dossier an agent began wears its colour …", in Chrome and Safari's engine |
 
 `tests/acts.json` names the break each act must catch.

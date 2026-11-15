@@ -71,6 +71,8 @@ export class MessageMenu {
     foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
     Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
     this.lit = null; this.touch = false; this.before = null;
+    // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
+    this.behind = new Set();
     this.bar = this.buildBar();
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
@@ -272,6 +274,7 @@ export class MessageMenu {
     const { full, fold } = this.buttons, folding = this.foldState(item);
     full.hidden = card.hidden || !this.clipped(card, item);
     fold.hidden = !folding;
+    this.behind.clear();
     if (folding) {
       const words = folding === 'unfold' ? 'Unfold' : 'Fold';
       if (fold.title !== words) { fold.title = words; fold.setAttribute('aria-label', words); }
@@ -301,8 +304,9 @@ export class MessageMenu {
   place() {
     if (this.lit && !this.lit.getClientRects().length) { this.light(null); return; }
     if (this.bar.hidden || !this.lit) return;
-    const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
     const view = this.doc.documentElement.clientWidth;
+    this.fit(view - 16);
+    const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
     // A bar taking more than half its card (on a phone, four buttons a finger wide) sits flush with the card's end,
     // so it reaches over as little of the card as it can: clear of the star after who wrote it (item 473).
     const inset = width > box.width / 2 ? 0 : 12;
@@ -320,6 +324,18 @@ export class MessageMenu {
     }
     this.bar.style.left = `${left}px`;
     this.bar.style.top = `${top}px`;
+  }
+  // A bar wider than the window less 8px each side (a go-ahead ask its card cuts off has seven buttons a finger
+  // wide, and "Link copied" widens its ⋯) puts Fold, then Show full message, behind its ⋯, whose menu offers both,
+  // so it keeps to one row, clear of the card's words and star (item 473). Each comes back once there is room again.
+  // Where even that is too wide, the bar's buttons wrap (aim.css), so none leaves the window.
+  fit(room) {
+    for (const button of this.behind) button.hidden = false;
+    this.behind.clear();
+    for (const button of [this.buttons.fold, this.buttons.full]) {
+      if (this.bar.offsetWidth <= room) return;
+      if (!button.hidden) { button.hidden = true; this.behind.add(button); }
+    }
   }
   // A repaint: each loaded card's reaction line, and the bar as it now stands.
   paint() {

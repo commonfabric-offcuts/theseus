@@ -340,15 +340,20 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // The bar is bounded by the window (docs/interaction.md): a go-ahead ask its card cuts off has the most buttons a
   // bar shows (👍 ✅ 🚫, Reply, Show full message, Fold and ⋯, item 473), seven a finger wide, more than a 320px
   // window holds in a row, and "Link copied" on its ⋯ widens a bar further. In every state, at 390, 375 and 320
-  // pixels, every button is 44px to touch and inside the window, ⋯ last, and the bar over its card; a bar that fits in
-  // one row (a laptop, a short ask at 390) stays one row.
-  await check('reading a go-ahead ask\'s bar keeps every button in the window at 390, 375 and 320 pixels, with Show full message and with "Link copied" on its ⋯, and stays one row where it fits', async () => {
+  // pixels, the bar keeps to one row over its card, every button 44px to touch and inside the window, ⋯ last: where
+  // there is no room it puts Fold, then Show full message, behind its ⋯, whose menu offers them, and they come back
+  // once there is room (the ⋯ says ⋯ again). Where there is room it puts nothing away: a laptop, a short ask at 390.
+  // At 280 pixels, narrower than any phone the page is made for, even that is too wide with "Link copied": its
+  // buttons wrap, and none leaves the window.
+  await check('reading a go-ahead ask\'s bar keeps every button in the window at 390, 375 and 320 pixels, with Show full message and with "Link copied" on its ⋯, in one row, what does not fit behind its ⋯', async () => {
     const long = Array.from({ length: 70 }, (_, i) => `Step ${i}. What the deploy will do, in words that need the whole card.`).join('\n\n');
     // The bar as it stands: its buttons in order, each one's box, and the bar's and its card's boxes.
     const barNow = (p, id) => p.evaluate(`(()=>{const b=document.querySelector('${BAR}');if(!b||b.hidden)return null;const box=e=>{const r=e.getBoundingClientRect();return {left:Math.round(r.left),right:Math.round(r.right),top:Math.round(r.top),bottom:Math.round(r.bottom),width:Math.round(r.width),height:Math.round(r.height)}};
       return {window:document.documentElement.clientWidth,bar:box(b),card:box(document.querySelector(${JSON.stringify(card(id))})),said:b.querySelector('[data-act=more]').textContent,
         buttons:[...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>({act:x.dataset.act,...box(x)})),sideways:document.documentElement.scrollWidth>document.documentElement.clientWidth}})()`);
     const frames = p => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    // What the ⋯ menu calls each button the bar can put behind it.
+    const MENU = { full: 'Show full message', fold: 'Fold' };
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-ask-bar-' + device;
       const ids = await seed(topic, [['short', { sender: 'aim-core', join: true, whole_topic: true, body: 'May I deploy release 33 now?',
@@ -358,11 +363,14 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       // The page's own clipboard, so Copy Link says "Link copied" on the ⋯ and the Mac's pasteboard is never touched.
       await p.evaluate(`(()=>{if(!navigator.clipboard)Object.defineProperty(navigator,'clipboard',{configurable:true,value:{}});Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{(window.copied??=[]).push(text)}});return true})()`);
       const problems = [];
+      // Looks at the bar in one state, and answers what it shows and what it put behind its ⋯.
       const look = async (width, id, state) => {
         const want = id === ids.long ? ['thumb', 'yes', 'no', 'reply', 'full', 'fold', 'more'] : ['thumb', 'yes', 'no', 'reply', 'fold', 'more'];
         const at = await barNow(p, id), where = `${device} ${width} ${id === ids.long ? 'long' : 'short'} ask, ${state}`;
-        if (!at) { problems.push(`${where}: no bar`); return; }
-        if (JSON.stringify(at.buttons.map(b => b.act)) !== JSON.stringify(want)) problems.push(`${where}: the bar is ${at.buttons.map(b => b.act).join(' ')}, not ${want.join(' ')}`);
+        if (!at) { problems.push(`${where}: no bar`); return { shown: [], behind: [] }; }
+        const shown = at.buttons.map(b => b.act), behind = want.filter(act => !shown.includes(act));
+        // It shows its buttons in their order, ⋯ last, and puts only Show full message and Fold away.
+        if (JSON.stringify(shown) !== JSON.stringify(want.filter(act => shown.includes(act))) || behind.some(act => !(act in MENU))) problems.push(`${where}: the bar is ${shown.join(' ')}, from ${want.join(' ')}`);
         if (state === 'Link copied' && at.said !== 'Link copied') problems.push(`${where}: the ⋯ says ${JSON.stringify(at.said)}`);
         for (const b of at.buttons) {
           if (b.left < 0 || b.right > at.window) problems.push(`${where}: ${b.act} runs off the window (${b.left}–${b.right} in ${at.window})`);
@@ -370,41 +378,56 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         }
         if (at.bar.left < 0 || at.bar.right > at.window) problems.push(`${where}: the bar runs off the window (${at.bar.left}–${at.bar.right} in ${at.window})`);
         if (at.bar.bottom <= at.card.top || at.bar.top >= at.card.bottom) problems.push(`${where}: the bar is not over its card (bar ${at.bar.top}–${at.bar.bottom}, card ${at.card.top}–${at.card.bottom})`);
-        if (at.sideways) problems.push(`${where}: the page scrolls sideways`);
-        // Where the bar fits in one row it stays one row: a laptop, and a phone's short ask at 390 before anything is said.
         const rows = new Set(at.buttons.map(b => b.top)).size;
-        if ((device === 'laptop' || (width === 390 && id === ids.short && state === 'plain')) && rows !== 1) problems.push(`${where}: the bar takes ${rows} rows where one fits`);
-        observations.push({ name: 'ask bar in the window', engine, device, width, message: id === ids.long ? 'long' : 'short', state, rows, bar: at.bar, window: at.window });
+        if (width >= 320) {
+          if (rows !== 1) problems.push(`${where}: the bar takes ${rows} rows`);
+          if (at.sideways) problems.push(`${where}: the page scrolls sideways`);
+        } else if (rows > 2) problems.push(`${where}: the bar takes ${rows} rows`);
+        // Where there is room, nothing goes behind the ⋯: a laptop, and a phone's short ask at 390 before anything is said.
+        if ((device === 'laptop' || (width === 390 && id === ids.short && state === 'plain')) && behind.length) problems.push(`${where}: ${behind.join(' and ')} went behind the ⋯ with room for them`);
+        // Seven buttons a finger wide are wider than 320 pixels less 8 each side, and six are not: Fold alone goes.
+        if (width === 320 && id === ids.long && state === 'plain' && JSON.stringify(behind) !== '["fold"]') problems.push(`${where}: behind the ⋯ is ${JSON.stringify(behind)}, not Fold alone`);
+        observations.push({ name: 'ask bar in the window', engine, device, width, message: id === ids.long ? 'long' : 'short', state, rows, shown, behind, bar: at.bar, window: at.window });
+        return { shown, behind };
       };
-      // Copy Link from the bar's ⋯ (a sheet on a phone), and the ⋯ says "Link copied"; the bar is placed again for its new width.
-      const copy = async id => {
+      // Copy Link from the bar's ⋯ (a sheet on a phone), which offers what the bar put behind it, and the ⋯ says "Link copied".
+      const copy = async (id, behind, where) => {
         await press(p, device, `${BAR} [data-act=more]`);
-        const at = await until(async () => { const items = await p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.firstChild?.textContent??'')`); const n = items.indexOf('Copy Link'); return n >= 0 ? n + 1 : null; }, `${device}: the ⋯ menu offers Copy Link`);
-        await press(p, device, `.message-menu-list [role=menuitem]:nth-child(${at})`);
+        const items = await until(async () => { const now = await p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.firstChild?.textContent??'')`); return now.includes('Copy Link') ? now : null; }, `${device}: the ⋯ menu offers Copy Link`);
+        for (const act of behind) if (!items.includes(MENU[act])) problems.push(`${where}: the ⋯ menu does not offer ${MENU[act]}, which the bar put behind it (${items.join(', ')})`);
+        await press(p, device, `.message-menu-list [role=menuitem]:nth-child(${items.indexOf('Copy Link') + 1})`);
         await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.querySelector('${BAR} [data-act=more]').textContent === 'Link copied'`), `${device}: the ⋯ says Link copied`);
         await frames(p);
         assert.ok((await lit(p)).includes(id), `${device}: the message keeps its light`);
       };
-      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
+      const widths = device === 'phone' ? [390, 375, 320, 280] : [DEVICES.laptop.width];
       for (const width of widths) {
         if (width !== DEVICES[device].width) await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
         await until(() => p.evaluate(`innerWidth === ${width}`), `${device}: the window is ${width} wide`);
         for (const id of [ids.short, ids.long]) {
+          const name = id === ids.long ? 'long' : 'short';
           await light(p, device, id);
-          if (id === ids.long) await until(async () => (await barNow(p, id))?.buttons.some(b => b.act === 'full'), `${device} ${width}: the long ask's bar offers Show full message`);
+          // The long ask's card cuts it off, and its bar offers Show full message where there is room for it (all but 280 pixels).
+          if (id === ids.long) await until(async () => await p.evaluate(`(c=>c.scrollHeight-c.clientHeight>1)(document.querySelector(${JSON.stringify(card(id))}))`) && (width < 320 || (await barNow(p, id))?.buttons.some(b => b.act === 'full')), `${device} ${width}: the long ask's card cuts it off, and its bar offers Show full message`);
           await frames(p);
-          await look(width, id, 'plain');
+          const plain = await look(width, id, 'plain');
           if (width === 320 || device === 'laptop') for (const theme of ['light', 'dark']) {
             await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
-            await frames(p); await shot(p, `ask-bar-${device}-${width}-${id === ids.long ? 'long' : 'short'}-${theme}`);
+            await frames(p); await shot(p, `ask-bar-${device}-${width}-${name}-${theme}`);
           }
           await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-          await copy(id);
+          await copy(id, plain.behind, `${device} ${width} ${name} ask`);
           await look(width, id, 'Link copied');
-          if (width === 320) await shot(p, `ask-bar-${device}-${width}-${id === ids.long ? 'long' : 'short'}-copied`);
+          if (width <= 320) await shot(p, `ask-bar-${device}-${width}-${name}-copied`);
+          // A key says ⋯ again, and what went behind it for "Link copied" comes back.
+          await p.key('Shift');
+          await until(() => p.evaluate(`document.querySelector('${BAR} [data-act=more]').textContent === '⋯'`), `${device}: the ⋯ says ⋯ again`);
+          await frames(p);
+          const again = await look(width, id, '⋯ again');
+          if (JSON.stringify(again.shown) !== JSON.stringify(plain.shown)) problems.push(`${device} ${width} ${name} ask: with ⋯ again the bar is ${again.shown.join(' ')}, not ${plain.shown.join(' ')} as before Link copied`);
         }
       }
-      assert.deepEqual(problems, [], `${device}: every button of the bar in the window`);
+      assert.deepEqual(problems, [], `${device}: every button of the bar in the window, in one row`);
       assert.equal(await readerOn(p), null, `${device}: nothing opened`);
       assert.deepEqual(p.errors, []);
       await p.close();
