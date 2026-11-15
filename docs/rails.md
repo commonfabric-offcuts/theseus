@@ -59,10 +59,6 @@ Each outcome ends with + New topic.
   the messages (→ on an open outcome goes straight there, as on a topic), and
   ⌘Return starts a new message in the row's topic or the outcome's
   Conversation. A "Keys" line under the outline lists them in plain words.
-  Under it, last in the rail, is the Health link (docs/health.md): index.html
-  draws it inside the outline, so it is kept with the outline across moves.
-  On every other page it ends the rail after the hidden outline, or main
-  where the page has no rail (item 463).
   The row the keys reach comes into view by the one rule for what the keys
   select (docs/interaction.md, "What the keys select comes into view"), in the
   rail's own scrolling, never the page's under it.
