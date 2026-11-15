@@ -780,9 +780,17 @@ def train_identity(root,commit,binding):
             continue
         sha,separator,message = entry.partition('\x1f')
         require(separator and SHA.fullmatch(sha.strip()),'unreadable train commit identity')
-        for target in re.findall(r'(?m)^(?:This reverts commit |Reverts:\s*)([0-9a-f]{40})(?=[^0-9a-f]|$)',message):
-            reverts.append({'commit':sha.strip(),'target_commit':target})
+        for reference in re.findall(r'(?im)(?:\bThis reverts (?:commit |the content of )|^Reverts:\s*)([0-9a-f]{7,40})\b',message):
+            matches = git(root,'rev-parse','--disambiguate='+reference).decode().splitlines()
+            if len(matches)==1 and git(root,'cat-file','-t',matches[0]).strip()==b'commit':
+                reverts.append({'commit':sha.strip(),'target_commit':matches[0]})
         trailers = subprocess.run(['git','interpret-trailers','--parse'],input=message,text=True,capture_output=True,check=True).stdout
+        subject = message.splitlines()[0] if message.splitlines() else ''
+        fallback = re.match(r'^Train [1-9][0-9]*: revert ([1-9][0-9]*(?:/[1-9][0-9]*)*)\b',subject,re.I)
+        if fallback and not any(line.startswith('Train-Item:') for line in trailers.splitlines()):
+            value = 'Revert '+fallback[1]
+            if value not in named_items:
+                named_items.append(value)
         for line in trailers.splitlines():
             if line.startswith('Train-Item:'):
                 value = line.partition(':')[2].strip()
