@@ -139,12 +139,17 @@ try {
     // The CDP calls the listed checks make, each done with WebKit's own input.
     const send = async (method, params = {}) => {
       if (method === 'Input.dispatchMouseEvent') {
-        const { type, x, y, button = 'left', clickCount = 1 } = params;
+        const { type, x, y, button = 'left', clickCount = 1, modifiers = 0 } = params;
         if (type === 'mouseWheel') { await pw.mouse.move(x, y); await pw.mouse.wheel(params.deltaX ?? 0, params.deltaY ?? 0); return {}; }
-        await pw.mouse.move(x, y);
-        if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
-        else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
-        else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        // Shift held through the act, as CDP's modifiers hold it (8); no other modifier is asked of a pointer here.
+        assert.equal(modifiers & ~8, 0, 'only Shift is held with a pointer');
+        if (modifiers & 8) await pw.keyboard.down('Shift');
+        try {
+          await pw.mouse.move(x, y);
+          if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
+          else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
+          else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        } finally { if (modifiers & 8) await pw.keyboard.up('Shift'); }
         return {};
       }
       if (method === 'Input.dispatchTouchEvent') {

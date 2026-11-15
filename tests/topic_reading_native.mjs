@@ -153,9 +153,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   };
   // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
   // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
+  // offWords: the pointer rests on its author's line instead, so no passage of its words lights with it
+  // (item 478), and Return answers the message with nothing quoted.
   // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row,
   // with its bar, under the pointer; on a phone a tap on that row unfolds it, so it is unfolded first (unfoldRow).
-  const light = async (p, device, id) => {
+  const light = async (p, device, id, offWords = false) => {
     await centre(p, card(id));
     if (await foldedRow(p, id)) {
       if (device === 'phone') await unfoldRow(p, device, id);
@@ -168,7 +170,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
     // The left edge now belongs to the separate reply chevron. Light the
     // head on its author text, which still opens the head's own message.
-    const target = row ? card(id) + ' > .stack-head > .stack-who' : words(id);
+    const target = row ? card(id) + ' > .stack-head > .stack-who' : offWords && device === 'laptop' ? card(id) + ' > .message-author' : words(id);
     if (device === 'phone') await tap(p, target); else await p.point(target, 'move');
     await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
   };
@@ -193,7 +195,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // tap: it opens the Reader at once, and a further tap would land on the Reader opening over the message.
   const openReader = async (p, device, id, starts) => {
     await p.evaluate('document.activeElement?.blur()');
-    if (device === 'laptop') { await light(p, device, id); await p.key('Enter'); }
+    if (device === 'laptop') { await light(p, device, id, true); await p.key('Enter'); }
     else {
       // A first tap lights it, unless it is lit already (a tap on its folded row that showed it whole lights it too); the next opens it.
       await centre(p, card(id));
@@ -888,7 +890,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         assert.equal(await p.evaluate(`document.activeElement?.id`), 'inline-writing-body', 'laptop: the cursor stays in the composer');
         await p.evaluate('document.activeElement?.blur()');
         // In the reply too.
-        await light(p, device, ids.m);
+        await light(p, device, ids.m, true);
         await p.key('Enter');
         await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), 'laptop: the cursor is in the reply');
         await p.key('?');
@@ -1058,7 +1060,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await shot(p, 'reading-saved-composer-' + device);
       // The Reader, opened on the message. The cursor leaves the composer first, or Return is the composer's.
       await p.evaluate('document.activeElement?.blur()');
-      if (device === 'laptop') { await light(p, device, ids.m); await p.key('Enter'); }
+      if (device === 'laptop') { await light(p, device, ids.m, true); await p.key('Enter'); }
       else { await centre(p, card(ids.m)); await tap(p, words(ids.m)); await until(async () => (await lit(p)).includes(ids.m), 'phone: the message lights'); await tap(p, words(ids.m)); }
       await until(async () => (await readerOn(p))?.startsWith('A message to answer.'), device + ': the Reader opens on the message');
       assert.equal((await beside('#save-state')).time, null, device + ' Reader: no time before its reply is saved');
@@ -1652,8 +1654,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(await lit(p), [], 'nothing is lit');
       assert.equal(await copy(), false, 'with nothing lit the page leaves ⌘C alone');
       assert.deepEqual(await copied(), [], 'and copies nothing');
-      // The pointer rests on a message: ⌘C copies its words as written.
-      await light(p, 'laptop', ids.short);
+      // The pointer rests on a message, off its words: ⌘C copies its words as written.
+      await light(p, 'laptop', ids.short, true);
       assert.equal(await copy(), true, 'the page takes ⌘C on the lit message');
       const short = await written(ids.short);
       await becomes(copied, [short], 'the lit message\'s words, as written, are on the clipboard');
@@ -1671,7 +1673,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await becomes(copied, [short, whole, whole], 'the Reader copies the same words');
       await closeReader(p, 'laptop');
       // Words selected on the page: ⌘C copies them as the browser does, not the lit message.
-      await light(p, 'laptop', ids.short);
+      await light(p, 'laptop', ids.short, true);
       await p.evaluate(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector(${JSON.stringify(words(ids.short))}));getSelection().removeAllRanges();getSelection().addRange(r);return true})()`);
       assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
       assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
@@ -1688,6 +1690,77 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(p.errors, []);
       await p.close();
     } finally { await control({ method: 'read_fault_clear' }); }
+  });
+
+  // A card's passages light under the pointer as the Reader's do (item 478, docs/interaction.md "The light"), on a
+  // topic's card and a dossier's alike: ⌘C copies exactly the lit words, read back through the browser's own
+  // clipboard, Return opens the Reader with those same words quoted, and Shift grows the light as in the Reader.
+  // The words before and after the passage are neither copied nor quoted. The keys lighting a message light no
+  // passage, and Return there replies with nothing quoted.
+  await check('reading a passage the pointer rests on lights on a topic\'s card and a dossier\'s; ⌘C copies exactly its words and Return quotes them in the Reader; Shift grows the light', async () => {
+    const topic = 'reading-passage';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const body = said.join(' ');
+    const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body }],
+      ['alone', { sender: 'aim-core', addressees: [facts.actor], body }]]);
+    if (grant) await grant(['clipboard-read', 'clipboard-write']);
+    const p = await open('reading-passage', 'laptop', topic, ids.alone);
+    // Where words of a card's message are on screen: the middle of their first box.
+    const aim = (id, text) => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+      while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return null;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+      const b=r.getClientRects()[0];return {x:b.left+b.width/2,y:b.top+b.height/2}})()`);
+    const move = async (id, text, modifiers = 0) => { const at = await aim(id, text); assert.ok(at, `${text} is drawn on ${id}`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, modifiers }); };
+    // What the page lights: the words of the lit passage highlight, or null.
+    const shining = () => p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`);
+    const clipboard = () => p.evaluate('navigator.clipboard.readText()');
+    const copy = async () => { await p.evaluate(`navigator.clipboard.writeText('nothing copied yet')`); await p.key('c', 4); await until(async () => await clipboard() !== 'nothing copied yet', 'the page copies on ⌘C'); return clipboard(); };
+    const reply = () => p.evaluate(`document.querySelector('#writing-body').value`);
+    for (const [id, where] of [[ids.alone, 'a topic\'s card'], [ids.reply, 'a dossier\'s card']]) {
+      await centre(p, card(id));
+      // On the card but off its words, the message lights and no passage does.
+      await p.point(card(id) + ' > .message-author', 'move');
+      await until(async () => (await lit(p)).includes(id), `${where}: lit from its author's line`);
+      assert.equal(await shining(), null, `${where}: no passage lights off the words`);
+      await move(id, 'lit passage');
+      await becomes(shining, said[1] + ' ', `${where}: the passage under the pointer lights, and only it`);
+      assert.equal(await copy(), said[1], `${where}: ⌘C copies exactly the lit words, not the words before or after them`);
+      await p.key('Enter');
+      await until(async () => (await readerOn(p))?.startsWith(said[0]), `${where}: Return opens the Reader on the message`);
+      await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${where}: the cursor is in the reply`);
+      assert.equal(await reply(), `> ${said[1]} \n\n`, `${where}: the reply quotes those same words, and nothing before or after them`);
+      await shot(p, 'reading-passage-quoted-' + (id === ids.alone ? 'card' : 'dossier'));
+      // In the Reader too, ⌘C on a passage lit by a press copies exactly its words.
+      await p.point('#source-body [data-start="0"]');
+      await until(() => p.evaluate(`document.querySelectorAll('#source-body .hover-quote').length === 1 && getSelection().isCollapsed`), `${where}: a press lights the Reader's first passage`);
+      assert.equal(await copy(), said[0], `${where}: ⌘C in the Reader copies exactly the lit passage's words`);
+      await closeReader(p, 'laptop');
+    }
+    // Shift grows the light from the passage lit first to the one under the pointer, and both copy and quote it.
+    await centre(p, card(ids.reply));
+    await move(ids.reply, 'Words before');
+    await becomes(shining, said[0] + ' ', 'the first passage lights');
+    await move(ids.reply, 'Words after', 8);
+    await becomes(shining, body, 'moved with Shift held, the light grows to the passage under the pointer');
+    assert.equal(await copy(), body, '⌘C copies the passages lit');
+    await shot(p, 'reading-passage-shift');
+    await p.key('Enter');
+    await until(async () => (await reply()).endsWith(`> ${body}\n\n`), 'Return quotes the passages lit, after the reply kept');
+    await closeReader(p, 'laptop');
+    // The keys light a message and no passage: Return replies with nothing quoted.
+    await centre(p, card(ids.alone));
+    await move(ids.alone, 'lit passage');
+    await becomes(shining, said[1] + ' ', 'a passage lights on the topic\'s card again');
+    await p.key('ArrowDown');
+    await until(async () => (await lit(p)).length === 1 && !(await lit(p)).includes(ids.alone), 'the keys light the message below');
+    await p.key('ArrowUp');
+    await until(async () => (await lit(p)).join() === ids.alone && await shining() === null, 'the keys light the message again, and no passage');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await reply(), `> ${said[1]} \n\n`, 'Return with no passage lit quotes nothing more');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 
   // Lighting a cut-off card reads its whole message ahead in the background lane, one read at a time with a short

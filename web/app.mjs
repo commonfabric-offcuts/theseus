@@ -1153,10 +1153,12 @@ function paintReaderThumb$() {
   paintReaderReactions($('reader-reactions'), item, bootstrap.actor);
 }
 // Reply, or Return, on a lit message: the Reader opens on it with the cursor
-// in the reply, and nothing quoted until the reader selects a passage.
-async function replyMessage(id, card) {
+// in the reply, and nothing quoted until the reader selects a passage. Return
+// on a passage lit on its card, or words selected there (chosen), quotes them.
+async function replyMessage(id, card, chosen = null) {
   await openSource({ kind: 'message', id }, card, marks.capture(id));
-  if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
+  if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) return;
+  if (chosen) reader.quoteFrom({ kind: 'message', id }, chosen); else reader.reply({ kind: 'message', id });
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -2009,13 +2011,16 @@ async function initialize() {
   // copy reads it as the person's act, never behind the background lane).
   // Nothing is said when it is copied, as in the Reader; a refusal says how
   // else to copy.
-  const copyMessage = item => {
+  const copyMessage = (item, words) => {
+    // A passage lit on the card: its words, as Return would quote them.
+    if (words !== undefined) { copyText(words).then(done => { if (!done) status(COPY_REFUSED); }); return; }
     const known = item.preview ? cardScroll.known(item.id) : item.body;
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
     more: openMessageMore, copy: copyMessage,
