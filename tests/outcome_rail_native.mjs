@@ -2431,6 +2431,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // "Pipeline & pages" as drawn: its badge, its name for a screen reader, its size and its edge.
   const thingsButton = p => p.evaluate(`(()=>{const b=document.getElementById('things-open');if(!b)return null;const badge=b.querySelector('.unread-count'),box=b.getBoundingClientRect();
     return {shown:b.checkVisibility(),badge:badge&&badge.checkVisibility()?Number(badge.textContent):0,label:b.getAttribute('aria-label'),height:Math.round(box.height),right:Math.round(box.right),
+      badgeRight:badge&&badge.checkVisibility()?Math.round(badge.getBoundingClientRect().right):0,
       width:innerWidth,scroll:document.documentElement.scrollWidth,sum:document.querySelector('#things .things-sec[data-key=pipeline] > summary .sum')?.textContent??null}})()`);
 
   await check('rail "N new" pressed from another outcome\'s topic counts a Build topic\'s new messages on its outcome\'s row, and a press on that row reaches them in its right rail', async () => {
@@ -2475,7 +2476,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await phoneUp(p, at + ': the Conversation is up');
       const button = await until(async () => { const now = await thingsButton(p); return now?.badge === want.build && now; }, at + ': "Pipeline & pages" carries the Build topics\' count');
       assert.equal(button.label, `Pipeline & pages, ${want.build} new in Build topics`, at + ': and says so to a screen reader');
-      assert.ok(button.height >= 44 && button.right <= button.width && button.scroll <= button.width, `${at}: it is 44px to touch, inside the page, with no sideways scroll (${JSON.stringify(button)})`);
+      // Against the width the phone has: a page wider than it can widen what the page itself measures.
+      const edge = SIZE_464[size].width;
+      assert.ok(button.height >= 44 && button.right <= edge && button.badgeRight <= edge && button.scroll <= edge, `${at}: it is 44px to touch, its count inside the ${edge}px screen, with no sideways scroll (${JSON.stringify(button)})`);
       await shot(p, `rail-build-phone-${size}-${theme}`);
       await tap(p, '#rail-open');
       await until(async () => (await drawer(p)).open, at + ': the drawer opens');

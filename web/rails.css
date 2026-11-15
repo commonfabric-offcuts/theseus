@@ -133,8 +133,10 @@ a.things-name[href]{color:var(--accent)}
 }
 /* Middle widths and phones: the things open from the header's "Pipeline & pages". */
 @media(max-width:1180px){
-  [data-rails] #main .eyebrow-row{display:flex;align-items:center;gap:.6rem;min-width:0}
-  [data-rails] #main .eyebrow-row .eyebrow{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* The outcome's name gives way first; when even the two buttons with their counts are wider than a phone
+     (320px, "Pipeline & pages" counting new Build topics), "Pipeline & pages" goes to a line of its own. */
+  [data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;min-width:0}
+  [data-rails] #main .eyebrow-row .eyebrow{flex:1 1 0;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   [data-rails] #things-open{display:inline-flex;align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;border-radius:1.4rem;font-size:.85rem;color:var(--accent);-webkit-tap-highlight-color:transparent}
   /* It slides in as it opens, and is gone at once as it closes: hidden by no clock, so a closed panel
      never stands over the page while an animation waits (a page in the background runs none). */
