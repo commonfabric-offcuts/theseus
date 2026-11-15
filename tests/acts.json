@@ -463,8 +463,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      event.preventDefault();\n      this.act('reply');",
-     "      event.preventDefault();"
+     "      else this.act('reply');",
+     "      else return;"
     ]
    ],
    "check": {
@@ -478,8 +478,8 @@
    "break": [
     [
      "web/app.mjs",
-     "registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });",
-     "registry.current?.source?.source_ref?.id === id) return;"
+     "else reader.reply({ kind: 'message', id });",
+     "else return;"
     ]
    ],
    "check": {
@@ -3744,8 +3744,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "    this.copy(item);\n",
-     ""
+     "    if (words) this.copy(item, words); else this.copy(item);\n",
+     "    if (words) this.copy(item, words);\n"
     ]
    ],
    "check": {
