@@ -14247,7 +14247,7 @@
     [
      "aim_next/invite.py",
      "if len(holders) != 1 or holders[0]",
-     "if holders[0]"
+     "if not holders or holders[0]"
     ]
    ],
    "check": {
