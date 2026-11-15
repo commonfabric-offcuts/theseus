@@ -75,6 +75,22 @@ test('an act that moves nothing about where a dossier sits reports no position c
   await views.readActs(9, read, () => true);
   assert.deepEqual(painted, ['acts'], 'Bring back on another device draws the stacks again');
 });
+// Item 426: the Reader's neighbours beyond the loaded page carry Core's place for their dossier, which another
+// device's Move below More or Bring back moves with no change to the topic. Every acts read asks for them again,
+// afresh, even when reading the places after it fails; a read overtaken (no longer current) asks for nothing.
+test('an acts read asks for the Reader\'s neighbours afresh, though reading the places fails, and an overtaken one does not', async () => {
+  const asked = [];
+  const views = new TopicViews({ instanceId:'i', topicId:'t', invalidate: (...args) => asked.push(args) });
+  views.messages.set('a', { id:'a', seq:1, acts:{}, stack_position: position(4,1) });
+  const acts = { instance_id:'i', topic_id:'t', version: 7, next_cursor: null, items: [] };
+  await views.readActs(7, async (name, args) => name === 'message_acts' ? acts : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4,7) })) }, () => true);
+  assert.deepEqual(asked, [['neighbors', 7, true]], 'an acts read with no change on the page still asks for the neighbours afresh');
+  await assert.rejects(views.readActs(8, async name => { if (name === 'message_acts') return { ...acts, version: 8 }; throw Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' }); }, () => true), /superseded/);
+  assert.deepEqual(asked.at(-1), ['neighbors', 8, true], 'and when reading the places fails');
+  let current = true;
+  assert.equal(await views.readActs(9, async () => { current = false; return { ...acts, version: 9 }; }, () => current), false);
+  assert.equal(asked.length, 2, 'a read overtaken asks for nothing');
+});
 test('acts read again are drawn though reading the places after them fails, and places learned before a failing page are drawn too', async () => {
   // A freshness read can fail after the acts are learned (superseded, or deferred behind the page's own reads); the
   // next read then finds nothing new, so what the failed one learned must be drawn by it.

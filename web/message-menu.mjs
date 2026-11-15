@@ -4,10 +4,12 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The message under the pointer lights, as a passage lights in the Reader,
 // and a small bar of buttons sits over its top corner: 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
-// Reply (Return: the Reader opens on the message with the cursor in the
-// reply; a quote is the reader's own selection there), and ⋯, the message's
-// menu (Copy Link, Mark read or unread; docs/links.md), which a right-click on
-// the message opens too, where the pointer is. ↑ and ↓ move the light;
+// Reply's glyph (Return: the Reader opens on the message with the cursor in
+// the reply; a quote is the reader's own selection there), Show full message
+// while the card cuts the message off, Fold (Unfold on a folded message; none
+// on a starred one), and ⋯, the message's menu (Copy Link, Mark read or
+// unread; docs/links.md), which a right-click on the message opens too, where
+// the pointer is (item 473: glyphs, each named, with its name as its tooltip). ↑ and ↓ move the light;
 // Tab onto a card lights it too, and Tab again goes through its bar (tab). A click on a lit card opens it in the Reader.
 // On a phone, a tap lights a card and shows its bar (its 👍 count then names
 // who, which a pointer reads on hover); a second tap opens it, and a tap
@@ -23,6 +25,7 @@ import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
+import { showGlyph } from './glyphs.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -62,8 +65,11 @@ export class MessageMenu {
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
   // copy(item): puts the message's words on the clipboard (⌘C, copies).
-  constructor({ host, item, viewer, kind, reply, thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, copy, mac, doc });
+  // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
+  // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
+  constructor({ host, item, viewer, kind, reply, thumb, answer, more, expand = () => {}, copy = () => {}, clipped = () => false, showFull = async () => {},
+    foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
     this.lit = null; this.touch = false; this.before = null;
     this.bar = this.buildBar();
     // Scrolling or a repaint can put another card under a stationary pointer
@@ -122,7 +128,7 @@ export class MessageMenu {
     doc.addEventListener('pointerup', event => {
       if (event.pointerType !== 'touch' || !this.lit) return;
       const at = event.composedPath().find(node => node.nodeType === 1 && node.isConnected) ?? null;
-      if (!this.entryOf(at) && !this.bar.contains(at) && !at?.closest?.('dialog, .message-menu-list')) this.light(null);
+      if (!this.entryOf(at) && !this.ownsControls(at) && !at?.closest?.('dialog')) this.light(null);
     });
     doc.addEventListener('focusin', event => {
       const entry = this.entryOf(event.target), reverse = reverseTab;
@@ -185,9 +191,12 @@ export class MessageMenu {
       thumb: make('thumb', '👍', 'Thumbs-up: read and understood'),
       yes: make('yes', '✅', 'Go ahead'),
       no: make('no', '🚫', "Don't"),
-      reply: make('reply', 'Reply', 'Reply (Return)'),
+      reply: make('reply', '', 'Reply (Return)'),
+      full: make('full', '', 'Show full message'),
+      fold: make('fold', '', 'Fold'),
       more: make('more', '⋯', 'More for this message'),
     };
+    showGlyph(this.buttons.reply, 'reply', doc); showGlyph(this.buttons.full, 'full', doc);
     this.buttons.more.setAttribute('aria-haspopup', 'menu'); this.buttons.more.setAttribute('aria-expanded', 'false');
     bar.append(...Object.values(this.buttons));
     doc.body.append(bar);
@@ -196,7 +205,8 @@ export class MessageMenu {
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
   entryOf(target) { return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target); }
-  ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list')); }
+  // A dossier's title bar glyphs are its controls too (reply-stacks.mjs): pressing or focusing one keeps the light.
+  ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list, .stack-tools')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
   entries() {
     return navigationStops(this.host);
@@ -259,6 +269,14 @@ export class MessageMenu {
     const answerable = mayAnswer(item, this.viewer, this.kind), mine = answerOf(item, this.viewer);
     yes.hidden = no.hidden = !answerable;
     yes.setAttribute('aria-pressed', String(mine === 'yes')); no.setAttribute('aria-pressed', String(mine === 'no'));
+    const { full, fold } = this.buttons, folding = this.foldState(item);
+    full.hidden = card.hidden || !this.clipped(card, item);
+    fold.hidden = !folding;
+    if (folding) {
+      const words = folding === 'unfold' ? 'Unfold' : 'Fold';
+      if (fold.title !== words) { fold.title = words; fold.setAttribute('aria-label', words); }
+      showGlyph(fold, folding, this.doc);
+    }
     this.bar.hidden = false;
     this.place();
   }
@@ -315,6 +333,8 @@ export class MessageMenu {
     const card = cardIn(entry);
     if (name === 'reply') return this.reply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);
+    if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
+    if (name === 'fold') return this.fold(item);
     if (name === 'thumb' && mayThumb(item, this.viewer)) return this.thumb(item, !thumbed(item, this.viewer));
     if ((name === 'yes' || name === 'no') && mayAnswer(item, this.viewer, this.kind) && name in ANSWER_WORDS) return this.answer(item, name);
   }

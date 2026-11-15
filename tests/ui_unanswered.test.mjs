@@ -97,6 +97,35 @@ test('a line for a message not loaded yet sits at the bottom, says more new belo
   assert.deepEqual(order(top), [50, 40], 'no older line when nothing older can be loaded');
 });
 
+// Item 426: More messages ends the run the reader reads down, and the
+// dossiers put below More follow it. The line for a message further back
+// waits at the bottom of that run, above More, never after what lies below
+// More; a message only inside a dossier counts among what is loaded.
+test('a line for a message not loaded yet waits above More messages, not after the dossiers below it', () => {
+  const host = list(50, 40, 30), load = () => {};
+  const more = new Element('button'); more.className = 'stack-more'; host.insertBefore(more, null);
+  const aside = new Element('section'); aside.className = 'reply-stack'; aside.dataset.stack = 'm60';
+  const inside = new Element('button'); inside.dataset.seq = '60'; inside.dataset.id = 'm60'; aside.insertBefore(inside, null);
+  host.insertBefore(aside, null);
+  const name = node => node.dataset.line ?? (node === more ? 'More' : node === aside ? 'aside' : Number(node.dataset.seq));
+  placeNewLine(host, 10, doc, load);
+  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'above More, not below the dossier put aside');
+  placeNewLine(host, 10, doc, load);
+  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'placed again, it stays');
+  host.insertBefore(host.children[3], null);
+  placeNewLine(host, 10, doc, load);
+  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'moved below, it goes back above More');
+  // No More: the bottom of the list, as before.
+  more.remove(); aside.remove();
+  placeNewLine(host, 10, doc, load);
+  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older']);
+  // A message older than every top-level card but loaded inside a dossier is loaded: no promise of older ones.
+  const nested = list(50, 40);
+  const stack = new Element('section'); stack.className = 'reply-stack';
+  const reply = new Element('button'); reply.dataset.seq = '5'; stack.insertBefore(reply, null); nested.insertBefore(stack, null);
+  assert.equal(placeNewLine(nested, 10, doc, load), null, 'a message among the loaded ones, inside a dossier, has no older line');
+});
+
 // Once nothing at or above it is unread, the line stays in its place but
 // fades: .new-line-read, a CSS opacity transition, and inert, so no pointer,
 // Tab or screen reader finds it. Held again, the same line comes back.

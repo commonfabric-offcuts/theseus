@@ -61,7 +61,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintFolderColors } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -875,7 +875,11 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar(),
+    // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
+    menu: (item, anchor) => openMessageMenu({ anchor, items: messageMenuItems(item, null, anchor), label: 'This message', sheet: true }),
+    // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
+    colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
 }
 // The conversation's own word on a message: its item and the asks that wait,
@@ -923,6 +927,8 @@ function paintAgentColors() {
     const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) paintCardColor(card, item, bootstrap.actor, agentShown);
   }
+  // A dossier's folder wears its first poster's colour (item 477).
+  paintFolderColors($('messages'));
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
   participantsPanel?.paint();
 }
@@ -1848,7 +1854,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2019,7 +2025,11 @@ async function initialize() {
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
     more: openMessageMore, copy: copyMessage,
-    expand: (card, item) => cardScroll.expand(card, item) });
+    expand: (card, item) => cardScroll.expand(card, item),
+    // The bar's Show full message and Fold (item 473), as ⋯ offers them.
+    clipped: (card, item) => Boolean(cardScroll?.clipped(card, item)), showFull: (card, item) => run(() => cardScroll.showFull(card, item)),
+    foldState: item => (stackFeed && !topicUnavailable ? stackFeed.foldState(item) : null),
+    fold: item => { stackFeed?.toggleFold(item); if (menu?.lit) menu.paintBar(); } });
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
   // line or being written: once Core holds it the Reader closes, as after
   // Send, keeping what the reply holds. Refused, or taken back, it stays.

@@ -4,14 +4,17 @@
    first); a chevron on the tab opens the replies filed underneath.
    Every visual choice about stacks is in this file alone; another look drops
    in by replacing it. It reads only the semantic colour tokens of aim.css
-   (--paper --panel --ink --muted --line --accent --soft --alert --focus), and
-   every value of its own is a --stack-* property below, set for light and dark.
+   (--paper --panel --ink --muted --line --accent --soft --alert --focus) and,
+   on a folder an agent began, that agent's palette colours (--agent-card
+   --agent-tag, from its agent-* class in aim.css), and every value of its own
+   is a --stack-* property below, set for light and dark.
    It styles only these names, which reply-stacks.mjs sets:
 
    .reply-stack              a stack; data-stack (its head's id), data-seq,
                              data-fold = head | folded | open,
                              data-head-open, data-placed, data-single,
-                             data-renaming = true | false
+                             data-renaming = true | false,
+                             data-color = agent (with its agent-* class) | ''
      > [data-id]             its head's entry (a card, or a fold's card), the
                              card marked .stack-head-card and holding
        .stack-head           the head row: .stack-name (.stack-act), .stack-pen,
@@ -21,6 +24,8 @@
      > .stack-replies        the replies, oldest first, each an entry; between them
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
      > .stack-toggle         the header's expand/collapse button (aria-expanded)
+     > .stack-tools          the title bar's glyphs, at its right: .stack-tool
+                             [data-tool = reply | aside | menu]
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
    [data-starred=true]       on any message card the reader starred
    [data-folded=true]        on any message card the reader folded, holding
@@ -33,8 +38,11 @@
    new. Shown whole, the head's card is the first sheet in the folder. While
    the stack is renamed, the rename field takes the tab's place.
    A card keeps its own look inside a stack: an agent's tint and the reader's
-   own cards read as anywhere else. No coloured edge marks a stack, and under
-   Only new the stacks draw nothing (aim.css). */
+   own cards read as anywhere else. A folder an agent began (its first
+   message's author) wears that agent's colour across the whole face of its
+   body and its tab, the title bar (item 477); a person's keeps the neutral
+   folder. Colour covers a whole face only: no coloured edge or bar marks a
+   stack or a card, and under Only new the stacks draw nothing (aim.css). */
 
 :root{
   /* the folder: one material for tab and body */
@@ -68,6 +76,9 @@
   --stack-read-ink:#56616a;
   --stack-name-inset:4px;
   --stack-gap:1.75rem;                    /* clear paper round a stack */
+  /* the title bar's glyphs (item 473): each a square this size, three in a row */
+  --stack-tool-size:1.75rem;
+  --stack-tools-w:calc(3 * var(--stack-tool-size) + .5rem);
 }
 @media(prefers-color-scheme:dark){:root{
   --stack-folder:#1c2427; --stack-folder-deep:#2a3437; --stack-folder-ink:#d3dcd9; --stack-meta-ink:var(--muted);
@@ -127,7 +138,7 @@
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){position:absolute;top:calc(-1 * var(--stack-tab-h));left:0;
-  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));
+  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -142,6 +153,35 @@
 .stack-toggle[data-state=open]::before{transform:rotate(45deg)}
 .reply-stack:not(.only-new *)>.stack-toggle:hover{background:var(--stack-folder-deep)}
 .stack-toggle:focus-visible{outline:none}
+
+/* The title bar's glyphs (item 473): Reply to the first message, Move below More (or Bring back) and ⋯, at the right
+   of the title bar, on the paper beside the tab, where the tab never reaches. Their place is kept while they are
+   hidden, so showing them moves nothing. Under a pointer that hovers they show while the dossier is under it, and are
+   there to be found (invisible, not gone) as it crosses to them; by touch they show once the dossier is selected. The
+   keys show them by reaching them, or by selecting the dossier or one of its messages. */
+.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
+  display:flex;align-items:center;justify-content:flex-end;gap:.25rem;padding-right:.1rem}
+.stack-tool{display:grid;place-items:center;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:0;padding:0;
+  border:0;border-radius:.4rem;background:transparent;color:var(--stack-meta-ink);font-size:1.05rem;font-weight:700;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.stack-tool[hidden]{display:none}
+.stack-tool:hover,.stack-tool[aria-expanded=true]{background:var(--stack-folder-deep);color:var(--stack-folder-ink)}
+.stack-tool:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
+.stack-tool .glyph{width:1.1rem;height:1.1rem}
+.reply-stack:not(.only-new *)>.stack-tools{visibility:hidden}
+.reply-stack:not(.only-new *):is(:focus-within,:has(.stack-head-card.lit),:has(>.stack-tools [aria-expanded=true]))>.stack-tools{visibility:visible}
+@media(hover:hover){
+  .reply-stack:not(.only-new *)>.stack-tools{visibility:visible;opacity:0}
+  .reply-stack:not(.only-new *):is(:hover,:focus-within,:has(.stack-head-card.lit),:has(>.stack-tools [aria-expanded=true]))>.stack-tools{opacity:1}
+}
+/* By touch each glyph is 44px square. */
+@media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack:not(.only-new *)>.stack-tools{gap:0}:root{--stack-tools-w:calc(3 * var(--stack-tool-size) + .1rem)}}
+
+/* A folder an agent began wears that agent's colour, body and tab alike (item 477): a step deeper than its cards,
+   so its sheets still read on it, with the tab's words kept at 4.5:1 or better on it and under the pointer. */
+.reply-stack[data-color=agent]:not(.only-new *){--stack-folder:color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card));--stack-folder-deep:var(--agent-tag);
+  --stack-folder-ink:#2f363b;--stack-meta-ink:#4a545b;--stack-star:#6b4b12;--stack-new:#9f1f15}
+@media(prefers-color-scheme:dark){.reply-stack[data-color=agent]:not(.only-new *){--stack-folder:color-mix(in srgb,var(--agent-card) 70%,#0b1113);--stack-folder-deep:var(--agent-card);
+  --stack-folder-ink:#d3dcd9;--stack-meta-ink:#a8b8b5;--stack-star:#e8c67f;--stack-new:#ff8a80}}
 /* Where the tab meets the body, a concave fillet: tab and body are one cut. The ring follows it. The focus ring's tab
    part is a layer under the tab that runs past the seam and drops its own bottom edge, so its sides run on into the
    body's. Both hang off the tab's box: the head row's own ::after breaks its first line, so they sit on its name. */
@@ -292,6 +332,8 @@
 .reply-stack[data-compact=true]:not(.only-new *) .stack-meta{flex:none;font-size:.75rem;max-width:35%}
 .reply-stack[data-compact=true] .stack-repliers{display:none}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-toggle{top:.5rem}
+.reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;height:2.75rem}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:var(--stack-tools-w)}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}

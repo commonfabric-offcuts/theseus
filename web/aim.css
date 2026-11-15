@@ -618,6 +618,9 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .reading-pane article .md-list-passage+.md-list-passage{margin-top:0}
 /* A message's ⋯ (docs/links.md, "A message's menu"): the last button on the message bar, and the Reader's header's, quiet until pointed at. Its menu is a short list as wide as its words. */
 .message-bar [data-act=more]{font-size:1.05rem;font-weight:700;line-height:1}
+/* Reply, Show full message and Fold are glyphs (glyphs.mjs, item 473), each named with that name as its tooltip. */
+.message-bar button:has(>.glyph){display:inline-grid;place-items:center}
+.message-bar button>.glyph{display:block;width:1.05rem;height:1.05rem}
 .message-bar [data-act=more].said{font-size:.78rem;font-weight:650;color:var(--accent)}
 .message-menu{min-height:2.25rem;min-width:2.25rem;padding:0 .45rem;border-color:transparent;background:transparent;color:var(--muted);font-size:1.15rem;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent}
 .message-menu:hover,.message-menu[aria-expanded=true]{border-color:var(--muted);background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}

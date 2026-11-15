@@ -129,7 +129,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   // Whether el is reached from root through these child steps.
   const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
+    // The bars' glyphs (glyphs.mjs) are svg elements.
+    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
@@ -4179,7 +4181,9 @@ test('on the conversation page replies stack under the message they answer, as i
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
   assert.deepEqual(list.children.map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
-  const [head, toggle, replies] = stack.children;
+  // The title bar's glyphs (item 473) sit between the chevron and the replies.
+  const [head, toggle, tools, replies] = stack.children;
+  assert.equal(tools.className, 'stack-tools');
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.

@@ -301,7 +301,16 @@ export class TopicViews {
     // (superseded, or deferred behind the page's own reads): the next read
     // learns nothing new, so it would draw nothing.
     try { await this.readPositions(read, current); }
-    finally { if (changed) this.paint('acts'); }
+    finally {
+      if (changed) this.paint('acts');
+      // The Reader's neighbours beyond what the page loaded carry Core's place
+      // for their dossier, which an act on another device can move (Move below
+      // More, Bring back) with no change to the topic: they are read again
+      // (item 426), as on a topic change. Acts count apart from the topic's
+      // versions, so the read is asked for afresh (force), even over one
+      // already under way that began before this act.
+      this.invalidate('neighbors', version, true);
+    }
     return true;
   }
   // Keeps the later of each read position, for every loaded message of its
