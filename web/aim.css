@@ -71,7 +71,6 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* Inviting an agent (agent-invite.mjs): "+ Invite agent", then one name line and two chips; the prompt to paste, with its copy glyph and ×. */
 .team-invite{display:grid;gap:.5rem;margin-top:.5rem;min-width:0}
 .team-invite>.add-chip{justify-self:start}
-.team-invite button{-webkit-tap-highlight-color:transparent}
 .invite-line{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;min-width:0}
 .invite-line input{flex:0 1 14rem;width:14rem;max-width:100%;min-width:0;min-height:2.5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink);padding:.35rem .6rem;font-size:.9rem}
 .invite-harness{display:flex;flex-wrap:wrap;gap:.4rem}
@@ -168,6 +167,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .color-picker .swatch-name{display:block;font-size:.72rem;line-height:1.2;color:var(--ink);text-align:center}
 /* A tap on a phone leaves no wash over the picker, the card whose name opened it, or a person's pill; focus rings stay. */
 .color-picker button,.message-card.agent-card,.person-pill .pill-name{-webkit-tap-highlight-color:transparent}
+/* Nor over the Team panel's invite (agent-invite.mjs): its chips and glyphs show their own pressed state. */
+.team-invite button{-webkit-tap-highlight-color:transparent}
 .color-picker .swatch-default{width:auto;border:1px solid var(--line);font-size:.85rem}
 .color-picker .swatch-default:hover{background:var(--panel);border-color:var(--muted)}
 /* Each choice in a light frame; the current one alone in ink, ringed, with a check before its name for the eye (aria-pressed says it; a browser without alternative text for generated content keeps the plain check). Default is one more choice, as wide as its words, not a confirm button. */
