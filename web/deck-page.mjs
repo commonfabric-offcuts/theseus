@@ -386,8 +386,9 @@ export class DeckPage {
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     // Past the first card or the last, the arrow goes on to what lies that way
     // on the page: the bar above the cards, the header (arrow-reach.mjs). With
-    // nothing focused the arrows stay the deck's, picking a card.
-    const plainArrow = !command && !event.shiftKey && !event.altKey && this.list.contains(event.target);
+    // nothing focused the arrows stay the deck's, picking a card; but on a
+    // phone, where a pick moves no focus, so past the edge they go on too.
+    const plainArrow = !command && !event.shiftKey && !event.altKey && (this.list.contains(event.target) || (this.phone && event.target === this.doc.body));
     if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }
     if ((up || down) && command && !event.altKey && event.shiftKey) this.act({ kind: 'merge', text, step: up ? -1 : 1, near });
     else if ((up || down) && command && !event.altKey) this.actOn('move', up ? -1 : 1);

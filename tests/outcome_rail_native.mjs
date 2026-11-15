@@ -2311,11 +2311,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const out=[];all.forEach((e,i)=>{const id=e.getAttribute('role')==='treeitem'?'tree':'n'+i;e.dataset.arrowNode=id;
         if(!out.some(o=>o.id===id))out.push({id,label:id==='tree'?'the tree':(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
     const label = id => nodes.find(node => node.id === id)?.label ?? id;
+    // Where a press lands; a control that was not marked (the feed itself, a row drawn since) is marked as it is
+    // found, and the arrows are pressed from it too.
+    const landed = async () => { const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree';
+      if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound}return e.dataset.arrowNode})(document.activeElement)`);
+      if (at.startsWith('found') && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
+      return at; };
+    const explore = [...nodes];
     // A start given as a step: where that step, taken once the controls are marked, lands.
-    if (typeof start === 'function') start = await start();
-    const landed = () => p.evaluate(`(e=>!e||e===document.body||e===document.documentElement?'page':e.dataset?.arrowNode??'out')(document.activeElement)`);
+    if (typeof start === 'function') { await start(); start = await landed(); }
     const edges = [];
-    for (const node of nodes) {
+    for (let i = 0; i < explore.length; i++) {
+      const node = explore[i];
       if (node.id === 'tree') {
         for (const [home, key] of [['Home', 'ArrowUp'], ['End', 'ArrowDown']]) {
           await p.evaluate(`document.querySelector('[data-arrow-node=tree][tabindex="0"]')?.focus()`);
@@ -2382,8 +2389,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const size of ['390', '375', '320']) {
       const p = await arrowsAt('rail-arrows-drawer-' + size, '/?topic=t1', size, size === '390' ? 'dark' : 'light');
       await topicUp(p, size + ': the topic is up');
-      await until(() => p.evaluate("!document.documentElement.hasAttribute('data-rails-reading') && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true'"), size + ': the page has finished drawing');
-      await p.evaluate("document.getElementById('rail-open').focus()");
+      await until(() => p.evaluate("(b=>{b?.focus();return Boolean(b)&&document.activeElement===b})(document.getElementById('rail-open'))"), size + ': ☰ Topics takes the focus');
       await p.key('Enter');
       await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it');
       await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
@@ -2577,14 +2583,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'outcome_reference', operation_id: 'rail-arrows-deck', item_id: 'rail-arrows-deck', title: 'Arrow deck', body: '## A card\n\nWords.\n\n## Another card\n\nMore words.\n' });
     const inDeck = p => p.evaluate("Boolean(document.activeElement?.closest?.('.deck-card'))");
     // ↑ from the cards until the focus leaves them: where it went at each press.
-    const outOfDeck = async p => { const seen = []; for (let n = 0; n < 10 && await inDeck(p); n++) { await arrowPress(p, 'ArrowUp'); seen.push(await focusAt(p)); } return seen; };
+    // (On a phone a pick moves no focus: from nothing, ↑ picks the card above until the first, then goes on.)
+    const outOfDeck = async p => { const seen = []; for (let n = 0; n < 10 && (await inDeck(p) || await focusAt(p) === 'page'); n++) { await arrowPress(p, 'ArrowUp'); seen.push(await focusAt(p)); } return seen; };
     for (const [size, url] of [['laptop', '/?cards=rail-arrows-deck'], ['390', '/?cards=rail-arrows-deck'], ['375', '/?cards=rail-arrows-deck'], ['320', '/?cards=rail-arrows-deck'], ['laptop', '/?topic=t1&page=rail-arrows-deck']]) {
       const where = `${size} ${url}`;
       const p = await arrowsAt('rail-arrows-deck-' + size, url, size, size === '390' ? 'dark' : 'light');
       await until(() => p.evaluate("document.body?.dataset.ready==='true' && [...document.querySelectorAll('.deck-card')].some(e=>e.checkVisibility())").catch(() => false), where + ': the cards are up');
-      // On the first card, as the page puts the keys there (or ↓ from nothing picks it).
-      if (!await inDeck(p)) { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); }
-      assert.equal(await inDeck(p), true, where + ': the keys are on a card');
+      // At a laptop on a card, as the page puts the keys there (or ↓ from nothing picks it); on a phone, with
+      // nothing focused, the card in view is the one picked.
+      if (size === 'laptop') {
+        if (!await inDeck(p)) { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); }
+        assert.equal(await inDeck(p), true, where + ': the keys are on a card');
+      } else await p.evaluate("document.activeElement?.blur()");
       const up = await outOfDeck(p);
       const out = await p.evaluate("(e=>e&&e!==document.body&&!e.closest('.deck-card'))(document.activeElement)");
       assert.equal(out, true, `${where}: ↑ above the first card goes on out of the cards: ${up.join(' → ')}`);
