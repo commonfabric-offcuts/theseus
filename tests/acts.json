@@ -14071,6 +14071,36 @@
    "check": {
     "node": "tests/ui_arrow_reach.test.mjs"
    }
+  },
+  {
+   "item": 301,
+   "act": "A control set in an open tree row is the row's own: → on the right rail's open Notebook row gives its pencil the focus",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (action === 'right' && row.expanded !== false && setIn(row.el)) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a control set in a row, ← comes back to the row and → goes on to the first row under it",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (!row) return this.ownKey(event, action, rows);",
+     "if (!row) return;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
   }
  ]
 }

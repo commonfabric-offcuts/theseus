@@ -279,6 +279,11 @@ rule above. (`web/arrow-reach.mjs`)
   Notebook and the reply; ↑ from there comes back to the last message. Into a
   tree from beside it (a pencil in a section's heading, the chips above it)
   the arrows land on the row nearest that way, which becomes its stop.
+  A control set in a tree's row (the pencil in the right rail's Notebook
+  heading) is the row's own, as a card's speech bubble is: → on the row, open,
+  gives it the focus before the rows under it; from it → goes on to the first
+  of them and ← comes back to the row. A row with no such control keeps the
+  tree's → (open a folded row, else go to its first row).
   On a Notebook page's cards, ↑ above the first card and ↓ below the last go
   on to the page's controls (docs/decks.md).
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
