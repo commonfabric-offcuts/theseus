@@ -2024,11 +2024,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     // ↓ or ↑ along the outline from where the keys are to its end, each row by the rule; one already a tenth
     // inside scrolls nothing.
+    // Once what the key set off is still: the area's scroll and height the same three frames running.
+    const calm = () => p.evaluate("new Promise(done=>{let last='',same=0;const f=()=>{const r=document.activeElement?.closest('.rail'),now=(r?r.scrollTop+','+r.scrollHeight:'')+'|'+scrollY+','+document.documentElement.scrollHeight;if(now===last){if(++same>=3)return done(true)}else{same=0;last=now}requestAnimationFrame(f)};requestAnimationFrame(f)})");
+    const inTree = () => p.evaluate("Boolean(document.activeElement?.closest('#outline [role=tree]'))");
     const walk = async (key, words) => {
       const ys = [];
+      await calm();
       let before = await keyed();
       for (let n = 0; n < 80; n++) {
         await p.key(key);
+        await calm();
+        // Past the outline's end the arrows go on in the side rail (item 301): back to its end, where the walk stops.
+        if (!(await inTree())) { await p.key(key === 'ArrowDown' ? 'ArrowUp' : 'ArrowDown'); await calm(); assert.equal((await keyed()).at, before.at, `${words}: the key back from past the outline's end comes back to its end row`); break; }
         const now = await keyed();
         if (now.at === before.at) break;
         const moved = now.y - before.y, room = now.h * 0.1, was = { top: now.top + moved, bottom: now.bottom + moved };
