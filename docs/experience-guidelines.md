@@ -193,6 +193,12 @@ nothing scrolls sideways, and nothing depends on hover.
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch
   an opening types adds a participant saves and sends by tap".
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
+  the header at 320, 375, 390, a narrow laptop and a laptop, light and dark,
+  …" measures which line each of the header's pills is on with the count and
+  the light showing on "☰ Outcomes": at 320 "Pipeline & pages" goes under it,
+  whole; at 375 and 390 the outcome's name gives up its room and the two
+  share the line; nothing scrolls sideways.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).

@@ -13774,6 +13774,51 @@
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
    }
+  },
+  {
+   "item": 516,
+   "act": "At 320, with its count and light showing on \"☰ Outcomes\", \"Pipeline & pages\" goes under it inside the screen, and nothing scrolls sideways",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "[data-rails] #main .eyebrow-row{display:flex;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 \"Pipeline & pages\" goes under \"☰ Outcomes\" whole, never squeezed onto its line with its words folded",
+   "break": [
+    [
+     "web/rails.css",
+     "align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;",
+     "align-items:center;flex:0 1 0;white-space:normal;margin-left:auto;padding:.3rem .8rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 375 and 390 the outcome's name gives up its room first, so \"☰ Outcomes\" and \"Pipeline & pages\" share the header's line",
+   "break": [
+    [
+     "web/rails.css",
+     ".eyebrow-row .eyebrow{flex:1 1 0;margin:0;",
+     ".eyebrow-row .eyebrow{margin:0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
   }
  ]
 }
