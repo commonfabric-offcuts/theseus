@@ -376,7 +376,11 @@ try {
     };
     await newLineStaysChecks({ check, open, until, view, control, shot, observations, engine: 'webkit' });
   } else if (mode === '--reading') {
-    await readingChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
+    // The browser's windows, each page known by an id of its own for as long as it is open.
+    const ids = new WeakMap(); let next = 0;
+    const known = () => browser.contexts().flatMap(context => context.pages()).filter(opened => !opened.isClosed()).map(opened => { if (!ids.has(opened)) ids.set(opened, String(++next)); return [ids.get(opened), opened]; });
+    const windows = { list: async () => new Map(known().map(([id, opened]) => [id, opened.url()])), close: async id => { for (const [at, opened] of known()) if (at === id) await opened.close(); } };
+    await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }

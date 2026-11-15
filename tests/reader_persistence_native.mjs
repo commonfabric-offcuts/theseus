@@ -677,7 +677,8 @@ try {
     } else if (mode === '--rail') {
       await railChecks({check,page,until,control,view,facts,shot});
     } else if (mode === '--reading') {
-      await readingChecks({check,page,until,control,view,facts,shot,observations,grant:async names=>{for(const name of names)await cdp('Browser.setPermission',{permission:{name},setting:'granted',origin:facts.origin,...(recoveryContext?{browserContextId:recoveryContext}:{})});}});
+      await readingChecks({check,page,until,control,view,facts,shot,observations,grant:async names=>{for(const name of names)await cdp('Browser.setPermission',{permission:{name},setting:'granted',origin:facts.origin,...(recoveryContext?{browserContextId:recoveryContext}:{})});},
+        windows:{list:async()=>new Map((await cdp('Target.getTargets')).targetInfos.filter(t=>t.type==='page').map(t=>[t.targetId,t.url])),close:targetId=>cdp('Target.closeTarget',{targetId})}});
     } else if (mode === '--conversation') {
       await conversationChecks({check,page,until,control,view,facts,replace,shot});
     } else if (mode === '--forms') {
