@@ -3100,8 +3100,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "    return Boolean(card?.classList.contains('stack-head-card') &&",
-     "    return false && Boolean(card?.classList.contains('stack-head-card') &&"
+     "    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false'",
+     "    return false && section.dataset.headOpen === 'false'"
     ]
    ],
    "check": {
@@ -5324,13 +5324,13 @@
    }
   },
   {
-   "item": 356,
-   "act": "A stack's folded first message is its head row alone, and a press on that row unfolds it",
+   "item": 471,
+   "act": "A dossier's folded first message is its own row under the title row, as any folded message is, the dossier staying fully open; a press on that row unfolds it",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "    state.on?.unfold?.(stack.id);\n",
-     ""
+     "paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc })",
+     "paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc })"
     ]
    ],
    "check": {
@@ -5359,8 +5359,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.swipeAct(start.target, across > 0);",
-     "    this.swipeAct(start.target, true);"
+     "    this.swipeAct(start.target, across > 0, event.altKey);",
+     "    this.swipeAct(start.target, true, event.altKey);"
     ]
    ],
    "check": {
@@ -5765,13 +5765,13 @@
    }
   },
   {
-   "item": 355,
-   "act": "A swipe on the last visible message moves its whole dossier",
+   "item": 472,
+   "act": "A swipe right on a dossier's last visible message folds it in place, as on any message; only the title bar moves the dossier below More",
    "break": [
     [
      "web/stack-feed.mjs",
-     "chrome || displayed.at(-1) === entry",
-     "chrome"
+     "whole: Boolean(found.section && chrome)",
+     "whole: Boolean(found.section && (chrome || !entry.nextElementSibling))"
     ]
    ],
    "check": {
@@ -8151,8 +8151,8 @@
     ],
     [
      "web/stack-feed.mjs",
-     "    if (tab && !acts.folded) return;",
-     "    if (false) return;"
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;\n",
+     ""
     ]
    ],
    "check": {
@@ -8161,13 +8161,13 @@
    }
   },
   {
-   "item": 388,
-   "act": "x on a dossier's folded first message, its head row, unfolds it, whether x or the person's reply folded it",
+   "item": 471,
+   "act": "x on a dossier's first message folds it to its own row and x again unfolds it, as on any message, whether x or the person's reply folded it",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (tab && !acts.folded) return;",
-     "    if (tab) return;"
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;",
+     "    if (found?.head && found.stack.replies.length) return;"
     ]
    ],
    "check": {
@@ -8176,12 +8176,12 @@
    }
   },
   {
-   "item": 388,
-   "act": "x unfolding a first message at latest and unread opens its dossier, so x again folds it",
+   "item": 471,
+   "act": "x on a dossier's title row at latest and unread neither folds nor unfolds its first message",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');\n",
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;\n",
      ""
     ]
    ],
@@ -10050,8 +10050,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".agent-card>.message-author>.author-name:first-child{margin-left:calc(-1 * var(--stack-name-inset))}",
-     ".agent-card>.message-author>.author-name:first-child{margin-left:0}"
+     ".reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}",
+     ".reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{border-radius:0;background:none}"
     ]
    ],
    "check": {
@@ -13803,6 +13803,306 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier an author's name is plain words, with no agent tag",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".agent-card .author-name{padding:0;border-radius:0;background:none}",
+     ".agent-card .author-name{padding:0;border-radius:0}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a name is plain words"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row shows no Folded pill; a screen reader still hears Folded",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;",
+     ".reply-stack[data-single=none]:not(.only-new *) .folded-cue{position:absolute;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a name is plain words"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row shows its 👍 only once someone has given one",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".folded-thumb[data-count=\"0\"]{display:none}",
+     ".folded-thumb[data-count=\"none\"]{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a name is plain words"
+   }
+  },
+  {
+   "item": 471,
+   "act": "The row's 👍 says how many have given one, which the dossier's look reads",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    button.dataset.count = String(count);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a name is plain words"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A folded message on its own keeps its Folded pill",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;",
+     ".folded-cue{position:absolute;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a name is plain words"
+   }
+  },
+  {
+   "item": 471,
+   "act": "The hover bar does not attach to a dossier's folded row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "\n      || card.dataset.folded === 'true' && section.dataset.single === 'false';",
+     ";"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A press on the header of a message a dossier shows whole folds it for the reader alone, and opens neither the Reader nor the color picker",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (headerClick($('messages'), messageEntries.get(item.id), event)) return;",
+     "        if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A press on the header of a message on its own still opens it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section?.dataset.single !== 'false' || section.closest('.only-new')) return false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A header press on a starred message says it stays open",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (this.actsOf(item.id, item).starred) { this.say('Starred messages stay open'); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier (item 471) a press on a shown message"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option held with two fingers right folds the message and every message before it in its dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return through && folds ? this.foldThrough(",
+     "return false && folds ? this.foldThrough("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "The trackpad's swipe hears whether Option is held",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.swipeAct(swipe.target, swipeFolds(swipe.x), event.altKey);",
+     "    this.swipeAct(swipe.target, swipeFolds(swipe.x));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Without Option a swipe folds only the message under it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return through && folds ? this.foldThrough(",
+     "return folds ? this.foldThrough("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option's fold leaves the messages after the swiped one whole",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "run.slice(0, upTo + 1).map(",
+     "run.map("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option's fold leaves a starred message whole",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return !acts.folded && !acts.starred; });",
+     "return !acts.folded; });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "⌘Z right after Option's fold unfolds every message it folded",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => { for (const each of folding) this.setFold(each, false, { focus: false, undoable: false }); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 430,
+   "act": "The lit reply's ring keeps its bottom side above the next card",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:'';",
+     ":is(.message-card.lit,.message-fold.lit>.fold-line)::after{content:none;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+   }
+  },
+  {
+   "item": 430,
+   "act": "The lit first message's ring keeps its bottom side above the first reply",
+   "break": [
+    [
+     "web/stack-look.css",
+     ">.lit[data-stack-covered=true]~.stack-replies::before{content:'';",
+     ">.lit[data-stack-covered=true]~.stack-replies::before{content:none;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit card's ring keeps its bottom side above the next card"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A fold line in a dossier answers the pointer with the soft fill and full ink",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-fold>.fold-line:hover{background:var(--soft);color:var(--ink)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a fold line in a dossier answers the pointer"
+   }
+  },
+  {
+   "item": 430,
+   "act": "An open fold line in a dossier shows it in full ink",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-fold>.fold-line[aria-expanded=true]{color:var(--ink)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a fold line in a dossier answers the pointer"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A saved fold in a dossier of a card that is no agent's uses read material too",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":not(.agent-card){--muted:var(--stack-read-ink);background:var(--read-card)}",
+     ":not(.agent-card)[data-talk=agents]{--muted:var(--stack-read-ink);background:var(--read-card)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives a saved fold"
    }
   }
  ]

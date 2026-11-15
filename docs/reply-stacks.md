@@ -177,7 +177,21 @@ their acts.
   the row unfolds it (one tap on a phone, where a tap on a card otherwise
   lights it first). A star keeps a message in view: a starred message is
   never folded, ⋯ offers it no Fold, and starring a folded message unfolds
-  it.
+  it. In a dossier (item 471) the row is who wrote it and its line alone:
+  "Folded" is said to a screen reader but not drawn, the 👍 shows only once
+  someone has given one, and the message bar does not attach to the row (a
+  right-click opens its ⋯, and a press unfolds it). A message on its own, a
+  placed one included, keeps its "Folded" and its 👍.
+- **Inside a dossier (item 471).** An author's name is plain words, with no
+  agent tag: the card's own colour says who wrote it. A press on the header
+  of a message the dossier shows whole (who wrote it and when) folds it for
+  the reader alone, as x does; a starred message stays open, and says so. Its
+  words, its bar and Return open the Reader, and a control in the header (the
+  star, the reply arrow) answers its own press. On a phone the first tap
+  lights the message, as on any card, and a tap on the header after it
+  folds it. On a message on its own a press on the header opens it, and on
+  an agent's name opens its colour picker, as before; inside a dossier the
+  colour is chosen from the participants.
 - **Dealt with, folded (item 377).** A person's reply to a message (its
   `reply_to` names the message, ✅ or 🚫 on a go-ahead ask included, and
   their reply to their own message too), or their thumbs-up on it, folds it
@@ -195,11 +209,13 @@ their acts.
   Fold), and sending a reply or giving a 👍 is not one of them, so the fold
   goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
   it.
-- **First messages.** A stack's first message folds into its head row, which already
-  says who began the stack and its short name: the row adds "Folded", the
-  full message stays hidden even with the stack fully open, and no second
-  row doubles the tab. A press on that head row, or x on it, unfolds it and
-  opens the stack, so x on it again folds it. A link, search or the rail's Starred that lands on a folded
+- **First messages.** A dossier's first message is a message like any other
+  (item 471): with the dossier fully open it folds to its own row under the
+  head row, by its header, x, a swipe or Fold in ⋯, and its row, x or Unfold
+  unfolds it; shown whole it has its bar. The head row stays the dossier's
+  title, the one special row, and says nothing of the fold. At latest and
+  unread the head shows only that title row, and x there does nothing, as on
+  the chevron. A link, search or the rail's Starred that lands on a folded
   message opens it whole for that view without unfolding it; changing its
   stack's state folds it to its row again.
 - **Expand and collapse.** One chevron beside the title switches between
@@ -248,8 +264,9 @@ their acts.
   the light where the tap landed: the message it was in is read from the
   path the release was sent along, so the tap is not taken for one outside
   the messages.
-- **The bar.** A head showing only its row has no message bar; Return
-  still replies to it, and the bar comes back once its whole message shows.
+- **The bar.** A head showing only its row has no message bar, nor has a
+  dossier's folded row (item 471); Return still replies to it, and the bar
+  comes back once its whole message shows.
   In a stack the bar stays below the head row's bottom edge while that row
   is in the window; where that leaves no room above a card's reply arrow, the
   bar sits under the card rather than over its words and answers. It never
@@ -312,7 +329,7 @@ On a message (its card focused, never in writing), these keys work:
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
 | ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
 | Return | reply to it; on a dossier's header or chevron, edit the dossier's title (Return saves, Escape cancels) |
-| x | fold it to its row, for you alone, or unfold it; a starred message stays open, and on a dossier as a whole x does nothing yet, unless its first message is folded: then its head row is that message, and x unfolds it and opens the dossier |
+| x | fold it to its row, for you alone, or unfold it, a dossier's first message as any other; a starred message stays open, and on a dossier as a whole (its chevron, or its title row at latest and unread) x does nothing yet |
 | ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
 
 The keys come from the shared key map (`web/pane-keys.mjs`), so the
@@ -344,8 +361,9 @@ folded, and Unstar beside each takes the star off.
 
 On a phone, ⋯ opens as a sheet from the bottom, and the moves sit behind
 "Move or join…", which opens a second sheet. A message swiped to the right
-folds to its row, in any state of its stack, fully open included, and its
-row swiped to the left, or tapped, unfolds it. A drag that starts on
+folds to its row, in any state of its stack, fully open included, the
+dossier's last visible message too (item 472), and its row swiped to the
+left, or tapped, unfolds it. A drag that starts on
 something scrolling sideways, such as a wide table or a block of code,
 scrolls it instead. A long message that scrolls up and down inside its card
 (item 381) is not such a thing: its card scrolls only up and down, and a
@@ -373,6 +391,14 @@ over something that scrolls sideways, and the wheel with Ctrl or ⌘ held
 well (item 393): one that goes further down than across ends the swipe and
 is the browser's, so a scroll begun right after a swipe folded a message,
 still inside its 250 ms, scrolls the page at once.
+
+With Option held, two fingers swiped right over a message in a dossier fold
+it and every message before it in the dossier, its first message included
+(item 472): each for the reader alone, as a plain fold is, a starred message
+staying whole and the messages after it untouched, and ⌘Z right after
+unfolds them all. Without Option only the message under the fingers folds.
+Safari's engine in the test harness turns the wheel with no keys held, so
+this is checked in Chrome.
 
 A card that a join, a move or a new reply carries to another place keeps
 where it was scrolled: a table scrolled sideways, or a long message scrolled
@@ -434,10 +460,11 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `.stack-placed-line`, with `.stack-placed-words` and `.stack-unplace`.
 - `[data-starred=true]` on any card the reader starred, and `.card-star`,
   the header's star, outlined or filled.
-- `[data-folded=true]` on any card the reader folded, holding its one row,
+- `[data-folded=true]` on any card the reader folded, a dossier's first
+  message included (its row follows the head row), holding its one row,
   `.message-folded` (`.folded-author`, `.folded-words`, `.folded-thumb`,
-  the row's 👍, and `.folded-cue`);
-  `.stack-folded` in a head row whose first message is folded.
+  the row's 👍, whose `data-count` says how many have given one, and
+  `.folded-cue`).
 
 Another look replaces that one file. Nothing in the drawing code chooses a
 colour, a border or a spacing. The look now is the Dossier: a stack is one
@@ -459,14 +486,17 @@ measures the line itself, not blank space above it: with the line a tenth
 inside the window, the page stays where it was. No arrival or fold motion
 is part of this static treatment (item 429; motion remains item 412).
 
-The first author letter aligns with the body text. An agent's badge protrudes
-4px to the left; only the first name fragment moves when an Unread pill holds
-the final grapheme. A folded message keeps its author and words at full
+The first author letter aligns with the body text. In a dossier an author's
+name is plain words (item 471); in a placed message's folder an agent's badge
+protrudes 4px to the left, and only the first name fragment moves when an
+Unread pill holds the final grapheme. A folded message keeps its author and words at full
 contrast, including quiet agent talk. In a dossier, a saved fold gives its
 card the existing read material even before its read marker catches up; this
-presentation writes no read command. Nothing else does: a thumbs-up, the
-reader's own or anyone's, leaves a card's material to its read state, and so
-does a fold outside a dossier, a placed single message included. Own messages
+presentation writes no read command, and it holds for a person's card as for
+an agent's. Nothing else does: a thumbs-up on a card it does not fold (anyone
+else's, or the reader's own on a starred card) leaves the card's material to
+its read state, and so does a fold outside a dossier, a placed single message
+included. Own messages
 retain black. Folded words keep at least 4.5:1 contrast across all agent palettes in
 light and dark.
 
@@ -479,7 +509,11 @@ reader's existing star act (item 413).
 Shown whole, the head's card is the first
 sheet; while the stack is renamed, the field takes the tab's place. Only one
 current target has the strong ring: a message, or the whole folder when its
-compact header or a stack control is selected. The enclosing stack does not
+compact header or a stack control is selected. The next card overlaps the lit
+one's bottom edge, so its ring's bottom side is drawn again above that card,
+the ring alone and never the card, so the next card's words stay uncovered
+(item 430). A message between others keeps its quiet fold line in a dossier,
+and the line answers the pointer and shows when it is open, as anywhere. The enclosing stack does not
 also light up for a selected message. Stale keyboard focus, unread state and
 hover on an unselected message do not get another strong border. A placed message
 on its own is a folder with no tab. The folder ends after its messages and
@@ -496,7 +530,8 @@ first-letter alignment, folded palette contrast including quiet states, and the
 exposed phone strip with a real folded-thumb press. The negative cases retain
 the full open messages, a normal single card and the star's fold protection,
 and the unread material of a card with the reader's own thumbs-up (inside a
-dossier and out) and of a fold outside a dossier (in the feed and placed).
+dossier and out) and of a fold outside a dossier (in the feed and placed). A
+saved fold's read material is checked on an agent's reply and a person's.
 
 | What | Where |
 | --- | --- |
@@ -514,6 +549,12 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
+| inside a dossier: plain names, folded rows with no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier (item 471) a name is plain words …" |
+| inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier (item 471) a press on a shown message's header …" |
+| Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad …" |
+| a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
+| the lit card's ring above the next card, a reply's and the first message's, read from the screen | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, light and dark, `tests/stack_native.mjs`, "reading stacks the lit card's ring keeps its bottom side above the next card …" |
+| a fold line in a dossier under the pointer and open | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a fold line in a dossier answers the pointer …" |
 | one line of a message: the author's words after a quote, colon and all, a quote alone, list and heading marks, an attachment alone, an empty message, a long line | `tests/ui_message_preview.test.mjs` |
 | on the page: folded rows, a dossier's name folded and not, and a message on its own show the author's own words on one line, at 320, 375 and 390 pixels and on a laptop; renaming starts from that name and Return unchanged names nothing | `tests/stack_native.mjs`, "reading stacks a folded message's row shows its author's own words …", in Chrome and Safari's engine |
 | an act's answer that lands after a 👍's reactions read put a new copy of the message in the page: x never refolds it and a second x is not refused, a star stays | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks x unfolds a folded message while its 👍's read is out …" and "reading stacks Star for me on a folded message while its 👍's read is out …" |
@@ -539,9 +580,9 @@ Not yet:
 
 ## Put a dossier aside
 
-A right swipe on its header or last visible message moves the dossier below
-More messages for you, on every device. Other messages keep their individual
-fold gesture. The menu offers Move below More and Bring back above More;
+A right swipe on its title bar (its head row, or the chevron) moves the
+dossier below More messages for you, on every device. Every message keeps
+its own fold gesture, the last one shown included (item 472). The menu offers Move below More and Bring back above More;
 Command-Z undoes a move. Existing unread messages and your own replies leave
 it there; a newer visible reply from someone else brings it back. Links can
 show its messages without clearing your choice. More is a boundary for the

@@ -379,7 +379,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await until(() => p.evaluate('window.watched === true && window.fetchesOut === 0'), 'phone: the page reads the dossiers\' places after the star');
         await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
       });
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), 'phone: the tap on the head shows the ask whole');
+      // The head row is the dossier's title (item 471): the tap opens the dossier, its light kept on the ask it landed
+      // in, and the ask, which the answer folded, shows as its row; a tap on that row shows it whole.
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))}).closest('.reply-stack')?.dataset.headOpen === 'true'`), 'phone: the tap on the head opens the dossier');
+      assert.ok((await lit(p)).includes(ids.ask), `phone, a star on a message ${starred === 'shown' ? 'the page shows' : 'not loaded'}: the tap held through the repaint keeps the light on the ask (lit ${JSON.stringify(await lit(p))})`);
+      if (await foldedRow(p, ids.ask)) await unfoldRow(p, device, ids.ask);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), 'phone: the ask shows whole');
       if (starred === 'shown') await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(target))})?.dataset.starred === 'true'`), 'phone: the page shows the star');
       await until(async () => (await lit(p)).includes(ids.ask) && (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false',
         `phone, a star on a message ${starred === 'shown' ? 'the page shows' : 'not loaded'}: the ask stays lit and its bar shows ✅`).catch(async error => {
