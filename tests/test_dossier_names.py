@@ -310,6 +310,33 @@ class HarnessCase(NamesCase):
         self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
         self.assertLess(large["vm_steps"], small["vm_steps"] + 200, "three thousand more messages in the topic cost nothing")
 
+    def test_a_disabled_coordinator_is_told_nothing_and_the_first_agent_is_told_and_mints_through_the_harness(self):
+        """A coordinator switched off (actors.enabled=0) is sent no reply, so it is no namer: the first agent to reply
+        is told by its reply and by the next reply delivered to it, and a fake agent reading that notice mints."""
+        self.sql("UPDATE actors SET enabled=0 WHERE id='agent-a'")
+        root = self.post("Can we lock the cabin?")
+        code, out, err = self.run_cli("reply", root, "Friday works.", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn('you name it:  [you name its dossier: mint %s --expected 0 "two to five words"]' % root, out)
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient_id='agent-a' "
+                                  "AND (m.id=? OR m.reply_to=?)", (root, root))[0][0], 0, "Core sends the disabled coordinator nothing of the dossier")
+        found = self.store.view("agent-b", "stack_namer", {"message_id": root})
+        self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
+        self.rejected(self.mint(root, "Cabin week plan", actor="agent-a"), "INVALID_ACTOR")
+        # The owner's reply reaches agent-b carrying name_it, so a harness that missed the hint is told again.
+        reply = self.post("Or Saturday.", reply_to=root)
+        self.assertEqual(self.deliveries("agent-b")[reply].get("name_it"), {"root_id": root, "name_revision": 0})
+        first_agent = FakeCoordinator(self, actor="agent-b")
+        [(code, out, err)] = first_agent.wake()
+        self.assertEqual((code, err, out), (0, "", 'named the dossier of %s "Cabin week plan"\n' % root))
+        self.assertEqual(self.names(), [({"name": "Cabin week plan", "minted": True}, "agent-b")])
+        # Named, a later reply tells nobody, and the coordinator switched back on finds it named.
+        self.post("Another reply", reply_to=root)
+        self.assertEqual(first_agent.wake(), [])
+        self.sql("UPDATE actors SET enabled=1 WHERE id='agent-a'")
+        self.rejected(self.mint(root, "Another name now", revision=1), "ALREADY_NAMED")
+        self.assertEqual(len(self.names()), 1)
+
     def test_an_agent_that_does_not_name_the_dossier_is_never_told_to(self):
         root = self.post("Root", addressees=["agent-b"], intent="tell")
         reply = self.post("Reply", reply_to=root, addressees=["agent-b"], intent="tell")

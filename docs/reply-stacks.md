@@ -112,11 +112,11 @@ When the first reply on the record lands in a dossier nobody has named, its
 namer writes a short name for it, two to five words for what it is about, as a
 `stack.name` act with `minted: true`. The namer is the outcome's coordinator
 when Core sends it the dossier's replies: an agent, enabled, taking part in
-the dossier's topic. Otherwise (no coordinator, a person coordinating, or a
-coordinator outside the topic, as in one started with `start OUTCOME --with`)
-it is the first agent that replied, whose own reply tells it. With no agent
-reply the dossier keeps its first line. A name a person types wins and
-is never replaced: once anyone has named a dossier, even if they cleared the
+the dossier's topic. Otherwise (no coordinator, a person coordinating, a
+coordinator switched off, or one outside the topic, as in one started with
+`start OUTCOME --with`) it is the first agent that replied, whose own reply
+tells it. With no agent reply the dossier keeps its first line. A name a
+person types wins and is never replaced: once anyone has named a dossier, even if they cleared the
 name since, it is never minted, and a dossier is minted once, so a second
 reply mints nothing more. A whisper counts as no reply, since a name is
 everyone's, and a dossier whose first message is a whisper is never minted.
@@ -583,7 +583,7 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the star in a message's header: an outline while lit, filled once starred, for the reader alone, opening nothing | `tests/stack_native.mjs`, "reading stacks a star in a message's header …", in Chrome and Safari's engine |
 | a minted name, in Core: the coordinator once the first reply lands, two to five words, minted once, never over a typed name (cleared or not), a person's rename while the agent prepares its mint, not the coordinator's agent, the first agent with no coordinator, a whisper, a message that is not the first, an old name read unchanged | `tests/test_dossier_names.py` (`CoreCase`) |
-| the harness: `name_it` on the namer's delivery alone, the notice and `inbox` saying the mint once, a fake coordinator minting through `mint`, the hint after `reply`, `mint` refused after a person's rename | `tests/test_dossier_names.py` (`HarnessCase`, `NoticeCase`) |
+| the harness: `name_it` on the namer's delivery alone, the notice and `inbox` saying the mint once, a fake coordinator minting through `mint`, the hint after `reply`, a coordinator switched off told nothing while the first agent to reply is told and mints through the notice, `mint` refused after a person's rename | `tests/test_dossier_names.py` (`HarnessCase`, `NoticeCase`) |
 | the head says who minted its name | `tests/ui_stack_order.test.mjs` (`mintedBy`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a minted name says Named by …", at 320, 375 and 390 pixels and on a laptop, light and dark, folded and open |
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
