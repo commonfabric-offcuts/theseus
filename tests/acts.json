@@ -1829,21 +1829,6 @@
    }
   },
   {
-   "item": 272,
-   "act": "+ New topic under another outcome starts the topic in that outcome",
-   "break": [
-    [
-     "web/outline-rail.mjs",
-     "bootstrap: this.handles.bootstrap, workspace: outcome.id });",
-     "bootstrap: this.handles.bootstrap, workspace: this.here });"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "chips show only"
-   }
-  },
-  {
    "item": 131,
    "act": "A right-rail section the person folds stays folded across moves and reloads",
    "break": [
@@ -2209,21 +2194,6 @@
    "check": {
     "native": "rail",
     "case": "rail a press on a row whose move the page refuses leaves no ring"
-   }
-  },
-  {
-   "item": 289,
-   "act": "→ on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
-   "break": [
-    [
-     "web/outline-rail.mjs",
-     "if ((row.level === 1 && row.expanded) || !this.tree.stepIn(row, rows, open))",
-     "if (!this.tree.stepIn(row, rows, open))"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail → on an open outcome goes into the messages"
    }
   },
   {
@@ -12064,6 +12034,411 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 272,
+   "act": "The pencil beside another outcome starts the topic in that outcome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "bootstrap: this.handles.bootstrap, workspace: outcome.id });",
+     "bootstrap: this.handles.bootstrap, workspace: this.here });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 289,
+   "act": "→ on a folded outcome in the outline opens it and keeps the keys on it",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const open = each => (each.level === 1 ? this.setOpen(each.outcome, true) : each.el.parentElement.open = true);",
+     "const open = each => (each.level === 1 ? null : each.el.parentElement.open = true);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pencil beside an outcome's name is quiet on a laptop until the pointer or the keys are on its row",
+   "break": [
+    [
+     "web/rails.css",
+     "border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:0}",
+     "border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pointer on an outcome's row shows its pencil",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}",
+     "@media(hover:hover){.ol-heading:hover .ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pointer on the Outcomes heading shows its New outcome pencil",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The keys on an outcome's name show its pencil",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true]{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil whose title line is open stays shown with the pointer gone",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}",
+     ".ol-pencil:focus-visible,.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "On a phone every pencil always shows",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:none),(max-width:760px){.ol-pencil{opacity:1}}",
+     "@media(hover:none),(max-width:760px){.ol-pencil{opacity:0}}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is 44px to press",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:2.75rem;",
+     ".ol-pencil{display:inline-grid;place-items:center;width:2rem;height:2rem;min-height:2rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is named for what it starts",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  button.setAttribute('aria-label', label);\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is New message's glyph",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  button.append(glyph);\n",
+     "  button.append(glyph); glyph.querySelector('path').setAttribute('d', 'M4 4h16');\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A press on an outcome's pencil opens its title line and neither opens nor folds the outcome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const row = element(doc, 'div', { className: 'ol-row' }, name, newTopic, waiting);",
+     "const row = element(doc, 'div', { className: 'ol-row' }, name, waiting); name.append(newTopic);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pencil's title line opens under the outcome's row",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "lineFromButton({ button: outcome.newTopic, after: outcome.row, line });",
+     "lineFromButton({ button: outcome.newTopic, after: outcome.topics, line });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "No + New topic row: the page's own New topic stays out of sight under the outcome being read",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-adopted>.rail-heading,.ol-adopted #topics-key{display:none!important}",
+     ".ol-adopted #topics-key{display:none!important}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The next → on an open outcome lands on its pencil",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push(",
+     "if (pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "→ on an outcome's pencil goes on into the messages",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "key: 'pencil:' + id, parent: outcome.name, outcome });",
+     "key: 'pencil:' + id, parent: outcome.name, outcome, expanded: false });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "↑ from the first outcome lands on the Outcomes heading's pencil",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null, aside: true }];",
+     "const rows = [];"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The keys move on from the Outcomes pencil as from any row of the outline",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "also: [this.newOutcome] });",
+     "also: [] });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A folded outcome's pencil is no row of the tree and says it is none",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (!now.has(el) && shown(el)) for",
+     "if (false) for"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A folded outcome's pencil is no Tab stop: the outline stays one Tab stop",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "title: tip, tabIndex: -1 });",
+     "title: tip });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "With the place being read folded away, Tab into the outline lands on an outcome, never on the heading's pencil",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "|| reading || rows.find(row => !row.aside) || rows[0] || null;",
+     "|| reading || rows[0] || null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the pencil beside another outcome starts a topic there"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The New outcome title line opens clear of the heading and its pencil, at a phone's width as on a laptop",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0}",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0 -1.25rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A second Return while a pencil's title line is starting sends nothing more",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "if (this.busy) return;",
+     "void 0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line says it is busy while its command is on its way",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.busy = true; this.input.setAttribute('aria-busy', 'true');",
+     "this.busy = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new topic keeps the title typed in the outcome's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await starter.start(title);",
+     "line.input.value = ''; const id = await starter.start(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new outcome keeps the title typed in the heading's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await start.create(title);",
+     "line.input.value = ''; const id = await start.create(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line fits the open drawer at 320",
+   "break": [
+    [
+     "web/aim.css",
+     ".one-line input{width:100%;max-width:32rem;min-width:0;",
+     ".one-line input{width:100%;max-width:32rem;min-width:19rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
    }
   }
  ]

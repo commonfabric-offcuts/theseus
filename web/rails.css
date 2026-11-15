@@ -25,13 +25,13 @@
 .ol-sums .chip[aria-pressed=true]{border-color:var(--accent);background:var(--soft);color:var(--ink);font-weight:650}
 .ol-sums .chip:disabled{opacity:.55}
 .ol-heading{margin-top:0}
-.ol-heading-tools{display:flex;gap:.1rem}
-.ol-heading-tools button{min-height:2.25rem;padding:.2rem .5rem;font-size:.8rem;color:var(--accent)}
+.ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0}
 .ol-list{list-style:none;margin:0;padding:0}
 .ol-outcome{margin:0 0 .15rem}
 .ol-outcome[hidden]{display:none}
-/* The whole row is the outcome's one control: no fold button beside it, so the name has the rail's width. */
-.ol-row{display:flex;align-items:stretch;flex-direction:column}
+/* The whole row is the outcome's one control: no fold button beside it. Its pencil sits at the end of its first line. */
+.ol-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+.ol-row>.ol-name{grid-column:1}.ol-row>.ol-new-topic{grid-column:2;grid-row:1}.ol-row>.ol-waiting{grid-column:1/-1}
 .ol-name{display:block;flex:1;min-width:0;min-height:2.75rem;padding:.45rem .55rem;border:1px solid transparent;border-radius:.5rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
 .ol-name:hover{background:var(--soft)}
 .ol-name[aria-current=page]{background:var(--soft);border-color:var(--line)}
@@ -48,7 +48,16 @@
 .ol-topics .topic-list a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
 .ol-topics .topic-group{margin:.2rem 0}
 .ol-topics .topic-group>summary{cursor:pointer;color:var(--muted);font-size:.85rem;padding:.35rem .2rem}
-.ol-new-topic{min-height:2.5rem;padding:.2rem .5rem;font-size:.85rem;color:var(--accent)}
+/* A pencil starts something new (item 305): a new topic beside an outcome's name, a new outcome beside the
+   heading, the same glyph as New message. Quiet until its row has the pointer or the keys, or its title line
+   is open; always shown where nothing hovers or on a phone's width; 44px to press everywhere. */
+.ol-pencil{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:2.75rem;padding:0;border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:0}
+.ol-pencil svg{width:1.1rem;height:1.1rem}
+/* A finger's press leaves no lit square behind: only a pointer's hover tints a pencil. */
+.ol-pencil:hover{background:transparent}.ol-pencil{-webkit-tap-highlight-color:transparent}
+.ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}
+@media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}.ol-pencil:hover{color:var(--ink);background:var(--soft)}}
+@media(hover:none),(max-width:760px){.ol-pencil{opacity:1}}
 .ol-key{display:none;font-size:.78rem;margin:.8rem 0 0}
 /* The keys move through the outline and the right rail as trees (key-tree.mjs): the row the keys are on wears the ring. */
 [role=tree] [role=treeitem]:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
@@ -67,11 +76,9 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-keys dt{font-weight:650;color:var(--ink);white-space:nowrap}
 .ol-keys dd{margin:0}
 .outline:has(.ol-topics:not([hidden]) .topic-work) .ol-key{display:block}
-/* The page's own list, under the outcome being read: its rows as the outline's, New topic at its end. */
-.ol-adopted>.rail-heading{margin:0;justify-content:flex-start}
-.ol-adopted>.rail-heading h2,.ol-adopted #topics-key{display:none!important}
-.ol-adopted #new-topic{min-height:2.5rem;padding:.2rem .5rem;border-color:transparent;background:transparent;font-size:.85rem;color:var(--accent)}
-.ol-adopted #new-topic::before{content:"+ "}
+/* The page's own list, under the outcome being read: its rows as the outline's. Its heading, with the page's
+   own New topic, stays out of sight: the outcome's pencil starts a topic (item 305). */
+.ol-adopted>.rail-heading,.ol-adopted #topics-key{display:none!important}
 .ol-adopted #topics{display:block;overflow:visible;padding:0}
 .ol-adopted #topics a.nav-item{display:block;width:100%;max-width:none;margin:.15rem 0}
 .ol-adopted #outcome-empty{padding:.3rem .5rem;font-size:.85rem}
@@ -79,7 +86,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 /* "N new" and "N waiting on you" show only what they count: outcomes that hold some, and in them only those topics. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),
 .outline[data-only=waiting] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.topic-state.mine)),
-.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.ol-new-topic,.one-line,.rail-heading,#outcome-empty){display:none!important}
+.outline:is([data-only=new],[data-only=waiting]) .ol-topics :is(.topic-group,.one-line,.rail-heading,#outcome-empty){display:none!important}
 
 /* ---- The outcome's things ---- */
 .things{padding:1.3rem 1rem;background:var(--paper)}
