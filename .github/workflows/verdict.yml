@@ -11,6 +11,11 @@
 # the one a branch rule requires. Every change to a test's definition is listed
 # in it for the item's reviewer, since a change can rewrite its own tests.
 #
+# A push to an approved branch is judged the same way, with no pull request: the
+# pushed head is the candidate and its first parent the base it is compared
+# against, and the check run goes on the pushed head. A merged train's check
+# names the train's pull request and the items its commits carried.
+#
 # Two jobs: judge reads and decides with a read-only token, and publish, which
 # alone may write a check run, posts what judge decided. Everything read from an
 # artifact is data: object ids are accepted only as forty hex digits, and values
@@ -50,9 +55,9 @@ env:
 jobs:
   judge:
     name: judge the producer's evidence
-    # A pull request's producer run gets a verdict, a cancelled one included: its head gets a terminal result that
-    # says so, since a cancellation by hand has no successor to speak for it. A push run's evidence is the deploy's.
-    if: github.event.workflow_run.event == 'pull_request'
+    # A pull request's or a push's producer run gets a verdict, a cancelled one included: its head gets a terminal
+    # result that says so, since a cancellation by hand has no successor to speak for it.
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push'
     # ubuntu-24.04 by name, not ubuntu-latest. The validator's read-expression signatures are hashes of
     # ast.dump's text, which Python 3.13 changed, and the declarations are signed on Macs running 3.9. The
     # 26.04 image's Python read every declaration as missing. The classify step checks the interpreter too.
@@ -63,7 +68,10 @@ jobs:
       actions: read
     outputs:
       head_sha: ${{ steps.record.outputs.head_sha }}
-      # The approved base GitHub's record named, or empty: publish names the check run for it, record or no record.
+      # The commit the check run goes on: the pull request's head, or the pushed head GitHub's record names.
+      status_head_sha: ${{ steps.record.outputs.status_head_sha }}
+      # The approved base GitHub's record named, or empty: publish names the check run for it, record or no record. On
+      # a push it is the branch pushed to, the comparison base's ref.
       base_ref: ${{ steps.record.outputs.base_ref }}
       conclusion: ${{ steps.decide.outputs.conclusion }}
       decided: ${{ steps.decide.outputs.decided }}
@@ -79,28 +87,36 @@ jobs:
       - name: GitHub's record of the producer run
         id: record
         shell: bash
+        env:
+          EVENT_HEAD: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           mkdir -p "$OUT"
           : > "$OUT/refusals"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN/attempts/$PRODUCER_ATTEMPT" > "$OUT/run.json"
           # What GitHub itself says about the run: its event, its attempt, its workflow, the head it ran for and the one
-          # pull request it belongs to. Everything the artifacts say is held against this record, never the reverse.
-          python3 - "$OUT/run.json" "$OUT/producer.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os, re, sys
+          # pull request it belongs to, or for a push the branch and the pushed commit's own parents and tree. Everything
+          # the artifacts say is held against this record, never the reverse.
+          python3 -I - "$OUT/run.json" "$OUT/producer.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, subprocess, sys
           run = json.load(open(sys.argv[1]))
           env = os.environ
           hex40 = re.compile(r"^[0-9a-f]{40}$")
           refusals = []
+          push = run.get("event") == "push"
           prs = run.get("pull_requests") or []
-          pr = prs[0] if len(prs) == 1 else {}
+          # A push has no pull request, whatever GitHub associates with its branch: none is read or invented.
+          pr = prs[0] if len(prs) == 1 and not push else {}
           head_repo = (run.get("head_repository") or {}).get("full_name")
           head_sha = run.get("head_sha")
+          head_branch = run.get("head_branch")
           pr_head = (pr.get("head") or {}).get("sha")
           base_ref = (pr.get("base") or {}).get("ref")
           base_sha = (pr.get("base") or {}).get("sha")
-          if run.get("event") != "pull_request":
-              refusals.append("the producer run's event is %s, not pull_request" % run.get("event"))
+          approved_bases = [b for b in env["APPROVED_BASES"].split(",") if b]
+          parents, tree = [], None
+          if run.get("event") not in ("pull_request", "push"):
+              refusals.append("the producer run's event is %s, not pull_request or push" % run.get("event"))
           if run.get("conclusion") != "success" and run.get("conclusion") != "failure":
               refusals.append("the producer run ended %s, so it left no complete evidence" % run.get("conclusion"))
           if str(run.get("run_attempt")) != env["PRODUCER_ATTEMPT"]:
@@ -114,7 +130,36 @@ jobs:
                   run.get("workflow_id"), run.get("path"), env["PRODUCER_WORKFLOW_ID"], env["PRODUCER_WORKFLOW_PATH"]))
           if head_repo != env["GITHUB_REPOSITORY"]:
               refusals.append("the head lives in %s; a pull request from another repository is not checked here" % head_repo)
-          if len(prs) != 1:
+          if push:
+              # The push's identity is GitHub's record of the run, held to the event that woke this workflow; its base is
+              # the pushed commit's first parent, as GitHub's record of that commit names it.
+              base_ref = head_branch
+              if env.get("EVENT_HEAD") != head_sha:
+                  refusals.append("the event names the pushed head %s, but GitHub's record of the run names %s" % (
+                      re.sub(r"\s+", " ", str(env.get("EVENT_HEAD")))[:60], re.sub(r"\s+", " ", str(head_sha))[:60]))
+              if head_branch not in approved_bases:
+                  refusals.append("the push is to %s, not a branch whose pushes are judged here" % re.sub(r"\s+", " ", str(head_branch))[:120])
+              if isinstance(head_sha, str) and hex40.match(head_sha):
+                  answer = subprocess.run(["gh", "api", "repos/%s/git/commits/%s" % (env["GITHUB_REPOSITORY"], head_sha)], capture_output=True, text=True)
+                  try:
+                      commit = json.loads(answer.stdout) if answer.returncode == 0 else None
+                  except ValueError:
+                      commit = None
+                  if not isinstance(commit, dict):
+                      refusals.append("GitHub's record of the pushed head %s could not be read: %s" % (head_sha, re.sub(r"\s+", " ", answer.stderr)[:200]))
+                  else:
+                      parents = [p.get("sha") if isinstance(p, dict) else None for p in commit.get("parents") or []]
+                      tree = (commit.get("tree") or {}).get("sha")
+                      if commit.get("sha") != head_sha:
+                          refusals.append("GitHub's record of the pushed head is of another commit")
+                      if not parents or not all(isinstance(v, str) and hex40.match(v) for v in parents):
+                          refusals.append("GitHub's record of the pushed head %s names no parents to compare it against" % head_sha)
+                          parents = []
+                      if not (isinstance(tree, str) and hex40.match(tree)):
+                          refusals.append("GitHub's record of the pushed head %s names no tree" % head_sha)
+                          tree = None
+                      base_sha = parents[0] if parents else None
+          elif len(prs) != 1:
               refusals.append("the run belongs to %d pull requests, not one" % len(prs))
           else:
               if pr_head != head_sha:
@@ -124,13 +169,19 @@ jobs:
           for name, value in (("head", head_sha), ("base", base_sha)):
               if not (isinstance(value, str) and hex40.match(value)):
                   refusals.append("GitHub's record names no %s commit id" % name)
+          bound = {"run_id": str(run.get("id")), "run_attempt": str(run.get("run_attempt")), "event": run.get("event"),
+                   "conclusion": run.get("conclusion"), "workflow_id": run.get("workflow_id"), "workflow_path": run.get("path"),
+                   "workflow_name": run.get("name"),
+                   "head_sha": head_sha, "head_branch": run.get("head_branch"), "head_repository": head_repo,
+                   "created_at": run.get("created_at"), "url": run.get("html_url")}
+          if push:
+              # The base a push is compared against, and the pushed commit as GitHub's record has it.
+              bound["comparison_base"] = {"ref": head_branch, "sha": base_sha}
+              bound["head_commit"] = {"sha": head_sha, "tree": tree, "parents": parents}
+          else:
+              bound["pull_request"] = {"number": pr.get("number"), "head_sha": pr_head, "base_ref": base_ref, "base_sha": base_sha}
           producer = {
-              "producer": {"run_id": str(run.get("id")), "run_attempt": str(run.get("run_attempt")), "event": run.get("event"),
-                           "conclusion": run.get("conclusion"), "workflow_id": run.get("workflow_id"), "workflow_path": run.get("path"),
-                           "workflow_name": run.get("name"),
-                           "head_sha": head_sha, "head_branch": run.get("head_branch"), "head_repository": head_repo,
-                           "created_at": run.get("created_at"), "url": run.get("html_url"),
-                           "pull_request": {"number": pr.get("number"), "head_sha": pr_head, "base_ref": base_ref, "base_sha": base_sha}},
+              "producer": bound,
               # The controller's own identity, so the proof names which workflow commit judged the run.
               "controller": {"run_id": env.get("GITHUB_RUN_ID"), "run_attempt": env.get("GITHUB_RUN_ATTEMPT"),
                              "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF"),
@@ -142,8 +193,11 @@ jobs:
           ok = not refusals
           # Outputs carry only values checked above; a refused record exposes nothing for later steps to act on, except
           # the base when it is on the approved list, so that the refusal is published under that base's check name.
-          approved = len(prs) == 1 and base_ref in [b for b in env["APPROVED_BASES"].split(",") if b]
+          approved = (head_branch in approved_bases) if push else (len(prs) == 1 and base_ref in [b for b in env["APPROVED_BASES"].split(",") if b])
           print("head_sha=%s" % (head_sha if isinstance(head_sha, str) and hex40.match(head_sha) else ""))
+          print("status_head_sha=%s" % (head_sha if isinstance(head_sha, str) and hex40.match(head_sha) else ""))
+          print("event=%s" % (run.get("event") if ok else ""))
+          print("parents=%s" % (" ".join(parents) if ok and push else ""))
           print("base_sha=%s" % (base_sha if ok else ""))
           print("base_ref=%s" % (base_ref if approved else ""))
           print("number=%s" % (pr.get("number") if ok and isinstance(pr.get("number"), int) else ""))
@@ -177,10 +231,14 @@ jobs:
           # The receipts nominate a merge commit, its tree and its parents; they prove nothing by themselves. Here they
           # must agree with each other and with GitHub's record: every receipt from this run and attempt, one merge,
           # its second parent the head GitHub ran for, its first parent exactly the base the pull request names, since
-          # the candidate is held against that commit and that branch's own runs.
-          python3 - "$OUT/producer.json" "$OUT/shards" "$OUT/release-check" "$OUT/merge.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
+          # the candidate is held against that commit and that branch's own runs. On a push the commit checked is the
+          # pushed head itself, with the parents and tree GitHub's record of it names, and every receipt binds no base
+          # and the pushed branch's head.
+          python3 -I - "$OUT/producer.json" "$OUT/shards" "$OUT/release-check" "$OUT/merge.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
           import glob, json, os, re, sys
           producer = json.load(open(sys.argv[1]))["producer"]
+          push = producer["event"] == "push"
+          pushed = producer.get("head_commit") or {}
           shards_dir, release_check, out, refusals_path = sys.argv[2:6]
           hex40 = re.compile(r"^[0-9a-f]{40}$")
           def clean(value):
@@ -209,17 +267,31 @@ jobs:
               merge = receipt.get("merge") if isinstance(receipt.get("merge"), dict) else {}
               # Only a well-formed object id is kept; anything else reads as missing, and never reaches a message or a set.
               fields = tuple(v if isinstance(v, str) and hex40.match(v) else None for v in (merge.get(k) for k in ("sha", "tree", "first_parent", "second_parent")))
-              if not all(fields):
+              # A pushed head with one parent has no second; every other commit checked names all four.
+              if not all(fields if not (push and len(pushed.get("parents") or []) == 1) else fields[:3]):
                   refusals.append("%s names a merge with a malformed or missing object id" % clean(os.path.relpath(path, shards_dir)))
+              if push and (receipt.get("base") != {"ref": None, "sha": None}
+                           or receipt.get("head") != {"ref": "refs/heads/%s" % producer["head_branch"], "sha": producer["head_sha"]}):
+                  refusals.append("%s binds base %s and head %s, not no base and refs/heads/%s at %s" % (
+                      clean(os.path.relpath(path, shards_dir)), clean(receipt.get("base")), clean(receipt.get("head")), producer["head_branch"], producer["head_sha"]))
               merges.add(fields)
           if len(merges) > 1:
               refusals.append("the shards name different merges: %s" % sorted(str(m) for m in merges))
           sha, tree, first, second = merges.pop() if len(merges) == 1 else (None, None, None, None)
-          if sha and second != producer["head_sha"]:
-              refusals.append("the merge's second parent %s is not the head GitHub ran this for, %s" % (second, producer["head_sha"]))
-          if sha and first != producer["pull_request"]["base_sha"]:
-              refusals.append("the merge's first parent %s is not the base the pull request names, %s; a fresh run from a new push merges onto the current base" % (
-                  first, producer["pull_request"]["base_sha"]))
+          if push:
+              if sha and sha != producer["head_sha"]:
+                  refusals.append("the shards checked %s, not the pushed head GitHub ran this for, %s" % (sha, producer["head_sha"]))
+              if sha and [first] + ([second] if second else []) != pushed.get("parents"):
+                  refusals.append("the shards name parents %s, but GitHub's record of the pushed head names %s" % (
+                      " ".join(str(v) for v in [first, second] if v), " ".join(pushed.get("parents") or [])))
+              if sha and tree != pushed.get("tree"):
+                  refusals.append("the shards name tree %s, but GitHub's record of the pushed head names %s" % (tree, pushed.get("tree")))
+          else:
+              if sha and second != producer["head_sha"]:
+                  refusals.append("the merge's second parent %s is not the head GitHub ran this for, %s" % (second, producer["head_sha"]))
+              if sha and first != producer["pull_request"]["base_sha"]:
+                  refusals.append("the merge's first parent %s is not the base the pull request names, %s; a fresh run from a new push merges onto the current base" % (
+                      first, producer["pull_request"]["base_sha"]))
           json.dump({"sha": sha, "tree": tree, "first_parent": first, "second_parent": second, "fetched": None, "rebuilt": None}, open(out, "w"), indent=1)
           open(refusals_path, "a").write("".join(line + "\n" for line in refusals))
           ok = not refusals and sha is not None
@@ -239,57 +311,100 @@ jobs:
           NUMBER: ${{ steps.record.outputs.number }}
           MERGE_SHA: ${{ steps.receipts.outputs.merge_sha }}
           TREE: ${{ steps.receipts.outputs.tree }}
+          EVENT: ${{ steps.record.outputs.event }}
+          PARENTS: ${{ steps.record.outputs.parents }}
         run: |
           set -euo pipefail
           cd "$OUT"
           refuse() { echo "$1" >> "$OUT/refusals"; exit 0; }
           git clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" candidate
           cd candidate
-          git fetch -q origin "refs/pull/$NUMBER/head"
-          if [ "$(git rev-parse FETCH_HEAD)" != "$HEAD_SHA" ]; then
-            refuse "refs/pull/$NUMBER/head is $(git rev-parse FETCH_HEAD) now, not $HEAD_SHA; the pull request has moved on and its newer run gets the verdict"
-          fi
-          if ! git merge-base --is-ancestor "$BASE_SHA" "origin/$BASE_REF"; then
-            refuse "the base $BASE_SHA is not a commit on $BASE_REF"
-          fi
-          # The merge commit the producer checked out, fetched by its id: its parents and tree must be the ones the
-          # receipts name and GitHub's record implies. If GitHub no longer serves it, the run is stale.
-          if ! git fetch -q origin "$MERGE_SHA" 2>/dev/null || ! git cat-file -e "$MERGE_SHA^{commit}" 2>/dev/null; then
-            refuse "the tested merge commit $MERGE_SHA can no longer be fetched; a fresh run from a new push is needed"
-          fi
-          parents="$(git rev-list --parents -n 1 "$MERGE_SHA" | cut -d' ' -f2-)"
-          if [ "$parents" != "$BASE_SHA $HEAD_SHA" ]; then
-            refuse "the tested merge $MERGE_SHA has parents $parents, not $BASE_SHA and $HEAD_SHA"
-          fi
-          if [ "$(git rev-parse "$MERGE_SHA^{tree}")" != "$TREE" ]; then
-            refuse "the tested merge $MERGE_SHA has tree $(git rev-parse "$MERGE_SHA^{tree}"), not the tree the receipts name, $TREE"
-          fi
-          # The independent check on that tree: merging the two authenticated parents here must give the same tree.
-          git checkout -q "$BASE_SHA"
-          if ! git -c user.name=verdict -c user.email=verdict@users.noreply.github.com merge -q --no-ff --no-edit "$HEAD_SHA" >/dev/null 2>&1; then
-            refuse "merging $HEAD_SHA onto $BASE_SHA does not merge cleanly here, so the tested tree cannot be rebuilt"
-          fi
-          rebuilt="$(git rev-parse 'HEAD^{tree}')"
-          if [ "$rebuilt" != "$TREE" ]; then
-            refuse "the merge of $HEAD_SHA onto $BASE_SHA has tree $rebuilt, not the tested tree $TREE"
-          fi
-          # The validator reads the commit the producer actually checked out, not the rebuild.
-          git checkout -q "$MERGE_SHA"
-          # The producer is the pull request's copy of the Checks workflow and of the release tooling it executes,
-          # tools/release_check.py and what it imports. Both must be the base's copy, or the evidence came from code
-          # nobody reviewed; a change to either lands through its own pull request first. The tests the tooling runs
-          # may change with the candidate: every such change is listed below, for the item's reviewer.
-          changed="$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" -- .github/workflows/checks.yml tools/)"
-          if [ -n "$changed" ]; then
-            refuse "the pull request changes the producer's code: $(echo "$changed" | tr '\n' ' '); that change lands first, through its own review"
+          rebuilt=""
+          if [ "$EVENT" = push ]; then
+            # The pushed head, fetched by its id: still on the branch, with the parents GitHub's record names and the tree
+            # the receipts name. Its base is its first parent. A merge is rebuilt from its parents here, as a pull
+            # request's is; a single-parent push has nothing to rebuild, and its record says so with no rebuilt tree.
+            if ! git fetch -q origin "$HEAD_SHA" 2>/dev/null || ! git cat-file -e "$HEAD_SHA^{commit}" 2>/dev/null; then
+              refuse "the pushed head $HEAD_SHA can no longer be fetched"
+            fi
+            if ! git merge-base --is-ancestor "$HEAD_SHA" "origin/$BASE_REF"; then
+              refuse "the pushed head $HEAD_SHA is not a commit on $BASE_REF"
+            fi
+            parents="$(git rev-list --parents -n 1 "$HEAD_SHA" | cut -d' ' -f2-)"
+            if [ "$parents" != "$PARENTS" ]; then
+              refuse "git reads the pushed head $HEAD_SHA's parents as $parents, but GitHub's record names $PARENTS"
+            fi
+            if [ "$(git rev-parse "$HEAD_SHA^{tree}")" != "$TREE" ]; then
+              refuse "the pushed head $HEAD_SHA has tree $(git rev-parse "$HEAD_SHA^{tree}"), not the tree the receipts name, $TREE"
+            fi
+            others="${parents#"$BASE_SHA"}"
+            if [ -n "$others" ]; then
+              git checkout -q "$BASE_SHA"
+              # shellcheck disable=SC2086 # each further parent is its own word, forty hex digits checked by GitHub's record
+              if ! git -c user.name=verdict -c user.email=verdict@users.noreply.github.com merge -q --no-ff --no-edit $others >/dev/null 2>&1; then
+                refuse "merging $others onto $BASE_SHA does not merge cleanly here, so the pushed tree cannot be rebuilt"
+              fi
+              rebuilt="$(git rev-parse 'HEAD^{tree}')"
+              if [ "$rebuilt" != "$TREE" ]; then
+                refuse "the merge of $others onto $BASE_SHA has tree $rebuilt, not the pushed tree $TREE"
+              fi
+            fi
+            git checkout -q "$HEAD_SHA"
+            # The producer's code, as the pushed head changes it, is named in the record: it landed through its own pull
+            # request, which that pull request's verdict judged before the merge.
+            PUSH_PRODUCER_CODE="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/checks.yml tools/ | tr '\n' ' ')"
+            export PUSH_PRODUCER_CODE
+          else
+            git fetch -q origin "refs/pull/$NUMBER/head"
+            if [ "$(git rev-parse FETCH_HEAD)" != "$HEAD_SHA" ]; then
+              refuse "refs/pull/$NUMBER/head is $(git rev-parse FETCH_HEAD) now, not $HEAD_SHA; the pull request has moved on and its newer run gets the verdict"
+            fi
+            if ! git merge-base --is-ancestor "$BASE_SHA" "origin/$BASE_REF"; then
+              refuse "the base $BASE_SHA is not a commit on $BASE_REF"
+            fi
+            # The merge commit the producer checked out, fetched by its id: its parents and tree must be the ones the
+            # receipts name and GitHub's record implies. If GitHub no longer serves it, the run is stale.
+            if ! git fetch -q origin "$MERGE_SHA" 2>/dev/null || ! git cat-file -e "$MERGE_SHA^{commit}" 2>/dev/null; then
+              refuse "the tested merge commit $MERGE_SHA can no longer be fetched; a fresh run from a new push is needed"
+            fi
+            parents="$(git rev-list --parents -n 1 "$MERGE_SHA" | cut -d' ' -f2-)"
+            if [ "$parents" != "$BASE_SHA $HEAD_SHA" ]; then
+              refuse "the tested merge $MERGE_SHA has parents $parents, not $BASE_SHA and $HEAD_SHA"
+            fi
+            if [ "$(git rev-parse "$MERGE_SHA^{tree}")" != "$TREE" ]; then
+              refuse "the tested merge $MERGE_SHA has tree $(git rev-parse "$MERGE_SHA^{tree}"), not the tree the receipts name, $TREE"
+            fi
+            # The independent check on that tree: merging the two authenticated parents here must give the same tree.
+            git checkout -q "$BASE_SHA"
+            if ! git -c user.name=verdict -c user.email=verdict@users.noreply.github.com merge -q --no-ff --no-edit "$HEAD_SHA" >/dev/null 2>&1; then
+              refuse "merging $HEAD_SHA onto $BASE_SHA does not merge cleanly here, so the tested tree cannot be rebuilt"
+            fi
+            rebuilt="$(git rev-parse 'HEAD^{tree}')"
+            if [ "$rebuilt" != "$TREE" ]; then
+              refuse "the merge of $HEAD_SHA onto $BASE_SHA has tree $rebuilt, not the tested tree $TREE"
+            fi
+            # The validator reads the commit the producer actually checked out, not the rebuild.
+            git checkout -q "$MERGE_SHA"
+            # The producer is the pull request's copy of the Checks workflow and of the release tooling it executes,
+            # tools/release_check.py and what it imports. Both must be the base's copy, or the evidence came from code
+            # nobody reviewed; a change to either lands through its own pull request first. The tests the tooling runs
+            # may change with the candidate: every such change is listed below, for the item's reviewer.
+            changed="$(git diff --name-only "$BASE_SHA" "$MERGE_SHA" -- .github/workflows/checks.yml tools/)"
+            if [ -n "$changed" ]; then
+              refuse "the pull request changes the producer's code: $(echo "$changed" | tr '\n' ' '); that change lands first, through its own review"
+            fi
           fi
           git worktree add -q "$OUT/base" "$BASE_SHA"
-          # The authenticated merge goes into producer.json as well: that file is the validator's one handshake.
-          python3 - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" <<'PY'
-          import json, sys
+          # The authenticated merge goes into producer.json as well: that file is the validator's one handshake. This
+          # runs from inside the candidate's checkout, so -I: a plain `python3 -` puts the working directory first on
+          # sys.path, and a json.py in the candidate's tree would run here.
+          python3 -I - "$OUT/merge.json" "$OUT/producer.json" "$MERGE_SHA" "$rebuilt" <<'PY'
+          import json, os, sys
           doc = json.load(open(sys.argv[1]))
           doc["fetched"] = sys.argv[3]
-          doc["rebuilt"] = sys.argv[4]
+          doc["rebuilt"] = sys.argv[4] or None
+          if "PUSH_PRODUCER_CODE" in os.environ:
+              doc["producer_code_changed"] = os.environ["PUSH_PRODUCER_CODE"].split()
           json.dump(doc, open(sys.argv[1], "w"), indent=1)
           producer = json.load(open(sys.argv[2]))
           producer["merge"] = doc
@@ -327,9 +442,11 @@ jobs:
           set -euo pipefail
           # What already fails on the base is read from the base's own runs, not from a list anyone curates: the newest
           # three completed push runs of the producer on the base branch, first attempts only, begun before the run
-          # judged here, each with its artifacts laid out as this job lays out the producer's. Fewer than three is
-          # recorded as such and the validator decides; a read that fails refuses the verdict and writes no manifest,
-          # so "could not read" never passes for "nothing there".
+          # judged here and never that run itself, each with its artifacts laid out as this job lays out the producer's.
+          # A run whose artifacts have expired is dropped and named, and no older run takes its place: expiry is
+          # retention. Fewer than three is recorded as such and the validator decides. A read that fails, or an archive
+          # that does not match its digest, is a fault: it refuses the verdict and writes no manifest, so "could not
+          # read" never passes for "nothing there".
           python3 -I - "$OUT/history" "$OUT/producer.json" "$OUT/refusals" <<'PY' >> "$GITHUB_OUTPUT"
           import hashlib, io, json, os, re, subprocess, sys, urllib.parse, zipfile
           from datetime import datetime
@@ -370,7 +487,8 @@ jobs:
                       return items
                   page += 1
           try:
-              before = json.load(open(producer_path))["producer"]["created_at"]
+              judged = json.load(open(producer_path))["producer"]
+              before, judged_id = judged["created_at"], judged["run_id"]
               cutoff = when(before)
               ref = api("repos/%s/git/ref/heads/%s" % (repo, urllib.parse.quote(base_ref, safe="/")))
               base_head = ((ref.get("object") or {}).get("sha") if isinstance(ref, dict) else None)
@@ -396,24 +514,34 @@ jobs:
                       why = "begun at %s, not before %s" % (clean(run.get("created_at")), before)
                   elif not isinstance(run.get("id"), int):
                       why = "no run id"
+                  elif str(run["id"]) == judged_id:
+                      why = "the run judged here"
                   if why:
                       print("passed over run %s: %s" % (clean(run.get("id")), why), file=sys.stderr)
                   else:
                       chosen.append(run)
               chosen = sorted(chosen, key=lambda run: (when(run["created_at"]), run["id"]), reverse=True)[:wanted]
-              runs = []
+              runs, dropped = [], []
               for run in chosen:
                   record = {key: run.get(key) for key in ("id", "run_attempt", "head_sha", "head_branch", "event", "conclusion", "created_at", "html_url")}
                   record["dir"] = "known/%d/" % run["id"]
                   record["artifacts"] = []
                   seen = set()
-                  for artifact in listing("repos/%s/actions/runs/%d/artifacts?per_page=100" % (repo, run["id"]), "artifacts"):
+                  artifacts = listing("repos/%s/actions/runs/%d/artifacts?per_page=100" % (repo, run["id"]), "artifacts")
+                  for artifact in artifacts:
                       name, artifact_id = artifact.get("name"), artifact.get("id")
                       if not (isinstance(name, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", name)) or name in seen or not isinstance(artifact_id, int):
                           raise CouldNotRead("run %d has an artifact named %s, id %s, which cannot be laid out" % (run["id"], clean(name), clean(artifact_id)))
                       seen.add(name)
-                      if artifact.get("expired"):
-                          raise CouldNotRead("artifact %s of run %d has expired, so that run's evidence cannot be read" % (name, run["id"]))
+                      if not isinstance(artifact.get("expired"), bool):
+                          raise CouldNotRead("GitHub does not say whether artifact %s of run %d has expired" % (name, run["id"]))
+                  expired = [artifact["name"] for artifact in artifacts if artifact["expired"]]
+                  if expired:
+                      dropped.append({"id": run["id"], "created_at": run.get("created_at"), "html_url": run.get("html_url"),
+                                      "why": "artifact expired", "artifacts": expired})
+                      continue
+                  for artifact in artifacts:
+                      name, artifact_id = artifact["name"], artifact["id"]
                       archive = api("repos/%s/actions/artifacts/%d/zip" % (repo, artifact_id), raw=True)
                       digest = artifact.get("digest")
                       if isinstance(digest, str) and digest.startswith("sha256:") and hashlib.sha256(archive).hexdigest() != digest[len("sha256:"):]:
@@ -436,7 +564,8 @@ jobs:
               print("ready=false")
               raise SystemExit(0)
           # Every dir is relative to this manifest's own folder.
-          manifest = {"base_ref": base_ref, "base_head": base_head, "query": query, "runs": runs, "fewer_than_three": len(runs) < wanted}
+          manifest = {"base_ref": base_ref, "base_head": base_head, "query": query, "runs": runs, "dropped": dropped,
+                      "fewer_than_three": len(runs) < wanted}
           os.makedirs(history, exist_ok=True)
           json.dump(manifest, open(os.path.join(history, "known-runs.json"), "w"), indent=1)
           print("ready=true")
@@ -464,6 +593,52 @@ jobs:
           fields = open(sys.argv[1], "rb").read().decode("utf-8", "replace").split("\0")
           changed = [{"status": status, "path": path} for status, path in zip(fields[0::2], fields[1::2]) if status]
           json.dump({"base": sys.argv[3], "merge": sys.argv[4], "changed": changed}, open(sys.argv[2], "w"), indent=1)
+          PY
+      - name: The train the pushed head merged, read by git alone
+        if: steps.record.outputs.event == 'push' && steps.merge.outputs.ready == 'true'
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.record.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # A merged head names its train: the pull request from the merge's own subject, as GitHub writes it, and the
+          # items from the Pipeline trailers of the commits the merge brings in, first parent to head. What cannot be
+          # read that way is said, never guessed. For the reader of the check run; it decides nothing.
+          python3 -I - "$OUT/candidate" "$HEAD_SHA" "$OUT/train.json" <<'PY'
+          import json, re, subprocess, sys
+          repo, head, out = sys.argv[1:4]
+          def clean(value):
+              return re.sub(r"\s+", " ", str(value))[:160]
+          def git(*args):
+              answer = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True)
+              if answer.returncode != 0:
+                  raise RuntimeError("git %s: %s" % (args[0], clean(answer.stderr)))
+              return answer.stdout
+          train = {"head": head, "pull_request": None, "source": None, "items": [], "commits": [], "unread": []}
+          try:
+              parents = git("rev-list", "--parents", "-n", "1", head).split()[1:]
+              if len(parents) < 2:
+                  train["unread"].append("the pushed head has one parent, so it merged no train")
+              else:
+                  subject = git("log", "-1", "--format=%s", head).strip()
+                  named = re.fullmatch(r"Merge pull request #([0-9]+) from (\S+)", subject)
+                  if named:
+                      train["pull_request"], train["source"] = int(named.group(1)), named.group(2)
+                  else:
+                      train["unread"].append("the merge's subject names no pull request: %s" % clean(subject))
+                  log = git("log", "-z", "--reverse", "--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,unfold,separator=%x1e)",
+                            "%s..%s" % (parents[0], head))
+                  for entry in [e for e in log.split("\0") if e.strip()]:
+                      fields = entry.strip("\n").split("\x1f")
+                      sha, values = fields[0], fields[-1]
+                      if sha == head:
+                          continue
+                      pipeline = [clean(v.strip()) for v in values.split("\x1e") if v.strip()]
+                      train["commits"].append({"sha": sha, "subject": clean("\x1f".join(fields[1:-1])), "pipeline": pipeline})
+                      train["items"].extend(v for v in pipeline if v not in train["items"])
+          except RuntimeError as error:
+              train["unread"].append("git could not read the train: %s" % error)
+          json.dump(train, open(out, "w"), indent=1)
           PY
       - name: Classify the run with the controller's own validator
         if: steps.controller.outputs.ready == 'true' && steps.known.outputs.ready == 'true'
@@ -553,13 +728,36 @@ jobs:
               lines.append("Validation: " + json.dumps({k: validation.get(k) for k in ("passed", "refused", "unexpected", "expected", "healed", "missing") if k in validation}))
           p, c = producer["producer"], producer["controller"]
           lines.append("Producer: run %s attempt %s, %s, workflow %s (%s)" % (p["run_id"], p["run_attempt"], p["url"], p["workflow_path"], p["workflow_id"]))
-          lines.append("Tested merge: %s, tree %s, onto base %s, head %s" % (merge.get("fetched"), merge.get("tree"), merge.get("first_parent"), merge.get("second_parent")))
+          push = p.get("event") == "push"
+          if push:
+              comparison = p.get("comparison_base") or {}
+              lines.append("Pushed head: %s to %s, tree %s, compared against its first parent %s; second parent %s; rebuilt %s" % (
+                  merge.get("fetched"), comparison.get("ref"), merge.get("tree"), comparison.get("sha"), merge.get("second_parent"), merge.get("rebuilt")))
+              if merge.get("producer_code_changed"):
+                  lines.append("The push changes the producer's code, judged on its own pull request: " + " ".join(merge["producer_code_changed"]))
+          else:
+              lines.append("Tested merge: %s, tree %s, onto base %s, head %s" % (merge.get("fetched"), merge.get("tree"), merge.get("first_parent"), merge.get("second_parent")))
           lines.append("Controller: workflow %s at %s, run %s" % (c["workflow_ref"], c["workflow_sha"], c["url"]))
           known = read("history/known-runs.json")
           if isinstance(known, dict):
               lines.append("Known reds from the base's own runs on %s (head %s when listed)%s: %s" % (
                   known.get("base_ref"), known.get("base_head"), ", fewer than three" if known.get("fewer_than_three") else "",
                   ", ".join("run %s at %s (%s)" % (r.get("id"), r.get("head_sha"), r.get("conclusion")) for r in known.get("runs") or []) or "none"))
+              for d in known.get("dropped") or []:
+                  lines.append("Dropped from the known runs: run %s, %s (%s)" % (d.get("id"), d.get("why"), ", ".join(d.get("artifacts") or [])))
+          train = read("train.json")
+          if isinstance(train, dict):
+              lines.append("")
+              if train.get("pull_request") is not None:
+                  lines.append("Train: pull request #%s from %s, merged as %s" % (train["pull_request"], train.get("source"), train.get("head")))
+              lines.extend("Train: %s" % why for why in train.get("unread") or [])
+              commits = train.get("commits") or []
+              lines.append("Items it carried, from the Pipeline trailers of the %d commits it brings in: %s" % (
+                  len(commits), ", ".join(train.get("items") or []) or "none"))
+              bare = [c for c in commits if not c.get("pipeline")]
+              if bare:
+                  lines.append("Commits with no Pipeline trailer, so no item is named for them:")
+                  lines.extend("- %s %s" % (c.get("sha"), c.get("subject")) for c in bare)
           if isinstance(validation, dict) and isinstance(validation.get("loaded_modules"), list):
               lines.append("Validator loaded: " + ", ".join(str(m) for m in validation["loaded_modules"]))
           # The test definitions the merge changes, as git reads them, whatever the validator says: for the reviewer.
@@ -577,9 +775,9 @@ jobs:
                   lines.append("%s: the validator gave none" % key)
           # The check run is named for the base it was judged against. A check run attaches to the commit, so without
           # the base in the name a verdict earned against one branch's policy would satisfy a pull request of the same
-          # head into another; each branch rule requires its own name. A refused record with no approved base gets the
-          # bare name, which no rule requires.
-          base_ref = p["pull_request"].get("base_ref")
+          # head into another; each branch rule requires its own name. A push is named for the branch pushed to, its
+          # comparison base. A refused record with no approved base gets the bare name, which no rule requires.
+          base_ref = (p.get("comparison_base") or {}).get("ref") if push else (p.get("pull_request") or {}).get("base_ref")
           approved = base_ref in [b for b in env["APPROVED_BASES"].split(",") if b] if isinstance(base_ref, str) else False
           body = {
               "name": "Verdict for %s" % base_ref if approved else "Verdict",
@@ -610,6 +808,7 @@ jobs:
             ${{ github.workspace }}/verdict/validation.json
             ${{ github.workspace }}/verdict/history/known-runs.json
             ${{ github.workspace }}/verdict/test-definitions.json
+            ${{ github.workspace }}/verdict/train.json
             ${{ github.workspace }}/verdict/refusals
             ${{ github.workspace }}/verdict/check-run.json
           if-no-files-found: ignore
@@ -620,7 +819,7 @@ jobs:
     # Whatever became of judge, the head gets a result: judge's decision when judge made one and recorded it, and
     # an explicit failure otherwise. The head is the one judge authenticated, or failing that the one GitHub's event
     # named, which is the same commit GitHub itself ran the producer for.
-    if: always() && github.event.workflow_run.event == 'pull_request'
+    if: always() && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04  # the judge's image, so one pin moves both
     timeout-minutes: 5
     # The verdict environment holds the Theseus Verdict App's key, and it opens only to this default branch, so a
@@ -658,7 +857,7 @@ jobs:
           # job's token; every check-run call, the read of the standing check and the PATCH or POST, with the App's.
           GH_TOKEN: ${{ github.token }}
           VERDICT_TOKEN: ${{ steps.app.outputs.token }}
-          JUDGE_HEAD: ${{ needs.judge.outputs.head_sha }}
+          JUDGE_HEAD: ${{ needs.judge.outputs.status_head_sha }}
           JUDGE_BASE: ${{ needs.judge.outputs.base_ref }}
           JUDGE_CONCLUSION: ${{ needs.judge.outputs.conclusion }}
           JUDGE_DECIDED: ${{ needs.judge.outputs.decided }}
@@ -667,9 +866,10 @@ jobs:
           EVENT_HEAD: ${{ github.event.workflow_run.head_sha }}
           PRODUCER_RUN: ${{ github.event.workflow_run.id }}
           PRODUCER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          PRODUCER_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
+          python3 -I - <<'PY'
           import json, os, re, subprocess
           env = os.environ
           hex40 = re.compile(r"^[0-9a-f]{40}$")
@@ -710,12 +910,16 @@ jobs:
           # One authoritative Verdict per head and base, decided from GitHub's own record of the producer's runs for
           # this head, never from check-run data, which any workflow in the repository can write: a newer producer run
           # for the same base, or a newer attempt of this one, means this decision is stale and is not published. A
-          # run GitHub associates with another base is another pull request's and leaves this one alone. The
-          # concurrency group makes this read-then-write serial per head.
+          # run GitHub associates with another base is another pull request's and leaves this one alone. A push is
+          # held to the producer's push runs for the head on the same branch. The concurrency group makes this
+          # read-then-write serial per head.
           mine = (int(env["PRODUCER_RUN"]), int(env["PRODUCER_ATTEMPT"]))
-          runs = gh("repos/%s/actions/workflows/%s/runs?head_sha=%s&event=pull_request&per_page=100" % (
-              env["GITHUB_REPOSITORY"], env["PRODUCER_WORKFLOW_ID"], head)).get("workflow_runs", [])
+          push = env["PRODUCER_EVENT"] == "push"
+          runs = gh("repos/%s/actions/workflows/%s/runs?head_sha=%s&event=%s&per_page=100" % (
+              env["GITHUB_REPOSITORY"], env["PRODUCER_WORKFLOW_ID"], head, "push" if push else "pull_request")).get("workflow_runs", [])
           def same_base(run):
+              if push:
+                  return int(run["id"]) == mine[0] or bool(base and run.get("head_branch") == base)
               bases = {((pr.get("base") or {}).get("ref")) for pr in (run.get("pull_requests") or [])}
               return int(run["id"]) == mine[0] or (base and base in bases)
           newer = [r for r in runs if same_base(r) and (int(r["id"]), int(r.get("run_attempt") or 1)) > mine]
