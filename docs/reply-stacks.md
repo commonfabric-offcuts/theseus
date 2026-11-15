@@ -145,10 +145,12 @@ CLI (`tests/test_dossier_names.py`, `FakeCoordinator`), so no live model is
 needed.
 
 On the page the tab's second line says "Named by" and the agent, after who
-began the dossier (`.stack-named`), and the name's tooltip says it was named
+began the dossier (`.stack-named`), whole at every width down to 320 pixels:
+short of room the count gives way first. The name's tooltip says it was named
 when the first reply landed. Renaming starts from the minted name; a name the
 person types replaces it and the mark goes, and their name says who typed it
-in its tooltip, as any typed name does.
+in its tooltip, as any typed name does. ⌘Z after such a rename gives the
+dossier back the minted words as the person's own name: only its agent mints.
 
 ## Display order
 

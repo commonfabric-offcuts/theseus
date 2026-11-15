@@ -169,9 +169,9 @@
 @media(hover:none){.stack-pen{display:none}}
 /* The second line, one quiet run joined by "·": who started it, New, the star, then the count, who replied and what is new. */
 .stack-who{flex:none;color:var(--stack-meta-ink)}
-/* A minted name (item 479) says who named it, after who started the dossier; short of room it shares what is left
-   with the count, each shortened by its ellipsis. */
-.stack-named{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink);font-style:italic}
+/* A minted name (item 479) says who named it, after who started the dossier. Short of room the count gives way
+   first; only a name too long for the tab is shortened by its ellipsis. */
+.stack-named{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink);font-style:italic}
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
