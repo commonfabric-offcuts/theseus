@@ -2304,6 +2304,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // every press that lost the focus to the page. start: a mark ('tree'), or a
   // step whose landing is the start. skip: controls left out (a deck's cards,
   // which key their own arrows).
+  // The topic's reply with nothing written: an earlier case may leave a draft in it, and an arrow goes on from a field
+  // only when it is empty (or one line); emptied by the keys, so the page's draft follows.
+  const emptyReply = async (p, label) => {
+    const y = await p.evaluate("(f=>{const y=scrollY;f.focus({preventScroll:true});f.select();return y})(document.getElementById('inline-writing-body'))");
+    await p.key('Backspace');
+    await until(() => p.evaluate("document.getElementById('inline-writing-body').value===''"), label + ': the reply is empty');
+    await p.evaluate(`document.activeElement?.blur();scrollTo(0,${y})`);
+  };
   // A closure's start: the stop of the tree in scope (its row the keys are on, else its first shown).
   const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
   const arrowClosure = async (p, scope, start, skip = null) => {
@@ -2429,6 +2437,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const size of ['laptop', '390', '375', '320']) {
       const p = await arrowsAt('rail-arrows-feed-' + size, '/?topic=t1', size);
       await topicUp(p, size + ': the topic is up, its messages drawn');
+      await emptyReply(p, size);
       const lastId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).at(-1).dataset.id");
       // Into the messages with the keys, as a person does: ↓ from the page lights one.
       await p.evaluate("document.activeElement?.blur()");
@@ -2688,15 +2697,35 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const down = await walk(p, 'ArrowDown', 12);
     assert.ok(down.every(at => at.startsWith('dialog:')), '↓ stays in the Reader: ' + down.join(' → '));
     assert.ok(down.length > 1, '↓ goes on from the header: ' + down.join(' → '));
+    // Every control in the Reader, its reply's + and 👍 and Send among them, by the arrows from its header.
+    const readerClosure = async (q, size) => {
+      const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
+      const { missing, lost } = await arrowClosure(q, '#reader', readerFirst);
+      assert.deepEqual(missing, [], size + ': the arrows reach every control in the Reader');
+      assert.deepEqual(lost, [], size + ': and none loses the focus to the page');
+    };
+    await readerClosure(p, 'laptop');
     assert.deepEqual(p.errors, []); await p.close();
+    const phone = await arrowsAt('rail-arrows-reader-390', '/?topic=t1', '390');
+    await settled(phone, '390: the topic is up');
+    await phone.evaluate("document.activeElement?.blur()");
+    await phone.key('ArrowDown');
+    for (let n = 0; n < 4 && await phone.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await phone.key('ArrowDown');
+    await phone.key('Enter');
+    await until(() => phone.evaluate("document.getElementById('reader')?.open"), '390: Return opens the Reader');
+    await readerClosure(phone, '390');
+    await shot(phone, 'rail-arrows-reader-390');
+    assert.deepEqual(phone.errors, []); await phone.close();
   });
 
   await check('rail arrows in writing are the writing\'s: in the topic\'s composer every arrow moves the cursor and never the focus', async () => {
     for (const size of ['laptop', '320']) {
       const p = await arrowsAt('rail-arrows-writing-' + size, '/?topic=t1', size);
       await topicUp(p, size + ': the topic is up');
+      await emptyReply(p, size);
       await p.evaluate("(()=>{const f=document.getElementById('inline-writing-body');f.scrollIntoView({block:'center'});f.focus();return true})()");
       await p.send('Input.insertText', { text: 'One line\nTwo line' });
+      await until(() => p.evaluate("document.getElementById('inline-writing-body').value==='One line\\nTwo line'"), size + ': the two lines are written');
       for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowUp']) {
         await p.key(key);
         assert.equal(await focusAt(p), 'main:inline-writing-body', `${size}: ${key} in the writing leaves the focus there`);
