@@ -34,7 +34,12 @@ page behind it changes as after ⋯'s item, and ⌘Z on the page puts it back. I
 shows for a message the page's stacks hold whose dossier Core placed, and
 never for a Notebook page or a message opened alone, which ⋯ offers no move
 either; a 44 pixel target under a finger (`paintReaderAside` in
-`web/app.mjs`, `StackFeed.asideOffer`).
+`web/app.mjs`, `StackFeed.asideOffer`). Pressed, it shows the move at once,
+while Core has it; a refusal puts it back unpressed and the page says why. A
+phone's header has no room for ←, the title with its star and this button,
+↑ ↓, ⋯ and ✕ in one row of 44 pixel targets, so there (480 pixels wide or
+less) the title, its star and the archive button take a second row, and who
+wrote the message and when stays in the first, beside ←.
 
 The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
 selection (only while words are selected or a passage is lit), Mark unread,
