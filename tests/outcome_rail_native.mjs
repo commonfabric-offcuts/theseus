@@ -2354,7 +2354,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         }
         continue;
       }
-      for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      // ↓ last: through a box that scrolls it reads to the end, and ← and → are pressed where it stood when reached.
+      for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
         const ok = await p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||e.matches('select'))return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${node.id}"]'))`);
         if (!ok) continue;
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
