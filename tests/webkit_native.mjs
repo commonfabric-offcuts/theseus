@@ -140,12 +140,17 @@ try {
     // The CDP calls the listed checks make, each done with WebKit's own input.
     const send = async (method, params = {}) => {
       if (method === 'Input.dispatchMouseEvent') {
-        const { type, x, y, button = 'left', clickCount = 1 } = params;
+        const { type, x, y, button = 'left', clickCount = 1, modifiers = 0 } = params;
         if (type === 'mouseWheel') { await pw.mouse.move(x, y); await pw.mouse.wheel(params.deltaX ?? 0, params.deltaY ?? 0); return {}; }
-        await pw.mouse.move(x, y);
-        if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
-        else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
-        else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        // Shift held through the act, as CDP's modifiers hold it (8); no other modifier is asked of a pointer here.
+        assert.equal(modifiers & ~8, 0, 'only Shift is held with a pointer');
+        if (modifiers & 8) await pw.keyboard.down('Shift');
+        try {
+          await pw.mouse.move(x, y);
+          if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
+          else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
+          else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        } finally { if (modifiers & 8) await pw.keyboard.up('Shift'); }
         return {};
       }
       if (method === 'Input.dispatchTouchEvent') {
@@ -372,7 +377,11 @@ try {
     };
     await newLineStaysChecks({ check, open, until, view, control, shot, observations, engine: 'webkit' });
   } else if (mode === '--reading') {
-    await readingChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
+    // The browser's windows, each page known by an id of its own for as long as it is open.
+    const ids = new WeakMap(); let next = 0;
+    const known = () => browser.contexts().flatMap(context => context.pages()).filter(opened => !opened.isClosed()).map(opened => { if (!ids.has(opened)) ids.set(opened, String(++next)); return [ids.get(opened), opened]; });
+    const windows = { list: async () => new Map(known().map(([id, opened]) => [id, opened.url()])), close: async id => { for (const [at, opened] of known()) if (at === id) await opened.close(); } };
+    await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }
