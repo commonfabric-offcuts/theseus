@@ -950,6 +950,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
       whole_topic: !args.reply_to, sender: 'person', body, ...args })).result.message_id;
     const ids = [await mine('rv476-root', 'Earlier check: the plan.')];
     for (let n = 1; n <= 8; n++) ids.push(await mine(`rv476-${n}`, `Earlier check: reply ${n}.`, { reply_to: ids[0] }));
+    // A person's reply folds the message it answers for them (Core); unfolded again, the first message shows as any does.
+    await control({ method: 'stack_act', sender: person, kind: 'message.fold', message_id: ids[0], operation_id: 'rv476-unfold', args: { folded: false } });
     const p = await open('rv476', '/?conversation=rv476', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
     const toggle = `.reply-stack[data-stack="${ids[0]}"] > .stack-toggle`;
     const fold = () => quiet(p, `document.querySelector('.reply-stack[data-stack="${ids[0]}"]')?.dataset.fold ?? null`);
