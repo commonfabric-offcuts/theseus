@@ -4909,6 +4909,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual([named('fold').glyph, named('fold').label, named('fold').title], [true, 'Fold', 'Fold'], `${device}: Fold is a named glyph`);
       if (device === 'phone') for (const b of f) assert.ok(b.width >= 44 && b.height >= 44, `phone: ${b.act} is 44px to touch: ${JSON.stringify(b)}`);
       await shot(p, `message-bar-${device}-short`);
+      if (device === 'phone') {
+        // At 375 and 320 pixels too: every glyph 44px, inside the window, nothing scrolling sideways.
+        for (const width of [375, 320]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await light(p, device, ids.short);
+          const at = await p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return {buttons:[...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>{const r=x.getBoundingClientRect();return [x.dataset.act,r.width,r.height,r.left>=0&&r.right<=innerWidth]}),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          assert.deepEqual(at.buttons.map(([act]) => act), ['thumb', 'reply', 'fold', 'more'], `${width}: the same bar`);
+          for (const [act, w, h, inside] of at.buttons) assert.ok(w >= 44 && h >= 44 && inside, `${width}: ${act} is 44px and in the window (${w}×${h})`);
+          assert.equal(at.sideways, false, `${width}: nothing scrolls sideways`);
+          await shot(p, `message-bar-phone-${width}`);
+        }
+        await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+        await light(p, device, ids.short);
+      }
       // Fold, then Unfold, in Core for the reader.
       await press(p, device, '.message-bar [data-act=fold]');
       await until(async () => (await actsOf(topic, ids.short))?.folded === true, `${device}: Fold folds the message in Core`);
@@ -4984,6 +4998,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         for (const each of [agent, person]) assert.deepEqual(each.edges, ['0px', '0px', false], `${device} ${theme}: no coloured edge or bar`);
         observations.push({ name: 'folder colour', engine, device, theme, agent, person });
         await shot(p, `folder-colour-${device}-${theme}`);
+        if (device === 'phone') for (const width of [375, 320]) {
+          // Narrower phones: the same faces, nothing scrolling sideways.
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          const narrow = await paint(ids.agent, 'peach', theme);
+          assert.deepEqual([narrow.folder, narrow.tab], [narrow.want, narrow.want], `${width} ${theme}: the agent's folder and title bar are still its colour`);
+          assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}: nothing scrolls sideways`);
+          await shot(p, `folder-colour-phone-${width}-${theme}`);
+          await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+        }
       }
       await dossierTheme(p, 'light');
       if (device === 'laptop') {
