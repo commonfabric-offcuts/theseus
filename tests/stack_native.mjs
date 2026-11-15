@@ -3903,38 +3903,130 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Item 472: a message the reader placed on its own is a section with no title bar, so a swipe over it is a swipe over a
+  // message, as anywhere: right folds it in place, for the reader alone, and it stays where it was placed, above More;
+  // left unfolds it. Two fingers on a laptop's trackpad in both engines, and a finger on a phone in Chrome.
+  await check('reading stacks a message placed on its own folds in place under a swipe right and unfolds under a swipe left, and never goes below More (item 472)', async () => {
+    const topic = 'stack-placed-swipe';
+    const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+      ['placed', { sender: other, addressees: [facts.actor], body: 'A message the reader placed on its own, to swipe.', read: true }],
+      ['plain', { sender: other, addressees: [facts.actor], body: 'Another message on its own, nobody placed it.', read: true }]]);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.placed, operation_id: `${topic}-place`, args: { key: 1 } });
+    const section = `#messages .reply-stack[data-stack="${ids.placed}"]`;
+    const state = p => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(section)}),c=document.querySelector(${JSON.stringify(card(ids.placed))});
+      return {single:s?.dataset.single??null,shown:Boolean(s?.getClientRects().length),row:c?.dataset.folded==='true',more:Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)}})()`);
+    const core = async () => { const acts = await actsOf(topic, ids.placed); return { folded: acts?.folded ?? false, aside: acts?.aside ?? null, placed: typeof acts?.placed }; };
+    const drag = async (p, selector, way) => {
+      await centre(p, selector); const b = await p.box(selector), y = b.y + b.height / 2, t = Date.now() / 1000, from = way > 0 ? b.x + 30 : b.x + Math.min(b.width - 30, 170);
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from, y }], timestamp: t });
+      for (const part of [1, 2, 3, 4]) await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from + way * 35 * part, y }], timestamp: t + part * .08 });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t + .6 });
+    };
+    const ways = [['laptop', (p, way) => trackpad(p, card(ids.placed), way > 0 ? SWIPE_RIGHT : SWIPE_RIGHT.map(([x, y]) => [-x, y]))]];
+    if (engine === 'chrome') ways.push(['phone', (p, way) => drag(p, card(ids.placed), way)]);
+    for (const [device, swipe] of ways) {
+      const p = await open(`${topic}-${device}`, device, topic, ids.placed, HEARD_WHEELS);
+      await becomes(() => state(p), { single: 'true', shown: true, row: false, more: false }, `${device}: the placed message is a section of its own, with no title bar, above no More`);
+      await swipe(p, 1);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
+      assert.deepEqual(await core(), { folded: true, aside: null, placed: 'number' }, `${device}: a swipe right folds the placed message in Core, and leaves it placed, above More`);
+      await becomes(() => state(p), { single: 'true', shown: true, row: true, more: false }, `${device}: it is its row, where it was placed, and nothing went below More`);
+      assert.equal((await actsOf(topic, ids.placed, other))?.folded ?? false, false, `${device}: another reader's view of it is unchanged`);
+      await shot(p, `stack-placed-swipe-${device}`);
+      await swipe(p, -1);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device}: every act sent is answered`);
+      assert.deepEqual(await core(), { folded: false, aside: null, placed: 'number' }, `${device}: a swipe left unfolds it in Core, still placed`);
+      await becomes(() => state(p), { single: 'true', shown: true, row: false, more: false }, `${device}: it reads whole again, where it was placed`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 430: the next card covers the lit card's bottom edge by its 12px overlap. The ring keeps its bottom side over
-  // it, a reply's and the first message's, read from the screen: the pixel just below the lit card's box is the ring's.
-  await check('reading stacks the lit card\'s ring keeps its bottom side above the next card, a reply\'s and the first message\'s, at 320, 375 and 390 wide and on a laptop, light and dark (item 430)', async () => {
+  // it, read from the screen: the pixel just below the lit card's box is the ring's. Every state of a lit message in a
+  // dossier: a short reply and first message; a long reply and first message (over 1,024 bytes), which lighting turns
+  // into a card read in place that scrolls inside itself (card-scroll.mjs), at its top and scrolled inside; and a fold
+  // line between agents, lit by the keys. The ring stays its own: none below the last card, none across the next one's words.
+  await check('reading stacks the lit card\'s ring keeps its bottom side above the next card, a reply\'s and the first message\'s, short, long read in place and scrolled inside, and a fold line, at 320, 375 and 390 wide and on a laptop, light and dark (item 430)', async () => {
+    const long = what => Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of ${what}, long enough to be read in place.`).join('\n');
+    const line = id => `#messages .message-fold[data-id="${id}"] > .fold-line`;
+    // The lit element's box and the ring's colour, the entry after it in its dossier and the last one shown.
+    const ringAt = async (p, selector, at, key) => {
+      await twoFrames(p);
+      const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(selector)}),b=c.getBoundingClientRect(),probe=document.createElement('span');
+        probe.style.background='var(--stack-ring)';c.append(probe);const ring=getComputedStyle(probe).backgroundColor;probe.remove();
+        const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
+        const s=c.closest('.reply-stack'),shown=[...s.querySelectorAll(':scope > [data-id], :scope > .stack-replies > [data-id]')].filter(e=>e.getClientRects().length);
+        const entry=shown.find(e=>e.contains(c)),next=shown[shown.indexOf(entry)+1],last=shown.at(-1);
+        const words=next&&[...next.querySelectorAll('.message-author, .message-folded, .fold-line')].find(e=>e.getClientRects().length);
+        return {left:b.left,right:b.right,bottom:b.bottom,covered:entry.dataset.stackCovered,scrollsInPlace:c.classList.contains('scroll-in-place'),scrollTop:c.scrollTop,
+          nextWords:words?.getBoundingClientRect().top??null,last:last===entry?null:last.getBoundingClientRect().bottom,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth,innerHeight}})()`);
+      assert.equal(box.covered, 'true', `${at}: the next card overlaps ${key}`);
+      assert.ok(box.bottom + 3 < box.innerHeight, `${at}: ${key}'s bottom edge is in the window: ${JSON.stringify(box)}`);
+      assert.ok(box.nextWords >= box.bottom + 2 - .5, `${at}: the ring below ${key} stays clear of the next card's words: ${JSON.stringify(box)}`);
+      const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+      const scale = image.width / box.innerWidth, y = Math.floor((box.bottom + 1) * scale);
+      const xs = [0.3, 0.5, 0.7].map(f => Math.floor((box.left + (box.right - box.left) * f) * scale));
+      const got = xs.map(x => image.pixel(x, y));
+      const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 24);
+      assert.ok(got.every(px => near(px, box.ring)), `${at}: the ring's bottom side shows over the next card below ${key}: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(got)}, ${JSON.stringify(box)}`);
+      let below = null;
+      if (box.last !== null && box.last + 3 < box.innerHeight) {
+        below = image.pixel(Math.floor((box.left + (box.right - box.left) / 2) * scale), Math.floor((box.last + 1) * scale));
+        assert.ok(!near(below, box.ring), `${at}: no ring is drawn below the dossier's last card while ${key} is lit: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(below)}`);
+      }
+      observations.push({ name: 'stack lit ring bottom', engine, at, key, ring: box.ring, got, below, scrollsInPlace: box.scrollsInPlace, scrollTop: box.scrollTop });
+      return { box, below };
+    };
+    // Scrolls a card read in place inside itself, done on its scroll event (at once when it is already there).
+    const scrollInside = (p, selector, to) => p.evaluate(`new Promise(done=>{const c=document.querySelector(${JSON.stringify(selector)}),want=${to === 'top' ? 0 : '(c.scrollHeight-c.clientHeight)/2'};
+      if(Math.abs(c.scrollTop-want)<1)return done();c.addEventListener('scroll',()=>done(),{once:true});c.scrollTop=want})`);
     for (const device of Object.keys(DEVICES)) {
       const topic = `stack-ring-${device}`, ids = await dossierSeed(topic, false, true);
-      const p = await open(topic, device, topic, ids.root); await dossierOpen(p, device, ids.root);
-      for (const width of widthsOf(device)) {
-        await atWidth(p, device, width);
-        for (const key of ['root', 'middle']) {
-          await centre(p, card(ids[key]));
-          await light(p, device, ids[key]);
-          for (const theme of ['light', 'dark']) {
-            await dossierTheme(p, theme);
-            await until(async () => (await lit(p)).includes(ids[key]), `${device} ${width}px ${theme}: ${key} is lit`);
-            await twoFrames(p);
-            const box = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids[key]))}),b=c.getBoundingClientRect(),probe=document.createElement('span');
-              probe.style.background='var(--stack-ring)';c.append(probe);const ring=getComputedStyle(probe).backgroundColor;probe.remove();
-              const x=document.createElement('canvas').getContext('2d');x.fillStyle=ring;x.fillRect(0,0,1,1);
-              return {left:b.left,right:b.right,bottom:b.bottom,covered:c.dataset.stackCovered??c.closest('[data-stack-covered]')?.dataset.stackCovered,ring:[...x.getImageData(0,0,1,1).data].slice(0,3),innerWidth}})()`);
-            assert.equal(box.covered, 'true', `${device} ${width}px ${theme}: the next card overlaps ${key}`);
-            const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
-            const scale = image.width / box.innerWidth, y = Math.floor((box.bottom + 1) * scale);
-            const xs = [0.3, 0.5, 0.7].map(f => Math.floor((box.left + (box.right - box.left) * f) * scale));
-            const got = xs.map(x => image.pixel(x, y));
-            const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 24);
-            assert.ok(got.every(px => near(px, box.ring)), `${device} ${width}px ${theme}: the ring's bottom side shows over the next card below ${key}: ring ${JSON.stringify(box.ring)}, screen ${JSON.stringify(got)}`);
-            observations.push({ name: 'stack lit ring bottom', engine, device, width, theme, key, ring: box.ring, got });
-            if (key === 'middle') await shot(p, `stack-ring-${device}-${width}-${theme}`);
+      const longTopic = `stack-ring-long-${device}`;
+      const longIds = await seed(longTopic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: long('the first message') }],
+        ['long', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: long('an agent\'s reply') }],
+        ['between', { sender: 'aim-ux', reply_to: 'root', addressees: [other], body: 'Between the agents, to aim-core.', read: true }],
+        ['short', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A short reply after them.' }]]);
+      let negatives = 0;
+      for (const [seeded, root, keys] of [[topic, ids, ['root', 'middle']], [longTopic, longIds, ['root', 'long', 'between']]]) {
+        const p = await open(seeded, device, seeded, root.root); await dossierOpen(p, device, root.root);
+        for (const width of widthsOf(device)) {
+          await atWidth(p, device, width);
+          for (const key of keys) {
+            const id = root[key], folded = key === 'between', selector = folded ? line(id) : card(id), scrolls = seeded === longTopic && !folded;
+            await centre(p, selector);
+            if (folded) {
+              assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-expanded')`), 'false', `${device} ${width}px: the fold line between agents is shut`);
+              await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus({preventScroll:true})`);
+            } else await light(p, device, id);
+            await until(async () => (await lit(p)).includes(id), `${device} ${width}px: ${key} is lit`);
+            if (scrolls) {
+              // Lit, a long message's whole words come and its card is read in place, scrolling inside itself.
+              await until(() => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).classList.contains('scroll-in-place')`), `${device} ${width}px: lit, the long ${key} is read in place`);
+              await centre(p, selector);
+            }
+            for (const theme of ['light', 'dark']) {
+              await dossierTheme(p, theme);
+              const at = `${device} ${width}px ${theme}`;
+              const top = await ringAt(p, selector, at, key);
+              if (top.below) negatives++;
+              if (scrolls) {
+                assert.equal(top.box.scrollsInPlace, true, `${at}: ${key} scrolls inside its card`);
+                // Scrolled inside, the card's box stays where it is, and its ring with it.
+                await scrollInside(p, selector, 'middle');
+                const inside = await ringAt(p, selector, `${at} scrolled inside`, key);
+                assert.ok(inside.box.scrollTop > 0, `${at}: ${key} scrolled inside its card: ${JSON.stringify(inside.box)}`);
+                await scrollInside(p, selector, 'top');
+              }
+              if (key === keys[1]) await shot(p, `stack-ring-${seeded === longTopic ? 'long-' : ''}${device}-${width}-${theme}`);
+              if (folded) await shot(p, `stack-ring-fold-line-${device}-${width}-${theme}`);
+            }
           }
         }
+        assert.deepEqual(p.errors, []); await p.close();
       }
-      assert.deepEqual(p.errors, []); await p.close();
+      assert.ok(negatives > 0, `${device}: the last card's bottom edge was read for a stray ring at least once`);
     }
   });
 
