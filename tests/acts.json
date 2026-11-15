@@ -14042,6 +14042,21 @@
     "native": "rail",
     "case": "rail arrows on the Outcomes home"
    }
+  },
+  {
+   "item": 301,
+   "act": "In a pop-up over a pane (a Notebook page in the composer's sheet) the arrows move among the pop-up's controls, never those of the pane behind it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "scope = within && layer.contains(within) ? within : layer;",
+     "scope = within ?? layer;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a Notebook page's cards"
+   }
   }
  ]
 }

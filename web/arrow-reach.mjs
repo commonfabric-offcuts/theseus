@@ -138,7 +138,8 @@ function stepToward(el, way, doc) {
 // instead, so words between two controls are read on the way. Answers whether
 // the press did either.
 export function reach(from, way, { within = null, doc = from?.ownerDocument ?? globalThis.document } = {}) {
-  const nothing = onNothing(from, doc), scope = within ?? layerOf(doc, nothing ? null : from);
+  // Within the region named, unless a pop-up open over it is the layer the focus is in.
+  const nothing = onNothing(from, doc), layer = layerOf(doc, nothing ? null : from), scope = within && layer.contains(within) ? within : layer;
   const list = controls(scope).filter(el => nothing || (el !== from && !el.contains(from) && !from.contains(el)));
   const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way);
   if (!next) return false;
