@@ -159,7 +159,7 @@ export class AgentInvite {
     if (retry) {
       const again = element('button', { type: 'button', className: 'text-action invite-retry', textContent: 'Try again' });
       again.onclick = () => this.go(true);
-      this.state.append(' ', again);
+      this.state.append(again);
     }
     this.state.hidden = !text; this.state.classList.toggle('quiet', quiet);
   }

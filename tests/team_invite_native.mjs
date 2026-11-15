@@ -280,7 +280,7 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
       const sent = p.calls.length;
       await p.key('Enter');
       await until(async () => (await said(p))?.startsWith('Quiet helper is on the team, but its sign-in file could not be written in '), 'the file not written is said');
-      assert.ok((await said(p)).endsWith('Try again: the same invitation writes it, and nothing else is repeated. Try again'), await said(p));
+      assert.ok((await said(p)).endsWith('Try again: the same invitation writes it, and nothing else is repeated.Try again'), await said(p));
       assert.equal(await focused(p), 'text-action invite-retry', 'the focus is on Try again');
       await until(async () => (await teamNames(p)).includes('Quiet helper'), 'the agent is on the team already');
       assert.equal(await visible(p, '#invite-prompt-text'), false, 'no prompt without its sign-in file');
