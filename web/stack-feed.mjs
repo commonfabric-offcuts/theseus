@@ -504,7 +504,7 @@ export class StackFeed {
     const found = stackOf(this.list, entry ?? (section && this.entryFor(section.dataset.stack)));
     if (!found) return null;
     const chrome = !entry || target.closest('.stack-head') || target.closest('.stack-toggle');
-    return { found, item: entry && this.messages().get(entry.dataset.id), whole: Boolean(found.section && chrome) };
+    return { found, item: entry && this.messages().get(entry.dataset.id), whole: Boolean(found.section && (chrome || found.section.dataset.single === 'true')) };
   }
   // through: Option was held, so a swipe right folds the message and every one before it (foldThrough).
   swipeAct(target, folds, through = false) {
