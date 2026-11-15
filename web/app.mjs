@@ -2874,7 +2874,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); healthLight?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { healthLight?.stop(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).

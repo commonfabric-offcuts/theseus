@@ -149,15 +149,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // workspace name, inside the rail), and Health (where it sits, below everything else shown in the
   // rail, its size, inside the rail), and whether anything scrolls sideways.
   const brandAndHealth = p => p.evaluate(`(()=>{const rail=document.getElementById('rail'),b=document.getElementById('guide-open'),w=document.querySelector('.wordmark'),
-    l=document.getElementById('instance-label'),a=document.getElementById('health-link'),shown=e=>e.getClientRects().length>0;
+    l=document.getElementById('instance-label'),a=document.getElementById('health-link');
     const box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:Math.round(r.width),height:Math.round(r.height)}};
     const meet=(x,y)=>x.left<y.right-0.5&&y.left<x.right-0.5&&x.top<y.bottom-0.5&&y.top<x.bottom-0.5;
     const wm=box(w),lb=box(l),hl=box(a),rb=box(rail),g=b&&box(b);
-    const others=[...rail.querySelectorAll('*')].filter(e=>shown(e)&&!e.contains(a)&&!a.contains(e));
+    // Shown as a person sees it: a closed Keys holds its words out of sight (content-visibility), so checkVisibility.
+    const others=[...rail.querySelectorAll('*')].filter(e=>e.checkVisibility()&&!e.contains(a)&&!a.contains(e));
+    const below=others.filter(e=>e.getBoundingClientRect().bottom>hl.top+1).map(e=>e.id||e.className||e.tagName.toLowerCase());
     return {guide:g?{opacity:getComputedStyle(b).opacity,width:g.width,height:g.height,beside:g.left>=wm.right-1&&g.top<wm.bottom&&g.bottom>wm.top,
         overlaps:meet(g,lb)||meet(g,wm),inside:g.right<=rb.right+0.5}:null,
       health:{parent:a.parentElement?.id??'',last:a.parentElement?.lastElementChild===a,width:hl.width,height:hl.height,
-        lowest:others.every(e=>e.getBoundingClientRect().bottom<=hl.top+1),inside:hl.left>=rb.left-0.5&&hl.right<=rb.right+0.5,words:a.textContent},
+        lowest:below.length===0,below,inside:hl.left>=rb.left-0.5&&hl.right<=rb.right+0.5,words:a.textContent},
       railScroll:rail.scrollWidth-rail.clientWidth,scroll:document.documentElement.scrollWidth,width:innerWidth}})()`);
 
   await check('rail the logo block and Health at 320, 375 and 390 by touch and on a laptop, light and dark: the logo\'s ? shows on a phone as a full tap, and on a laptop only while pointed at; Health is last in the rail, fits, and is a full tap on a phone; nothing scrolls sideways', async () => {

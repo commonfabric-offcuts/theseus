@@ -11680,6 +11680,21 @@
    "check": {
     "node": "tests/ui_health.test.mjs"
    }
+  },
+  {
+   "item": 463,
+   "act": "The Health light of the page that went stops before its live feed does, so the feed going down as the page moves never paints \"couldn't check\" on the kept link",
+   "break": [
+    [
+     "web/app.mjs",
+     "healthLight?.stop(); live?.stop();",
+     "live?.stop(); healthLight?.stop();"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Health is last in the rail, at the foot of the outline"
+   }
   }
  ]
 }

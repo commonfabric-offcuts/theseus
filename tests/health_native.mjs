@@ -223,9 +223,10 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     Socket.prototype=Real.prototype;Object.assign(Socket,{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3});window.WebSocket=Socket;})()`;
   // The link in a topic page's rail (on a phone, the open drawer): whether it is the outline's last part and below
   // everything else shown in the rail, inside the rail, its height, and whether anything scrolls sideways.
-  const inRail = p => p.evaluate(`(()=>{const rail=document.getElementById('rail'),a=document.getElementById('health-link'),o=document.getElementById('outline'),shown=e=>e.getClientRects().length>0;
-    const r=a.getBoundingClientRect(),rb=rail.getBoundingClientRect(),others=[...rail.querySelectorAll('*')].filter(e=>shown(e)&&!e.contains(a)&&!a.contains(e));
-    return {foot:a.parentElement===o&&o.lastElementChild===a,lowest:others.every(e=>e.getBoundingClientRect().bottom<=r.top+1),inside:r.left>=rb.left-0.5&&r.right<=rb.right+0.5,
+  const inRail = p => p.evaluate(`(()=>{const rail=document.getElementById('rail'),a=document.getElementById('health-link'),o=document.getElementById('outline');
+    const r=a.getBoundingClientRect(),rb=rail.getBoundingClientRect(),others=[...rail.querySelectorAll('*')].filter(e=>e.checkVisibility()&&!e.contains(a)&&!a.contains(e));
+    const below=others.filter(e=>e.getBoundingClientRect().bottom>r.top+1).map(e=>e.id||e.className||e.tagName.toLowerCase());
+    return {foot:a.parentElement===o&&o.lastElementChild===a,lowest:below.length===0,below,inside:r.left>=rb.left-0.5&&r.right<=rb.right+0.5,
       height:Math.round(r.height),scroll:document.documentElement.scrollWidth-innerWidth,railScroll:rail.scrollWidth-rail.clientWidth}})()`);
 
   await check('health the link is last in a topic page\'s rail and fits at 320, 375 and 390 by touch and on a laptop, light and dark, lit and when it could not check', async () => {
