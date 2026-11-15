@@ -42,6 +42,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
+import { imageStandIns } from './deck.mjs';
 import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting, PLACE as CONVERSATION_PLACE } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
@@ -654,6 +655,8 @@ function attachmentControl(attachment, sourceRef, current, notice) {
   }); host.append(show);
   return host;
 }
+// One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
+async function pageImage(attachment, ref) { return (await api.media(bootstrap.instance_id, attachment, ref)).blob; }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
   const current = () => registry.isSourceCurrent(presentation) && !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
@@ -827,7 +830,9 @@ function paintViews(kind) {
     if (card.dataset.source !== identity || card.dataset.changed !== changed) {
       const [title, body] = card.children;
       card.dataset.source = identity; card.dataset.changed = changed;
-      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); linkWords(body, item.body, { partial: item.preview === true });
+      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item);
+      // A card's image line reads as the image's name after its glyph (deck.mjs, imageStandIns), never its markup.
+      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
@@ -1931,7 +1936,7 @@ async function initialize() {
     recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
-    images: topicImages, imageBytes,
+    images: topicImages, imageBytes, pageImage,
     actorName: displayActor,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -2764,7 +2769,7 @@ function pagesInPlace(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
 }
 // The outcome's own page lists its Notebook pages after its topics, each opening
 // in the composer over it; the side rail lists none (docs/notebook-pages.md).

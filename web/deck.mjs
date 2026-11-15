@@ -74,6 +74,32 @@ export function cardImages(text) {
   const { words: kept, taken } = takeLines(text, line => { const image = IMAGE_LINE.exec(line); return image && { name: image[1], id: image[2], line: line.trim() }; });
   return { words: kept, images: taken };
 }
+// The image a line of a page names, {name, id}, when it holds only ![name](attachment:ID); null for any other line.
+// Whether the line stands outside a fenced block is the reader's to know (cardImages, imageStandIns).
+export function lineImage(line) {
+  const image = IMAGE_LINE.exec(lineText(line));
+  return image && { name: image[1], id: image[2] };
+}
+// Where a page's words show only as words (a Notebook card's excerpt, what changed in a page, an ask quoting a
+// card), each image line reads as the image's name after an image glyph, never as its markup. partial: the words are
+// an excerpt cut short, so their last line may be an image line cut inside its address, which reads the same way.
+export const IMAGE_GLYPH = '🖼';
+const standIn = name => `${IMAGE_GLYPH} ${name.trim() || 'Image'}`;
+const CUT_LINE = /^[ \t]*!\[([^\]\n]*)\]\(([A-Za-z0-9._:-]*)$/;
+export function imageStandIns(text, { partial = false } = {}) {
+  const lines = String(text ?? '').split('\n');
+  let fence = null;
+  return lines.map((line, i) => {
+    const before = fence;
+    fence = fenceAfter(fence, line, lines[i + 1]);
+    if (before || fence) return line;
+    const image = lineImage(line), end = line.endsWith('\r') ? '\r' : '';
+    if (image) return standIn(image.name) + end;
+    const cut = partial && i === lines.length - 1 && CUT_LINE.exec(line);
+    const address = cut && cut[2];
+    return cut && (address.length <= 11 ? 'attachment:'.startsWith(address) : /^attachment:[A-Za-z0-9._-]*$/.test(address)) ? standIn(cut[1]) : line;
+  }).join('\n');
+}
 // The line that puts one of the page's attachments in a card, as the deck writes it: brackets and line breaks in
 // its name, which would end the line's words, are spaces.
 export function imageLine(name, id) {

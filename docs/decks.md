@@ -205,6 +205,19 @@ the page sees it; someone Core does not let write the page sees the images and
 no ×. In the Text view the line is words like any other, and an image pasted
 there is attached to the page without a line, as before.
 
+Everywhere else a card's words are drawn, the line is never its markup. Where
+the page is read, the Reader (a page at a revision) and a page opened in place
+on its outcome's page, it is
+the image, as wide as it is up to the width of the words and never taller than
+most of the screen, with its name under it, read through the page at the
+revision shown (`web/page-image.mjs`); an image the page does not carry is its
+name alone, "· not on this page", and nothing is read for it. Where only words
+show, the topic's Notebook card (an excerpt of the page), what changed since
+the person last read the page, and an ask quoting the card, it is the image's
+name after an image glyph, "🖼 chart.png" (`imageStandIns`). A line in a code
+span, in a quote or inside a fenced block, and an image from the web
+(`![x](https://…)`), are words there as in the card.
+
 The rules for the line are `cardImages`, `imageLine` and `boxText` in
 `web/deck.mjs`, checked by `tests/ui_card_images.test.mjs`, with the page's
 limits and putting an image back; reading through the page and attaching an
@@ -213,9 +226,13 @@ image again, `tests/test_memory_card_images.py`; in the browser,
 `webkit-notebook` modes: a paste and a drop while the card is written, a
 reload, ×, Undo after ×, × on an image two cards show, a new card holding only
 an image, the refusals and a large image within the limit, and each state of a
-card's image at 320, 375, 390 and a laptop, light and dark; an image picked
-with `#img` into a card, `tests/notebook_pages_native.mjs` ("notebook images
-paste and img picker").
+card's image at 320, 375, 390 and a laptop, light and dark; the image in the
+Reader at 320, 390 and a laptop and in place on an outcome's page, the topic's
+Notebook card naming it and an ask quoting it, each in light and dark (with
+`imageStandIns` and `lineImage` in `tests/ui_card_images.test.mjs`, and the
+Reader's passages, a page in place and what changed in
+`tests/ui_card_image_words.test.mjs`); an image picked with `#img` into a card,
+`tests/notebook_pages_native.mjs` ("notebook images paste and img picker").
 
 ## Saving
 

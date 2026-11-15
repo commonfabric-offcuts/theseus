@@ -951,6 +951,10 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 /* On a phone a card being written keeps room for its images beside the box, both on the screen at once. */
 @media(max-width:760px){.deck-writing:has(>.deck-images)>.deck-editor{min-height:min(26dvh,14rem)}.deck-image>.image-thumb{max-height:min(30dvh,14rem)}}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
+/* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
+.md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
+.page-image>.image-thumb:not([hidden]){display:block;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:min(28rem,60dvh);object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
 @media(max-width:760px){.deck-page{max-width:none}.deck-cards{display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}.deck-cards::-webkit-scrollbar{display:none}.deck-cards.deck-editing{overflow-x:hidden}

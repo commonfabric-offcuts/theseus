@@ -1,4 +1,4 @@
-import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
+import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, imageStandIns, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
 import { messageLink, messageOf, placeLink } from './links.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
@@ -758,8 +758,8 @@ export class DeckPage {
       const words = asking.field.value.trim(), agent = asking.to.value;
       if (!words || !agent) { asking.field.focus(); return; }
       // The agent is told where the card is, so it can change the card when the ask is to: a heading on a
-      // Notebook page, with the line naming this stack kept under it.
-      const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...cardStacks(card.words, messageOf).words.split('\n')];
+      // Notebook page, with the line naming this stack kept under it. Its images are quoted by name, as words.
+      const card = textCard(asking.text), quoted = [`**${card.title || 'Untitled'}**`, ...imageStandIns(cardStacks(card.words, messageOf).words).split('\n')];
       const body = `${words}\n\n${quoted.map(line => (line ? `> ${line}` : '>')).join('\n')}\n\n` +
         `The card is a ${'#'.repeat(asking.depth + 2)} heading on the Notebook page ${this.item}, “${this.source.title || 'Notebook page'}”, seen as cards at ` +
         `${placeLink({ kind: 'cards', id: this.item })}. To change it, revise that page and keep its Reply stack line.`;

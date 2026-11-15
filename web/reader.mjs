@@ -10,6 +10,7 @@ import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { drawPassages, sourcePosition } from './message-format.mjs';
+import { pageImages } from './page-image.mjs';
 import { paintChoice, clearChoice, chosen, naming, unnamed, sending, choiceOf, list } from './whisper-choice.mjs';
 import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
@@ -424,9 +425,12 @@ export class Reader {
     });
   }
 
-  // The source as passages, its Markdown shown as written to be read (message-format.mjs).
+  // The source as passages, its Markdown shown as written to be read (message-format.mjs). A Notebook page's image
+  // lines show their images, read through the page (page-image.mjs, docs/decks.md "Images in a card").
   drawSource(body) {
-    drawPassages(this.sourceBody, body, document, { copyFences: true });
+    const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
+    drawPassages(this.sourceBody, body, document, { copyFences: true,
+      images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
   }
 
