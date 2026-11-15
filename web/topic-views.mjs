@@ -6,9 +6,10 @@ import { revisionOf } from './message-edit-writing.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
-// message, through, below and the revision of the act that set them. A
+// message, through, below and the revision of the act that set them, and the
+// revision of the dossier's name, which every part of it shows (item 470). A
 // position's snapshot (at) says only when it was read.
-const PLACING = ['root_id', 'through', 'below', 'aside_revision'];
+const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
@@ -306,8 +307,12 @@ export class TopicViews {
   // Keeps the later of each read position, for every loaded message of its
   // dossier. True when what places a dossier changed (samePlace): every act in
   // the topic raises a position's snapshot (at), and that alone draws nothing.
+  // A row is the word on its own message: one sharing a root only by the
+  // position a join or split made stale is read in the same answer, and its
+  // own row places it (item 470).
   learnPositions(rows) {
     let changed = false;
+    const read = new Set(rows.filter(row => row.stack_position).map(row => row.message_id));
     for (const row of rows) {
       if (!row.stack_position) continue;
       const item = this.messages.get(row.message_id);
@@ -315,8 +320,8 @@ export class TopicViews {
       const position = laterPosition(item.stack_position, row.stack_position);
       if (!samePlace(position, item.stack_position)) changed = true;
       item.stack_position = position;
-      for (const other of this.messages.values()) {
-        if (other.stack_position?.root_id !== position.root_id) continue;
+      for (const [id, other] of this.messages) {
+        if (read.has(id) || other.stack_position?.root_id !== position.root_id) continue;
         const next = laterPosition(other.stack_position, position);
         if (!samePlace(next, other.stack_position)) changed = true;
         other.stack_position = next;

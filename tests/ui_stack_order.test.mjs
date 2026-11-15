@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -288,6 +288,62 @@ test('a fold line holding unread replies says how many in red; the head says New
   const named = { ...stack, head: { ...stack.head, acts: { name: { text: 'Cabin week', by: 'owner' } } } };
   assert.deepEqual([headOf(named).name, headOf(named).typed.by], ['Cabin week', 'owner']);
   assert.equal(headOf({ ...stack, head: { ...stack.head, acts: { name: null } } }, { preview: item => item.body.split('\n')[0] + '!' }).name, 'Message 1!');
+});
+
+// Item 470: a dossier's name is its first message's. A page holding only replies reads it from the position Core
+// sends with each of them; a name on a reply showing as the head is not the dossier's.
+test('a dossier\'s name is its first message\'s, read from the position where the page holds only replies', () => {
+  const at = (name, revision, acts = 1) => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: revision, at: { acts, messages: 0 } });
+  const typed = { text: 'Siderail changes', by: 'owner', at_ms: 1 };
+  const replies = [message(3, { reply_to: 'm2', acts: { name: { text: 'On the reply', by: 'owner' } }, stack_position: at(typed, 1) }), message(4, { reply_to: 'm3', stack_position: at(null, 0, 0) })];
+  const [partial] = stacksOf(replies);
+  assert.equal(partial.head.id, 'm3', 'the oldest loaded reply shows as the head');
+  assert.deepEqual([headOf(partial).name, headOf(partial).typed.by], ['Siderail changes', 'owner'], 'the later position names the dossier, not the reply\'s own act');
+  const [unnamed] = stacksOf(replies.map(item => ({ ...item, stack_position: at(null, 2, 2) })));
+  assert.deepEqual([headOf(unnamed).name, headOf(unnamed).typed], ['Message 3', null], 'with no name on the dossier, the first line shown');
+  const [whole] = stacksOf([message(1, { acts: { name: typed }, stack_position: at(null, 0, 0) }), message(2, { reply_to: 'm1' }), ...replies]);
+  assert.equal(headOf(whole).name, 'Siderail changes', 'with the first message loaded, its own acts say it');
+  const [older] = stacksOf([{ ...replies[0], stack_position: undefined }]);
+  assert.equal(headOf(older).name, 'On the reply', 'a page whose Core sends no position reads the head\'s own acts');
+});
+
+// Item 470: where the page holds the first message as the head, its own acts name the dossier, though the newest
+// position says another name (an answer the page has, its positions not yet read again).
+test('with the first message loaded as the head, its own acts name the dossier over a position that says another', () => {
+  const at = name => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: 1, at: { acts: 1, messages: 0 } });
+  const [whole] = stacksOf([message(1, { acts: { name: { text: 'Renamed here', by: 'owner', at_ms: 2 }, name_revision: 2 }, stack_position: at(null) }),
+    message(2, { reply_to: 'm1', stack_position: at({ text: 'Siderail changes', by: 'owner', at_ms: 1 }) })]);
+  assert.equal(positionOf(whole).name.text, 'Siderail changes', 'the newest position says the older name');
+  assert.equal(headOf(whole).name, 'Renamed here', 'the first message\'s own acts say it');
+});
+
+// Item 470: a join or a split, before Core answers it and until the page reads the positions again, leaves the
+// positions Core sent before it on the messages it moved. Neither the stack's position nor its head row's name
+// comes from one, on a full page or on one holding only replies.
+test('a position a join or a split has made stale is not the stack\'s: the head row names its own dossier', () => {
+  const at = (root, name) => ({ root_id: root, through: null, below: false, aside_revision: 0, name, name_revision: name ? 1 : 0, at: { acts: 5, messages: 0 } });
+  const named = text => ({ text, by: 'owner', at_ms: 1 });
+  // Old (m3, its reply m4) and the stack it was joined to, every message carrying the position read then (root, name).
+  const old = (joined, root, name) => [message(3, { acts: { name: named('Old name'), joined }, stack_position: at(root, name) }), message(4, { reply_to: 'm3', stack_position: at(root, name) })];
+  // A full page: Top (m1, its reply m2).
+  const top = [message(1, { acts: { name: named('Top name') }, stack_position: at('m1', named('Top name')) }), message(2, { reply_to: 'm1', stack_position: at('m1', named('Top name')) })];
+  const split = stacksOf([...top, ...old(null, 'm1', named('Top name'))]).find(stack => stack.id === 'm3');
+  assert.equal(positionOf(split), null, 'split out, the positions it carries are the dossier it left: none is its own');
+  assert.deepEqual([headOf(split).name, headOf(split).typed.text], ['Old name', 'Old name'], 'split out, it reads its own name');
+  const joined = stacksOf([...top, ...old({ into: 'm1', by: 'owner' }, 'm3', named('Old name'))]);
+  assert.deepEqual(ids(joined), ['m1'], 'joined, one stack');
+  assert.deepEqual([positionOf(joined[0]).root_id, headOf(joined[0]).name], ['m1', 'Top name'], 'joined, its newer messages carry Old\'s position; the stack is Top\'s');
+  // A page holding only replies (m6, m7) of a dossier whose first message m5 is not loaded: m6 shows as its head.
+  const dossier = [message(6, { reply_to: 'm5', stack_position: at('m5', named('Dossier name')) }), message(7, { reply_to: 'm6', stack_position: at('m5', named('Dossier name')) })];
+  const partSplit = stacksOf([...dossier, ...old(null, 'm5', named('Dossier name'))]).find(stack => stack.id === 'm3');
+  assert.deepEqual([positionOf(partSplit), headOf(partSplit).name], [null, 'Old name'], 'split out of a dossier the page holds only replies of, it reads its own name');
+  const partJoined = stacksOf([...dossier, ...old({ into: 'm6', by: 'owner' }, 'm3', named('Old name'))]);
+  assert.deepEqual(ids(partJoined), ['m6'], 'joined to the reply shown as the head, one stack');
+  assert.deepEqual([positionOf(partJoined[0]).root_id, headOf(partJoined[0]).name], ['m5', 'Dossier name'], 'joined, the stack reads the dossier it hangs under');
+  // The negative: positions that agree with the page stand.
+  assert.deepEqual([positionOf(stacksOf(dossier)[0]).root_id, positionOf(stacksOf(top)[0]).root_id], ['m5', 'm1'], 'a page holding only replies, and a full one, keep their positions');
+  const joinedAfar = stacksOf(old({ into: 'm5', by: 'owner' }, 'm5', named('Dossier name')));
+  assert.deepEqual([positionOf(joinedAfar[0]).root_id, headOf(joinedAfar[0]).name], ['m5', 'Dossier name'], 'joined to a dossier the page has not loaded, it reads that dossier\'s position');
 });
 
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {

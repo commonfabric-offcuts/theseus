@@ -7,6 +7,7 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { messagePreview } from '../web/message-preview.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -3613,6 +3614,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.key('Enter');
         await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), `${device}: Return closes it`);
         assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: the name unchanged sends nothing`);
+        // Typed in as shown, his words unchanged also name nothing: the field touched, only the line it is named by holds it.
+        await centre(p, `${card(ids.named)} .stack-name`);
+        await p.point(`${card(ids.named)} .stack-name`);
+        await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), `${device}: the name opens to rename again`);
+        await p.evaluate(`document.activeElement.select()`);
+        await p.send('Input.insertText', { text: his });
+        await p.key('Enter');
+        await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), `${device}: Return closes it again`);
+        assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, `${device}: his words typed in unchanged send nothing`);
         assert.equal((await actsOf(topic, ids.named))?.name ?? null, null, `${device}: and Core holds no typed name`);
       }
       // Its first message folded: the head row stands for it, with the same words and Folded.
@@ -4005,6 +4015,236 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal((await actsOf(topic, ids.m0))?.starred, false, 'and Core holds none');
     } else observations.push({ name: 'stacks Reader star alone refused', engine, held: 'holds Core\'s answer with the Chrome harness\'s request interception, which Safari\'s harness does not offer: a refused star on a message opened alone is checked in Chrome' });
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 470: a name typed while a dossier's first message is not loaded names the dossier, and it is
+  // still its name once that message loads; another page holding any part of it shows it too.
+  await check('reading stacks a name typed while a dossier\'s first message is not loaded names the dossier, and stays its name once that message loads', async () => {
+    const topic = 'stack-name-partial';
+    // Two spaces in each reply's first line: its row and the name field show it as messagePreview does, folded.
+    const messages = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The old dossier root.', read: true }],
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply  ' + i, read: true }])];
+    const ids = await seed(topic, messages), bodyOf = Object.fromEntries(messages.map(([key, message]) => [ids[key], message.body]));
+    const p = await open(topic, 'laptop', topic, ids.r34);
+    const loaded = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(id))}))`);
+    assert.equal(await loaded(ids.root), false, 'the first message is outside the loaded page');
+    const shownHead = await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    assert.notEqual(shownHead, ids.root, 'a reply shows as the dossier\'s head');
+    const row = `#messages .reply-stack[data-stack="${ids.root}"] .stack-name, #messages .reply-stack[data-stack="${shownHead}"] .stack-name`;
+    const named = () => p.evaluate(`(n=>n&&{text:n.textContent,title:n.title})(document.querySelector(${JSON.stringify(row)}))`);
+    const input = '#messages .reply-stack .stack-rename-input';
+    await centre(p, `#messages .reply-stack[data-stack="${shownHead}"] .stack-pen`);
+    await p.point(`#messages .reply-stack[data-stack="${shownHead}"] .stack-pen`);
+    await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), 'the shown head opens to rename');
+    await p.evaluate(`document.activeElement.select()`);
+    await p.send('Input.insertText', { text: 'Siderail changes' });
+    await p.key('Enter');
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Siderail changes', 'Core holds the name on the dossier\'s first message');
+    assert.equal((await actsOf(topic, shownHead))?.name ?? null, null, 'and none on the reply that showed as its head');
+    assert.equal((await named()).text, 'Siderail changes', 'the head row shows it');
+    // The first message loads: the dossier keeps the name, and says who typed it.
+    const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+    for (let page = 0; !await loaded(ids.root); page++) {
+      assert.ok(page < 3, 'Earlier messages reaches the first message');
+      const before = await cards();
+      await centre(p, '#more-messages'); await p.point('#more-messages');
+      await until(async () => (await cards()) > before, 'Earlier messages reads an older page');
+    }
+    await until(async () => (await named())?.text === 'Siderail changes', 'with its first message loaded, the dossier keeps the typed name');
+    assert.match((await named()).title, /^Named by You for everyone here/, 'and says the reader named it');
+    // Another page holding only the newest part shows the name too.
+    const q = await open(topic + '-again', 'laptop', topic, ids.r34);
+    const again = () => q.evaluate(`(s=>s?.querySelector('.stack-name')?.textContent)(document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack'))`);
+    assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the new page has not loaded the first message');
+    await until(async () => (await again()) === 'Siderail changes', 'a page holding only replies shows the dossier\'s name');
+    // ⌘Z on the first page gives the dossier back its first line, on both pages.
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).focus()`);
+    await p.key('z', 4);
+    await until(async () => (await actsOf(topic, ids.root))?.name === null, '⌘Z clears the dossier\'s name in Core');
+    await until(async () => (await again()) !== 'Siderail changes', 'and the other page no longer shows it');
+    // On the page holding only replies, the field opened and left untouched records nothing, and the
+    // shown reply's line, typed in, names the dossier: the first message loaded shows it.
+    const shownLine = await again(), qHead = await q.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
+    assert.equal(shownLine, messagePreview({ body: bodyOf[qHead] }), 'with no name, the row shows the reply at its head by its line');
+    const qPen = `#messages .reply-stack[data-stack="${qHead}"] .stack-pen`;
+    const qOpen = async what => { await centre(q, qPen); await q.point(qPen); await until(() => q.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), what); };
+    await qOpen('the reply showing as the head opens to rename');
+    await q.key('Enter');
+    await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Return closes the untouched field');
+    // The page sends an act within the press that makes it, so right after Return nothing has gone, and Core still
+    // holds no name: the shown line differs from the empty name and is not the first message's, so only the field's
+    // being untouched holds it.
+    assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 0, 'the untouched field sends no name at Return');
+    assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'and Core holds none');
+    await qOpen('it opens again');
+    await q.evaluate(`document.activeElement.select()`);
+    await q.send('Input.insertText', { text: shownLine });
+    await q.key('Enter');
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === shownLine, `the shown line typed in names the dossier (${shownLine})`);
+    assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name');
+    // A page in the background reads nothing new until it is shown again: each page is brought forward to be read live.
+    await p.send('Page.bringToFront');
+    await until(async () => (await named())?.text === shownLine, 'the page holding the first message shows the typed name');
+    // Another reader names the dossier while the field is open here, untouched: Return puts nothing back.
+    await q.send('Page.bringToFront');
+    await qOpen('it opens once more');
+    await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-their-name', args: { name: 'Their name' } });
+    await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Their name', 'Core holds the other reader\'s name');
+    // Return only once this page holds that name: before it does, what the field holds is the name it knows, and
+    // Return records nothing whether or not the field was touched.
+    await until(async () => (await again()) === 'Their name', 'the page holds the other reader\'s name before Return');
+    await q.key('Enter');
+    await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Return closes the untouched field');
+    await until(async () => (await again()) === 'Their name', 'the page shows the other reader\'s name');
+    assert.equal(await q.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`), 1, 'the untouched field sent no name over it');
+    assert.equal((await actsOf(topic, ids.root)).name.text, 'Their name', 'and Core keeps it');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await q.close(); await p.close();
+  });
+
+  // Item 470: a join or a split the reader makes leaves, until Core answers it and the page reads the positions
+  // again, the positions Core sent before it on the messages it moved. Held unanswered here (window.holdKinds: the
+  // kinds of act the page's commands wait unsent for, until window.letActs(); window.views: the name of each view the
+  // page reads, as it asks), each head row still names its own
+  // dossier and a rename typed there goes to it, on a full page and on one holding only replies. On the page holding
+  // only replies, a name typed shows before Core answers it; on the full page, a first message's first line with
+  // doubled spaces, typed in on it as the head, records nothing: its row shows that line folded (messagePreview).
+  await check('reading stacks a split or a join waiting for its answer leaves each head row naming its own dossier and a rename going to it, on a full page and one holding only replies', async () => {
+    const HOLD = `(()=>{window.heldActs=[];window.views=[];const f=window.fetch;window.fetch=function(input,init){let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
+      if(b&&b.name)window.views.push(b.name);if(b&&b.kind&&(window.holdKinds||[]).includes(b.kind))return new Promise(go=>window.heldActs.push(go)).then(()=>f.call(this,input,init));
+      return f.call(this,input,init)};window.letActs=()=>{window.holdKinds=null;for(const go of window.heldActs.splice(0))go()}})()`;
+    const field = '#messages .reply-stack .stack-rename-input', split = '#messages .stack-join-line .stack-split';
+    const section = id => `#messages .reply-stack[data-stack="${id}"]`;
+    const nameIn = (p, id) => p.evaluate(`document.querySelector(${JSON.stringify(section(id) + ' .stack-name')})?.textContent ?? null`);
+    const names = p => p.evaluate(`window.sent.filter(kind=>kind==='stack.name').length`);
+    const hold = (p, kinds) => p.evaluate(`window.holdKinds = ${JSON.stringify(kinds)}`);
+    const held = p => p.evaluate('window.heldActs.length');
+    // The pen of the stack headed by head opens its field, holding was; text typed over it, then Return.
+    const renameTo = async (p, head, text, was) => {
+      const pen = section(head) + ' .stack-pen';
+      await centre(p, pen); await p.point(pen);
+      await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(field)})`), `the stack headed by ${head} opens to rename`);
+      assert.equal(await p.evaluate('document.activeElement.value'), was, 'the field opens with the name its row shows');
+      await p.evaluate('document.activeElement.select()');
+      await p.send('Input.insertText', { text });
+      await p.key('Enter');
+      await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(field)}))`), 'Return closes the field');
+    };
+    const nameAct = (topic, id, name) => control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: id, operation_id: `${topic}-${id}-name`, args: { name } });
+    const joinAct = (topic, id, into) => control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: id, operation_id: `${topic}-${id}-join`, args: { into } });
+
+    // A full page: Old joined into Top, each named, and Plain, its first line with two spaces, named by it.
+    const topic = 'stack-name-moved';
+    const plainBody = 'Plain  words with two spaces';
+    const ids = await seed(topic, [['plain', { sender: other, join: true, addressees: [facts.actor], body: plainBody, read: true }],
+      ['plainReply', { sender: other, reply_to: 'plain', addressees: [facts.actor], body: 'Its reply.', read: true }],
+      ['top', { sender: other, addressees: [facts.actor], body: 'The top dossier.', read: true }],
+      ['topReply', { sender: other, reply_to: 'top', addressees: [facts.actor], body: 'Its reply.', read: true }],
+      ['old', { sender: other, addressees: [facts.actor], body: 'The old dossier.', read: true }],
+      ['oldReply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'Its reply.', read: true }]]);
+    await nameAct(topic, ids.top, 'Top name'); await nameAct(topic, ids.old, 'Old name'); await joinAct(topic, ids.old, ids.top);
+    const p = await open(topic, 'laptop', topic, ids.oldReply, HOLD);
+    await becomes(() => stacks(p, ids), ['top', 'plain'], 'Old is joined into Top');
+    assert.equal(await nameIn(p, ids.top), 'Top name', 'the joined stack reads Top\'s name');
+    // Split back out, its answer held: Old's messages still carry Top's position.
+    await dossierOpen(p, 'laptop', ids.top);
+    await hold(p, ['stack.join', 'stack.name']);
+    await centre(p, split); await p.point(split);
+    await becomes(() => stacks(p, ids), ['old', 'top', 'plain'], 'Split back out draws Old as its own stack at once');
+    assert.equal(await held(p), 1, 'the split waits for its answer');
+    assert.equal(await nameIn(p, ids.old), 'Old name', 'split out, before Core answers, its row names Old, not the dossier it left');
+    assert.equal(await nameIn(p, ids.top), 'Top name', 'and Top\'s names Top');
+    await renameTo(p, ids.old, 'Old renamed', 'Old name');
+    assert.equal(await nameIn(p, ids.old), 'Old renamed', 'the rename shows at once');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await actsOf(topic, ids.old))?.name?.text === 'Old renamed', 'Core holds the rename on Old');
+    assert.equal((await actsOf(topic, ids.old)).joined, null, 'split for everyone');
+    assert.equal((await actsOf(topic, ids.top)).name.text, 'Top name', 'and Top keeps its name');
+    // Joined again by ⇧⌘↓, its answer held: Old's messages, newer than Top's, still carry Old's position.
+    await hold(p, ['stack.join', 'stack.name']);
+    await keyTo(p, ids.old);
+    await p.key('ArrowDown', 12);
+    await becomes(() => stacks(p, ids), ['top', 'plain'], '⇧⌘↓ joins Old into Top at once');
+    assert.equal(await held(p), 1, 'the join waits for its answer');
+    assert.equal(await nameIn(p, ids.top), 'Top name', 'joined, before Core answers, the row names Top');
+    await renameTo(p, ids.top, 'Top renamed', 'Top name');
+    assert.equal(await nameIn(p, ids.top), 'Top renamed', 'the rename shows at once');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await actsOf(topic, ids.top))?.name?.text === 'Top renamed', 'Core holds the rename on Top');
+    assert.equal((await actsOf(topic, ids.old)).joined?.into, ids.top, 'joined for everyone');
+    assert.equal((await actsOf(topic, ids.old)).name.text, 'Old renamed', 'and Old keeps its name');
+    await until(async () => (await nameIn(p, ids.top)) === 'Top renamed', 'answered and read again, the row names Top');
+    // Plain's first message is its head: its row shows its line folded, and its first line typed in, two spaces and
+    // all, records nothing.
+    const plainLine = await nameIn(p, ids.plain), sentBefore = await names(p);
+    assert.equal(plainLine, messagePreview({ body: plainBody }), 'the row shows the first message by its line');
+    await renameTo(p, ids.plain, plainBody, plainLine);
+    assert.equal(await names(p), sentBefore, 'the first line typed in on the first message sends no name');
+    assert.equal((await actsOf(topic, ids.plain))?.name ?? null, null, 'and Core holds none');
+    // A split answered reads the positions again at once, though no change is heard of meanwhile: the reads a change
+    // heard of starts with (message_acts) wait unsent, and nothing chained after it (a rename) reads them.
+    if (await p.evaluate(`document.querySelector(${JSON.stringify(section(ids.top) + ' > .stack-toggle')}).dataset.state`) !== 'open') await dossierOpen(p, 'laptop', ids.top);
+    await p.evaluate(`window.waitView = 'message_acts'`);
+    const viewsBefore = await p.evaluate('window.views.length');
+    await centre(p, split); await p.point(split);
+    await becomes(() => stacks(p, ids), ['old', 'top', 'plain'], 'Split back out once more');
+    // The page sends its acts one after another: a star made now is sent once the split's answer is handled.
+    const stars = () => p.evaluate(`window.sent.filter(kind=>kind==='message.star').length`), starsBefore = await stars();
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.topReply) + ' > .message-author > .card-star')}).click()`);
+    await until(async () => (await stars()) > starsBefore, 'a star made after the split is sent once the split is handled');
+    assert.equal((await actsOf(topic, ids.old))?.joined, null, 'Core holds the split');
+    assert.ok(await p.evaluate(`window.views.slice(${viewsBefore}).includes('stack_positions')`), 'the split\'s answer read the positions again');
+    await p.evaluate('window.letViews()');
+    assert.equal(await nameIn(p, ids.old), 'Old renamed', 'Old\'s row names Old');
+    assert.deepEqual(p.errors, []); await p.close();
+
+    // A page holding only replies of a dossier, Old joined into its newest reply.
+    const part = 'stack-name-moved-part';
+    const pids = await seed(part, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The long dossier.', read: true }],
+      ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Reply ' + i, read: true }]),
+      ['old', { sender: other, addressees: [facts.actor], body: 'The old dossier.', read: true }],
+      ['oldReply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'Its reply.', read: true }]]);
+    await nameAct(part, pids.root, 'Dossier name'); await nameAct(part, pids.old, 'Old name'); await joinAct(part, pids.old, pids.r34);
+    const q = await open(part, 'laptop', part, pids.oldReply, HOLD);
+    assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(pids.root))}))`), false, 'the first message is outside the loaded page');
+    const shown = await q.evaluate(`document.querySelector(${JSON.stringify(entry(pids.oldReply))}).closest('.reply-stack').dataset.stack`);
+    assert.ok(shown !== pids.root && shown !== pids.old, 'a reply of the dossier shows as the head');
+    assert.equal(await nameIn(q, shown), 'Dossier name', 'the page holding only replies names the dossier');
+    // A rename, its answer held, shows at once.
+    await hold(q, ['stack.name']);
+    await renameTo(q, shown, 'Dossier renamed', 'Dossier name');
+    assert.equal(await held(q), 1, 'the rename waits for its answer');
+    assert.equal(await nameIn(q, shown), 'Dossier renamed', 'before Core answers, the row shows the name typed');
+    await q.evaluate('window.letActs()');
+    await until(async () => (await actsOf(part, pids.root))?.name?.text === 'Dossier renamed', 'Core holds it on the dossier\'s first message');
+    // Split back out, its answer held: Old's messages still carry the dossier's position.
+    await dossierOpen(q, 'laptop', shown);
+    await hold(q, ['stack.join', 'stack.name']);
+    await centre(q, split); await q.point(split);
+    await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), 'Split back out draws Old as its own stack at once');
+    assert.equal(await held(q), 1, 'the split waits for its answer');
+    assert.equal(await nameIn(q, pids.old), 'Old name', 'split out, before Core answers, its row names Old, not the dossier it left');
+    assert.equal(await nameIn(q, shown), 'Dossier renamed', 'and the dossier\'s names the dossier');
+    await renameTo(q, pids.old, 'Old renamed', 'Old name');
+    await q.evaluate('window.letActs()');
+    await until(async () => (await actsOf(part, pids.old))?.name?.text === 'Old renamed', 'Core holds the rename on Old');
+    assert.equal((await actsOf(part, pids.old)).joined, null, 'split for everyone');
+    assert.equal((await actsOf(part, pids.root)).name.text, 'Dossier renamed', 'and the dossier keeps its name');
+    // Joined again by ⇧⌘↓ into the reply shown as the head, its answer held: Old's messages still carry Old's position.
+    await hold(q, ['stack.join', 'stack.name']);
+    await keyTo(q, pids.old);
+    await q.key('ArrowDown', 12);
+    await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), '⇧⌘↓ joins Old into the dossier at once');
+    assert.equal(await held(q), 1, 'the join waits for its answer');
+    assert.equal(await nameIn(q, shown), 'Dossier renamed', 'joined, before Core answers, the row names the dossier');
+    await renameTo(q, shown, 'Dossier again', 'Dossier renamed');
+    assert.equal(await nameIn(q, shown), 'Dossier again', 'the rename shows at once');
+    await q.evaluate('window.letActs()');
+    await until(async () => (await actsOf(part, pids.root))?.name?.text === 'Dossier again', 'Core holds the rename on the dossier\'s first message');
+    assert.equal((await actsOf(part, pids.old)).joined?.into, shown, 'joined for everyone');
+    assert.equal((await actsOf(part, pids.old)).name.text, 'Old renamed', 'and Old keeps its name');
+    await until(async () => (await nameIn(q, shown)) === 'Dossier again', 'answered and read again, the row names the dossier');
+    assert.deepEqual(q.errors, []); await q.close();
   });
 
   // Item 385: Return on a dossier selected as a whole edits its title, as Rename in ⋯ does.

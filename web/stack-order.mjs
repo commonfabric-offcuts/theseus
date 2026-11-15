@@ -165,9 +165,13 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
 // message shown by one line, preview: message-preview.mjs), who replied in the order they first did,
 // and what is new: the head itself, or how many replies. folded: the first
 // message is folded, so the row stands for it at every level and its full
-// message does not show.
+// message does not show. The typed name is the dossier's (item 470): its
+// first message's, which Core sends with the position of every message in it,
+// so a page holding only replies shows it too; where the page holds that
+// message, its own acts say it.
 export function headOf(stack, { preview = item => String(item.body ?? '').split('\n')[0], unread = () => false, peeked = () => false } = {}) {
-  const typed = actsOf(stack.head).name;
+  const position = positionOf(stack);
+  const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
@@ -349,7 +353,17 @@ export function laterPosition(known, answer) {
   if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
   return answer;
 }
+// The stack's position, from the positions its messages carry. One is the
+// stack's only where the page's own reading of it agrees (item 470): it names
+// the head, or the head hangs under a message the page has not loaded and it
+// names none in the stack. A join or a split, before Core answers it and
+// until its messages are read again, leaves the positions Core sent before it
+// on the messages it moved; such a position is another dossier's, and null
+// where none fits.
 export function positionOf(stack) {
-  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(Boolean)
+  const inside = new Set(stack.replies.map(item => item.id));
+  const hangs = Boolean(actsOf(stack.head).joined?.into || stack.head.reply_to);
+  const fits = position => position.root_id === stack.head.id || hangs && !inside.has(position.root_id);
+  return [stack.head, ...stack.replies].map(item => item.stack_position).filter(position => position && fits(position))
     .reduce((known, next) => laterPosition(known, next), null);
 }

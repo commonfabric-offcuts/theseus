@@ -16,9 +16,10 @@ change:
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
   new replies move it again. Theirs alone.
-- `name` (stack.name): the short name of the stack this message heads. The
-  topic's: anyone who reads it may rename it, everyone sees it, and it says who
-  typed it. Empty gives the stack back its first line.
+- `name` (stack.name): the short name of the dossier this message is the first
+  message of; a name typed anywhere in a dossier lands there. The topic's:
+  anyone who reads it may rename it, everyone sees it, and it says who typed
+  it. Empty gives the stack back its first line.
 - `join` (stack.join): the stack this message heads is joined to the end of
   another stack (`into`, a message of that stack), or split back out (none).
   The topic's, wiki style, with who did it.
@@ -272,6 +273,7 @@ def stack_positions(db, actor, items):
             through = acts["aside"]
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
+                               "name": acts["name"], "name_revision": acts["name_revision"],
                                "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
@@ -325,9 +327,10 @@ class Stacks:
         kind, expected_name = KINDS[envelope["kind"]]
         message, topic = self._acted_message(db, actor, envelope["target"])
         value = _value(kind, envelope["args"])
+        # A dossier is put aside and named as a whole, on its first message as this reader's Core finds it.
+        if kind in ("aside", "name") and StackRoots(db, actor).root(message["id"]) != message["id"]:
+            raise Refusal("STACK_CHANGED", "This is not the first message of its dossier now; read it again")
         if kind == "aside":
-            if StackRoots(db, actor).root(message["id"]) != message["id"]:
-                raise Refusal("STACK_CHANGED", "This dossier was joined since it was read; read it again")
             if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
         personal = kind in PERSONAL
