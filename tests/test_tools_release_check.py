@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # A stand-in for node: `--test` prints a TAP summary; a harness writes its
 # results file into the evidence directory. STUB_FAIL names a step to fail;
-# "exit-only-<name>" writes passing results and still exits non-zero.
+# "exit-only-<name>" writes passing results and still exits non-zero. The persistence harness's stand-in writes
+# each case's two lines on its log, as the harness does.
 STUB_NODE = r'''#!%s
 import json, os, sys
 args = sys.argv[1:]
@@ -44,6 +45,10 @@ if harness.endswith("reader_native.mjs"):
 else:
     report = {"browserClosed": True, "results": [{"name": "case", "passed": not bad}]}
     path = "native.json"
+    if harness.endswith("reader_persistence_native.mjs"):
+        # Its case lines on the step's log (tests/native-calls.mjs stamps; release_check.case_lines).
+        print(json.dumps({"case": "case", "started": "2026-11-15T01:00:00.000Z"}))
+        print(json.dumps(dict(report["results"][0], started="2026-11-15T01:00:00.000Z", finished="2026-11-15T01:00:01.000Z")))
 if fail != "no-results-" + name:
     open(os.path.join(evidence, path), "w").write(json.dumps(report))
 sys.exit(int(bad or fail == "exit-only-" + name))

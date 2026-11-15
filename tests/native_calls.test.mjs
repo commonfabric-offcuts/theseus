@@ -246,6 +246,7 @@ test("a Chrome that does not exit after Browser.close is named at its bound, and
   const end = watch(calls.closeAll({ browser, fixture, timers: clock }));
   await settle();
   assert.equal(end.state, 'pending', 'nothing fails before the bound');
+  assert.equal(clock.armed.size, 1, "Chrome's exit has its bound armed");
   const [[timer, bound]] = clock.armed;
   assert.equal(bound.ms, calls.FIXTURE_BOUND_MS, "Chrome's exit has its bound");
   clock.fire(timer);
@@ -259,10 +260,12 @@ test('a fixture that does not exit once its input ends is named at its bound and
   const clock = standInClock(), { done, browser, fixture } = standInEnd({ fixtureExits: false, closes: false });
   const end = watch(calls.closeAll({ browser, fixture, timers: clock }));
   await settle();
+  assert.equal(clock.armed.size, 1, "Chrome's exit has its bound armed");
   const [[timer]] = clock.armed;
   clock.fire(timer);
   await settle();
   assert.equal(end.state, 'pending');
+  assert.equal(clock.armed.size, 1, "the fixture's exit has its bound armed");
   const [[fixtureTimer, bound]] = clock.armed;
   assert.equal(bound.ms, calls.FIXTURE_BOUND_MS, "the fixture's exit has its bound");
   clock.fire(fixtureTimer);
