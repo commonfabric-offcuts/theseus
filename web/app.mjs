@@ -62,6 +62,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { paintCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -796,6 +797,8 @@ function paintViews(kind) {
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
       card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed' }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
+      paintCardImages(card, item, cardImageBytes(item.id));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
@@ -842,6 +845,8 @@ function paintViews(kind) {
 // paint finds a card without searching every card loaded. Cards stay for the
 // page's life.
 const messageEntries = new Map(), memoryCards = new Map();
+// A card's image, read through its message, so only a reader of the message gets it (item 474).
+const cardImageBytes = id => async attachment => (await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob;
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
 // Only the label changes; all record lookup, color and routing keep the ID.
@@ -1432,6 +1437,7 @@ function repaintEdited(ids, edits) {
       else if (cue && !item.preview) cue.remove();
       else if (cue) { cue.textContent = CUE; cue.hidden = false; }
     }
+    paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
     cardScroll?.forget(id, card);
   }

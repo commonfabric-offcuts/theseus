@@ -20,12 +20,16 @@
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
      > .stack-replies        the replies, oldest first, each an entry; between them
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
+       .stack-earlier        first, in an open dossier of more than seven messages: one row for
+                             the earlier ones (.stack-earlier-words, .stack-fresh), item 476
      > .stack-toggle         the header's expand/collapse button (aria-expanded)
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
    [data-starred=true]       on any message card the reader starred
    [data-folded=true]        on any message card the reader folded, holding
      .message-folded         its one row: .folded-author, .folded-words, .folded-thumb, .folded-cue
    .stack-folded             in a head row: its first message is folded
+   [data-earlier=true]       on a card shown as an earlier message's row this visit (item 476),
+     .message-earlier        its one row: .folded-author, .folded-words
 
    The stack is the folder's body; the head row stands above it as the tab, in
    the room the stack's top margin keeps, so the tab is always two lines high:
@@ -245,6 +249,25 @@
 .stack-folded{flex:none;color:var(--stack-meta-ink);font-style:italic}
 .stack-head>.stack-folded{margin-left:calc(.3em - .5rem)}
 .stack-head>.stack-folded::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-style:normal}
+
+/* An open dossier of more than seven messages (item 476): its newest seven are sheets, and one quiet line at the top of
+   the folder stands for the earlier ones, as wide as its words and 44px tall to touch. A press shows each earlier
+   message as one row, as a folded message reads but saying nothing of a fold, since none is saved; a press on a row
+   shows it whole. Neither takes the read material: a card reads read or unread as it does anywhere. */
+.stack-earlier{align-self:flex-start;display:inline-flex;align-items:center;min-height:2.75rem;margin:0 0 var(--stack-sheet-gap);padding:0 .85rem 0 .7rem;
+  border:0;border-radius:var(--stack-r-sheet);background:transparent;color:var(--stack-folder-ink);font-size:.82rem;font-weight:600;text-align:left;cursor:pointer}
+.stack-earlier::before{content:"";flex:none;width:.4rem;height:.4rem;margin-right:.6rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg)}
+.stack-earlier>.stack-fresh{white-space:pre}
+.stack-earlier:hover{background:var(--stack-folder-deep)}
+.stack-earlier:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
+.only-new :is(.stack-earlier,.message-earlier){display:none}
+.message-card[data-earlier=true]:not(.only-new *){display:flex;align-items:center;gap:.5rem;min-height:2.75rem;padding:.3rem 1.15rem;cursor:pointer}
+.message-card[data-earlier=true]:not(.only-new *)>:not(.message-earlier):not(.stack-head){display:none}
+.message-earlier{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true]{height:var(--stack-folded-height);min-height:var(--stack-folded-height);padding-block:0;opacity:1;transition:none}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true]>.message-earlier{opacity:1;transition:none}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true][data-stack-covered=true]{padding-bottom:var(--stack-overlap)}
+.reply-stack:not(.only-new *) .message-earlier{color:var(--stack-folded-ink);align-items:center}
 
 /* Quiet edges keep full-strength ink, including agent-only talk: opacity on
    the card or its row would compound and make the words unreadable. */

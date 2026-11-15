@@ -15,9 +15,12 @@
 // message, are this page's own and never recorded. A message the reader
 // folded is their own act, kept in Core (stack-feed.mjs): wherever it shows
 // it is one row, who wrote it and its first words, with a cue that it is
-// folded; a stack's folded first message is its head row alone.
+// folded; a stack's folded first message is its head row alone. An open
+// dossier of more than seven messages shows its newest seven and one row for
+// the earlier ones, which shows them as rows for this visit (item 476): a way
+// of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -27,6 +30,7 @@ const states = new WeakMap();
 const parts = new WeakMap();
 const headRows = new WeakMap();
 const foldedRows = new WeakMap();
+const earlierRows = new WeakMap();
 
 // Every message entry in the list, in the page's order: each stack's head,
 // then its replies, folded ones included.
@@ -100,10 +104,14 @@ export function topOf(list, entry) {
 // More, each with the place Core held the dossier at then (here;
 // stack-order.mjs, drawnBelow), the stack being renamed, the stacks as last
 // drawn, the messages last drawn as their folded row (folded), and the stacks
-// last drawn below More messages, by id (below).
+// last drawn below More messages, by id (below). Item 476: the open dossiers
+// whose earlier-messages row was opened this visit (earlier), the messages
+// among those earlier ones shown whole this visit (whole), and the messages
+// last drawn as an earlier one's row (earlierRows). None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {} });
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
+    earlier: new Set(), whole: new Set(), earlierRows: new Set() });
   return states.get(list);
 }
 
@@ -122,11 +130,12 @@ export function levelOf(state, id) {
 // changes the stack state.
 // A message opened for that view folds to its row again; the reader's folds
 // themselves are theirs in Core, and no state choice changes them. A dossier
-// a link drew where it sits stays drawn there (here).
+// a link drew where it sits stays drawn there (here). Its earlier-messages row
+// closes again, and what it showed whole folds back to rows (item 476).
 export function setLevel(state, stack, level) {
   state.levels.set(stack.id, level);
-  state.peeked.delete(stack.id);
-  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); }
+  state.peeked.delete(stack.id); state.earlier.delete(stack.id); state.whole.delete(stack.id);
+  for (const item of stack.replies) { state.kept.delete(item.id); state.peeked.delete(item.id); state.whole.delete(item.id); }
 }
 
 // How the page shows its stacks as last drawn (stack-order.mjs, shownOrder):
@@ -156,7 +165,7 @@ export function drawn(list, id) {
   if (stack && view.hidden(stack)) return false;
   const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
   if (view.only) return Boolean(view.only(item));
-  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id) });
+  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), earlier: state.earlier.has(stack.id) });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
 export const stackPage = state => pageOf(state.stacks, shownView(state));
@@ -194,6 +203,8 @@ export function lineSeq(list, seq) {
 // fold stays theirs in Core: nothing is written; one in a dossier put below
 // More is drawn where the dossier sits (here) while Core holds the dossier at
 // the place it held then, until a Move below More or Bring back on any device.
+// One among an open dossier's earlier messages opens their row and shows
+// whole (item 476), for this visit; its first message only when full is asked.
 export function reveal(entry, { full = false } = {}) {
   const feed = entry?.closest?.('#messages');
   if (feed && states.has(feed)) {
@@ -211,6 +222,10 @@ export function reveal(entry, { full = false } = {}) {
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
+  if (section && stack && (own !== id || full) && earlierOf(stack, levelOf(state, id)).some(item => item.id === own)) {
+    if (!state.earlier.has(id)) { state.earlier.add(id); changed = true; }
+    if (!state.whole.has(own)) { state.whole.add(own); changed = true; }
+  }
   if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
   if (stack && positionOf(stack)?.below) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }
   if (changed) state.again();
@@ -218,11 +233,13 @@ export function reveal(entry, { full = false } = {}) {
 }
 
 // A click on a message drawn as its folded row unfolds it (its head row's
-// click does, for a stack's first message: headClick). Answers whether the
-// click was the row's.
+// click does, for a stack's first message: headClick). One drawn as an
+// earlier message's row shows whole in place, for this visit, recording
+// nothing (item 476). Answers whether the click was the row's.
 export function foldedClick(list, entry) {
   if (!entry) return false;
   const state = stackState(list), id = entry.dataset.id;
+  if (cardIn(entry).dataset.earlier === 'true' && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }
   if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;
   state.on?.unfold?.(id);
   return true;
@@ -239,6 +256,9 @@ export function headClick(list, entry, event) {
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
+  // The first message drawn as an earlier one's row, under the tab: a press
+  // there shows it whole, for this visit (item 476); the tab acts as before.
+  if (state.earlierRows.has(stack.id) && !event?.target?.closest?.('.stack-head')) { state.whole.add(stack.id); state.again(); return true; }
   if (state.folded.has(stack.id)) {
     if (state.levels.get(stack.id) !== 'open') setLevel(state, stack, 'open');
     state.on?.unfold?.(stack.id);
@@ -370,6 +390,23 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
   card.dataset.folded = 'true';
 }
 
+// One of an open dossier's earlier messages, shown as one row set into its
+// card for this visit (item 476): who wrote it and its line, as a folded row
+// reads, with nothing saying it is folded, since it is not. A first message's
+// row comes after its tab. on false takes the row away.
+function paintEarlier(entry, item, on, { nameOf, doc }) {
+  const card = cardIn(entry);
+  if (!on) { earlierRows.get(card)?.remove(); if (card.dataset.earlier) card.dataset.earlier = 'false'; return; }
+  let row = earlierRows.get(card);
+  if (!row) { row = element(doc, 'span', 'message-earlier'); row.append(element(doc, 'span', 'folded-author'), element(doc, 'span', 'folded-words')); earlierRows.set(card, row); }
+  const [author, words] = row.children;
+  author.textContent = nameOf(item.author_id);
+  words.textContent = messagePreview(item);
+  const tab = headRows.get(card)?.parentElement === card ? headRows.get(card) : null;
+  if (tab ? tab.nextElementSibling !== row : card.firstElementChild !== row) { if (tab) tab.after(row); else card.prepend(row); }
+  card.dataset.earlier = 'true';
+}
+
 function renameField(section, stack, head, { state, doc }) {
   const p = parts.get(section);
   if (state.renaming !== stack.id) { p.rename?.remove(); p.rename = null; return null; }
@@ -403,8 +440,13 @@ function paintStack(section, stack, byId, context) {
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
   const level = single ? 'open' : levelOf(state, stack.id);
   const coordination = state.coordination.has(stack.id);
-  // A folded first message is its head row alone, at every level.
-  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && !state.folded.has(stack.id);
+  // A folded first message is its head row alone, at every level. Open, with
+  // more than seven messages, the earlier ones wait behind one row until it is
+  // opened (item 476): a first message among them is its tab alone till then,
+  // and after that a row under the tab, until a press shows it whole.
+  const before = single ? [] : earlierOf(stack, level), earlierOpen = state.earlier.has(stack.id), headBefore = before.includes(stack.head);
+  const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && !state.folded.has(stack.id) && (!headBefore || earlierOpen);
+  if (open && headBefore && !starred && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
     if (!unread(item)) return false;
@@ -419,11 +461,33 @@ function paintStack(section, stack, byId, context) {
   p.toggle.setAttribute('aria-label', `${{ head: 'Closed; show latest and unread replies', folded: 'Latest and unread replies; show all messages', open: 'All messages; show latest and unread replies' }[level]}: ${shown.name}`);
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length]); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
-  const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id) });
+  const rows = single ? [] : rowsOf(stack, { level, kept, unread, peeked: item => state.peeked.has(item.id), earlier: earlierOpen });
   // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
   for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
-    if (row.kind === 'reply') { const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry); continue; }
+    if (row.kind === 'reply') {
+      const entry = byId.get(row.item.id); entry.hidden = false; desired.push(entry);
+      // An earlier message reads as its row; one the reader folded keeps that row, a starred one stays whole.
+      if (row.earlier && !row.folded && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);
+      continue;
+    }
+    if (row.kind === 'earlier') {
+      // One row for the earlier messages, at the top of the folder (item 476):
+      // a press shows them all as rows, for this visit, and moves nothing
+      // below More. The keys go on to the first of them when they were on it.
+      const button = line(section, 'earlier', () => { const node = element(doc, 'button', 'stack-earlier'); node.type = 'button'; return node; });
+      button.replaceChildren(element(doc, 'span', 'stack-earlier-words', row.words), ...(row.fresh ? [element(doc, 'span', 'stack-fresh', ` · ${row.fresh} new`)] : []));
+      button.title = `Show ${row.items.length === 1 ? 'it' : `all ${row.items.length}`} as rows, for this visit`;
+      button.onclick = () => {
+        const focused = doc.activeElement === button;
+        state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);
+        const first = entries(section.parentElement ?? section).find(each => each.dataset.id === row.items[0].id);
+        if (focused && first) cardIn(first).focus({ preventScroll: true });
+      };
+      desired.push(button);
+      for (const item of row.items) if (item !== stack.head) { const entry = byId.get(item.id); entry.hidden = !state.only?.(item); desired.push(entry); }
+      continue;
+    }
     if (row.kind === 'join') {
       const join = line(section, `join:${row.item.id}`, () => {
         const node = element(doc, 'div', 'stack-join-line'), words = element(doc, 'span', 'stack-join-words'), split = element(doc, 'button', 'stack-split', 'Split back out');
@@ -486,6 +550,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
   const stacks = ordered(gather(loaded, { viewer }));
   state.stacks = stacks;
+  state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
@@ -529,6 +594,8 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
   // Every other message the reader folded is its one-line row, in a stack or on its own.
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc });
+  // An open dossier's earlier messages, once their row is opened, read as rows (item 476).
+  for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   // What is hidden here is what shownView says is hidden: below a closed More,

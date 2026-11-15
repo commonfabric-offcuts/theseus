@@ -3632,6 +3632,203 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 476: an open dossier of more than seven messages shows its newest seven as cards and one row for the rest,
+  // "8 earlier messages"; a press shows them all as rows, for this visit only, each in its place and each reachable
+  // there (a press on a row shows it whole, its image too, and the Reader opens on it with its Open). Nothing is
+  // sent, nothing moves below More, and a reload finds the row closed again and the stacks' order, the dossier's
+  // name and the reader's folds as Core held them. At a laptop's width and at 390, 375 and 320 on a phone, light
+  // and dark. A dossier of seven or fewer shows no such row.
+  const earlierSeed = topic => seed(topic, [
+    ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Cabin week: the plan.\nEverything we settled.' }],
+    ...Array.from({ length: 14 }, (_, n) => [`r${n + 1}`, { sender: n % 2 ? 'aim-ux' : other, join: n === 1, reply_to: 'root', addressees: [facts.actor],
+      body: `Reply ${n + 1} about the cabin.`, ...(n === 2 ? { attachments: [{ name: 'screen.png', image: 'screen.png' }] } : {}), read: n === 13 }]),
+    ['lone', { sender: other, addressees: [facts.actor], body: 'Another message on its own.', read: true }],
+  ]);
+  // The dossier as drawn: its state, the earlier-messages row's words while it shows, and each message shown, top to
+  // bottom, by how it shows: its tab alone, a row of the earlier ones, a row the reader folded, or a card.
+  const earlierLook = (p, ids) => {
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    return p.evaluate(`(()=>{const names=${JSON.stringify(names)},s=document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]');if(!s)return null;
+      const shown=e=>e.getClientRects().length>0,b=s.querySelector(':scope > .stack-replies > .stack-earlier'),cardOf=e=>e.classList.contains('message-card')?e:e.querySelector('.message-card');
+      const face=c=>c.dataset.earlier==='true'?'row':c.dataset.folded==='true'?'folded':shown(c.querySelector(':scope > .message-preview'))?'card':'tab';
+      return {fold:s.dataset.fold,button:b&&shown(b)?b.textContent:null,messages:[s.firstElementChild,...[...s.querySelector(':scope > .stack-replies').children].filter(e=>e.dataset.id&&shown(e))]
+        .map(e=>names[cardOf(e).dataset.id]+':'+face(cardOf(e)))}})()`);
+  };
+  const earlierButton = root => `#messages .reply-stack[data-stack="${root}"] > .stack-replies > .stack-earlier`;
+  const STACK_ACTS = ['message.fold', 'message.star', 'message.deal', 'stack.aside', 'stack.name', 'stack.join', 'stack.place'];
+  const actsSent = (p, from) => p.evaluate(`window.sent.slice(${from}).filter(kind=>${JSON.stringify(STACK_ACTS)}.includes(kind))`);
+  const storedActs = async topic => (await view('message_acts', { topic_id: topic })).items.map(item => JSON.stringify(item)).sort();
+  const closedLook = ['root:tab', ...Array.from({ length: 7 }, (_, n) => `r${n + 8}:card`)];
+  const openedLook = ['root:row', ...Array.from({ length: 7 }, (_, n) => `r${n + 1}:${n === 4 ? 'folded' : 'row'}`), ...closedLook.slice(1)];
+
+  await check('reading stacks an open dossier of more than seven shows its newest seven and one row for the earlier ones; opened, each is a row reachable in place with its image, nothing is sent, and a reload closes the row with the order, name and folds Core holds unchanged', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-earlier-' + device, ids = await earlierSeed(topic);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-name', args: { name: 'Cabin week' } });
+      await dossierFold(topic, ids.r5);
+      const before = await storedActs(topic);
+      for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+        const p = await open(`${topic}-${width}`, device, topic, ids.root);
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        const at = `${device} ${width}px`, order = await stacks(p, ids);
+        await dossierOpen(p, device, ids.root);
+        await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, `${at}: open, the newest seven are cards and one row stands for the eight before them`);
+        // The row: one short line, as wide as its words, 44px to touch, saying what a press does, nothing sideways.
+        const row = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(earlierButton(ids.root))}),r=b.getBoundingClientRect(),s=b.closest('.reply-stack').getBoundingClientRect();
+          return {height:r.height,narrow:r.width<s.width*.75,inside:r.left>=s.left&&r.right<=s.right,title:b.title,tag:b.tagName,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert.ok(row.height >= 44 && row.narrow && row.inside && row.tag === 'BUTTON', `${at}: the row is one short line, 44px to touch: ${JSON.stringify(row)}`);
+        assert.equal(row.title, 'Show all 8 as rows, for this visit', `${at}: its tooltip says what a press does`);
+        assert.equal(row.sideways, false, `${at}: nothing scrolls sideways`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-earlier-closed-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+        const sent = await p.evaluate('window.sent.length');
+        await centre(p, earlierButton(ids.root)); await press(p, device, earlierButton(ids.root));
+        await becomes(() => earlierLook(p, ids), { fold: 'open', button: null, messages: openedLook }, `${at}: pressed, every earlier message is a row in its place, the reader's fold its own row, the seven as they were`);
+        assert.equal(await said(p), '8 earlier messages show as rows, for this visit', `${at}: a screen reader hears it`);
+        const rows = await p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},h=k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]').getBoundingClientRect().height;
+          return {row:h('r3'),folded:h('r5'),words:document.querySelector('#messages .message-card[data-id="'+ids.r3+'"] > .message-earlier > .folded-words').textContent,
+            author:document.querySelector('#messages .message-card[data-id="'+ids.r3+'"] > .message-earlier > .folded-author').textContent,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+        assert.ok(Math.abs(rows.row - rows.folded) < .5, `${at}: an earlier message's row is as tall as a folded one: ${JSON.stringify(rows)}`);
+        assert.deepEqual([rows.words, rows.author, rows.sideways], ['Reply 3 about the cabin.', other, false], `${at}: the row reads who wrote it and its line`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-earlier-opened-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+        // Reachable in place: a press on its row shows the message whole where it sat, its image with it.
+        await centre(p, card(ids.r3)); await press(p, device, card(ids.r3));
+        await becomes(async () => (await earlierLook(p, ids)).messages, openedLook.map(m => (m === 'r3:row' ? 'r3:card' : m)), `${at}: a press on a row shows that message whole, in its place`);
+        await until(() => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(card(ids.r3) + ' > .card-images > .card-image')}),i=h?.querySelector('img');return Boolean(h&&h.getAttribute('aria-label')==='Image: screen.png'&&i&&!i.hidden&&i.naturalWidth>0)})()`), `${at}: its image shows in the card`);
+        await openReader(p, device, ids.r3);
+        await until(() => p.evaluate(`[...document.querySelectorAll('#source-attachments button')].some(b=>b.textContent==='Open screen.png')`), `${at}: the Reader opens on it and offers its image's Open`);
+        assert.equal(await readerOn(p), 'Reply 3 about the cabin.', `${at}: the Reader shows that message`);
+        await closeReader(p, device);
+        // The first message too: a press on its row under the tab shows it whole.
+        await centre(p, `${card(ids.root)} > .message-earlier`); await press(p, device, `${card(ids.root)} > .message-earlier`);
+        await becomes(async () => (await earlierLook(p, ids)).messages[0], 'root:card', `${at}: a press on the first message's row shows it whole under its tab`);
+        assert.deepEqual(await actsSent(p, sent), [], `${at}: opening the row, and showing messages whole, sends nothing`);
+        assert.equal(await p.evaluate(`document.querySelector('#messages .stack-more')?.isConnected ?? false`), false, `${at}: nothing went below More`);
+        // A reload: the row is closed again, and the order, the name and the fold are as Core holds them.
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), `${at}: the page is drawn again`);
+        assert.deepEqual(await stacks(p, ids), order, `${at}: after a reload the stacks keep their order`);
+        await dossierOpen(p, device, ids.root);
+        await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, `${at}: after a reload, open, the row is closed again`);
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root) + ' .stack-name')}).textContent`), 'Cabin week', `${at}: the dossier keeps its name`);
+        await press(p, device, earlierButton(ids.root));
+        await becomes(async () => (await earlierLook(p, ids)).messages, openedLook, `${at}: after a reload the reader's fold is still its row`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+      assert.deepEqual(await storedActs(topic), before, `${device}: Core holds every act on the dossier as it did: names, folds and places unchanged`);
+    }
+  });
+
+  await check('reading stacks the earlier-messages row is reached by Tab and opened by Return, the keys going on to the first earlier message; a link to an earlier message opens the row and shows it whole; a dossier of seven or fewer shows none', async () => {
+    const seven = await seed('stack-earlier-seven', [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Seven in all.' }],
+      ...Array.from({ length: 6 }, (_, n) => [`s${n + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Seven, reply ${n + 1}.`, read: n === 5 }])]);
+    for (const device of Object.keys(DEVICES)) {
+      const q = await open(`stack-earlier-seven-${device}`, device, 'stack-earlier-seven', seven.root);
+      await dossierOpen(q, device, seven.root);
+      await becomes(async () => { const v = await earlierLook(q, seven); return v && { button: v.button, messages: v.messages }; },
+        { button: null, messages: ['root:card', ...Array.from({ length: 6 }, (_, n) => `s${n + 1}:card`)] }, `${device}: a dossier of seven, open, shows every message as a card and no row`);
+      assert.equal(await q.evaluate(`document.querySelectorAll('#messages .stack-earlier, #messages [data-earlier=true]').length`), 0, `${device}: no earlier row or earlier message's row`);
+      assert.deepEqual(q.errors, []); await q.close();
+    }
+    const topic = 'stack-earlier-keys', ids = await earlierSeed(topic);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await dossierOpen(p, 'laptop', ids.root);
+    await becomes(async () => (await earlierLook(p, ids)).button, '8 earlier messages', 'the row shows');
+    await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle').focus()`);
+    await p.key('Tab');
+    assert.equal(await p.evaluate(`document.activeElement?.matches(${JSON.stringify(earlierButton(ids.root))}) ?? false`), true, 'Tab from the chevron reaches the row');
+    const sent = await p.evaluate('window.sent.length');
+    await p.key('Enter');
+    const unfolded = openedLook.map(m => (m === 'r5:folded' ? 'r5:row' : m));
+    await becomes(async () => (await earlierLook(p, ids)).messages, unfolded, 'Return opens it');
+    assert.equal(await p.evaluate(`document.activeElement?.dataset?.id ?? null`), ids.root, 'the keys go on to the first earlier message, the dossier\'s first');
+    assert.deepEqual(await actsSent(p, sent), [], 'Return sends nothing');
+    // Changing the dossier's state lets the row go: latest and unread, then open again, finds it closed.
+    const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+    await p.point(toggle); await becomes(async () => (await earlierLook(p, ids)).fold, 'folded', 'the chevron folds the dossier');
+    await p.point(toggle);
+    await becomes(async () => { const v = await earlierLook(p, ids); return [v.button, v.messages]; }, ['8 earlier messages', closedLook], 'open again, the row is closed');
+    assert.deepEqual(p.errors, []); await p.close();
+    // A link written in a message to one of the earlier ones: the dossier opens, its row too, and the message shows
+    // whole in its place, in view, as the Reader opens on it.
+    const linking = (await control({ method: 'agent_message', operation_id: topic + '-link', topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor],
+      body: `See ${facts.origin}/?topic=${topic}&message=${ids.r2} for that.`, read: true })).result.message_id;
+    const q = await open(topic + '-link', 'laptop', topic, ids.root);
+    await becomes(async () => (await earlierLook(q, ids)).fold, 'folded', 'the dossier begins at latest and unread');
+    await centre(q, `${card(linking)} a.words-link`); await q.point(`${card(linking)} a.words-link`);
+    await becomes(async () => (await earlierLook(q, ids)).messages, unfolded.map(m => (m === 'r2:row' ? 'r2:card' : m)), 'the link opens the dossier and its row, the message whole in its place');
+    assert.equal(await q.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(ids.r2))}).getBoundingClientRect();return b.top<innerHeight&&b.bottom>0})()`), true, 'the message is in view');
+    await until(async () => (await readerOn(q))?.startsWith('Reply 2'), 'and the Reader opens on it, as a link to a message here does');
+    await closeReader(q, 'laptop');
+    assert.deepEqual(q.errors, []); await q.close();
+  });
+
+  // Item 474: a message's images show as thumbnails in its card, on the topic page and in a dossier, the right
+  // rail's thumbnail size (4.2rem), in the order sent, each named "Image: …" with its name as a tooltip, each read
+  // through the message that carries it, so only someone who may read that message gets it. The Reader keeps its
+  // Open for each; a message with no image, a file that is not an image and a folded row are unchanged; an image
+  // Theseus refuses shows its name and no picture.
+  await check('reading thumbnails a message\'s images show in its card on the topic page and in a dossier, the right rail\'s size, named, each read through its message; the Reader keeps Open, and no image, a file and a folded row are unchanged', async () => {
+    const topic = 'card-thumbs';
+    const seeds = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which view do we keep?' }],
+      ['two', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'These two, in this order.', attachments: [{ name: 'palette.png', image: 'palette.png' }, { name: 'one.jpg', image: 'one.jpg' }] }],
+      ['plain', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'No picture here.' }],
+      ['file', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The notes.', attachments: [{ name: 'notes.txt', text: 'Plain notes.' }] }],
+      ['folded', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Folded, with a picture.', attachments: [{ name: 'one.png', image: 'one.png' }] }],
+      ['last', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The latest word.', read: true }],
+      ['single', { sender: other, addressees: [facts.actor], body: 'A screenshot on its own.', attachments: [{ name: 'screen.png', image: 'screen.png' }], read: true }]];
+    const ids = await seed(topic, seeds);
+    await dossierFold(topic, ids.folded);
+    // The fixture names each image after the message it came with (its seed's place): which message carries which.
+    const carrier = Object.fromEntries(seeds.flatMap(([key, more], n) => (more.attachments ?? []).map((_, k) => [`${topic}-${n}-media-${k}`, ids[key]])));
+    // Each image read the page makes, as it sends it; with window.refuseMedia, Theseus's refusal of that image.
+    const READS = `(()=>{window.mediaReads=[];const f=window.fetch;window.fetch=function(input,init){let b=null;
+      try{const u=typeof input==='string'?input:input.url;if(u.endsWith('/api/media/read')){b=JSON.parse(init.body);window.mediaReads.push(b)}}catch(e){}
+      if(b&&b.media_id===window.refuseMedia)return Promise.resolve(new Response(JSON.stringify({error:{code:'FORBIDDEN',message:'No readable source'}}),{status:403,headers:{'Content-Type':'application/json'}}));
+      return f.call(this,input,init)}})()`;
+    const thumbs = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},out={};
+      for(const [key,id] of Object.entries(ids)){const c=document.querySelector('#messages .message-card[data-id="'+id+'"]'),s=c?.querySelector(':scope > .card-images');
+        out[key]=s&&s.getClientRects().length?[...s.children].map(h=>{const b=h.getBoundingClientRect(),i=h.querySelector(':scope > img'),cb=c.getBoundingClientRect();
+          return {name:h.getAttribute('aria-label'),title:h.title,role:h.getAttribute('role'),square:Math.abs(b.width-b.height)<.5,size:Math.round(b.width*10)/10,
+            picture:Boolean(i&&!i.hidden&&i.naturalWidth>0),words:[...h.querySelectorAll(':scope > .card-image-name')].filter(n=>n.getClientRects().length).map(n=>n.textContent).join(''),inCard:b.left>=cb.left-.5&&b.right<=cb.right+.5}}):null}
+      return {thumbs:out,rail:Math.round(parseFloat(getComputedStyle(document.documentElement).fontSize)*4.2*10)/10,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const image = (name, rail, picture = true) => ({ name: `Image: ${name}`, title: name, role: 'img', square: true, size: rail, picture, words: picture ? '' : name, inCard: true });
+    const want = (rail, refused = false) => ({ thumbs: { root: null, two: [image('palette.png', rail), image('one.jpg', rail)], plain: null, file: null, folded: null, last: null,
+      single: [image('screen.png', rail, !refused)] }, rail, sideways: false });
+    for (const device of Object.keys(DEVICES)) {
+      const p = await open(`${topic}-${device}`, device, topic, ids.root, READS);
+      await dossierOpen(p, device, ids.root);
+      for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        const rail = (await thumbs(p)).rail;
+        await becomes(() => thumbs(p), want(rail), `${device} ${width}px: each image a thumbnail in its card, the rail's size, in order, named; none for no image, a file or a folded row`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, card(ids.two)); await shot(p, `card-thumbs-dossier-${device}-${width}-${theme}`); await centre(p, card(ids.single)); await shot(p, `card-thumbs-single-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
+      // Each picture was read through the message that carries it, and nothing else was read.
+      const reads = await p.evaluate('window.mediaReads');
+      assert.ok(reads.length >= 3, `${device}: the thumbnails were read: ${JSON.stringify(reads)}`);
+      for (const read of reads) assert.deepEqual(read.source_ref, { kind: 'message', id: carrier[read.media_id] }, `${device}: ${read.media_id} is read through its own message`);
+      // The plain card is as it was: its author line and its words, nothing after them.
+      assert.deepEqual(await p.evaluate(`[...document.querySelector(${JSON.stringify(card(ids.plain))}).children].filter(e=>e.getClientRects().length).map(e=>e.className).filter(c=>/card-images/.test(c))`), [], `${device}: a message with no image draws no thumbnails`);
+      // The Reader keeps Open for each attachment, an image's and a file's alike.
+      await openReader(p, device, ids.two);
+      await until(() => p.evaluate(`(()=>{const b=[...document.querySelectorAll('#source-attachments button')].map(b=>b.textContent);return b.includes('Open palette.png')&&b.includes('Open one.jpg')})()`), `${device}: the Reader offers Open for each image`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.file);
+      await until(() => p.evaluate(`[...document.querySelectorAll('#source-attachments button')].some(b=>b.textContent==='Open notes.txt')`), `${device}: the Reader offers Open for the file`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // An image Theseus refuses: its square shows the image's name, and no picture.
+    const refused = await open(`${topic}-refused`, 'laptop', topic, ids.root, `window.refuseMedia=${JSON.stringify(Object.keys(carrier).find(media => carrier[media] === ids.single))};` + READS);
+    await dossierOpen(refused, 'laptop', ids.root);
+    await becomes(() => thumbs(refused), want((await thumbs(refused)).rail, true), 'a refused image shows its name and no picture; the others show');
+    await shot(refused, 'card-thumbs-refused-laptop');
+    await refused.close();
+  });
+
   // Item 433: an act's answer lands on the message the page holds when it lands. A 👍's read of its message's
   // reactions, or a page of messages, puts a new copy of the message in the page while an act about it is out;
   // the answer once went only to the copy the act began with, so the card was drawn again from the copy as Core
