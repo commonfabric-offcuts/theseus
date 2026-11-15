@@ -307,7 +307,9 @@ rule above. (`web/arrow-reach.mjs`)
   move only through it, never to the page behind; a menu, a radio group and a
   picker keep their own arrows.
 - **Reading is kept.** A focused box that can still scroll that way (a long
-  message in the Reader) scrolls first. While the next control that way is out
+  message in the Reader) scrolls first. What lies that way is judged from what
+  of the focused box shows, so a long message whose box runs on below the
+  Reader's pane still has the reply below it. While the next control that way is out
   of sight, the arrow scrolls toward it, a third of a window at a time, so the
   words between are read on the way; once it shows, the next press lands on
   it.
