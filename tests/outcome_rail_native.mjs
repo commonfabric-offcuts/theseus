@@ -1526,8 +1526,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await outline(p)).outcomes['rail-ring-o'].topics.some(row => row.id === 'rail-ring-t'), 'its topic shows under it');
     const returnTo = async what => {
       await until(async () => (await keyTree(p)).rows.includes('topic:rail-ring-t'), what + ': its topic is drawn under it');
+      await settled(p, what + ': the outline\'s reads have landed');
+      const before = await keyTree(p);
       await p.key('ArrowDown');
-      assert.equal(await keyedAt(p), 'topic:rail-ring-t');
+      const at = await keyedAt(p);
+      assert.equal(at, 'topic:rail-ring-t', `${what}: ↓ goes to the topic; the tree before ${JSON.stringify(before)}, after ${JSON.stringify(await keyTree(p))}`);
       await p.key('Enter');
       await arrived(p, '?topic=rail-ring-t', 'Ring topic', what);
       await settled(p, 'the topic is up again');
@@ -1943,7 +1946,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const name=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
       const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
       // Brought into view and held there: the outline may still be settling its own scroll as the page comes up.
-      const press=async selector=>{await until(()=>p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})(document.querySelector(${JSON.stringify(selector)}))`),selector+' is in view');return size==='phone'?tap(p,selector):p.point(selector);};
+      // In view and uncovered (the drawer may still be coming in over the page), naming what covers it when it stays covered.
+      const cover=selector=>p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();if(b.top<0||b.bottom>innerHeight)return 'out of view';
+        const at=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return e.contains(at)?null:at?(at.id||at.className||at.tagName):'nothing'})(document.querySelector(${JSON.stringify(selector)}))`);
+      const press=async selector=>{try{await until(async()=>await cover(selector)===null,selector+' is in view, uncovered');}catch(error){throw Error(`${error.message}: ${await cover(selector)}`);}
+        return size==='phone'?tap(p,selector):p.point(selector);};
       // What lies on the middle of "☰ Outcomes", brought into view (the page scrolls to a question it opens), once the Reader closing has gone from over it.
       const onControl=()=>p.evaluate(`(()=>{const c=document.getElementById('rail-open');c.scrollIntoView({block:'nearest'});const b=c.getBoundingClientRect(),e=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return c.contains(e)?'control':e?(e.id||e.className||e.tagName):null})()`);
       const showRail=async()=>{if(size!=='phone'||(await drawer(p)).open)return;
