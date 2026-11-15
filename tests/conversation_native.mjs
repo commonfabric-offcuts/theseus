@@ -972,7 +972,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
         const first = () => quiet(p, `(c=>c&&{stack:{...c.closest('.reply-stack').dataset},card:{...c.dataset},lit:c.classList.contains('lit'),
           parts:[...c.children].map(e=>e.className+':'+getComputedStyle(e).display)})(document.querySelector('#messages .message-card[data-id="${ids[0]}"]'))`);
         try { await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label}`); }
-        catch (error) { throw new Error(`${error.message}: ${JSON.stringify(await seen())}, its first message ${JSON.stringify(await first())}`); }
+        catch (error) {
+          const state = await quiet(p, `import('/reply-stacks.mjs').then(m=>{const s=m.stackState(document.getElementById('messages')),id=${JSON.stringify(ids[0])},st=s.stacks.find(x=>x.id===id);
+            return JSON.stringify({level:s.levels.get(id),earlier:[...s.earlier],whole:[...s.whole],folded:[...s.folded],earlierRows:[...s.earlierRows],only:Boolean(s.only),head:st?.head?.id,replies:st?.replies.map(r=>r.id),acts:st?.head?.acts})})`);
+          throw new Error(`${error.message}: ${JSON.stringify(await seen())}, its first message ${JSON.stringify(await first())}, the stack state ${state}`);
+        }
         assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}px: ${label}: nothing scrolls sideways`);
       }
       await p.send('Emulation.setDeviceMetricsOverride', DESK);
