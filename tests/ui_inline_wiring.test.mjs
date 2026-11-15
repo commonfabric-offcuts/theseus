@@ -1501,18 +1501,20 @@ test('the page begins its run of the shell as it starts, with its own way to ope
   assert.ok(begun.every(page => ['open', 'refused', 'retire', 'updated'].every(name => typeof page[name] === 'function')));
 });
 
-test('a move the guard let go, refused as it is made, says why the page stayed where a refused move says it: by the topic line and in the Reader or New message sheet that is open', () => {
-  for (const open of [null, 'reader', 'new-message-sheet']) {
+test('a move the guard let go, refused as it is made, says why the page stayed where a refused move says it: by the topic line and in the Reader or New message sheet that is open, or the composer the cursor is in', () => {
+  for (const open of [null, 'reader', 'new-message-sheet', 'composer']) {
     const begun = [], stayed = [], scrolled = [];
     const f = fixture('https://fixture/?topic=t1', { shell: { begin: page => begun.push(page), ready() {}, go: () => false, topicChanged() {}, stayed: () => stayed.push('stayed') } });
-    if (open) f.get(open).open = true;
+    // The composer in its place in the page (its sheet not open), the cursor in it.
+    if (open === 'composer') { f.get('inline-writing-body').parent = f.get('new-message-sheet'); f.get('inline-writing-body').focus(); }
+    else if (open) f.get(open).open = true;
     f.get('topic-navigation-status').scrollIntoView = how => scrolled.push(JSON.stringify(how));
     const why = Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
     begun[0].refused(why);
     assert.equal(f.get('topic-navigation-status').textContent, why.message, `${open}: the topic line says why`);
     assert.deepEqual(stayed, ['stayed'], `${open}: a press that went nowhere lands as a refused move's does`);
-    const near = { reader: 'reader-notice', 'new-message-sheet': 'inline-notice' }[open];
-    if (near) assert.deepEqual([f.get(near).textContent, scrolled], [why.message, []], `${open}: and so does the writing open over the page`);
+    const near = { reader: 'reader-notice', 'new-message-sheet': 'inline-notice', composer: 'inline-notice' }[open];
+    if (near) assert.deepEqual([f.get(near).textContent, scrolled], [why.message, []], `${open}: and so does the writing the person is at, with the page left where it is`);
     else assert.deepEqual([f.get('reader-notice').textContent, f.get('inline-notice').textContent, scrolled], ['', '', ['{"block":"nearest"}']], 'with nothing open, only the topic line says it, brought into view');
   }
 });

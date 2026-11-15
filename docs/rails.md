@@ -293,7 +293,9 @@ move to another build is a load.
   not, the page stays where it is and says why, as a refused move does: "Keep
   this page open until your writing and selected images are safely saved,
   then choose the topic again.", by the topic line and in the Reader or New
-  message sheet when one is open. A back or forward is put back. A move that
+  message sheet when one is open, or in the composer the cursor is in, which
+  keeps its place in the page, so it still shows after a back is put back and
+  the browser restores that entry's scroll. A back or forward is put back. A move that
   a newer choice took over stays without a word. On another build the place
   is loaded (`shell.leave`), so the new release's modules load together.
   While a guard holds (writing not yet safe), or what the guard cleared has
@@ -314,8 +316,8 @@ and Theseus updated said there; and they reload on one build with words on this
 device only. On one build they type while a move reads the build, after a row
 and after a back with the cursor left in the composer, with the device's copy
 of the words kept and with it still being written. Each time they find the
-page where it was, saying why, with the words in their box and no run asked
-for, at 320, 375 and 390 by touch and on a laptop. Chosen again once the words
+page where it was, saying why by the composer, whole in the window, with the
+words in their box and no run asked for, at 320, 375 and 390 by touch and on a laptop. Chosen again once the words
 are safe, the move goes in place. On another build, words typed meanwhile and
 kept on this device keep the page too, saying Theseus updated.
 

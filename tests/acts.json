@@ -14032,6 +14032,20 @@
    "check": {
     "node": "tests/ui_inline_wiring.test.mjs"
    }
+  },
+  {
+   "item": 523,
+   "act": "A page that stays says why in the composer the cursor is in as well as by the topic line, so a back put back, whose scroll the browser restores, still shows it where the person writes",
+   "break": [
+    [
+     "web/app.mjs",
+     "sheet.open || sheet.contains(document.activeElement) ? 'inline-notice'",
+     "sheet.open ? 'inline-notice'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
   }
  ]
 }
