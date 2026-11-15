@@ -56,11 +56,13 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     .catch(async error => { const now = await core(id); assert.ok(probe(now), `${said}: Core's page reads ${JSON.stringify({ body: now.body, attachments: now.attachments })}`); throw error; });
   const media = p => p.calls.filter(call => call.payload?.kind === 'media.begin').length;
 
-  // The upload is held at the page's transport until released, and can be refused once (cardUploadFails).
+  // The upload is held at the page's transport until released, and can then be refused once (cardUploadFails).
+  const parsePlan = body => body.split('\n## Notes')[0];
   const HOLD = `globalThis.cardUploadHeld=false;globalThis.cardUploadFails=false;const cardFetch=fetch.bind(globalThis);
     globalThis.fetch=async(...args)=>{if(String(args[0]).includes('/api/media/upload')){
-      if(globalThis.cardUploadFails){globalThis.cardUploadFails=false;return new Response(JSON.stringify({error:{code:'SERVER_BUSY',message:'This media lane is busy; retain its operation.'}}),{status:503,headers:{'content-type':'application/json'}});}
-      if(globalThis.cardUploadHeld)await new Promise(done=>globalThis.releaseCardUpload=done);}return cardFetch(...args);};`;
+      if(globalThis.cardUploadHeld)await new Promise(done=>globalThis.releaseCardUpload=done);
+      if(globalThis.cardUploadFails){globalThis.cardUploadFails=false;return new Response(JSON.stringify({error:{code:'SERVER_BUSY',message:'This media lane is busy; retain its operation.'}}),{status:503,headers:{'content-type':'application/json'}});}}
+      return cardFetch(...args);};`;
 
   await check('notebook card images an image pasted into a card being written shows in it at once and goes to the page; one dropped joins it; both stay across a reload; × takes one out of the card and off the page', async () => {
     const id = 'nb-card-images', ROOT = '#deck-page', BOX = `${ROOT} .deck-writing textarea`, WRITING = `${ROOT} .deck-writing`;
@@ -130,7 +132,6 @@ export async function cardImageChecks({ check, page, until, control, view, facts
     await p.key('Escape');
     assert.deepEqual(p.errors, []); await p.close();
   });
-  const parsePlan = body => body.split('\n## Notes')[0];
 
   await check('notebook card images a file that is not an image, and an image past the limit, are refused with a line saying what was not added and why; a large image within the limit goes', async () => {
     const id = 'nb-card-refusals', ROOT = '#deck-page', BOX = `${ROOT} .deck-writing textarea`, WRITING = `${ROOT} .deck-writing`, SIGN = `${ROOT} .deck-status`;

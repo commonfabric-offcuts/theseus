@@ -342,9 +342,10 @@ export class NotebookPage extends DeckPage {
     if(!w?.base)return super.picture(figure,image);
     const own=this.images?.held(image.id), attached=w.base.source.attachments.find(a=>a.id===image.id);
     const local=own?.bytes?new Blob([own.bytes],{type:own.type}):own?.file??null;
-    let state='';
-    if(own&&!own.ready)state=own.error?` · ${own.error}`:' · Uploading…';
-    else if(!own&&!attached)state=' · not on this page';
+    let state='',kind='';
+    if(own&&!own.ready)[state,kind]=own.error?[` · ${own.error}`,'failed']:[' · Uploading…','uploading'];
+    else if(!own&&!attached)[state,kind]=[' · not on this page','missing'];
+    if(kind)figure.dataset.state=kind;else delete figure.dataset.state;
     let caption=figure.querySelector(':scope > .deck-image-name');
     if(!caption){caption=this.node('figcaption','deck-image-name');figure.prepend(caption);}
     caption.textContent=name+state;
