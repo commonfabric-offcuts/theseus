@@ -3942,6 +3942,141 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await refused.close();
   });
 
+  // Item 474 (warp codex #5271): a card's thumbnails are read only once the card is drawn as a card near the window
+  // (half a window above and below it), never for a card shown as one row (folded, or behind a dossier's
+  // earlier-messages row) or far from the window; one that comes near later is read then. A topic of 30 messages,
+  // each with one image: nineteen messages on their own, three of them folded, and a dossier of eleven below them. At load only the cards near the window are read, and every card in view shows its picture with its name;
+  // a scroll to the card furthest from the window, an unfold, opening the dossier and its earlier-messages row, and a press that shows an
+  // earlier message whole each read just the cards drawn near the window that were not read before. A square never
+  // read holds no picture at all. Each look's counts go to the run's observations.
+  await check('reading card thumbnails are read only for cards drawn near the window: at load none folded, behind the earlier-messages row or far below; a scroll, an unfold and an earlier message shown whole each read just those cards', async () => {
+    const IMAGES = ['screen.png', 'one.png', 'palette.png', 'one.jpg', 'one.gif', 'one.webp', 'sixteen.png'];
+    const pic = n => ({ attachments: [{ name: `pic-${n}.${IMAGES[n % IMAGES.length].split('.')[1]}`, image: IMAGES[n % IMAGES.length] }] });
+    // The oldest first: the right rail, beside the page at a laptop's width, shows the newest 24 images and reads
+    // them for itself, so s1 to s6 are the folded messages whose reads are only their cards' there.
+    const seeds = [...Array.from({ length: 19 }, (_, n) => [`s${n + 1}`, { sender: n % 2 ? 'aim-ux' : other, join: n < 2, addressees: [facts.actor], body: `Message ${n + 1} on its own, with a picture.`, read: true, ...pic(n) }]),
+      ['root', { sender: other, addressees: [facts.actor], body: 'The plan, with a picture.', read: true, ...pic(19) }],
+      ...Array.from({ length: 10 }, (_, n) => [`r${n + 1}`, { sender: n % 2 ? 'aim-ux' : other, reply_to: 'root', addressees: [facts.actor], body: `Reply ${n + 1}, with a picture.`, read: true, ...pic(n + 20) }])];
+    // Each image read the page makes, by its media id, as it sends it; and how many are out unanswered.
+    const READS = `(()=>{window.mediaReads=[];window.mediaOut=0;const f=window.fetch;window.fetch=function(input,init){let read=null;
+      try{const u=typeof input==='string'?input:input.url;if(u.endsWith('/api/media/read'))read=JSON.parse(init.body).media_id}catch(e){}
+      const answer=f.call(this,input,init);if(read!==null){window.mediaReads.push(read);window.mediaOut++;const back=()=>{window.mediaOut--};answer.then(back,back)}
+      return answer}})()`;
+    // Every thumbnail square in the page: its image's media id, its message, whether it is drawn (has a box), where,
+    // whether a picture was ever asked for (its img) and shows, and its name; every image read so far; and the images
+    // the right rail shows, which it reads for itself (things-rail.mjs) and are no card's reads.
+    const LOOK = `(()=>{const media=k=>k.slice(k.lastIndexOf(':')+1),out={H:innerHeight,reads:window.mediaReads.slice(),out:window.mediaOut,hosts:[],
+        rail:[...document.querySelectorAll('.things-thumbs img.image-thumb')].map(i=>media(i.dataset.key))};
+      for(const h of document.querySelectorAll('#messages .card-image')){const b=h.getBoundingClientRect(),i=h.querySelector(':scope > img'),k=h.dataset.key;
+        out.hosts.push({media:media(k),message:h.closest('.message-card').dataset.id,drawn:h.getClientRects().length>0,top:b.top,bottom:b.bottom,
+          asked:Boolean(i),picture:Boolean(i&&!i.hidden&&i.naturalWidth>0),name:h.getAttribute('aria-label'),title:h.title,role:h.getAttribute('role')})}
+      return out})()`;
+    // Drawn within half a window of the window, give or take slack pixels at its edges.
+    const near = (look, h, slack) => h.drawn && h.bottom > -look.H / 2 - slack && h.top < look.H * 1.5 + slack;
+    const inView = (look, h) => h.drawn && h.bottom > 4 && h.top < look.H - 4;
+    // Settled: no read out, every square asked for shows its picture, and every square drawn near the window does.
+    const settle = async (p, at) => {
+      let look;
+      await until(async () => { look = await p.evaluate(LOOK); return look.out === 0 && look.hosts.every(h => (!h.asked || h.picture) && (!near(look, h, -4) || h.picture)); }, `${at}: every picture asked for has come`);
+      return look;
+    };
+    // What a look read for cards since before (the reads of images the right rail shows aside): no square read
+    // twice, nothing read but squares drawn near the window (slack pixels either way), and every square drawn well
+    // inside that span read, by its card or the rail; a square never drawn never read. Returns the cards' reads.
+    const fresh = (look, before, at, slack = 4) => {
+      const rail = new Set(look.rail), was = new Set(before), all = look.reads.slice(before.length), got = all.filter(media => !rail.has(media));
+      const allowed = new Set(look.hosts.filter(h => near(look, h, slack)).map(h => h.media));
+      const missed = look.hosts.filter(h => near(look, h, -4) && !was.has(h.media) && !all.includes(h.media)).map(h => h.message);
+      const cards = look.reads.filter(media => !rail.has(media));
+      const counts = { at, squares: look.hosts.length, drawn: look.hosts.filter(h => h.drawn).length, near: look.hosts.filter(h => near(look, h, 0)).length,
+        cardReadsNow: got.length, cardReadsAll: cards.length, railReads: look.reads.length - cards.length };
+      observations.push({ name: 'card thumbnails read near the window', engine, ...counts }); console.log('card thumbnails near: ' + JSON.stringify({ engine, ...counts }));
+      assert.equal(new Set(cards).size, cards.length, `${at}: no card's picture is read twice: ${JSON.stringify(cards)}`);
+      assert.deepEqual(got.filter(media => !look.hosts.find(h => h.media === media)?.drawn), [], `${at}: no picture is read for a card shown as a row or hidden: ${JSON.stringify(counts)}`);
+      assert.deepEqual(got.filter(media => !allowed.has(media)), [], `${at}: nothing is read but the cards drawn near the window: ${JSON.stringify(counts)}`);
+      assert.deepEqual(missed, [], `${at}: every card drawn near the window is read: ${JSON.stringify(counts)}`);
+      assert.deepEqual(look.hosts.filter(h => h.asked && !look.reads.includes(h.media)).map(h => h.message), [], `${at}: a square never read asks for no picture`);
+      return got;
+    };
+    // Every square in view shows its picture, named for a screen reader and by its file's name under the pointer.
+    const shown = (look, at) => {
+      const seen = look.hosts.filter(h => inView(look, h));
+      assert.ok(seen.length > 0, `${at}: a thumbnail is in view`);
+      for (const h of seen) assert.deepEqual([h.picture, h.role, h.name, `Image: ${h.title}`], [true, 'img', `Image: ${h.title}`, h.name], `${at}: ${h.message}'s thumbnail shows, named`);
+    };
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `card-thumbs-near-${device}`, ids = await seed(topic, seeds);
+      const media = Object.fromEntries(seeds.map(([key], n) => [key, `${topic}-${n}-media-0`]));
+      for (const key of ['s2', 's5', 's15']) await dossierFold(topic, ids[key]);
+      const p = await open(topic, device, topic, ids.s1, READS);
+      // A card's picture as the page holds it: read for that card (not the right rail's), and showing.
+      const own = (look, key) => look.reads.includes(media[key]) && !look.rail.includes(media[key]);
+      const pictured = (look, key) => look.hosts.find(h => h.media === media[key]).picture;
+      // At load: the cards near the window, and nothing else.
+      let look = await settle(p, `${device} at load`);
+      const atLoad = fresh(look, [], `${device} at load`, look.H / 2);
+      assert.equal(look.hosts.length, 30, `${device}: all thirty messages are loaded, each with its square`);
+      assert.ok(atLoad.length <= 15 && look.hosts.some(h => near(look, h, -4) && h.picture), `${device}: at load only the cards near the window are read, ${atLoad.length} of 30 for cards alone`);
+      for (const key of ['s2', 's5', 's15', 'r1', 'r2', 'r3']) if (!look.hosts.find(h => h.media === media[key]).drawn) assert.ok(!atLoad.includes(media[key]), `${device}: ${key}, not drawn as a card, is not read`);
+      shown(look, `${device} at load`);
+      // A scroll to the card drawn furthest from the window reads the cards then drawn near it, that one among them.
+      const far = h => (h.top > look.H ? h.top - look.H : -h.bottom);
+      const furthest = Object.keys(media).filter(each => look.hosts.find(h => h.media === media[each]).drawn)
+        .sort((a, b) => far(look.hosts.find(h => h.media === media[b])) - far(look.hosts.find(h => h.media === media[a])))[0];
+      assert.ok(look.rail.includes(media[furthest]) || !look.reads.includes(media[furthest]), `${device}: the card furthest from the window, ${furthest}, is not read at load`);
+      let before = look.reads;
+      await centre(p, card(ids[furthest]));
+      look = await settle(p, `${device} scrolled to ${furthest}`);
+      const scrolled = fresh(look, before, `${device} scrolled to ${furthest}`);
+      assert.ok(pictured(look, furthest) && (look.rail.includes(media[furthest]) || scrolled.includes(media[furthest])), `${device}: ${furthest}'s picture is read once it is near, and shows`);
+      shown(look, `${device} scrolled to ${furthest}`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `card-thumbs-near-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // A folded message (one the right rail does not show), brought into view, reads nothing; unfolded, it reads its own picture.
+      const key = ['s2', 's5', 's15'].find(each => !look.rail.includes(media[each]));
+      assert.ok(key, `${device}: a folded message whose picture the right rail does not show: ${JSON.stringify(look.rail)}`);
+      before = look.reads;
+      await centre(p, card(ids[key]));
+      look = await settle(p, `${device} ${key} folded, in view`);
+      fresh(look, before, `${device} ${key} folded, in view`);
+      assert.ok(!look.reads.includes(media[key]) && !look.hosts.find(h => h.media === media[key]).asked, `${device}: ${key}, folded in view, is not read`);
+      before = look.reads;
+      await press(p, device, card(ids[key]));
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids[key]))}).dataset.folded!=='true'`), `${device}: a press unfolds ${key}`);
+      look = await settle(p, `${device} ${key} unfolded`);
+      const unfolded = fresh(look, before, `${device} ${key} unfolded`);
+      assert.ok(unfolded.includes(media[key]) && pictured(look, key), `${device}: unfolded, ${key}'s picture is read, and shows`);
+      shown(look, `${device} ${key} unfolded`);
+      // The dossier opened: its newest seven are cards, read as they come near; the earlier ones behind their row are not.
+      before = look.reads;
+      await dossierOpen(p, device, ids.root);
+      look = await settle(p, `${device} dossier open`);
+      fresh(look, before, `${device} dossier open`);
+      for (const each of ['r1', 'r2', 'r3']) assert.ok(!own(look, each), `${device}: ${each}, behind the earlier-messages row, is not read`);
+      // Its earlier-messages row opened: each earlier message is a row, and reads nothing.
+      before = look.reads;
+      await centre(p, earlierButton(ids.root)); await press(p, device, earlierButton(ids.root));
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.r2))}).dataset.earlier==='true'&&document.querySelector(${JSON.stringify(card(ids.r2))}).getClientRects().length>0`), `${device}: the earlier messages show as rows`);
+      look = await settle(p, `${device} earlier rows shown`);
+      fresh(look, before, `${device} earlier rows shown`);
+      for (const each of ['r1', 'r2', 'r3']) assert.ok(!own(look, each), `${device}: ${each}, an earlier message's row, is not read`);
+      // A press on one row shows that message whole, and its picture is read then.
+      before = look.reads;
+      await centre(p, card(ids.r2));
+      look = await settle(p, `${device} r2's row in view`);
+      fresh(look, before, `${device} r2's row in view`);
+      before = look.reads;
+      await press(p, device, card(ids.r2));
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.r2))}).dataset.earlier!=='true'`), `${device}: a press shows r2 whole`);
+      look = await settle(p, `${device} r2 shown whole`);
+      const whole = fresh(look, before, `${device} r2 shown whole`);
+      assert.ok(pictured(look, 'r2') && (look.rail.includes(media.r2) || whole.includes(media.r2)), `${device}: shown whole, r2's picture is read, and shows`);
+      for (const each of ['r1', 'r3']) assert.ok(!own(look, each), `${device}: ${each}, still a row, is not read`);
+      shown(look, `${device} r2 shown whole`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 433: an act's answer lands on the message the page holds when it lands. A 👍's read of its message's
   // reactions, or a page of messages, puts a new copy of the message in the page while an act about it is out;
   // the answer once went only to the copy the act began with, so the card was drawn again from the copy as Core
