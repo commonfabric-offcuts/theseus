@@ -264,15 +264,18 @@ def _dossier(db, actor, root):
 def dossier_namer(db, root, replied=False):
     """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
     (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record
-    has landed in it (`unreplied`). Then it is the outcome's coordinator when an agent coordinates it
-    (`coordinator`), or else the first agent to reply on the record (`first_agent`), and None while no agent has
-    (`no_agent`: the first line stays). A whisper counts for nothing, since a name is everyone's. replied says the
-    caller already holds a reply on the record in the dossier (a delivered reply), which spares the walk through its
-    members when an agent coordinates."""
+    has landed in it (`unreplied`). Then it is the outcome's coordinator when Core sends it the dossier's replies
+    (`coordinator`): an enabled agent taking part in the dossier's topic, as the audience of a message on the record
+    is chosen (Conversation's post), so it is told to mint with the first reply it is sent. Else it is the first agent
+    to reply on the record (`first_agent`), told by its own reply, and None while no agent has (`no_agent`: the first
+    line stays). A whisper counts for nothing, since a name is everyone's. replied says the caller already holds a
+    reply on the record in the dossier (a delivered reply), which spares the walk through its members when such a
+    coordinator names it."""
     named, coordinator = db.execute(
         "SELECT EXISTS(SELECT 1 FROM message_acts WHERE message_id=:root AND kind='name' AND owner=''),"
         "(SELECT w.coordinator_id FROM messages m JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-        "JOIN actors a ON a.id=w.coordinator_id WHERE m.id=:root AND a.kind='agent')", {"root": root}).fetchone()
+        "JOIN actors a ON a.id=w.coordinator_id JOIN topic_participants p ON p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id "
+        "WHERE m.id=:root AND a.kind='agent' AND a.enabled AND p.active=1)", {"root": root}).fetchone()
     if named:
         return None, "named"
     if replied and coordinator is not None:

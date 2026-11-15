@@ -111,8 +111,11 @@ Reads:
 When the first reply on the record lands in a dossier nobody has named, its
 namer writes a short name for it, two to five words for what it is about, as a
 `stack.name` act with `minted: true`. The namer is the outcome's coordinator
-when an agent coordinates it; otherwise the first agent that replied. With no
-agent reply the dossier keeps its first line. A name a person types wins and
+when Core sends it the dossier's replies: an agent, enabled, taking part in
+the dossier's topic. Otherwise (no coordinator, a person coordinating, or a
+coordinator outside the topic, as in one started with `start OUTCOME --with`)
+it is the first agent that replied, whose own reply tells it. With no agent
+reply the dossier keeps its first line. A name a person types wins and
 is never replaced: once anyone has named a dossier, even if they cleared the
 name since, it is never minted, and a dossier is minted once, so a second
 reply mints nothing more. A whisper counts as no reply, since a name is

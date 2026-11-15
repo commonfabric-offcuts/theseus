@@ -13807,7 +13807,7 @@
   },
   {
    "item": 479,
-   "act": "Core takes a minted name only from the dossier's namer: the outcome's coordinator, or with none the first agent that replied",
+   "act": "Core takes a minted name only from the dossier's namer: the outcome's coordinator, or else the first agent that replied",
    "break": [
     [
      "aim_next/stacks.py",
@@ -13873,12 +13873,73 @@
   },
   {
    "item": 479,
-   "act": "The outcome's coordinator names a dossier only when an agent coordinates it, and then it alone",
+   "act": "An agent coordinator Core sends the dossier's replies to names the dossier, and then it alone",
    "break": [
     [
      "aim_next/stacks.py",
      "    if first is None:\n        return None, \"unreplied\"\n    if coordinator is not None:\n        return coordinator, \"coordinator\"",
      "    if first is None:\n        return None, \"unreplied\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A person who coordinates the outcome never names a dossier: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WHERE m.id=:root AND a.kind='agent' AND a.enabled",
+     "WHERE m.id=:root AND a.enabled"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "In a topic the coordinator does not take part in, Core sends it nothing, so the first agent to reply names the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "JOIN topic_participants p ON p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id ",
+     ""
+    ],
+    [
+     "aim_next/stacks.py",
+     " AND p.active=1)",
+     ")"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A coordinator that left the topic does not name its dossiers: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND a.enabled AND p.active=1)",
+     " AND a.enabled)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A disabled coordinator does not name a dossier: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "a.kind='agent' AND a.enabled AND p.active=1)",
+     "a.kind='agent' AND p.active=1)"
     ]
    ],
    "check": {

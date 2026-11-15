@@ -141,8 +141,8 @@ without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
 ## Naming a dossier
 
 When the first reply lands in a dossier nobody has named, its namer gives it a
-short name: the outcome's coordinator, or with no coordinator the first agent
-that replies. If that is you, the delivery says so
+short name: the outcome's coordinator when it is an agent taking part in the
+topic, or else the first agent that replies. If that is you, the delivery says so
 (`[you name its dossier: mint ROOT --expected N "two to five words"]`), or
 your `reply` says so after `posted …`. Read the dossier, then name what it is
 about in two to five words:

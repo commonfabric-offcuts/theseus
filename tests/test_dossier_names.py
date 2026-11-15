@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """Minted names (item 479, docs/reply-stacks.md "Minted names"): when the first reply on the record lands in a dossier
 nobody has named, its namer writes a two-to-five-word name as a stack.name act with `minted: true`, shown as "Named
-by" it. The namer is the outcome's coordinator when an agent coordinates it, or else the first agent that replies;
+by" it. The namer is the outcome's coordinator when Core sends it the dossier's replies (an enabled agent taking part
+in the topic), or else the first agent that replies;
 with no agent reply the first line stays, and a typed name wins and is never replaced. Core checks every part of it.
 
 The fixture outcome w1 is coordinated by agent-a, with agent-b on its team; owner and agent-a take part in t1. The
@@ -174,6 +175,67 @@ class CoreCase(NamesCase):
         self.sql("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES ('name',?,'t1',?,'','owner',?,5,1)",
                  (old, seq, json.dumps({"name": "From before"})))
         self.assertEqual(self.shown(old), {"text": "From before", "by": "owner", "at_ms": 5})
+
+
+class ReachCase(NamesCase):
+    """The coordinator names a dossier only when Core sends it the dossier's replies: an agent, enabled, taking part
+    in the dossier's topic. Any other coordinator is never told to mint, so the first agent to reply names it."""
+
+    def first_agent_names_it(self, root, topic="t1"):
+        """agent-b replies through the CLI, is told it names the dossier, and mints it; agent-a, who coordinates, is
+        refused."""
+        code, out, err = self.run_cli("reply", root, "Friday works.", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn('you name it:  [you name its dossier: mint %s --expected 0 "two to five words"]' % root, out)
+        found = self.store.view("agent-b", "stack_namer", {"message_id": root})
+        self.assertEqual((found["namer"], found["why"]), ("agent-b", "first_agent"))
+        self.rejected(self.mint(root, "Cabin week plan", actor="agent-a"), "NOT_THE_NAMER")
+        code, out, err = self.run_cli("mint", root, "Cabin week plan", actor="agent-b")
+        self.assertEqual((code, err, out), (0, "", 'named the dossier of %s "Cabin week plan"\n' % root))
+        self.assertEqual(self.names(), [({"name": "Cabin week plan", "minted": True}, "agent-b")])
+
+    def test_in_a_topic_the_coordinator_does_not_take_part_in_the_first_agent_to_reply_names_it(self):
+        """Review B1: a topic started with `start OUTCOME --with`, where the coordinator is not a participant."""
+        code, out, err = self.run_cli("start", "w1", "--title", "Cabin", "--with", "owner", "Let us plan the cabin.", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        topic = re.search(r"\b(t-[0-9a-f]+)\b", out).group(1)
+        self.assertEqual({row[0] for row in self.sql("SELECT actor_id FROM topic_participants WHERE topic_id=? AND active=1", (topic,))},
+                         {"owner", "agent-b"})
+        root = self.committed(self.command("message.post", {"body": "Can we lock the cabin for July 12?"}, target={"topic_id": topic}))["message_id"]
+        self.assertEqual([item for item in self.deliveries("agent-a").values() if item["message"]["topic_id"] == topic], [],
+                         "Core sends the coordinator nothing from this topic")
+        self.first_agent_names_it(root)
+
+    def test_a_coordinator_that_left_the_topic_does_not_name_its_dossiers(self):
+        self.participation("agent-a", False)
+        root = self.post("Can we lock the cabin for July 12?")
+        self.first_agent_names_it(root)
+        self.assertNotIn(root, self.deliveries("agent-a"))
+
+    def test_a_disabled_coordinator_does_not_name_a_dossier(self):
+        root = self.post("Can we lock the cabin for July 12?")
+        self.sql("UPDATE actors SET enabled=0 WHERE id='agent-a'")
+        self.first_agent_names_it(root)
+
+    def test_a_person_who_coordinates_never_names_a_dossier_and_the_first_agent_does(self):
+        """Review B2: a person may be chosen to coordinate, and takes part in t1, yet only an agent is told to mint."""
+        version = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.committed(self.command("workspace.coordinator_set", {"actor_id": "owner"}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": version}))
+        root = self.post("Can we lock the cabin for July 12?")
+        self.rejected(self.mint(root, "Cabin week plan", actor="owner"), "NOT_THE_NAMER")
+        self.first_agent_names_it(root)
+
+    def test_a_coordinator_that_takes_part_names_it_and_the_first_agent_is_not_told(self):
+        """The negative: an agent coordinator Core sends the replies to still names the dossier."""
+        root = self.post("Can we lock the cabin for July 12?")
+        code, out, err = self.run_cli("reply", root, "Friday works.", actor="agent-b")
+        self.assertEqual((code, err), (0, ""))
+        self.assertNotIn("mint", out)
+        reply = self.latest()[0]
+        self.assertEqual(self.deliveries("agent-a")[reply].get("name_it"), {"root_id": root, "name_revision": 0})
+        self.rejected(self.mint(root, "Cabin week plan", actor="agent-b"), "NOT_THE_NAMER")
+        self.committed(self.mint(root, "Cabin week plan"))
 
 
 class FakeCoordinator:

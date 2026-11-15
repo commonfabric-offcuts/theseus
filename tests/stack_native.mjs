@@ -3633,7 +3633,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   });
 
   // Item 479: a minted name. When the first reply on the record lands in a dossier nobody has named, its namer (the
-  // outcome's coordinator, or with none the first agent to reply) mints a name, and the tab says "Named by" it on its
+  // outcome's coordinator when it is an agent taking part in the topic, or else the first agent to reply) mints a name, and the tab says "Named by" it on its
   // second line, at every width, in light and dark. Core refuses a mint from anyone else, and a name the person types
   // replaces the minted one and its mark. The page never mints: a mint is the agent's act, arriving as any act does.
   await check('reading stacks a minted name says Named by the agent that minted it in the dossier\'s tab, on a laptop and phones 320 to 390 wide, light and dark, folded and open; a mint from anyone else is refused, and a name the person types replaces it and its mark', async () => {
