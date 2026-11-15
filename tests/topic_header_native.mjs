@@ -71,7 +71,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
         hint:leaves.some(e=>e.textContent.trim()===${JSON.stringify(HINT)}),
         thisTopic:leaves.some(e=>e.textContent.trim()==='This topic'||e.getAttribute('aria-label')==='This topic'),
         stateInMain:Boolean(document.querySelector('main #topic-state')),stateInDialog:Boolean(document.querySelector('dialog#topic-settings #topic-state'))}})()`);
-    assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
+    assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description', 'topic-people'], 'the outcome\'s name, the title row, then the subtitle and the Team (item 465)');
     assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true], ['things-open', false]], 'the outcome\'s name, with "☰ Outcomes" before it shown only on a phone, and "Pipeline & pages" after it only below laptop width');
     // New message, a quiet ✎, ends the row (docs/reader.md).
     assert.deepEqual(top.row, ['topic-title', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
@@ -1105,7 +1105,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   await check('header → and ← move from New message along the Team\'s pills to "+ Add" and back, as one row; ↓ leaves for the first message', async () => {
     await setState('header-row-active', { state: 'active', note: '' });
     const p = await page('header-row', null, true, { beforeNavigate: scheme('light') });
-    await until(() => p.evaluate(`Boolean(document.querySelector('#participants .add-chip')) && document.querySelectorAll('#topic-people button').length >= 3`), 'the Team painted with "+ Add"');
+    await until(() => p.evaluate(`Boolean(document.querySelector('#participants .add-chip')) && document.querySelectorAll('#topic-people .person-pill').length >= 1`), 'the Team painted with "+ Add"');
     const at = () => p.evaluate(`(a=>a.closest('#topic-people')?'team:'+(a.matches('.add-chip')?'add':a.getAttribute('aria-label')||a.title||a.textContent):a.closest('#messages [data-id]')?'message':a.id)(document.activeElement)`);
     const team = await p.evaluate(`[...document.querySelectorAll('#topic-people button')].filter(b=>b.getClientRects().length).map(b=>'team:'+(b.matches('.add-chip')?'add':b.getAttribute('aria-label')||b.title||b.textContent))`);
     // The keys start on New message, the last of the title row's buttons.

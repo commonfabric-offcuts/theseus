@@ -1618,8 +1618,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const p = await open('rail-header-keys', '/?topic=t1');
     await settled(p, 'the topic is up');
     await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length > 1"), 'the messages are drawn');
-    const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id)");
-    assert.deepEqual(buttons, ['settings-open', 'new-message'], 'Topic settings and New message are the header\'s buttons at 1280');
+    // The header's buttons at 1280: Topic settings, New message, then the Team's pills and "+ Add" (item 465).
+    const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id||(b.closest('#topic-people')?'team':b.tagName))");
+    const team = buttons.filter(b => b === 'team').length;
+    assert.ok(team >= 1, 'the Team shows at least "+ Add": ' + JSON.stringify(buttons));
+    assert.deepEqual(buttons, ['settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
+    const onTeam = () => p.evaluate("Boolean(document.activeElement?.closest('#topic-people'))");
+    const onAdd = () => p.evaluate("Boolean(document.activeElement?.matches('#participants .add-chip'))");
     const firstId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].find(e=>e.checkVisibility()).dataset.id");
     await tabToOutline(p);
     await p.key('ArrowRight');
@@ -1637,13 +1642,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowRight');
     assert.equal(await keyedAt(p), 'new-message', '→ goes to the next button');
     assert.equal(await ringed(p), 'solid');
+    for (let n = 1; n <= team; n++) { await p.key('ArrowRight'); assert.equal(await onTeam(), true, `→ goes on along the Team's buttons (${n} of ${team})`); }
+    assert.equal(await onAdd(), true, '"+ Add" is the row\'s last button');
     await p.key('ArrowRight');
     assert.match(await keyedAt(p), /^things:/, '→ past the last button goes to the right rail');
     await p.key('ArrowLeft');
     if (/^things:/.test(await keyedAt(p))) await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'message:' + firstId, '← from the right rail comes back to the message');
     await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'new-message', '↑ again finds the button the keys were last on');
+    assert.equal(await onAdd(), true, '↑ again finds the button the keys were last on, "+ Add"');
+    for (let n = 1; n <= team; n++) await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'new-message', '← goes back along the Team to New message');
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'settings-open', '← goes to the button before');
     await p.key('ArrowLeft');

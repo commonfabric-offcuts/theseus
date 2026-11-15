@@ -272,7 +272,9 @@ export class NotebookSheet {
     const style = globalThis.getComputedStyle(this.dialog);
     this.holder ??= this.node('div', 'notebook-sheet-holder');
     this.holder.setAttribute('aria-hidden', 'true');
-    this.holder.style.height = `${this.dialog.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)}px`;
+    // Its height and margins, not their sum: among the messages (item 465) the sheet's top margin meets the card's
+    // above it and the two collapse into one, which a holder with no margin of its own would not do.
+    Object.assign(this.holder.style, { height: `${this.dialog.getBoundingClientRect().height}px`, marginTop: style.marginTop, marginBottom: style.marginBottom });
     this.dialog.before(this.holder);
   }
   close() {
