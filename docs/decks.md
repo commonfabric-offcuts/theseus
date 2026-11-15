@@ -194,7 +194,9 @@ was pressed goes on uploading from its bytes and is attached once Core has it,
 and one someone else added is attached again by its id, which Core takes from a
 writer of the page because one of its revisions carried it
 (`NotebookImages.restore`). Core still refuses an image someone else uploaded
-that no revision of the page carried. An image taken off with Remove in the
+that no revision of the page carried. A revise reads the revision it follows,
+and looks through the page's history only for such an image, that image alone,
+so an ordinary save costs the same however many revisions autosave has made. An image taken off with Remove in the
 page's list of images is not put back.
 
 An image already on the page is read through the page as it stands
