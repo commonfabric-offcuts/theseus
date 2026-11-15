@@ -13905,12 +13905,7 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "JOIN topic_participants p ON p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id ",
-     ""
-    ],
-    [
-     "aim_next/stacks.py",
-     " AND p.active=1)",
+     "AND EXISTS(SELECT 1 FROM topic_participants p WHERE p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id AND p.active=1))",
      ")"
     ]
    ],
@@ -13924,8 +13919,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     " AND a.enabled AND p.active=1)",
-     " AND a.enabled)"
+     " AND p.active=1))",
+     "))"
     ]
    ],
    "check": {
@@ -13938,8 +13933,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "a.kind='agent' AND a.enabled AND p.active=1)",
-     "a.kind='agent' AND p.active=1)"
+     "a.kind='agent' AND a.enabled ",
+     "a.kind='agent' "
     ]
    ],
    "check": {

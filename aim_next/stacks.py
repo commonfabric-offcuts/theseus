@@ -274,8 +274,9 @@ def dossier_namer(db, root, replied=False):
     named, coordinator = db.execute(
         "SELECT EXISTS(SELECT 1 FROM message_acts WHERE message_id=:root AND kind='name' AND owner=''),"
         "(SELECT w.coordinator_id FROM messages m JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-        "JOIN actors a ON a.id=w.coordinator_id JOIN topic_participants p ON p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id "
-        "WHERE m.id=:root AND a.kind='agent' AND a.enabled AND p.active=1)", {"root": root}).fetchone()
+        "JOIN actors a ON a.id=w.coordinator_id WHERE m.id=:root AND a.kind='agent' AND a.enabled "
+        "AND EXISTS(SELECT 1 FROM topic_participants p WHERE p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id AND p.active=1))",
+        {"root": root}).fetchone()
     if named:
         return None, "named"
     if replied and coordinator is not None:
