@@ -1367,7 +1367,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       return f.call(this,input,init)};window.letActs=()=>{window.holdKinds=null;for(const go of window.heldActs.splice(0))go()}})()`;
     const topic = 'stack-dossier-place', ids = await shipyardSeed(topic);
     let p = await open(topic, 'laptop', topic, ids.near1, HOLD);
-    const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
+    const top = async (q, seeded = ids) => (await shipyardLook(q, seeded))?.head === (await stacks(q, seeded))[0];
     await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['near', 's1', 'a1'], 'newest on top: the winch, the buoy lights, then the shipyard dossier');
     await p.evaluate(`window.holdKinds = ['stack.place']`);
     await keyTo(p, ids.a1);
@@ -1408,7 +1408,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
       for (const [step, head] of [['as loaded', 'a1'], ['the older reply loaded', 'old']]) {
         if (head === 'old') await earlierPage(q, 'phone');
-        await becomes(async () => { const look = await shipyardLook(q, more); return [look.head, look.placed, look.sideways, await top(q)]; }, [head, 'Placed here by you', false, true],
+        await becomes(async () => { const look = await shipyardLook(q, more); return [look.head, look.placed, look.sideways, await top(q, more)]; }, [head, 'Placed here by you', false, true],
           `phone ${width}px, ${step}: the placed dossier is on top under ${head}, with its place line`);
         const line = await q.evaluate(`(r=>({left:r.left,right:r.right}))(document.querySelector(${JSON.stringify(card(more.a2))}).closest('.reply-stack').querySelector(':scope > .stack-placed-line').getBoundingClientRect())`);
         assert.ok(line.left >= 0 && line.right <= width, `phone ${width}px: the place line fits the screen: ${JSON.stringify(line)}`);
