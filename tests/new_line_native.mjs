@@ -97,12 +97,12 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       rooms.push(m.style.getPropertyValue('--line-room')||'0px')}
     return {rooms,gap:innerHeight-${END}-parseFloat(rooms.at(-1))}})()`);
   // What the page holds ends at a fraction of a pixel, as a card's lines often make it: main's padding below grows
-  // by what puts the end 0.27px past a whole pixel, and the page has measured and drawn its room again (the change
-  // of main's size heard at one frame, measured at the next, drawn at the third). The page scrolls in whole pixels,
-  // so at its end the view reaches that fraction past what it holds: where a room that took it as a pixel more
-  // grew a pixel with every push (B6).
+  // by what puts the end 0.73px past a whole pixel, and the page has measured and drawn its room again (the change
+  // of main's size heard at one frame, measured at the next, drawn at the third). The page's length is rounded to a
+  // whole pixel, here up, so at its end the view reaches 0.27px past what it holds: where a room that took that as a
+  // pixel more grew a pixel with every push (B6).
   const endAtFraction = p => p.evaluate(`(async()=>{const m=document.querySelector('main'),end=${END}+scrollY;
-    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1.27-end%1)%1)+'px';
+    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1.73-end%1)%1)+'px';
     for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()`);
   // With what the page holds ending at a fraction, pushing down at the page's end leaves the room as it was.
   const pushesLeaveRoom = async (p, label) => {
