@@ -7167,12 +7167,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const topic = 'cover-look-' + device, ids = await coverSeed(topic);
       const p = await open(topic, device, topic, ids.lone);
       const answerSeq = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.find(item => item.id === ids.answer).seq;
-      for (const level of ['head', 'open']) {
-        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
-        for (let step = 0; step < 3 && await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`) !== level; step++) {
+      for (const level of ['folded', 'open']) {
+        // Its chevron pressed until the dossier shows its latest and unread replies, then all of them: each press waits for the one before.
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`, state = () => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
+        if (await state() !== level) {
+          const was = await state();
           await centre(p, toggle); await press(p, device, toggle);
+          await until(async () => await state() !== was, `${device}: the chevron is heard`);
         }
-        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state === ${JSON.stringify(level)}`), `${device}: the dossier is ${level}`);
+        await until(async () => await state() === level, `${device}: the dossier is ${level}`);
         for (const theme of ['light', 'dark']) {
           await dossierTheme(p, theme);
           await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
@@ -7227,12 +7230,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal((await coverOn(p, ids.root)).stands, 'Answered: the second weekend, with the lake open', 'the rest of the cover stands');
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`); await shot(p, `cover-done-${device}-${theme}`); }
       await dossierTheme(p, 'light');
-      // Taken back: proposed again, in Core and on the page. The 👍 folded the message for the person: on a laptop its
-      // row's 👍 takes it back; a phone's press on the row shows it whole, with its bar.
+      // Taken back: proposed again, in Core and on the page. The 👍 folded the message for the person, and its row's 👍
+      // takes it back, unfolding nothing.
       const folded = `${card(ids.answer)} > .message-folded > .folded-thumb`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(folded)})?.getClientRects().length)`), `${device}: the 👍 folded the message to its row`);
-      if (device === 'laptop') { await centre(p, folded); await p.point(folded); }
-      else { await light(p, device, ids.answer); await press(p, device, '.message-bar [data-act=thumb]'); }
+      await centre(p, folded); await press(p, device, folded);
       await until(async () => (await coverHeld(facts.actor))?.payload.done === null, `${device}: taken back, Core holds it proposed`);
       await until(async () => (await shownPill())?.state === 'proposed', `${device}: and the pill says proposed`);
       assert.deepEqual(p.errors, []); await p.close();
