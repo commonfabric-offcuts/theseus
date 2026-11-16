@@ -334,8 +334,10 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const texts=await p.evaluate(`[...document.querySelectorAll('#review-content pre')].map(e=>e.textContent)`);
     assert.equal(texts.length,3,'the correction review shows its three versions');
     await p.evaluate(`document.querySelectorAll('#review-content pre').forEach(e=>{e.textContent=Array.from({length:14},(_,i)=>'Line '+i+' of this version, a sentence of ordinary length').join('\\n')})`);
-    for(const [width,height,mobile] of [[1440,900,false],[390,844,true],[375,667,true],[320,568,true]]){
-      await p.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
+    for(const [width,height] of [[1440,900],[390,844],[375,667],[320,568]]){
+      // The page's own widths, as the layout reads them (its breakpoints are by width), with no phone emulation
+      // to undo after: the case goes on at a laptop's width.
+      await p.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
       await until(()=>p.evaluate(`innerWidth===${width}`),width+': the window is drawn at its width');
       const hidden=await p.evaluate(`(c=>{c.scrollTop=0;const k=c.getBoundingClientRect(),a=document.querySelector('${ACK}').getBoundingClientRect();return a.top>=k.bottom&&getComputedStyle(c).overflowY==='auto'&&c.tabIndex<0})(document.getElementById('review-content'))`);
       assert.equal(hidden,true,width+': the acknowledgement starts out of sight below, in a box that takes no focus');
