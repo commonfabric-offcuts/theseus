@@ -90,7 +90,7 @@ function railFixture(t) {
     append(...nodes){for(const child of nodes){if(typeof child==='object')child.parent=this;this.children.push(child);}}
     replaceChildren(...nodes){this.children=[];this.text='';this.append(...nodes);}
     addEventListener(name,fn){this.handlers[name]=fn;}
-    setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}
+    setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}getAttribute(k){return k in this.attributes?this.attributes[k]:null;}
     insertBefore(child,before){child.remove();const index=before?this.children.indexOf(before):this.children.length;this.children.splice(index,0,child);child.parent=this;}
     after(...nodes){const host=this.parent;if(!host)return;for(const node of nodes)node.remove();host.children.splice(host.children.indexOf(this)+1,0,...nodes);for(const node of nodes)node.parent=host;}
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
@@ -104,8 +104,10 @@ function railFixture(t) {
     :{light:'quiet',label:'Quiet',short:{kind:'since',ms:null},unreadable:false};
   const queue=[],calls=[],opened=[],row=id=>({id,owner_id:'owner',title:'Same',title_truncated:true,version:1,light:light(id)});
   const answer=(ids,next_cursor=null)=>({instance_id:'instance',items:ids.map(row),next_cursor});
-  const rail=new OutcomeRail({...nodes,instanceId:'instance',current:'a',read:args=>{calls.push(args);const next=queue.shift();return typeof next==='function'?next():Promise.resolve(next);},open:(...args)=>opened.push(args),denied:error=>error.status===403});
-  return {...nodes,queue,calls,opened,answer,rail};
+  const broughtBack=[];let bringing=null;
+  const rail=new OutcomeRail({...nodes,instanceId:'instance',current:'a',read:args=>{calls.push(args);const next=queue.shift();return typeof next==='function'?next():Promise.resolve(next);},open:(...args)=>opened.push(args),denied:error=>error.status===403,
+    reader:'tony',bringBack:item=>{broughtBack.push(item.id);return bringing?bringing(item):Promise.resolve({});}});
+  return {...nodes,queue,calls,opened,answer,rail,broughtBack,bringWith:fn=>{bringing=fn;}};
 }
 test('outcome links expose stable IDs and preserve native activation and More focus',async t=>{
   const f=railFixture(t);f.queue.push(f.answer(['a'],'a'));await f.rail.load();
@@ -190,4 +192,47 @@ test('an outcome reload keeps the outcomes loaded with More',async t=>{
   f.queue.push(f.answer(['a'],'a'),f.answer(['b','c'],'c'));await f.rail.load();
   assert.deepEqual(f.calls.slice(2),[{limit:20},{limit:20,cursor:'a'}]);
   assert.deepEqual(f.rail.pages.items.map(x=>x.id),['a','b','c']);assert.equal(f.more.hidden,false);
+});
+
+// Item 404: archived and completed outcomes fold into one closed "Archived (N)" line directly above "Reached (N)".
+test('Archived (N) sits above Reached (N), hidden at 0, and reads ended outcomes only when it is opened; the owner brings one back from its row',async t=>{
+  const f=railFixture(t);
+  const column=document.createElement();column.append(f.more);f.more.after(f.rail.ended,f.rail.reached);
+  assert.deepEqual(column.children.map(node=>node===f.rail.ended?'ended':node===f.rail.reached?'reached':'more'),['more','ended','reached'],'directly above Reached');
+  assert.equal(f.rail.ended.hidden,true);
+  f.queue.push({...f.answer(['a']),reached_count:1,ended_count:0});await f.rail.load();
+  assert.equal(f.rail.ended.hidden,true,'hidden at 0');
+  f.queue.push({...f.answer(['a']),reached_count:1,ended_count:2});await f.rail.load();
+  assert.equal(f.rail.ended.hidden,false);assert.equal(f.rail.ended.children[0].textContent,'Archived (2)');
+  assert.deepEqual(f.calls,[{limit:20},{limit:20}],'nothing ended is read until the line is opened');
+  const nov15=Date.UTC(2026,10,15,20);
+  f.queue.push({instance_id:'instance',next_cursor:null,items:[
+    {id:'e1',owner_id:'tony',title:'Garden shed',version:4,end:{state:'archived',by:'tony',ms:nov15}},
+    {id:'e2',owner_id:'fable',title:'Quiet field',version:9,conversation_id:'t-e2',end:{state:'completed',by:'fable',ms:nov15}}]});
+  f.rail.ended.open=true;f.rail.ended.ontoggle();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.calls.at(-1),{ended:true,limit:20});
+  const rows=f.rail.ended.children[1].children;
+  assert.deepEqual(rows.map(row=>row.children[0].children.map(node=>node.textContent)),[['Garden shed','Archived Nov 15'],['Quiet field','Completed Nov 15']]);
+  assert.equal(rows[0].children.length,2,'the owner\'s row carries Bring back, outside the link');
+  assert.equal(rows[1].children.length,1,'no Bring back on an outcome someone else owns');
+  const button=rows[0].children[1];
+  assert.deepEqual([button.textContent,button.getAttribute('aria-label'),button.getAttribute('title')],
+    ['Bring back','Bring back Garden shed','Bring back this outcome: it returns to your outcomes with the topics archiving took']);
+  // A press on the row opens what a home row opens: its page, or its Conversation on the home.
+  let prevented=0;rows[1].children[0].onclick({button:0,preventDefault(){prevented++;}});
+  assert.deepEqual(f.opened,[[{kind:'workspace',id:'e2'},'Quiet field']]);
+  // Refused, the row stays and says why.
+  f.bringWith(()=>Promise.reject(Error('Garden shed is archived; tony, its owner, can bring it back.')));
+  await button.onclick();
+  assert.equal(rows[0].children.at(-1).textContent,'Garden shed is archived; tony, its owner, can bring it back.');
+  assert.equal(button.textContent,'Bring back','no longer busy');
+  // Taken: the row goes, the list reads again with it back in its place, and the keys land on its row.
+  f.bringWith(null);
+  f.queue.push({...f.answer(['a','e1']),reached_count:1,ended_count:1});
+  f.queue.push({instance_id:'instance',next_cursor:null,items:[{id:'e2',owner_id:'fable',title:'Quiet field',version:9,end:{state:'completed',by:'fable',ms:nov15}}]});
+  await button.onclick();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.broughtBack,['e1','e1']);
+  assert.equal(document.activeElement?.dataset.workspaceId,'e1','the keys go to its row in the list');
+  assert.equal(f.rail.ended.children[0].textContent,'Archived (1)');
+  assert.deepEqual(f.rail.ended.children[1].children.map(row=>row.dataset.workspaceId),['e2'],'the open line read its rows again with the list');
 });

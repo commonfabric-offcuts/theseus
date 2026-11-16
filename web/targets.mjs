@@ -12,6 +12,7 @@ import {
   problemsHeadline, ruleWords, standingSentence, stepCompareWords, took,
   NO_CHECKS, KIND_CHIPS, KIND_QUESTION, WRITE_KEYS, REACH_KEYS, ACCEPT_KEYS, REACH_WHY_FIRST, ACCEPT_WHY_FIRST, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
 } from './targets-words.mjs';
+import { ACTS, sendEnd, wordButton } from './outcome-end.mjs';
 
 export const measurementsHref = workspace => '?' + new URLSearchParams({ measurements: workspace });
 const topicHref = id => '?' + new URLSearchParams({ topic: id });
@@ -115,8 +116,11 @@ function checkSummary(check) {
 
 export class OutcomeTargets {
   // hosts: target, loop, problems; read(view, args); send(kind, target, args, expected); reader: the actor.
-  constructor({ hosts, workspace, reader, read, send }) {
-    Object.assign(this, { hosts, workspace, reader, read, send });
+  // changed(): the page reads again after the owner archives, completes or brings the outcome back (item 404), since
+  // "Where it stands" says it; it resolves once the page has painted.
+  constructor({ hosts, workspace, reader, read, send, changed = async () => {} }) {
+    Object.assign(this, { hosts, workspace, reader, read, send, changed });
+    this.ending = null; // the state an Archive, Complete or Bring back press is sending, while it is in flight
     this.folds = new Folds();
     this.notice = '';
     this.reaching = null; // the Reached box's draft while it is open: { words, anyway, busy, error }
@@ -174,7 +178,8 @@ export class OutcomeTargets {
       }
       parts.push(box);
     }
-    if (view.you_steer && !view.reached) parts.push(this.writing(view));
+    // Kept to read, reached or archived or completed (item 404): no new words are offered.
+    if (view.you_steer && !view.reached && !view.end) parts.push(this.writing(view));
     else this.writer = null;
     if (target?.text && !view.groups.length) parts.push(el('p', { class: 'muted tg-no-checks', text: NO_CHECKS }));
     if (view.reached) {
@@ -284,12 +289,45 @@ export class OutcomeTargets {
         onclick: () => { if (value !== kind) this.act(() => sent(this.send, 'outcome.kind_set', { workspace_id: view.workspace_id }, { kind: value }, { workspace_revision: view.relevant_versions.workspace })); } },
       el('strong', { text: label }), el('span', { class: 'muted', text: hint }))));
     const line = el('div', { class: 'tg-kind' }, question, chips);
-    if (kind !== 'reach') return line;
+    if (kind !== 'reach') return el('div', null, line, this.endLine(view));
     if (!this.reaching) {
       line.append(el('button', { type: 'button', class: view.reach?.offered ? 'primary' : '', 'data-key': 'say-reached', text: 'Say it is reached', onclick: () => this.openReach() }));
-      return line;
+      return el('div', null, line, this.endLine(view));
     }
-    return el('div', null, line, this.reachBox(view));
+    // The Complete · Archive line stays under an open Reached box, last in the kind block, so the keys reach it from
+    // the box as from the chips.
+    return el('div', null, line, this.reachBox(view), this.endLine(view));
+  }
+
+  // Item 404: Complete · Archive, two quiet words for the owner of an outcome neither reached nor ended (the kind's
+  // chips show only then too). One press does it, with no confirm step, because one press undoes it.
+  endLine(view) {
+    const words = ['completed', 'archived'].map(state => wordButton(document, { word: this.ending === state ? ACTS[state].busy : ACTS[state].word,
+      title: ACTS[state].title, key: 'end:' + state, busy: this.ending !== null, onclick: () => this.endAs(state) }));
+    return el('p', { class: 'tg-end' }, words[0], el('span', { class: 'muted', 'aria-hidden': 'true', text: ' · ' }), words[1]);
+  }
+
+  // Archive or complete (state), or bring back ('open'). A second press while one is in flight sends nothing. Core's
+  // refusal is said in the card's notice, and the page reads again either way, so a page behind another device's act
+  // shows the outcome as it now stands. focus: the control the keys go to once the page has painted.
+  async endAs(state, focus = null) {
+    const view = this.view;
+    if (this.ending !== null || !view) return;
+    this.ending = state; this.notice = ''; this.paint();
+    let refused = '';
+    try { await sendEnd(this.send, view.workspace_id, state, view.relevant_versions.workspace); }
+    catch (error) { refused = error.message; }
+    this.ending = null;
+    await this.load();
+    if (refused) { this.notice = refused; this.paint(); }
+    await this.changed({ state, refused: Boolean(refused) });
+    if (!refused) (typeof focus === 'function' ? focus() : focus)?.focus();
+  }
+
+  // Bring back, from wherever it is pressed on the page: the keys go to the word that ended it, Complete or Archive.
+  bringBack() {
+    const was = this.view?.end?.state;
+    return this.endAs('open', () => this.hosts.target.querySelector(`[data-key="end:${was}"]`));
   }
 
   // D42: Reached is final, so it opens in place first; then one or two sentences, and Return marks it reached.

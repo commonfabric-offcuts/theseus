@@ -12,6 +12,8 @@ import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
+import { keptToRead } from './outcome-light-words.mjs';
+import { paintKeptLine, sendEnd } from './outcome-end.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
@@ -1901,9 +1903,20 @@ async function initialize() {
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
-    // A reached outcome's messages are kept to read: none offers Edit. Read in the background; Core refuses an edit there anyway.
-    api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' })
-      .then(answer => { outcomeReached = checkedView(answer, bootstrap.instance_id).lead?.kind === 'reached'; }, () => {});
+    // A reached, archived or completed outcome's messages are kept to read: none offers Edit. Read in the background; Core
+    // refuses an edit there anyway. Archived or completed (item 404), the header says so, with Bring back for its owner.
+    const readKept = () => api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' }).then(answer => {
+      const light = checkedView(answer, bootstrap.instance_id);
+      outcomeReached = keptToRead(light);
+      paintKeptLine($('outcome-kept'), light, workspace.owner_id === bootstrap.actor ? async () => {
+        const current = validate(await api.view('workspace', { workspace_id: workspace.id })).workspace;
+        await sendEnd(pipelineSend, workspace.id, 'open', current.version);
+        await readKept();
+        freshness?.request();
+        $('inline-writing-body').focus();
+      } : null);
+    });
+    readKept().catch(() => {});
     here.has ||= hasConversation(workspace);
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
@@ -2537,7 +2550,9 @@ function initializeOutcomeNavigation(current=null,painted=()=>{},opens='workspac
   const peek=new LightPeek({host:$('light-tip'),read:async id=>checkedView(await api.view('outcome_light',{workspace_id:id},{readClass:'foreground'}),bootstrap.instance_id)});
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
-    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted,opens});
+    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted,opens,
+    // The home's "Archived (N)" rows: their owner brings one back from its row (item 404).
+    reader:bootstrap.actor,bringBack:opens==='conversation'?item=>sendEnd(pipelineSend,item.id,'open',item.version):null});
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
@@ -2580,7 +2595,10 @@ async function initializeOutcomePage(route) {
     // (D11), then its conversation's one row (outcome-conversation.mjs), then its topics;
     // its Notebook pages are listed after them, and one opens in place below them.
     $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
-    const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend});
+    // Archived, completed or brought back (item 404): the page reads again, and once it is archived or completed the keys
+    // go to Bring back on "Where it stands" (back, the target card gives them to the word that ended it).
+    const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend,
+      changed:async({state,refused})=>{await reload().catch(()=>{});if(!refused&&state!=='open')$('outcome-standing').querySelector('[data-hold="bring-back"]')?.focus();}});
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
@@ -2596,7 +2614,8 @@ async function initializeOutcomePage(route) {
       const serial=++standingSerial,retry=()=>run(reload);
       try {
         const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
-        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+          bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});
         return true;
       } catch {
         if(serial===standingSerial)paintStandingFailed($('outcome-standing'),retry);
