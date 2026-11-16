@@ -173,6 +173,13 @@ class PipelineVerbs:
             if self.last_page.get("pipeline") is None:
                 self.out.plain("%s has no pipeline" % options.outcome)
                 return
+            if section == "now":
+                # As the page draws Now: the release being put together, then each piece in the order the view gives
+                # them (nearest to live first, item 567), then the items not in a piece, in their placed order.
+                head = self.last_page
+                pieces = ([head["release_piece"]] if head.get("release_piece") else []) + list(head.get("pieces") or [])
+                at = {number: (rank, index) for rank, piece in enumerate(pieces) for index, number in enumerate(piece["items"])}
+                items = sorted(items, key=lambda item: at.get(item["number"], (len(pieces), 0)))
             self.out.plain(section.upper())
             for item in items:
                 self._item_lines(item)

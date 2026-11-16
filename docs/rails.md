@@ -180,7 +180,8 @@ says so in one quiet line.
   Done; then Other Build topics (a piece set aside, finished or held, a topic
   reopened). Each group is in the reader's own order of the outcome's topics
   where they have placed them with ⌘↑ and ⌘↓, as the outline is
-  (docs/outline-order.md), and Core's otherwise. Each row
+  (docs/outline-order.md), and Core's otherwise (under Now, the pieces nearest
+  to live first: docs/pipeline.md, "Now's order"). Each row
   carries what the outline's row would: the unread count, marked when part of
   it was sent to the reader by name, where it stands (Waiting on you, Ready
   for review…), the work ring, and the mark of the topic being read; one that
