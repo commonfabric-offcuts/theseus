@@ -322,17 +322,19 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
 
   await check('targets the owner\'s Complete · Archive, and Bring back on the page, the home and a topic, are 44px tall at 320, 375 and 390 and fit a laptop, light and dark, with no sideways scroll and no edge', async () => {
     await control({ method: 'light_outcome', outcome: 'tg-shed', title: 'Garden shed', topic: { id: 'tg-shed-plan', title: 'Shed plan' } });
-    const pages = [];
     const each = async (name, url, wait, selectors, before = async () => {}) => {
       for (const size of ['phone320', 'phone375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
         const p = await open(`targets-end-${name}-${size}-${theme}`, url, size, theme);
-        pages.push(p);
         await ready(p);
         await before(p);
         await until(() => shown(p, wait), `${wait} shows (${name}, ${size}, ${theme})`);
         await sized(p, selectors, size);
         await p.evaluate(`document.querySelector(${JSON.stringify(selectors[0])}).scrollIntoView({block:'center'})`);
         await shot(p, `targets-end-${name}-${size === 'phone' ? 'phone390' : size}-${theme}`);
+        // Its errors are read while it is open: a topic page reports its messages read on opening (topic.read_through)
+        // and reads its views again on that commit, and a release of one of those reads that the close cuts off is
+        // refused by the closed session, the harness's own act, not the page's.
+        assert.deepEqual(p.errors, [], `no page error (${name}, ${size}, ${theme})`);
         await p.close?.();
       }
     };
@@ -345,7 +347,6 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await act('outcome.end_set', { state: 'completed' }, { workspace_id: 'tg-shed' });
     await each('page-completed', '/?workspace=tg-shed', '#outcome-standing [data-hold="bring-back"]', ['#outcome-standing [data-hold="bring-back"]']);
     await act('outcome.end_set', { state: 'open' }, { workspace_id: 'tg-shed' });
-    assert.deepEqual(pages.flatMap(p => p.errors), []);
   });
 
   await check('targets the owner archives by touch and the outcome leaves the home live; Archived (1) opens to its row, and Bring back by keys returns it to its place with the keys on its row; on the page Return and Space archive, complete and bring back, the keys landing each time', async () => {
