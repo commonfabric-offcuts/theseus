@@ -429,6 +429,9 @@ answered anything since (that read, another command, a commit on the live
 feed; never a timer of its own) it goes again under the same operation. Core
 answers an operation it recorded with what it recorded, and records one it
 never saw, so the act is made once. That answer settles it, and its words go.
+They go whatever follows: when the read after it of where a moved, renamed or
+joined stack now stands fails, that failure says itself, and the act is no
+longer said as not known.
 An ask that fails, or a read that fails, settles nothing: an ask that got no
 answer at all reads the acts again, paced as the page's reads are when they
 fail, and a busy or unconfirmed answer waits for Theseus to answer something
@@ -439,9 +442,27 @@ page moves on in place still goes, from the page it was made on, until Core
 answers it.
 
 A refusal is said in words of its act: "Folding “…” was not saved: it changed
-on another tab or device. The card shows what Theseus holds." It goes at the
-reader's next act Core takes. The status line is left alone when something
-else has written on it since.
+on another tab or device. The card shows what Theseus holds." The acts are read
+again at once, and the words go when a read of the acts begun after the refusal
+lands, so the card shows what Core holds as they go. A read begun before it
+(one a commit on another device started, say) or a read that fails ends
+nothing; a failed read is read again as the page's reads are. The status line
+is left alone when something else has written on it since.
+
+The other commands a person makes on a card, which the page does not send
+again itself (a 👍 or a go-ahead answer on the card's bar or a folded row,
+Mark unread or Mark read in its ⋯), say what Theseus answered the same way and
+only that: "The thumbs-up on “…” was not saved: Theseus was busy. Press again:
+Core keeps one of each.", "Marking unread “…” was not saved: Theseus
+restarted. Choose it again to send the same request.", "Not known whether …
+was saved: Theseus could not confirm it. …", or a refusal as above. Each goes
+when a read of what shows the card, begun after it was said, lands: the
+message's reactions, read again right after the answer, for a 👍 or an answer;
+the topic's marks, read again then, for a mark. Only a command that met no
+answer of Theseus's at all is said as a lost connection ("Connection
+interrupted; whether that was saved is unknown. …"), which goes once Theseus
+answers (`web/lines.mjs`). In the Reader, its 👍 and its Mark unread say what
+Theseus answered in the Reader's notice the same way.
 
 ## The look
 
@@ -566,7 +587,11 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | an act Theseus was too busy to take: said as busy, never as a lost connection, after the acts are read again; sent again under its operation | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Theseus was too busy to take …" |
 | two acts not settled: each said; a failed read or ask clears neither; one answered leaves the other | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks two acts not settled …" |
 | an act refused for a session the server no longer holds, as after a deploy restarts it | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act refused for a session …" |
-| an act Core refuses: said in words of its act and card, gone at the next act Core takes | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Core refuses …" |
+| an act Core refuses: said in words of its act and card until a read of the acts begun after it lands; one begun before, or one that fails, ends nothing | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Core refuses …" |
+| a 👍 Theseus was too busy to take: said as busy with its card, never as a lost connection, until its reactions read again after it land; a failed read ends nothing | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a thumbs-up Theseus was too busy to take …" (two cases) |
+| Mark unread from a card's ⋯ that Theseus was too busy to take: said as busy with its card until the marks read again after it land | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks Mark unread from a card's menu …" |
+| an act asked again that Core takes, the positions read after it failing: no longer said as not known | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act asked again that Core takes …" |
+| a 👍 or an answer, and the Reader's mark, say what Theseus answered, never a lost connection unless none answered | node units, `tests/ui_reactions.test.mjs` and `tests/ui_inline_wiring.test.mjs` ("… item 547") |
 | a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
 
 `tests/acts.json` names the break each act must catch.

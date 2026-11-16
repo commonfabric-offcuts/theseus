@@ -1595,26 +1595,134 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
-  await check('reading stacks an act Core refuses is said as not saved, in words of its act and card, never as unknown or a lost connection; the card shows what Core holds, and the line goes at the next act Core takes', async () => {
+  await check('reading stacks an act Core refuses is said as not saved, in words of its act and card, never as unknown or a lost connection, until a read of the acts begun after it lands and the card shows what Core holds; a read begun before it, or one that fails, ends nothing', async () => {
     const topic = 'stack-refused';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded on another device.' }]]);
     const p = await open(topic, 'laptop', topic, ids.a);
-    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
-    net.hold(folds);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold', acts = payload => payload?.name === 'message_acts';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const REFUSED = 'Folding “The card folded on another device.” was not saved: it changed on another tab or device. The card shows what Theseus holds.';
+    net.hold(payload => folds(payload) || acts(payload));
     await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
-    const held = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
-    // Meanwhile the reader folds it on another device: this page's fold is fenced on a revision gone by.
+    const held = await until(() => heldOf(folds), 'the fold is on its way, before Core');
+    // Meanwhile the reader folds it on another device: this page's fold is fenced on a revision gone by, and the
+    // page begins reading the acts for that commit before Core refuses its own.
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.a, operation_id: topic + '-elsewhere', args: { folded: true } });
-    net.hold(null); await net.pass(held);
-    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card folded on another device.” was not saved: it changed on another tab or device. The card shows what Theseus holds.' },
-      'the line says the fold was not saved, and why, in words of its act and card');
+    const early = await until(() => heldOf(acts), 'the page reads the acts for the other device\'s fold; that read is held');
+    await net.pass(held);
+    await becomes(() => statusLine(p), { shown: true, text: REFUSED }, 'the line says the fold was not saved, and why, in words of its act and card');
     assert.doesNotMatch((await statusLine(p)).text, /Not known|Connection interrupted/, 'a refusal is an answer: neither unknown nor a lost connection');
+    // The read begun before the refusal lands: the card shows the other device's fold, and the line stays.
+    await net.pass(early);
     await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds, made on the other device');
+    const late = await until(() => net.held().find(entry => entry !== early && acts(entry.payload)), 'the acts are read again after the refusal; that read is held');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read begun before the refusal ends nothing');
+    // That read fails: nothing is ended by it, and the page reads the acts again, as it does after a failed read.
+    await net.drop(late);
+    const again = await until(() => net.held().find(entry => entry !== early && entry !== late && acts(entry.payload)), 'the acts are read once more');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read that failed ends nothing');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'a read of the acts begun after the refusal lands: the line goes');
+    assert.equal(await foldedCard(p, ids.a), true, 'and the card shows what Core holds');
     assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the other device\'s fold alone');
-    // The reader's next act that Core takes ends what was said.
-    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Star for me');
-    await until(async () => (await actsOf(topic, ids.a))?.starred === true, 'Core takes the star');
-    await until(async () => !(await statusLine(p)).shown, 'and the line goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said as busy, with its card, never as a lost connection, until its reactions read again after it land; a read that fails ends nothing, and a press Core takes ends it', async () => {
+    const topic = 'stack-thumb-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'The thumbs-up on “The card a busy Theseus did not thumb.” was not saved: Theseus was busy. Press again: Core keeps one of each.';
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    const first = await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core');
+    // The server's own answer when its command lane is full (aim_next/server.py), as when the reader's own reply holds it.
+    await net.answer(first, 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    await net.drop(read);
+    await until(() => p.evaluate('window.fetchesOut===0'), 'the failed read has ended at the page');
+    assert.deepEqual(await statusLine(p), { shown: true, text: BUSY }, 'a read that failed ends nothing');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'the card shows no thumbs-up of the reader\'s');
+    // Pressed again, Core takes it; its reactions read after it end the line.
+    net.hold(null);
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await until(async () => (await view('reactions', { message_id: ids.a })).reactions.thumbs.some(thumb => thumb.actor_id === facts.actor), 'Core takes the thumbs-up');
+    await until(async () => !(await statusLine(p)).shown, 'its reactions read again: the line goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said only until its reactions read again after it land: then the line goes, with the card as Core holds it', async () => {
+    const topic = 'stack-thumb-busy-read';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await net.answer(await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await until(async () => /^The thumbs-up on .* was not saved: Theseus was busy\./.test((await statusLine(p)).text), 'what became of the thumbs-up is said while that read is out');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the read lands: the line goes');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'and the card shows what Core holds: no thumbs-up of the reader\'s');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks Mark unread from a card\'s menu that Theseus was too busy to take is said as busy, with its card, never as a lost connection, until the marks read again after it land', async () => {
+    const topic = 'stack-mark-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not mark.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), marking = payload => payload?.kind === 'message.mark', marksRead = payload => payload?.name === 'marks';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'Marking unread “The card a busy Theseus did not mark.” was not saved: Theseus was busy. Choose it again to send the same request.';
+    net.hold(payload => marking(payload) || marksRead(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Mark unread');
+    await net.answer(await until(() => heldOf(marking), 'the mark is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(marksRead), 'the marks are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the marks read lands: the line goes');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.a))}+' .unread-mark'))`), false, 'the card shows what Core holds: not marked unread');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act asked again that Core takes is no longer said as not known when the positions read after it fails', async () => {
+    const topic = 'stack-aside-positions';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root moved aside.' }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An older unread reply.' }],
+      ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card starred after.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    const net = await network(p), asides = payload => payload?.kind === 'stack.aside', positions = payload => payload?.name === 'stack_positions';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => asides(payload) || positions(payload));
+    await menuOf(p, 'laptop', ids.two); await choose(p, 'laptop', 'Move below More');
+    await net.drop(await until(() => heldOf(asides), 'the move reached Core; its answer is held, then lost'));
+    await until(async () => /^Not known yet whether moving below More/.test((await statusLine(p)).text), 'the move is said as not known');
+    for (let entry; (entry = heldOf(positions));) await net.drop(entry);
+    const again = await until(() => heldOf(asides), 'the page asks Core about the same move again');
+    await net.pass(again);
+    await net.drop(await until(() => heldOf(positions), 'Core took the move; the positions read after it is held, and its answer lost'));
+    net.hold(null);
+    for (const entry of [...net.held()]) await net.pass(entry);
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the move');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Star for me');
+    await until(async () => (await actsOf(topic, ids.b))?.starred === true, 'Core takes the star');
+    await until(() => p.evaluate(`window.fetchesOut===0&&Boolean(document.querySelector(${JSON.stringify(card(ids.b))}+' .card-star[aria-pressed=true]'))`), 'the page has Core\'s answer to the star, and nothing is out');
+    await twoFrames(p);
+    assert.doesNotMatch((await statusLine(p)).text, /Not known yet whether moving/, 'Core took the move: it is not said as not known: ' + (await statusLine(p)).text);
     assert.deepEqual(p.errors, []);
     await p.close();
   });

@@ -1,5 +1,5 @@
 import { mountFeedFences } from './feed-fence-copy.mjs';
-import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
+import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -873,7 +873,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
   return stackFeed;
 }
@@ -1163,7 +1163,9 @@ async function replyMessage(id, card, chosen = null) {
 function loadMarks() {
   if (!marks || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
-  return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id));
+  const landed = reading('marks');
+  return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id))
+    .then(read => { if (read) landed(); return read; });
 }
 // The topic's own Notebook pages' read state, as loadMarks: nothing for a
 // denied topic, and owed while the runtime changed.
@@ -1195,7 +1197,10 @@ async function toggleMark() {
   let receipt;
   try { receipt = await marks.send(ref.id, !state.marked, state.mark_revision); }
   catch (error) {
-    if (registry.isSourceCurrent(p)) reader.notice(Error('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.', { cause: error }));
+    const { kind, why } = notTaken({ error });
+    const words = kind === 'unreached' ? 'Connection interrupted; whether the mark was saved is unknown.' : kind === 'refused' ? `The mark was not saved${why ? `: ${why}` : ''}.`
+      : kind === 'unconfirmed' ? `Not known whether the mark was saved: ${NOT_TAKEN[kind]}.` : `The mark was not saved: ${NOT_TAKEN[kind]}.`;
+    if (registry.isSourceCurrent(p)) reader.notice(Error(`${words} Press again to send the same request.`, { cause: error }));
     return;
   }
   // An explicit Mark read places the New line afresh, wherever the oldest
@@ -1263,11 +1268,25 @@ async function markFromMenu(messageId, marked) {
     const now = marks.state(messageId);
     if (receipt?.error?.code === 'REVISION_CONFLICT' && now?.marked === marked) return;
     if (!state && receipt?.error?.code === 'REVISION_CONFLICT' && now) receipt = await marks.send(messageId, marked, now.mark_revision);
-  } catch (error) { status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error })); return; }
+  } catch (error) {
+    if (notTaken({ error }).kind === 'unreached') status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error }));
+    else markRefused(messageId, marked, { error });
+    return;
+  }
   if (receipt?.status === 'committed' && !marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
-  if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  else if (receipt?.status !== 'committed') status(receipt?.error ?? 'The mark was not confirmed. Choose it again to send the same request.');
+  if (receipt?.status !== 'committed') markRefused(messageId, marked, { receipt });
 }
+// A mark from a card's menu that Theseus answered without taking: said with
+// its card until the marks, read again after it, show the card as Core holds
+// them (stack-feed.mjs notTaken).
+function markRefused(messageId, marked, failure) {
+  cardSaid('message.mark', views.messages.get(messageId) ?? { id: messageId }, { marked }, 'marks')(failure);
+  run(loadMarks);
+}
+// What says a card command Theseus answered without taking (stack-feed.mjs
+// notTaken), and the read of what shows the cards that ends it (reading).
+function cardSaid(kind, item, args, shows) { return failure => feedOf().notTaken(kind, item, args, failure, shows); }
+function reading(what) { return stackFeed ? stackFeed.reading(what) : () => {}; }
 // A Notebook page's link (docs/links.md, "A Notebook page's link"): the page as
 // it stands, or with revision, that revision.
 async function copyPageLink(source, revision, say) {
@@ -1849,7 +1868,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds, reading });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -1991,7 +2010,7 @@ async function initialize() {
     },
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
-    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   mountFeedFences($('messages'));
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
@@ -1999,8 +2018,8 @@ async function initialize() {
   // (Core settled the person's delivery of it, or cleared their mark on it)
   // places the New line afresh, as Mark read does, wherever the oldest unread
   // message now is; one on a message already read moves nothing.
-  const thumbMessage = async (item, on) => {
-    const receipt = await reactions.thumb(item, on);
+  const thumbMessage = async (item, on, said = null) => {
+    const receipt = await reactions.thumb(item, on, said);
     if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
     return receipt;
   };
@@ -2021,7 +2040,9 @@ async function initialize() {
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
-    thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
+    // What Theseus answered without taking a card's 👍 or answer is said with its card (stack-feed.mjs notTaken).
+    thumb: (item, on) => act(thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
+    answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item) });
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet

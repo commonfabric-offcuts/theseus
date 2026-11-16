@@ -21,7 +21,7 @@ import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
-import { attemptOf, contact, heard, isBusy, sessionRefused, unconfirmed, unreached } from './api.mjs';
+import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 
 const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
@@ -73,6 +73,9 @@ const DOING = {
   'stack.place': args => args.key === null ? 'letting new replies move' : 'moving',
   'stack.name': args => args.name ? 'renaming' : 'naming by its first line',
   'stack.join': args => args.into ? 'joining' : 'splitting out',
+  'message.thumb': args => args.thumbed ? 'the thumbs-up on' : 'taking back the thumbs-up on',
+  'message.answer': args => args.answer === 'yes' ? 'answering Go ahead to' : 'answering Don’t to',
+  'message.mark': args => args.marked ? 'marking unread' : 'marking read',
 };
 function doing(kind, item, args) {
   const line = messagePreview(item), short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
@@ -92,30 +95,32 @@ class ActFailure extends Error {
 }
 // Why an act is not settled, so it is kept and sent again as it was made, under
 // its own operation, once Theseus has answered since: no word on whether Core
-// recorded it (api.mjs unconfirmed), or an answer that Core took nothing yet (a
-// busy lane, a session the server refused as a restarted one does, a receipt
-// to try again). Core answers the same operation with what it recorded, or
-// records it then (aim_next/store.py, its operations). Null for an answer that
-// settles it: a refusal, said as one.
-function waiting({ error, receipt }) {
-  if (receipt) return receipt.status === 'retryable' ? 'busy' : null;
-  if (isBusy(error)) return 'busy';
-  if (sessionRefused(attemptOf(error))) return 'restarted';
-  if (unconfirmed(error)) return unreached(error) ? 'interrupted' : 'unconfirmed';
-  return null;
+// recorded it (api.mjs notTaken: unreached or unconfirmed), or an answer that
+// Core took nothing yet (a busy lane, a session the server refused as a
+// restarted one does, a receipt to try again). Core answers the same operation
+// with what it recorded, or records it then (aim_next/store.py, its
+// operations). Null for an answer that settles it: a refusal, said as one.
+function waiting(failure) {
+  const { kind } = notTaken(failure);
+  return kind in WAITING ? kind : null;
 }
 const WAITING = {
-  interrupted: what => `Not known yet whether ${what} was saved: the connection was interrupted. The page asks Theseus again.`,
+  unreached: what => `Not known yet whether ${what} was saved: the connection was interrupted. The page asks Theseus again.`,
   unconfirmed: what => `Not known yet whether ${what} was saved: Theseus could not confirm it. The page asks again.`,
   busy: what => `${upper(what)} is not saved yet: Theseus was busy. The page sends it again.`,
   restarted: what => `${upper(what)} is not saved yet: Theseus restarted. The page sends it again.`,
 };
-// A refusal, in words of the act's own: what Core holds stands, and the card shows it.
-function refused(what, { error, receipt }) {
-  if (receipt?.error?.code === 'REVISION_CONFLICT') return `${upper(what)} was not saved: it changed on another tab or device. The card shows what Theseus holds.`;
-  const why = String(receipt?.error?.message ?? error?.message ?? '').trim().replace(/[.;:]+$/, '');
-  return `${upper(what)} was not saved${why ? `: ${why}` : ''}. The card shows what Theseus holds.`;
+// An answer that settles an act, in words of the act's own (notTaken's kind and
+// why): what Core holds stands, and the card shows it. again: what the person
+// does to make it once more, for an act the page does not send again itself.
+function notSaved(what, { kind, why }, again = '') {
+  if (kind === 'refused') return `${upper(what)} was not saved${why ? `: ${why}` : ''}. The card shows what Theseus holds.`;
+  if (kind === 'conflict') return `${upper(what)} was not saved: ${NOT_TAKEN.conflict}. The card shows what Theseus holds.`;
+  if (kind === 'unconfirmed') return `Not known whether ${what} was saved: ${NOT_TAKEN.unconfirmed}. ${again}`;
+  return `${upper(what)} was not saved: ${NOT_TAKEN[kind]}. ${again}`;
 }
+// What the person does to make once more a card command the page does not send again itself.
+const AGAIN = { 'message.thumb': 'Press again: Core keeps one of each.', 'message.answer': 'Press again: Core keeps one of each.', 'message.mark': 'Choose it again to send the same request.' };
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
   if (kind === 'stack.aside') return { aside: args.through };
@@ -149,8 +154,11 @@ export class StackFeed {
     this.pending = new Map(); this.drawn = new Map();
     // The acts not settled, by operation, each kept with its exact request
     // until Core answers it (waiting); and what the page says of each act not
-    // settled or refused, by operation, in the order said.
+    // settled or refused, by operation (or, for a card command it does not
+    // send again, by command and message), in the order said.
     this.doubts = new Map(); this.notices = new Map(); this.noticeShown = ''; this.unheard = null;
+    // How many reads of what shows the cards have begun, and answers said, in the order they were (answered, reading).
+    this.reads = 0;
     this.listen();
     this.said = doc.createElement('div');
     this.said.className = 'sr-only'; this.said.setAttribute('aria-live', 'polite'); this.said.id = 'stack-said';
@@ -289,7 +297,7 @@ export class StackFeed {
       this.settled(item.id);
     });
     this.chain = sent.catch(() => {});
-    sent.then(() => this.committed(kind), error => this.failed({ kind, item, args }, error, true));
+    sent.catch(error => this.failed({ kind, item, args }, error, true));
     return sent;
   }
   // An act that did not commit (docs/reply-stacks.md, "When an answer is lost").
@@ -298,37 +306,60 @@ export class StackFeed {
   // what Core holds meanwhile, and again each time no answer came at all: that
   // read is the answer the act waits for, paced as the page's reads are when
   // they fail. A busy or unconfirmed answer waits for Theseus to answer
-  // something else. A refusal is said, and the acts read again. A failure after
-  // Core recorded the act (reading positions) says itself.
+  // something else. A refusal is said until that read shows the card (answered).
+  // A failure after Core recorded the act (reading positions) says itself.
   failed(act, error, first) {
-    if (!(error instanceof ActFailure)) { this.status(error); this.reread(); return; }
+    if (!(error instanceof ActFailure)) { this.paintNotice(); this.status(error); this.reread(); return; }
     const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args), why = waiting(error);
     this.notices.delete(op);
     if (why) {
       this.doubts.set(op, { ...act, envelope: error.envelope, after: contact.answered, out: false }); this.listen();
-      if (!QUIET.has(act.kind)) this.notices.set(op, { words: WAITING[why](what), settled: false });
-    } else if (!QUIET.has(act.kind)) this.notices.set(op, { words: refused(what, error), settled: true });
-    this.paintNotice();
-    if (first || !why || why === 'interrupted') this.reread();
+      if (!QUIET.has(act.kind)) this.notices.set(op, { words: WAITING[why](what) });
+      this.paintNotice();
+    } else if (!QUIET.has(act.kind)) this.answered(op, notSaved(what, notTaken(error)), 'acts');
+    if (first || !why || why === 'unreached') this.reread();
   }
   // Each act not settled goes again, as it was made, once Theseus has answered
   // anything since it failed: at the next answer, never on a timer, so an act
-  // that fails again waits for a newer answer. Core's answer settles it.
+  // that fails again waits for a newer answer. Whatever comes of the ask, what
+  // was said of the act goes with it, and only a failure that leaves it not
+  // settled, or refused, says it again (failed).
   askAgain() {
     for (const [op, doubt] of this.doubts) {
       if (doubt.out || !(contact.answered > doubt.after)) continue;
       doubt.out = true;
       const sent = this.chain.then(() => this.send(doubt.kind, doubt.item, doubt.args, doubt.envelope));
       this.chain = sent.catch(() => {});
-      sent.then(() => { this.doubts.delete(op); this.notices.delete(op); this.committed(doubt.kind); },
-        error => { this.doubts.delete(op); this.failed(doubt, error, false); })
+      const over = () => { this.doubts.delete(op); this.notices.delete(op); };
+      sent.then(() => { over(); this.paintNotice(); }, error => { over(); this.failed(doubt, error, false); })
         .finally(() => { this.settled(doubt.item.id); if (this.gone && !this.doubts.size) this.deafen(); });
     }
   }
-  // An act the person made committed: what was said of a refusal before it is over.
-  committed(kind) {
-    if (!QUIET.has(kind)) for (const [op, notice] of this.notices) if (notice.settled) this.notices.delete(op);
+  // A card command the person makes again themselves (a 👍, a go-ahead answer,
+  // a mark) that Theseus answered without taking it: said in words of its act
+  // and card, as a refused act is. One that reached no Theseus is a connection
+  // line instead (lines.mjs), which its maker says. shows: what shows the card
+  // (reading).
+  notTaken(kind, item, args, failure, shows) {
+    this.answered(`${kind}:${item.id}`, notSaved(doing(kind, item, args), notTaken(failure), AGAIN[kind]), shows);
+  }
+  // An answer that settles an act, said until a read of what shows its card
+  // (shows: 'acts', 'reaction:<message id>' or 'marks'), begun after it was
+  // said, has landed: the card then shows what Theseus holds, and the words go
+  // (item 547). A read that fails, or one begun before, ends nothing.
+  answered(key, words, shows) {
+    this.notices.set(key, { words, shows, at: ++this.reads });
     this.paintNotice();
+  }
+  // A read of what shows the cards (what) begins: the function it returns is
+  // called once it has landed (topic-views.mjs, reactions.mjs, app.mjs marks).
+  reading(what) {
+    const began = ++this.reads;
+    return () => {
+      let over = false;
+      for (const [key, notice] of this.notices) if (notice.shows === what && notice.at < began) { this.notices.delete(key); over = true; }
+      if (over) this.paintNotice();
+    };
   }
   // The page's status line says every act not settled and every refusal not
   // over; with none, a line still showing what it last said goes quiet, and one

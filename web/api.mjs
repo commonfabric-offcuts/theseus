@@ -149,6 +149,26 @@ export function unconfirmed(error) {
   const answer = attemptOf(error)?.details;
   return !answer || answer.error?.code === 'REQUEST_UNCONFIRMED';
 }
+// What became of a change Core did not commit, from its attempt's failure
+// (error) or Core's receipt, as every act on a card says it (stack-feed.mjs):
+// 'unreached', no Theseus answered (a lost connection, which lines.mjs says
+// while it lasts); 'unconfirmed', Theseus could not confirm it; 'busy' and
+// 'restarted', Theseus answered that it took nothing; 'conflict', it changed
+// on another tab or device; 'refused', any other refusal, with its own words
+// (why). Only an unreached failure is a connection's.
+export function notTaken({ error = null, receipt = null }) {
+  const plain = words => String(words ?? '').trim().replace(/[.;:]+$/, '');
+  if (receipt) {
+    if (receipt.status === 'retryable') return { kind: 'busy' };
+    return receipt.error?.code === 'REVISION_CONFLICT' ? { kind: 'conflict' } : { kind: 'refused', why: plain(receipt.error?.message) };
+  }
+  if (isBusy(error)) return { kind: 'busy' };
+  if (sessionRefused(attemptOf(error))) return { kind: 'restarted' };
+  if (unconfirmed(error)) return { kind: unreached(error) ? 'unreached' : 'unconfirmed' };
+  return attemptOf(error)?.details?.error?.code === 'REVISION_CONFLICT' ? { kind: 'conflict' } : { kind: 'refused', why: plain(error?.message) };
+}
+// Why, in the page's words, for each kind notTaken gives but 'unreached' and 'refused'.
+export const NOT_TAKEN = { busy: 'Theseus was busy', restarted: 'Theseus restarted', unconfirmed: 'Theseus could not confirm it', conflict: 'it changed on another tab or device' };
 // Something has answered since the failure at at. The clock only goes
 // forward, so this stays true: what that failure said is over for good.
 export const answeredAfter = (at, { answered } = contact) => answered > at;

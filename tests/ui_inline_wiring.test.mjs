@@ -755,6 +755,28 @@ test('a line that says only that Theseus could not be reached goes once the page
   assert.equal(f.get('app-status').textContent, 'Source could not open', 'a refusal Core answered stays');
 });
 
+// Item 547: the Reader's Mark unread that Theseus answered busy, or for a session
+// a restart dropped, says what it answered, never a lost connection.
+test('the Reader\'s mark that Theseus answered without taking says what it answered, never a lost connection', async () => {
+  const renewals = [], { f } = restartable(renewals);
+  await f.initialize(); await drain();
+  const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+  const answers = {
+    busy: [503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } }, 'The mark was not saved: Theseus was busy. Press again to send the same request.'],
+    unconfirmed: [500, { error: { code: 'REQUEST_UNCONFIRMED', message: 'The request could not be confirmed; reconcile its operation.' } }, 'Not known whether the mark was saved: Theseus could not confirm it. Press again to send the same request.'],
+  };
+  for (const [name, [status, body, words]] of Object.entries(answers)) {
+    const api = new RealApi('fixture-session', async () => new Response(JSON.stringify(body), { status }));
+    f.registry.current = { source: { source_ref: { kind: 'message', id: 'm5' }, topic_id: 't1', seq: 5 }, mark: { marked: false, mark_revision: 0 }, editors: { reply: {}, note: {} } };
+    f.owners().marks.learn('m5', 0, { topicId: 't1', seq: 5 });
+    const command = f.api.command;
+    f.api.command = envelope => api.command(envelope);
+    await f.toggleMark(); await drain();
+    f.api.command = command;
+    assert.equal(said('reader-notice'), words, `${name}: the Reader says what Theseus answered`);
+  }
+});
+
 // However a failure to reach Theseus was put into words on its way to a line
 // (a Notebook page's read, a mark, an attachment, the composer), the line goes
 // once Theseus answers, and what the page could not do for want of it
