@@ -1386,6 +1386,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const [step, head, loaded] of [['the older reply loaded', 'old', ['old']], ['the first message loaded', 'root', ['old', 'root']]]) {
       await earlierPage(p, 'laptop');
       await becomes(async () => { const look = await shipyardLook(p, ids); return [look.head, look.loaded, look.placed, await top(p)]; }, [head, loaded, 'Placed here by you', true], `${step}: it heads the dossier, still on top where the reader placed it`);
+      if (head === 'old') {
+        await p.evaluate('scrollTo(0, 0)');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-place-laptop-1280-old-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
     }
     await p.close();
     p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
