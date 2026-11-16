@@ -147,7 +147,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* The New line: red (--alert), just below the oldest message the reader has not read. */
 .new-line{display:flex;align-items:center;gap:.6rem;margin:-.25rem 0 .85rem;color:var(--alert);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.2}
 .new-line::before{content:"";flex:1;height:2px;border-radius:1px;background:var(--alert)}
-/* However little of the page follows it, the New line can be scrolled to the top of the window, its unread messages wholly above: after everything in main, room as tall as what the window lacks below the line's top (--line-room, web/line-room.mjs), in the page's flow so the rails reach its end, and nothing while no line shows. Nothing in the feed moves. */
+/* However little of the page follows it, the New line can be scrolled to the top of the window, its unread messages wholly above: after everything in main, room as tall as what the window lacks below the line's top (--line-room, web/line-room.mjs), in the page's flow so the rails reach its end. Once no line shows, only what the view still reaches of it, gone as the person scrolls up. Nothing in the feed moves. */
 main::after{content:"";display:block;height:var(--line-room,0px)}
 /* Once nothing at or above it is unread, it fades out where it is, keeping its place so nothing below it shifts; held again, it fades back in. Hidden only after the fade, shown at once on the way back. */
 .new-line{transition:opacity .6s ease,visibility 0s}
