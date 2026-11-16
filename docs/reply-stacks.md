@@ -409,6 +409,16 @@ chevron, so Tab reaches them in order (Reply, Move below More, ⋯) and Shift-Ta
 comes back; each has its name as its accessible name and its tooltip, and by
 touch each is 44px square.
 
+On a phone, in a window narrower than 404px, Reply and Move below More fold
+into ⋯, which then shows alone: three 44px glyphs beside the tab would leave
+its second line too little room for who began the dossier and who named it
+(item 479), which needs a 371px folder beside them. ⋯ keeps its name, its
+tooltip and its 44px, and its menu offers Reply to the first message and Move
+below More (or Bring back above More) first, by those names, before what the
+first message's own ⋯ offers; each does what its glyph does, by touch and by
+the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). A wider
+window keeps the three glyphs.
+
 The bar over a lit message shows Reply as its glyph, named Reply (Return), and
 two more: Show full message (two arrows pointing out), only while the card
 cuts the message off, showing it whole there as ⋯'s Show full message does;

@@ -146,7 +146,7 @@ export class StackFeed {
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
-      menu: (stack, anchor) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor); },
+      menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
     for (const entry of entries(this.list)) {

@@ -880,7 +880,8 @@ function feedOf() {
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar(),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
-    menu: (item, anchor) => openMessageMenu({ anchor, items: messageMenuItems(item, null, anchor), label: 'This message', sheet: true }),
+    // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
+    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...first, ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
     // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;

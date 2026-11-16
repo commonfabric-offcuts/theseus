@@ -350,7 +350,12 @@ function paintTools(tools, stack, shown, { state, doc }) {
   aside.onclick = () => state.on?.aside?.(stack, !positionOf(stack)?.below);
   nameTool(menu, 'More for this dossier');
   if (menu.textContent !== '⋯') menu.textContent = '⋯';
-  menu.onclick = () => state.on?.menu?.(stack, menu);
+  // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names.
+  menu.onclick = () => {
+    const folded = !reply.getClientRects().length, below = positionOf(stack)?.below;
+    state.on?.menu?.(stack, menu, folded ? [{ label: reply.getAttribute('aria-label'), act: () => state.on?.reply?.(stack) },
+      ...(positionOf(stack) ? [{ label: aside.getAttribute('aria-label'), act: () => state.on?.aside?.(stack, !below) }] : [])] : []);
+  };
 }
 
 // A dossier's folder and title bar wear the colour of the agent who posted its

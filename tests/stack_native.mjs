@@ -4852,7 +4852,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // tooltip, box, whether it shows a glyph and whether a press at its centre lands on it.
   const toolFacts = (p, id) => p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toolsOf(id))}),s=t.closest('.reply-stack'),tab=s.querySelector(':scope > [data-id] .stack-head'),tb=tab.getBoundingClientRect();
     return {tab:{left:tb.left,right:tb.right,top:tb.top,bottom:tb.bottom},name:tab.querySelector('.stack-name').getBoundingClientRect().width,
-      tools:[...t.children].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return {tool:b.dataset.tool,label:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,
+      tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();return {tool:b.dataset.tool,label:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,
         left:r.left,right:r.right,top:r.top,bottom:r.bottom,glyph:Boolean(b.querySelector(':scope > svg.glyph'))||b.textContent==='⋯',hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}}),
       overflow:document.documentElement.scrollWidth>innerWidth,width:innerWidth}})()`);
   const barDossierSeed = (topic, extra = []) => seed(topic, [
@@ -4898,7 +4898,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         for (const theme of ['light', 'dark']) {
           await dossierTheme(p, theme);
           const f = await toolFacts(p, ids.root);
-          assert.deepEqual(f.tools.map(t => [t.tool, t.label, t.title]), Object.entries(TOOL_NAMES).map(([tool, name]) => [tool, name, name]), `${device} ${width}: Reply, Move below More and ⋯, each named with that name as its tooltip`);
+          // On a phone the three fold into ⋯ alone, which offers Reply and Move below More first: three 44px glyphs
+          // beside the tab leave its second line too little room for who began the dossier and who named it (item 479).
+          const shownTools = device === 'phone' ? { menu: TOOL_NAMES.menu } : TOOL_NAMES;
+          assert.deepEqual(f.tools.map(t => [t.tool, t.label, t.title]), Object.entries(shownTools).map(([tool, name]) => [tool, name, name]),
+            device === 'phone' ? `phone ${width}: ⋯ alone, named with its tooltip` : `${device} ${width}: Reply, Move below More and ⋯, each named with that name as its tooltip`);
           for (const t of f.tools) {
             assert.ok(t.glyph, `${device} ${width}: ${t.tool} is a glyph, not a word`);
             assert.ok(t.hit, `${device} ${width}: a press at ${t.tool}'s centre lands on it`);
@@ -4917,6 +4921,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // A title bar act as a person takes it: its glyph on a laptop; on a phone, where the three fold into ⋯, the item of
+  // that name in ⋯'s menu, which offers Reply and Move below More (or Bring back) before the first message's own.
+  const menuWords = p => p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
+  const titleAct = async (p, device, id, tool) => {
+    if (device !== 'phone') { await press(p, device, toolOf(id, tool)); return; }
+    const words = await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(id, tool))}).getAttribute('aria-label')`);
+    await press(p, device, toolOf(id, 'menu'));
+    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `phone: ⋯ opens the menu for ${words}`);
+    const at = (await menuWords(p)).indexOf(words);
+    assert.ok(at >= 0 && at < 2, `phone: ⋯ offers ${words} first: ${JSON.stringify(await menuWords(p))}`);
+    await press(p, device, `.message-menu-list > button:nth-child(${at + 1})`);
+  };
   await check('reading stacks the title bar\'s Reply opens the Reader on the dossier\'s first message, its ⋯ opens the menu that message\'s own ⋯ gives, and Move below More and Bring back move the dossier; a reload finds its order, name and folds as they were, every message in reach', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = `title-bar-acts-${device}`, ids = await barDossierSeed(topic);
@@ -4929,7 +4945,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const before = await kept(p);
       // Reply: the Reader on the first message, the cursor in the reply.
       await showTools(p, device, ids.root);
-      await press(p, device, toolOf(ids.root, 'reply'));
+      await titleAct(p, device, ids.root, 'reply');
       await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), `${device}: Reply opens the Reader on the dossier's first message`);
       await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${device}: the cursor is in the reply`);
       await closeReader(p, device);
@@ -4942,19 +4958,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await press(p, device, toolOf(ids.root, 'menu'));
       await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: the title bar's ⋯ opens the menu`);
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(ids.root, 'menu'))}).getAttribute('aria-expanded')`), 'true', `${device}: ⋯ says its menu is open`);
-      assert.deepEqual(await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`), own, `${device}: the title bar's ⋯ offers what the first message's ⋯ offers`);
+      assert.deepEqual(await menuWords(p), device === 'phone' ? ['Reply to the first message', 'Move below More', ...own] : own,
+        device === 'phone' ? 'phone: the title bar\'s ⋯ offers Reply and Move below More, then what the first message\'s ⋯ offers' : `${device}: the title bar's ⋯ offers what the first message's ⋯ offers`);
       await p.key('Escape');
       await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${device}: Escape closes it`);
       // Move below More, then Bring back from below More.
       const below = async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below;
       await showTools(p, device, ids.root);
-      await press(p, device, toolOf(ids.root, 'aside'));
+      await titleAct(p, device, ids.root, 'aside');
       await until(below, `${device}: Core holds the dossier below More`);
       await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length && Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), `${device}: the dossier is below a closed More`);
       await press(p, device, '#messages .stack-more');
       await showTools(p, device, ids.root);
       assert.deepEqual(await p.evaluate(`(b=>[b.getAttribute('aria-label'),b.title])(document.querySelector(${JSON.stringify(toolOf(ids.root, 'aside'))}))`), ['Bring back above More', 'Bring back above More'], `${device}: below More the glyph brings it back`);
-      await press(p, device, toolOf(ids.root, 'aside'));
+      await titleAct(p, device, ids.root, 'aside');
       await until(async () => !await below(), `${device}: Core holds it above More again`);
       if (device === 'laptop') {
         // The keys: Tab from the dossier reaches each glyph in turn, Shift-Tab comes back, and Return on Reply replies.
@@ -4969,6 +4986,35 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await p.key('Enter');
         await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), 'Return on Reply opens the Reader on the first message');
         await closeReader(p, device);
+      } else {
+        // The keys on a phone: Tab from the dossier reaches ⋯ and no folded glyph; Return opens its menu on Reply, and
+        // Return replies; ↓ then Return moves the dossier below More.
+        const at = () => p.evaluate(`document.activeElement?.closest?.('.stack-tools')?document.activeElement.dataset.tool:null`);
+        const toMenu = async () => {
+          await keyTo(p, ids.root);
+          const met = [], trail = [];
+          const where = () => p.evaluate(`(e=>e?(e.dataset?.tool??e.dataset?.act??e.id??'')+':'+e.tagName+'.'+String(e.className).slice(0,30):null)(document.activeElement)`);
+          for (let n = 0; n < 40 && await at() !== 'menu'; n++) { await p.key('Tab'); const here = await at(); if (here) met.push(here); trail.push(await where()); }
+          assert.deepEqual(met, ['menu'], `phone: Tab from the dossier reaches ⋯, and no folded glyph: ${JSON.stringify(trail)}`);
+        };
+        await toMenu();
+        await p.key('Enter');
+        await until(() => p.evaluate(`document.activeElement?.closest?.('.message-menu-list')?document.activeElement.textContent:null`).then(w => w === 'Reply to the first message'), 'phone: Return on ⋯ opens its menu on Reply');
+        await p.key('Enter');
+        await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), 'phone: Return on Reply opens the Reader on the first message');
+        await closeReader(p, device);
+        await toMenu();
+        await p.key('Enter');
+        await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'phone: Return opens ⋯\'s menu again');
+        await p.key('ArrowDown');
+        assert.equal(await p.evaluate(`document.activeElement.textContent`), 'Move below More', 'phone: ↓ reaches Move below More');
+        await p.key('Enter');
+        await until(below, 'phone: Return on Move below More moves the dossier below More');
+        // Below More, which is open still from the Bring back before, or closed.
+        if (!await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length > 0`)) await press(p, device, '#messages .stack-more');
+        await showTools(p, device, ids.root);
+        await titleAct(p, device, ids.root, 'aside');
+        await until(async () => !await below(), 'phone: Bring back from ⋯ puts it above More again');
       }
       // Tony's rule over the dossier: how it is shown stores nothing, and every message stays in reach in place.
       // A new document, known by its timeOrigin as first read (WebKit's can move 1 ms with no load); a read while the

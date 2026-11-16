@@ -14221,8 +14221,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (item) this.menu(item, anchor);",
-     "if (item) this.menu({ ...item, id: '' }, anchor);"
+     "if (item) this.menu(item, anchor, first);",
+     "if (item) this.menu({ ...item, id: '' }, anchor, first);"
     ]
    ],
    "check": {
@@ -14679,6 +14679,66 @@
    "check": {
     "native": "webkit-reading",
     "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone the title bar's Reply and Move below More fold into ⋯, so the tab's second line keeps who began the dossier and who named it whole",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "minted name"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone the title bar's ⋯ offers Reply and Move below More first, and each does what its glyph does, by touch and by the keys",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const folded = !reply.getClientRects().length,",
+     "const folded = false,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's Reply opens the Reader"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a laptop the title bar keeps its three glyphs: only a phone folds them into ⋯",
+   "break": [
+    [
+     "web/stack-look.css",
+     "@media(max-width:403.98px){\n",
+     "@media(min-width:0px){\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "By touch the title bar's hidden ⋯ stays in the keys' reach, though a press finds nothing there until the dossier is selected",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
+     ".reply-stack:not(.only-new *)>.stack-tools{visibility:hidden}\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's Reply opens the Reader"
    }
   },
   {
