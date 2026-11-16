@@ -346,19 +346,21 @@ export async function departureChecks({check,page,until,facts,view,control,obser
         const trail=[start];await walk('ArrowDown',trail);await walk('ArrowUp',trail);
         assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
       }
-      await p.evaluate(`document.getElementById('review-content').scrollTop=0`);
-      const trail=['the acknowledgement'];await p.evaluate(`document.querySelector('${ACK}').focus({preventScroll:true})`);await walk('ArrowDown',trail);
-      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ↓ from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
-      assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
-      // The focus where ↑ from the footer brought it, for the evidence, in light and dark.
+      // Where the arrows bring the focus to the acknowledgement (↓ from the footer while the box scrolls, then ↑),
+      // ↓ goes on to Prepare this reply again; the focus is shown there in light and dark, for the evidence.
       await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
       await walk('ArrowDown',[]);await p.key('ArrowUp');
+      const on=await where();
+      assert.equal(on.at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, lands on the acknowledgement: '+JSON.stringify(on));
       for(const theme of ['light','dark']){
         await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
         await until(()=>p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`),width+': drawn '+theme);
         await shot(p,`review-arrows-acknowledgement-${width}-${theme}`);
       }
       await p.send('Emulation.setEmulatedMedia',{features:[]});
+      const trail=['the acknowledgement'];await walk('ArrowDown',trail);
+      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ↓ from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
+      assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
     }
     await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
     await until(()=>p.evaluate('innerWidth===1440'),'the window is back at a laptop\'s width');
