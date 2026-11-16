@@ -336,11 +336,13 @@ try {
         await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
         await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
         // A person's reply or thumbs-up folds what it answers for them (docs/reply-stacks.md, item 377): a press on
-        // its row shows it whole again, then a press on it opens it.
+        // its row unfolds it, then a press on it opens it. Unfolded among an open dossier's earlier messages, it
+        // reads as an earlier message's row (item 476), and a press on that row shows it whole first, as unfold does.
         const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
         if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
           await point(`${card} > .message-folded > .folded-author`);
-          await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message shows whole');
+          await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
+          await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
         }
         await point(`#messages [data-id="${facts.sources[index].id}"]`);
         await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');

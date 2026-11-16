@@ -328,12 +328,14 @@ try {
           // A stack's first message opens from its words: a press on its head's row shows or hides them.
           const heads = await evaluate(`Boolean(document.querySelector('#messages .stack-head-card[data-id="${facts.sources[index].id}"]'))`);
           // A person's reply or thumbs-up folds what it answers for them (docs/reply-stacks.md, item 377): a press on
-          // its row (a dossier's first message's too, under the head row, item 471) shows it whole again, then a press
-          // on it opens it.
+          // its row (a dossier's first message's too, under the head row, item 471) unfolds it, then a press on it
+          // opens it. Unfolded among an open dossier's earlier messages, it reads as an earlier message's row (item
+          // 476), and a press on that row shows it whole first, as unfold does.
           const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
           if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
             await point(`${card} > .message-folded > .folded-author`);
-            await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message shows whole');
+            await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
+            await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           }
           await point(heads ? `#messages .message-card[data-id="${facts.sources[index].id}"] > .message-preview` : `#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');

@@ -21304,6 +21304,111 @@
    "check": {
     "python": "test_tools_deploy.py"
    }
+  },
+  {
+   "item": 558,
+   "act": "In Safari's engine, a pencil's title line says it is busy while its start is held before the server has it, as in Chrome",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.busy = true; this.input.setAttribute('aria-busy', 'true');",
+     "this.busy = true;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 558,
+   "act": "In Safari's engine, the server's refusal of a new outcome keeps the title typed in the heading's line and makes nothing, as in Chrome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await start.create(title);",
+     "line.input.value = ''; const id = await start.create(title);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 558,
+   "act": "In Safari's engine, the name the browser gives a card whose message has an image holds its image mark, with the thumbnail's \"Image: <name>\" in the name too",
+   "break": [
+    [
+     "web/marks.mjs",
+     "mark.setAttribute('aria-label', words);",
+     "mark.setAttribute('aria-hidden', 'true');"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "webkit whisper: a whisper card with an image and a note"
+   }
+  },
+  {
+   "item": 558,
+   "act": "A reply written in the Reader, sent while Theseus is down, is published once it is back",
+   "break": [
+    [
+     "web/session-renewal.mjs",
+     "    this.api.token = token;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live restart: a reply sent while Theseus is down is published once it is back \\(reader\\)"
+   }
+  },
+  {
+   "item": 558,
+   "act": "A reply written in the Reader, refused at its preparation for the old session after a restart, is published once the page has the new one",
+   "break": [
+    [
+     "web/session-renewal.mjs",
+     "    this.api.token = token;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live restart: a reply sent before the page has the new session is published once it does \\(reader, refused at submission\\.prepare\\)"
+   }
+  },
+  {
+   "item": 558,
+   "act": "An earlier message the reader folded opens in the Reader by presses alone: the earlier-messages row, then the message, each press showing more of it until one opens it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;\n  state.on?.unfold?.(id);\n",
+     "  if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks an earlier message the reader folded opens in the Reader"
+   }
+  },
+  {
+   "item": 558,
+   "act": "In Safari's engine, an earlier message the reader folded opens in the Reader by presses alone: the earlier-messages row, then the message, each press showing more of it until one opens it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;\n  state.on?.unfold?.(id);\n",
+     "  if (cardIn(entry).dataset.folded !== 'true' || !state.folded.has(id)) return false;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks an earlier message the reader folded opens in the Reader"
+   }
   }
  ]
 }

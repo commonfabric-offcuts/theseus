@@ -4,6 +4,7 @@ import functools
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,26 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from tools import acts, mutant
+from tools import acts, mutant, release_check
+
+# How a native harness reads its case filter (tools/native.py passes the ledger's "case" through unchanged): as a
+# regular expression, or as text whose parts, split at |, each select the case names that hold them.
+REGEX_FILTER = "new RegExp(caseFilter).test(name)"
+TEXT_FILTER = ".split('|').some(part => "
+
+
+def words_of(pattern):
+    """The text a filter read as a regular expression names: each escaped character taken as itself."""
+    return re.sub(r"\\([^0-9A-Za-z])", r"\1", pattern)
+
+
+def selects_its_words(pattern):
+    """Whether a filter read as a regular expression selects a case named by its own words. A bracket, ? or + left
+    unescaped is read as syntax, so the filter does not select the name it spells out, and its check runs no case."""
+    try:
+        return re.search(pattern, words_of(pattern)) is not None
+    except re.error:
+        return False
 
 
 class Acts(unittest.TestCase):
@@ -101,6 +121,32 @@ class Ledger(unittest.TestCase):
                 self.assertTrue(act["act"].strip())
                 self.assertTrue(act["break"] and all(len(change) == 3 and change[1] != change[2] for change in act["break"]))
                 acts.command(act["check"], Path("/evidence"))
+
+    def test_a_filter_read_as_a_regular_expression_selects_its_own_words_only_when_its_syntax_is_escaped(self):
+        for pattern in ("is back \\(reader\\)", "\\(reader, refused at submission\\.prepare\\)", 'rail\'s "\\? Pointer', "the reader.s own"):
+            self.assertTrue(selects_its_words(pattern), pattern)
+        # Plain text with a bracket, ? or + selects no case named by those words; an unbalanced bracket is no expression.
+        for pattern in ("is back (reader)", 'rail\'s "? Pointer', "a + b", "refused at submission.prepare)"):
+            self.assertFalse(selects_its_words(pattern), pattern)
+
+    def test_every_browser_case_filter_selects_the_case_its_words_name_as_its_harness_reads_it(self):
+        # A filter that selects no case runs none, prints no FAILED line, and tools/acts.py can never count its act caught.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        for act in json.loads((acts.REPO / "tests" / "acts.json").read_text())["acts"]:
+            check = act["check"]
+            if "native" not in check:
+                continue
+            with self.subTest(item=act["item"], act=act["act"]):
+                harness = (acts.REPO / steps[check["native"]].harness).read_text()
+                if REGEX_FILTER in harness:
+                    self.assertTrue(selects_its_words(check["case"]),
+                                    "item %s: %r is read as a regular expression; escape its ( ) ? + [ ] with \\"
+                                    % (act["item"], check["case"]))
+                elif TEXT_FILTER in harness:
+                    self.assertNotIn("\\", check["case"], "item %s: %r is read as text, so a \\ in it is taken as itself"
+                                     % (act["item"], check["case"]))
+                else:
+                    self.fail("%s reads its case filter in a way this test does not know" % steps[check["native"]].harness)
 
     def test_every_break_still_applies_to_the_code_it_names(self):
         # A redraw that rewrites a break's text leaves its act with no proof; tools/acts.py would only say "refused".

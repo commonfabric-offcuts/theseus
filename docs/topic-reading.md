@@ -120,7 +120,11 @@ checks them in Chrome and Safari's engine at 320, 375 and 390 points with
 touch and on a laptop, light and dark, and at every width that a marked line
 holds no line showing nothing and the star's place stays inside the card,
 that every head row shows its reply count whole and only whole marks, and
-that a whisper's card says its marks in the name the browser gives it.
+that a whisper's card says its marks in the name the browser gives it. In
+Safari's engine that name is read from Playwright's accessibility snapshot,
+whose line for the card is quoted whole when the name holds ": ", as an image's
+"Image: screen.png" puts there; the check reads either form back to the exact
+name.
 
 ## Reply stacks (103, 283)
 
