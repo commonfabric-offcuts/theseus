@@ -402,7 +402,7 @@ dossier or one of its messages is selected; by the keys, as soon as one of
 them holds the focus, or the dossier or one of its messages is selected. Their
 place is kept while they are hidden, so showing them moves nothing, and the
 tab's name leaves room for them. Hidden by touch they take no press: a tap
-where ⋯ sits lands on the dossier beneath it, not on ⋯, until the dossier is
+where ⋯ sits lands on the page beneath it, not on ⋯, until the dossier is
 selected; the keys still reach them. A message on its own has no title bar and no
 glyphs; a dossier being renamed and Only new show none.
 

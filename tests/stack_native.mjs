@@ -4855,11 +4855,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();return {tool:b.dataset.tool,label:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,
         left:r.left,right:r.right,top:r.top,bottom:r.bottom,glyph:Boolean(b.querySelector(':scope > svg.glyph'))||b.textContent==='⋯',hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}}),
       overflow:document.documentElement.scrollWidth>innerWidth,width:innerWidth}})()`);
-  // A press at the centre of a dossier's ⋯ as it stands: its box, whether the glyphs show, what the press finds there
-  // (on the dossier, inside the window) and whether that is ⋯ or any title bar glyph.
+  // A press at the centre of a dossier's ⋯ as it stands: its box, whether the glyphs show, what the press finds there,
+  // whether that is ⋯ or any title bar glyph, and whether it is the page holding the dossier (the point is in the
+  // window, on the paper beside the tab, above the folder's own box).
   const restingPress = (p, id) => p.evaluate(`(t=>{const m=t.querySelector(':scope > .stack-tool[data-tool=menu]'),r=m.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,
     h=x>=0&&x<innerWidth&&y>=0&&y<innerHeight?document.elementFromPoint(x,y):null,s=getComputedStyle(t);
-    return {width:r.width,height:r.height,shown:s.visibility==='visible'&&Number(s.opacity)===1,found:Boolean(h&&t.closest('.reply-stack').contains(h)),
+    return {width:r.width,height:r.height,shown:s.visibility==='visible'&&Number(s.opacity)===1,page:Boolean(h&&h!==t&&h.contains(t)),
       under:h?h.tagName+'.'+String(h.className).slice(0,40):null,hit:Boolean(h&&t.contains(h))}})(document.querySelector(${JSON.stringify(toolsOf(id))}))`);
   const barDossierSeed = (topic, extra = []) => seed(topic, [
     ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier first words for the title bar.', read: true }],
@@ -4884,15 +4885,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await away(p);
       assert.equal(await toolsShown(p, ids.root), false, `${device}: at rest the title bar shows no glyphs`);
       if (device === 'phone') {
-        // By touch, hidden, they take no press: a tap at the hidden ⋯'s centre, at each phone width, finds what lies
-        // beneath it on the dossier, not ⋯, until the dossier is selected.
+        // By touch, hidden, they take no press: a tap at the hidden ⋯'s centre, at each phone width, finds the page
+        // beneath it, not ⋯, until the dossier is selected.
         for (const width of [390, 375, 320]) {
           await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
           await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
           const at = await restingPress(p, ids.root);
           assert.equal(at.shown, false, `phone ${width}: at rest the title bar shows no glyphs`);
-          assert.ok(at.width >= 44 && at.height >= 44 && at.found, `phone ${width}: the hidden ⋯ keeps its place on the dossier, on screen: ${JSON.stringify(at)}`);
+          assert.ok(at.width >= 44 && at.height >= 44, `phone ${width}: the hidden ⋯ keeps its 44px place: ${JSON.stringify(at)}`);
           assert.equal(at.hit, false, `phone ${width}: a press at the hidden ⋯'s centre does not land on it: ${JSON.stringify(at)}`);
+          assert.ok(at.page, `phone ${width}: it lands on the page beneath, which holds the dossier: ${JSON.stringify(at)}`);
         }
       }
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.solo))}).closest('.reply-stack')?.querySelector('.stack-tools')??null`), null, `${device}: a message on its own has no title bar glyphs`);
