@@ -259,6 +259,9 @@ export async function teamInviteChecks({ check, page, until, control, view, fact
     // Handed back, the outcome is the person's to organise: the page learns it and offers the invite.
     await control({ method: 'outcome_change', operation_id: 'invite-member-handed-back', sender: facts.agent, workspace_id: workspace, owner: facts.actor });
     await until(() => visible(p, '#invite-agent'), 'the invite is offered once the person owns the outcome');
+    // The target card above learns it on the same commit and offers its owner Complete · Archive (item 404), which
+    // moves the Team panel down: the press waits until the page has both, as a person's eye would.
+    await until(() => visible(p, '#target-panel .tg-end'), 'the target card offers its owner Complete · Archive');
     await openLine(p);
     assert.deepEqual(p.errors, []);
   });

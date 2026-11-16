@@ -50,7 +50,7 @@ NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
 PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
 WEBKIT = "tests/webkit_native.mjs"
-WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite")
+WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "targets")
 # The Reader's composer, in Chrome for Testing and Safari's engine (docs/reader.md).
 COMPOSE = "tests/reader_compose_native.mjs"
 # The harnesses that load playwright-core, and so are handed its directory.

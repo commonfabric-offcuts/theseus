@@ -69,6 +69,9 @@ def register(verb):
     reached.add_argument("outcome")
     reached.add_argument("--unmet", action="store_true")
     reached.add_argument("text")
+    end = verb("outcome-end")
+    end.add_argument("outcome")
+    end.add_argument("state", choices=("archived", "completed", "open"))
 
 
 class TargetVerbs:
@@ -194,6 +197,25 @@ class TargetVerbs:
         result = self.command("outcome.kind_set", {"workspace_id": options.outcome}, {"kind": options.kind},
                               {"workspace_revision": workspace["version"]})
         self.out.plain("%s is an outcome to %s%s" % (options.outcome, options.kind, "" if result["changed"] else " (no change)"))
+
+    def do_outcome_end(self):
+        """Archive, complete or bring back an outcome (item 404, docs/targets.md "Archived and completed"). The count
+        is the topics the act archived or brought back, the Conversation included; a switch between archived and
+        completed touches none and carries the act's list."""
+        options = self.options
+        workspace = self.view("workspace", {"workspace_id": options.outcome})["workspace"]
+        before = workspace.get("end")
+        result = self.command("outcome.end_set", {"workspace_id": options.outcome}, {"state": options.state},
+                              {"workspace_revision": workspace["version"]})
+        from .cli import _one_line
+        title = _one_line(workspace["title"])
+        if not result["changed"]:
+            self.out.plain("%s is already %s (no change)" % (title, "open" if options.state == "open" else options.state))
+        elif before is not None and options.state != "open":
+            self.out.plain("%s %s (topics carried)" % (options.state, title))
+        else:
+            count = "%d topic%s" % (result["topics"], "" if result["topics"] == 1 else "s")
+            self.out.plain("%s %s (%s)" % ("brought back" if options.state == "open" else options.state, title, count))
 
     def do_reached(self):
         options = self.options
