@@ -63,6 +63,7 @@ const SKIPPED = {
   },
   '--health': {
     'health wakes that fail light the link on another page and the page says why, live, from the view': 'puts the Health page in a tab behind (document.visibilityState hidden); each page here is a window of its own, which stays visible',
+    'health a wake that gets through clears the page and the link, live': 'clears the failing wakes the check above lights, which is skipped here, so it starts with nothing to clear',
   },
 }[mode] ?? {};
 
