@@ -16210,8 +16210,8 @@
    "break": [
     [
      "tools/known_reds.py",
-     "ended_cases(out, step, \"the candidate's\")",
-     "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+     "\"the candidate's\") for step in failed}",
+     "\"the candidate's\", before_end_record=True) for step in failed}"
     ]
    ],
    "check": {
