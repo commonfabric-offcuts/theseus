@@ -1160,8 +1160,8 @@
    "break": [
     [
      "web/app.mjs",
-     "return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;",
-     "return first;"
+     "const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;",
+     "const anchor = writing ? inline.field : field ? at : first;"
     ]
    ],
    "check": {
@@ -14106,6 +14106,21 @@
    "check": {
     "native": "header",
     "case": "header the Team with"
+   }
+  },
+  {
+   "item": 465,
+   "act": "With the New message composer resting between the last card and More, what More loads at the top edge comes in where More was",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live More at the top edge shows the older messages"
    }
   }
  ]
