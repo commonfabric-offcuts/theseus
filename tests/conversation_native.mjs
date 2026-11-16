@@ -83,7 +83,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
   const chips = (p, id) => quiet(p, `[...document.querySelector(${JSON.stringify(card(id))}).querySelectorAll('.item-tag')].map(t=>t.textContent)`);
 
   await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {
-    const p = await open('conversation-page', '/?conversation=w1');
+    // The dots move for a person who has not asked for less motion. The machine's own setting shows through unless the
+    // page is told (the hosted macOS runner has Reduce motion on), so the case says it, before the page loads.
+    const moving = { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] };
+    const p = await open('conversation-page', '/?conversation=w1', { beforeNavigate: q => q.send('Emulation.setEmulatedMedia', moving) });
     await until(() => quiet(p, `!document.querySelector('#conversation-empty').hidden`), 'the empty conversation says what it is for');
     assert.match(await p.evaluate(`document.querySelector('#conversation-empty').textContent`), new RegExp(`^Nothing here yet\\.Write below .* ${agent} answers each one here`));
     assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Conversation');
@@ -106,10 +109,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     const calm = await until(async () => { const d = await dots(p, item); return d?.running === 0 && d; }, 'under reduced motion the dots stop');
     assert.deepEqual([calm.count, calm.shown, calm.names], [3, true, ['none', 'none', 'none']], 'still three, shown, and still');
-    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: '' }] });
+    await p.send('Emulation.setEmulatedMedia', moving);
     assert.equal(await p.evaluate(`document.querySelector('#conversation-empty').hidden`), true);
     assert.deepEqual(await until(async () => { const c = await chip(p); return !c.hidden && c; }, 'Only new shows'), { hidden: false, text: 'Only new (1)', pressed: 'false' });
-    const placed = await p.evaluate(`(()=>{const m=document.querySelector('#messages').getBoundingClientRect(),w=document.querySelector('#inline-composer').getBoundingClientRect();return {messages:m.bottom,writing:w.top}})()`);
+    // The writing box rests inside #messages, below the cards (item 465), so the last card shown is what sits above it.
+    const placed = await p.evaluate(`(()=>{const m=[...document.querySelectorAll('#messages .message-card')].filter(e=>!e.closest('#new-message-sheet')&&e.getClientRects().length).at(-1).getBoundingClientRect(),w=document.querySelector('#inline-composer').getBoundingClientRect();return {messages:m.bottom,writing:w.top}})()`);
     assert.ok(placed.messages <= placed.writing + 1, `the messages sit above the writing box (${JSON.stringify(placed)})`);
     await answer('conversation-answer', 'On track for Friday.', { reply_to: item });
     const answered = await until(async () => { const t = await tags(p, item); return t?.tags[0] === 'Answered' && t; }, 'the card turns Answered without a reload');

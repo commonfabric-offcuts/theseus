@@ -459,8 +459,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       body: `Agent message ${n} in ${id}.` })).result.message_id);
     return ids;
   };
+  // Motion is said as well as the theme: the machine's own setting shows through otherwise (the hosted macOS runner has
+  // Reduce motion on), and the line's fade is for a person who has not asked for less motion.
   const open = (topic, suffix, theme, height = 900) => page(suffix, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async p => {
-    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }, { name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height, deviceScaleFactor: 1, mobile: false });
   } });
   const unread = async topic => (await view('topic_unread', { topic_id: topic })).oldest_unread;
@@ -739,10 +741,13 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       // Which document this is: a timeOrigin kept on the window (a reload has a new one). A count of
       // navigation entries cannot tell, as every document holds exactly one.
       const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
-      // The reply stacks under the message it answers and brings that stack up (docs/topic-reading.md, "Reply stacks"); the line stays where it was,
-      // under the lowest stack holding anything newer than its message, so nothing newer sits below it (docs/reply-stacks.md, "One New line"), keeping its own height.
+      // The reply stacks under the message it answers, and the reader's own reply leaves that stack where it was (docs/reply-stacks.md);
+      // the line stays where it was, under the lowest stack holding its message or anything newer that is not the reader's own
+      // (docs/reply-stacks.md, "One New line"): the stack the reply joined. It keeps its own height.
       const lineHeight = () => p.evaluate(`document.querySelector('#messages .new-line').getBoundingClientRect().height`);
-      const before = await lineHeight();
+      // The order of what #messages holds, each stack by its first message.
+      const order = () => p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.matches('.reply-stack')?e.querySelector('[data-id]')?.dataset.id:e.dataset?.id).filter(Boolean).join()`);
+      const before = await lineHeight(), orderBefore = await order();
       assert.deepEqual(await drawn(p), { count: 1, after: ids[2], kind: 'new', faded: false, inert: false }, theme + ': it shows');
       await p.point(`#messages [data-id="${ids[2]}"]`);
       await until(() => p.evaluate("document.querySelector('#reader').open && Boolean(document.querySelector('#writing-body'))"), theme + ': the Reader is open on the message');
@@ -755,9 +760,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]'))`), theme + ': the reply drawn');
       await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': sending closed the Reader');
       const faded = await fadedOut(p, theme + ': opened and answered, the line fades out');
-      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[3], true, 'none', 1], theme + ': where it was, under the oldest message newer than its own, inert: ' + JSON.stringify({ faded, ids, reply }));
+      assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[2], true, 'none', 1], theme + ': where it was, under the message read, whose stack the reply joined in place, inert: ' + JSON.stringify({ faded, ids, reply }));
       assert.ok(Math.abs(faded.height - before) <= 1, theme + `: it keeps its space (${faded.height} of ${before})`);
-      assert.equal(await p.evaluate(`(()=>{const top=document.querySelector('#messages > .reply-stack');return top.dataset.stack===${JSON.stringify(ids[2])}&&top.contains(document.querySelector('#messages [data-id="${reply}"]'))&&Boolean(top.compareDocumentPosition(document.querySelector('#messages .new-line'))&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, theme + ': the reply is in its message\'s stack, brought up above the line');
+      assert.equal(await p.evaluate(`(()=>{const stack=document.querySelector('#messages .new-line').previousElementSibling;return stack?.matches('.reply-stack')&&stack.dataset.stack===${JSON.stringify(ids[2])}&&stack.contains(document.querySelector('#messages [data-id="${reply}"]'))})()`), true, theme + ': the reply is in its message\'s stack, just above the line');
+      assert.equal(await order(), orderBefore, theme + ': the reader\'s own reply moved no stack');
       assert.equal(await unread(topic), null, theme + ': the reply, the person\'s own, holds nothing');
       assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'), loaded, theme + ': no reload');
       assert.equal(await p.evaluate("document.querySelector('#refresh')"), null, theme + ': and no Refresh to press');
