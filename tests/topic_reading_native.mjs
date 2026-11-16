@@ -386,11 +386,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         observations.push({ name: 'ask bar in the window', engine, device, width, message: id === ids.long ? 'long' : 'short', state, rows, shown, behind, bar: at.bar, window: at.window });
         return { shown, behind };
       };
-      // Copy Link from the bar's ⋯ (a sheet on a phone), which offers what the bar put behind it, and the ⋯ says "Link copied".
-      const copy = async (id, behind, where) => {
+      // A press on the bar's ⋯ opens its menu (a sheet on a phone), which offers what the bar put behind it.
+      const offers = async (behind, where) => {
         await press(p, device, `${BAR} [data-act=more]`);
         const items = await until(async () => { const now = await p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.firstChild?.textContent??'')`); return now.includes('Copy Link') ? now : null; }, `${device}: the ⋯ menu offers Copy Link`);
         for (const act of behind) if (!items.includes(MENU[act])) problems.push(`${where}: the ⋯ menu does not offer ${MENU[act]}, which the bar put behind it (${items.join(', ')})`);
+        return items;
+      };
+      // Copy Link from that menu, and the ⋯ says "Link copied".
+      const copy = async (id, behind, where) => {
+        const items = await offers(behind, where);
         await press(p, device, `.message-menu-list [role=menuitem]:nth-child(${items.indexOf('Copy Link') + 1})`);
         await until(() => p.evaluate(`!document.querySelector('.message-menu-list') && document.querySelector('${BAR} [data-act=more]').textContent === 'Link copied'`), `${device}: the ⋯ says Link copied`);
         await frames(p);
@@ -413,10 +418,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           }
           await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
           await copy(id, plain.behind, `${device} ${width} ${name} ask`);
-          await look(width, id, 'Link copied');
+          const copied = await look(width, id, 'Link copied');
           if (width === 320) await shot(p, `ask-bar-${device}-${width}-${name}-copied`);
-          // A key says ⋯ again, and what went behind it for "Link copied" comes back.
-          await p.key('Shift');
+          // The next press on the ⋯ opens its menu, offering what the bar put behind it for "Link copied", and once it
+          // has landed the ⋯ says ⋯ again and what went behind it comes back; Escape closes the menu.
+          await offers(copied.behind, `${device} ${width} ${name} ask, Link copied`);
+          await p.key('Escape');
+          await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${device}: Escape closes the ⋯ menu`);
           await until(() => p.evaluate(`document.querySelector('${BAR} [data-act=more]').textContent === '⋯'`), `${device}: the ⋯ says ⋯ again`);
           await frames(p);
           const again = await look(width, id, '⋯ again');
