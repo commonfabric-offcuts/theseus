@@ -20,7 +20,7 @@
 // the page when there is room; it reads only while it shows. What it shows
 // is drawn for one place and one scope: when either changes, what was shown
 // goes at once, and a read for a place or scope left behind draws nothing.
-import { paintChanged } from './topic-navigation.mjs';
+import { paintChanged, paintMarks, questionOf } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
@@ -29,6 +29,7 @@ import { reloader } from './live.mjs';
 import { listen } from './in-place-navigation.mjs';
 import { KeyTree } from './key-tree.mjs';
 import { panes } from './panes.mjs';
+import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
   ['starred', 'Starred'], ['pipeline', 'Pipeline'], ['waiting', 'Waiting for…'], ['notebook', 'Notebook'], ['previews', 'Previews'],
@@ -39,6 +40,37 @@ export const SECTIONS = [
 export const OUTCOME_TOPICS = 6, MESSAGES = 50;
 // How many Notebook pages the section lists at first, and how many more each More pages brings.
 export const NOTEBOOK_PAGE = 20;
+// How many Build topics the Pipeline section lists at first, and how many more each More topics brings.
+export const BUILD_PAGE = 20;
+
+// The outcome's Build topics (item 297), each once, as the Pipeline section
+// shows them: under Now one row for each topic a piece is being built in, its
+// topic's row as the outline would draw it; then the Build topics Ready for
+// review, until they are Done and fold into the outline's Done group; then any
+// other. Each group is in the reader's own order where they placed its topics,
+// as the outline keeps it (outline-order.mjs), and Core's otherwise.
+// pieces: the pipeline's pieces in Now; builds: the Build topics Core lists,
+// in its order; building: Core's open Build topics holding a piece under way,
+// whatever page of builds they would fall on (null while the pipeline is off,
+// when no topic is a Build topic and Now is the pipeline's own list). A piece
+// whose topic is not among them is in a topic Done or archived, which is the
+// outline's alone; saved: the reader's own order of the outcome's topics.
+export function buildRows(pieces, builds, { titles = new Map(), building = null, saved = [] } = {}) {
+  const rows = new Map([...(builds ?? []), ...(building ?? [])].map(item => [item.id, item]));
+  const shown = new Set();
+  const placed = list => { const byKey = new Map(list.map((row, at) => [row.topic ?? `\u0000${at}`, row])); return placeIn([...byKey.keys()], saved).map(key => byKey.get(key)); };
+  const now = placed((pieces ?? []).filter(piece => {
+    const topic = piece.topic?.id ?? null;
+    if (topic === null) return true;
+    if (shown.has(topic) || (building && !rows.has(topic))) return false;
+    shown.add(topic);
+    return true;
+  }).map(piece => ({
+    title: piece.topic?.title || (piece.items ?? []).map(number => titles.get(number) ?? `Item ${number}`).join(', '),
+    topic: piece.topic?.id ?? null, stage: piece.stage?.name ?? null, since: piece.stage?.entered_ms ?? null, item: rows.get(piece.topic?.id) ?? null })));
+  const rest = placed((builds ?? []).filter(item => !shown.has(item.id)).map(item => ({ title: item.title, topic: item.id, item })));
+  return { now, review: rest.filter(row => row.item.state === 'review'), other: rest.filter(row => row.item.state !== 'review') };
+}
 
 // Every web address in a message's words, with the words a Markdown link gave
 // it, without the punctuation that ends a sentence after it.
@@ -129,6 +161,8 @@ export class ThingsRail {
     // The Notebook section's pencils, by the scope each writes in ('topic', 'outcome'); how many of its
     // pages the person has asked to see; and the first page More brought, which takes the focus from More.
     this.creators = new Map(); this.notebookWant = NOTEBOOK_PAGE; this.notebookFrom = null;
+    // How many of the outcome's Build topics the person has asked to see, and the rows shown when More topics was pressed.
+    this.buildWant = BUILD_PAGE; this.buildFrom = null;
     // Each place's messages and images, with the version of the topic they were read at (readPlace).
     this.kept = new Map();
     this.reload = reloader(() => this.load());
@@ -237,7 +271,7 @@ export class ThingsRail {
     this.host.hidden = !feed;
     this.unlisten?.(); this.unlisten = null; this.handles = null;
     for (const creator of this.creators.values()) creator.remove();
-    this.creators.clear(); this.notebookWant = NOTEBOOK_PAGE;
+    this.creators.clear(); this.notebookWant = NOTEBOOK_PAGE; this.buildWant = BUILD_PAGE;
     this.serial += 1;
     this.scope = route?.kind === 'topic' ? 'topic' : 'outcome';
     this.paintHead(); this.clear();
@@ -399,14 +433,35 @@ export class ThingsRail {
     const now = await view('pipeline', { workspace_id: workspace, section: 'now', limit: 100 });
     if (now.pipeline === null) return null;
     const next = await view('pipeline', { workspace_id: workspace, section: 'next', limit: 20 });
-    return { now, next };
+    // A pipeline that is on has Build topics (item 297); Core lists none for one that is off.
+    const builds = now.pipeline?.enabled ? await this.readBuilds(view, workspace) : { items: [], next: null, fresh: 0 };
+    return { now, next, builds };
+  }
+  // The outcome's Build topics not Done, from the first, as many as the
+  // person has asked for (BUILD_PAGE, and as many again for each More topics),
+  // in Core's pages and order; next says whether there are more, fresh how
+  // many messages in all of them are new to the reader (Core's builds), and
+  // building the ones a piece is being built in, whatever page they are on.
+  // The reader's own order of the outcome's topics, which every page carries,
+  // is learned as the outline learns it (outline-order.mjs).
+  async readBuilds(view, workspace) {
+    const items = [], want = this.buildWant, most = this.handles?.pageMax ?? BUILD_PAGE;
+    let cursor = '', fresh = 0, building = null;
+    do {
+      const answer = await view('workspace_topics', { workspace_id: workspace, build: true, limit: Math.max(1, Math.min(most, want - items.length)), cursor });
+      items.push(...(answer.items ?? [])); cursor = answer.next_cursor ?? null;
+      fresh = Number.isSafeInteger(answer.builds?.unread) && answer.builds.unread > 0 ? answer.builds.unread : 0;
+      building = Array.isArray(answer.building) ? answer.building : null;
+      book.learn(scopeOf(workspace), orderOf(answer));
+    } while (cursor !== null && items.length < want);
+    return { items, next: cursor, fresh, building };
   }
   // Each section's words, drawn only when they change, so the pointer's hover
   // and focus stay where they were. A section takes its kept fold as it
   // appears, and is left as the person has it after that.
   paint(found) {
     const reader = this.handles.bootstrap.actor, nowMs = clock.now();
-    const items = found.pipeline ? this.pipelineRows(found.pipeline, found.byTopic ? found.topicId : null) : null;
+    const items = found.pipeline ? this.pipelineRows(found.pipeline, book.ids(scopeOf(this.handles.workspaceId))) : null;
     const { previews, prs } = thingsIn(found.messages);
     // The pencil of the Notebook listed shows only to someone Core lets write it (reader_may_write).
     if (found.notebook !== undefined) for (const [scope, creator] of this.creators) creator.setAvailable((scope === 'topic') === found.byTopic && found.notebook !== null && found.notebookMayWrite);
@@ -436,52 +491,76 @@ export class ThingsRail {
       }
       if (appears) part.details.open = this.folds.isOpen(key);
     }
-    // More pages, pressed with the focus on it, hands the focus to the first page it brought once it has gone.
+    // More pages and More topics, pressed with the focus on them, hand the focus to the first row they brought once they have gone.
     const brought = this.notebookFrom === null ? null : this.sections.get('notebook').body.querySelectorAll('.things-list a.row')[this.notebookFrom];
     if (brought) {
       this.notebookFrom = null;
       if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) brought.focus();
     }
+    const builtFrom = this.buildFrom === null ? null : [...this.sections.get('pipeline').body.querySelectorAll('.pipe-builds a.row')].find(row => !this.buildFrom.has(row.getAttribute('href')));
+    if (builtFrom) {
+      this.buildFrom = null;
+      if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();
+    }
     this.nothing.hidden = any;
     this.nothing.textContent = found.byTopic ? 'This topic refers to nothing yet. “All of this outcome” shows the rest.' : 'Nothing here yet.';
   }
-  pipelineRows({ now, next }, topic) {
+  pipelineRows({ now, next, builds }, saved = []) {
     const titles = new Map((now.items ?? []).map(item => [item.number, item.title]));
-    const pieces = (now.pieces ?? []).filter(piece => !topic || piece.topic?.id === topic);
     const pieceTopic = new Map();
     for (const piece of now.pieces ?? []) for (const number of piece.items ?? []) pieceTopic.set(number, piece.topic?.id ?? null);
     const withTopic = item => ({ ...item, pieceTopic: pieceTopic.get(item.number) ?? null });
-    return { live: now.facts?.live ?? null, pieces, titles, now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
+    return { live: now.facts?.live ?? null, rows: buildRows(now.pieces, builds?.items, { titles, building: builds?.building ?? null, saved }), more: (builds?.next ?? null) !== null, builds: builds?.items ?? [], fresh: builds?.fresh ?? 0,
+      now: (now.items ?? []).map(withTopic), next: (next.items ?? []).map(withTopic), title: now.pipeline?.title ?? 'Pipeline' };
   }
+  // The pipeline, and in it the outcome's Build topics (item 297): the outline
+  // lists none of them, so they show here whichever the chips say, each row
+  // carrying what the outline's row would. Live and Next are the outcome's.
   pipelineSection(items, found, nowMs) {
-    const doc = this.doc, workspace = this.handles.workspaceId;
+    const doc = this.doc, workspace = this.handles.workspaceId, reader = this.handles.bootstrap.actor, here = found.byTopic ? found.topicId : this.topicId;
     if (!items) return found.byTopic ? null : { sum: '', key: 'off', node: () => element(doc, 'p', { className: 'things-quiet', textContent: 'This outcome has no pipeline.' }) };
-    const next = found.byTopic ? [] : items.next;
-    if (found.byTopic && !items.pieces.length) return null;
-    const pieceRows = items.pieces.map(piece => ({
-      title: piece.topic?.title || (piece.items ?? []).map(number => items.titles.get(number) ?? `Item ${number}`).join(', '),
-      topic: piece.topic?.id ?? null, stage: piece.stage?.name ?? null, since: piece.stage?.entered_ms ?? null }));
-    const key = JSON.stringify(['pipe', items.live, pieceRows, next.map(item => [item.number, item.title])]);
-    const sum = found.byTopic ? (pieceRows[0]?.stage ?? '') : `${pieceRows.length} in Now`;
+    const next = found.byTopic ? [] : items.next, { now, review, other } = items.rows;
+    if (found.byTopic && !now.length && !review.length && !other.length) return null;
+    const marks = row => row.item ? [row.item.title, row.item.unread, row.item.addressed, row.item.state, row.item.waiting_on, row.item.asks, row.item.state_note, row.item.work] : null;
+    const said = rows => rows.map(row => [row.title, row.topic, row.stage ?? null, row.since ?? null, marks(row), row.topic === here]);
+    const key = JSON.stringify(['pipe', items.live, said(now), said(review), said(other), items.more, next.map(item => [item.number, item.title])]);
+    // Folded, the section still says what is new in its Build topics, which no other list shows.
+    const sum = [found.byTopic ? (now.find(row => row.topic === here)?.stage ?? '') : `${now.length} in Now`, items.fresh ? `${items.fresh} new` : ''].filter(Boolean).join(' · ');
+    // A Build topic's row: its title and what the outline's row would carry after it, then the line under it.
+    const topicRow = (row, sub = null) => {
+      if (!row.topic) return element(doc, 'span', { className: 'row' }, row.title, sub);
+      const link = this.placeLink({ kind: 'topic', id: row.topic, ...(row.item && questionOf(row.item, reader) ? { message: questionOf(row.item, reader) } : {}) }, row.title);
+      if (row.item) paintMarks(link, row.item, reader);
+      if (sub) link.append(sub);
+      if (row.topic === here) link.setAttribute('aria-current', 'page');
+      return link;
+    };
+    const group = (label, rows, sub = () => null) => [element(doc, 'div', { className: 'pipe-label', textContent: label }),
+      element(doc, 'ul', { className: 'things-list' }, ...rows.map(row => element(doc, 'li', {}, topicRow(row, sub(row)))))];
     return { sum, key, node: () => {
       const box = element(doc, 'div');
       if (!found.byTopic) {
         box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Live' }),
           element(doc, 'p', { className: 'things-line', textContent: items.live ? `Release ${items.live.release} · ${shownTime(items.live.deployed_ms, nowMs)}` : 'Nothing released yet' }));
       }
-      if (pieceRows.length) {
-        box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Now' }), element(doc, 'ul', { className: 'things-list' }, ...pieceRows.map(row => {
-          const sub = element(doc, 'span', { className: 'sub' }, row.stage ? element(doc, 'b', { textContent: row.stage }) : 'Waiting for a stage', row.since ? ` · since ${shownTime(row.since, nowMs)}` : '');
-          return element(doc, 'li', {}, row.topic ? this.placeLink({ kind: 'topic', id: row.topic }, row.title, sub) : element(doc, 'span', { className: 'row' }, row.title, sub));
-        })));
+      const builds = element(doc, 'div', { className: 'pipe-builds' });
+      if (now.length) builds.append(...group('Now', now, row => element(doc, 'span', { className: 'sub' }, row.stage ? element(doc, 'b', { textContent: row.stage }) : 'Waiting for a stage', row.since ? ` · since ${shownTime(row.since, nowMs)}` : '')));
+      if (review.length) builds.append(...group('Ready for review', review));
+      if (other.length) builds.append(...group('Other Build topics', other));
+      if (items.more) {
+        // The rest of the Build topics, a page at a time, read again with the rail from then on.
+        const more = element(doc, 'button', { type: 'button', className: 'things-more', textContent: 'More topics' });
+        more.onclick = () => { this.buildWant = items.builds.length + BUILD_PAGE; this.buildFrom = this.doc.activeElement === more ? new Set([...builds.querySelectorAll('a.row')].map(row => row.getAttribute('href'))) : null; this.reload(); };
+        builds.append(more);
       }
+      if (builds.childElementCount) box.append(builds);
       if (next.length) {
         const shownNext = next.slice(0, 5);
         box.append(element(doc, 'div', { className: 'pipe-label', textContent: 'Next' }), element(doc, 'ul', { className: 'things-list' },
           ...shownNext.map(item => element(doc, 'li', {}, element(doc, 'a', { className: 'row', href: pipelineHref(workspace, item.number), textContent: item.title }))),
           next.length > shownNext.length ? element(doc, 'li', { className: 'things-quiet', textContent: `and ${next.length - shownNext.length} more` }) : null));
       }
-      if (!found.byTopic && !pieceRows.length && !next.length) box.append(element(doc, 'p', { className: 'things-quiet', textContent: 'Nothing in Now or Next.' }));
+      if (!found.byTopic && !now.length && !review.length && !other.length && !next.length) box.append(element(doc, 'p', { className: 'things-quiet', textContent: 'Nothing in Now or Next.' }));
       box.append(element(doc, 'a', { className: 'pipe-open', href: pipelineHref(workspace), textContent: 'The whole pipeline →' }));
       return box;
     } };

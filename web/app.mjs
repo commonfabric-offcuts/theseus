@@ -61,7 +61,7 @@ import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } fro
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
-import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
+import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -888,16 +888,19 @@ const stillOwed = item => Boolean(here?.page && (conversationItem(item.id)?.item
 const openedIds = new Set();
 function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
-// Each loaded card's read look, agent talk and reply arrow, as they now stand.
+// Each loaded card's read look, agent talk, reply arrow and the dots on the
+// reader's own message while it waits for a reply, as they now stand.
 function paintCardReading() {
   if (!views) return;
   const { kindOf } = whisperPeople();
+  learnAnswered(views.messages, bootstrap.actor, kindOf);
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
+    paintAwaiting(card, item);
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -2076,8 +2079,9 @@ async function initialize() {
   topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
     navigateTarget: target => { marks.leave(); if (!shell.go(target)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
-  // The conversation has its own row, never one among the topics.
-  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),
+  // The conversation has its own row, never one among the topics; the outline
+  // holds this list, and the right rail the outcome's Build topics (item 297).
+  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic, 'active', true),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {

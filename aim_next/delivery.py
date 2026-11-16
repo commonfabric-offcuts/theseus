@@ -400,6 +400,11 @@ class Delivery:
             item["state"] = "cancelled"
         item.update(reasons=self._effective_reasons(db, row), message=message, source_ref={"kind": "message", "id": row["message_id"]},
                     topic={"id": message["topic_id"], "title": title, "title_truncated": truncated})
+        # An agent that names the message's dossier, which nobody has named, is told so with the work (item 479).
+        if row["state"] == "pending" and row["revision"] == 1 and not message["whisper"] and self._actor_kind(db, row["recipient_id"]) == "agent":
+            name_it = self._name_it(db, row["recipient_id"], row["message_id"])
+            if name_it is not None:
+                item["name_it"] = name_it
         return item
 
     def _view_delivery(self, db, actor, args):

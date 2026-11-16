@@ -147,6 +147,24 @@ pipeline OUTCOME`) or the release being put together (`release:N`) of the topic'
 outcome; anything else is refused (`BLOCKS_UNKNOWN`), and so is `--blocks`
 without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
 
+## Naming a dossier
+
+When the first reply lands in a dossier nobody has named, its namer gives it a
+short name: the outcome's coordinator when it is an agent taking part in the
+topic, or else the first agent that replies. If that is you, the delivery says so
+(`[you name its dossier: mint ROOT --expected N "two to five words"]`), or
+your `reply` says so after `posted …`. Read the dossier, then name what it is
+about in two to five words:
+
+```sh
+aim-next mint ROOT --expected N "Cabin week plan"
+```
+
+Keep the `--expected` you were given: if a person names the dossier while you
+are choosing words, Core refuses yours and their name stays. A name a person
+typed is never replaced, and a dossier is named once. See
+[reply-stacks.md](reply-stacks.md#minted-names-479).
+
 ## Replying to a whisper with a whisper
 
 A whisper is private between one person and you. Its delivery line starts

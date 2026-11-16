@@ -183,7 +183,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| thumb MESSAGE [--off] "
+         "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
@@ -290,6 +290,11 @@ def _parser():
     thumb = verb("thumb")
     thumb.add_argument("message")
     thumb.add_argument("--off", action="store_true")
+    # mint MESSAGE [--expected N] WORDS: the name of the dossier MESSAGE is in, from the agent that names it (item 479).
+    mint = verb("mint")
+    mint.add_argument("message")
+    mint.add_argument("--expected", type=int)
+    mint.add_argument("text")
     whisper = verb("whisper")
     whisper.add_argument("topic")
     whisper.add_argument("--to", required=True)
@@ -1240,14 +1245,29 @@ class Agent(PipelineVerbs, TargetVerbs):
             return 'correction "%s" #%s %s edited %s to revision %s: %s  [%s in %s]' % (
                 _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"], message["id"], item["correction"]["revision"],
                 _one_line(message["body"]), item["id"], message["topic_id"])
-        return '%s "%s" #%s %s: %s  [%s in %s]' % (
+        return '%s "%s" #%s %s: %s  [%s in %s]%s' % (
             "whisper" if message.get("whisper") else "delivery",
             _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"],
-            _one_line(message["body"]), item["id"], message["topic_id"])
+            _one_line(message["body"]), item["id"], message["topic_id"], Agent.name_it(item.get("name_it")))
+
+    @staticmethod
+    def name_it(found):
+        """What tells an agent it names a dossier nobody has named (item 479): the mint to run, fenced on the name's
+        revision as read, or nothing."""
+        if not found:
+            return ""
+        return '  [you name its dossier: mint %s --expected %s "two to five words"]' % (found["root_id"], found["name_revision"])
 
     def do_inbox(self):
         items = sorted(self.pages("deliveries", {}), key=lambda item: item["seq"])
+        to_name = set()
         for item in items:
+            # Each dossier to name is said once, on its oldest delivery.
+            if item.get("name_it"):
+                if item["name_it"]["root_id"] in to_name:
+                    item = {key: value for key, value in item.items() if key != "name_it"}
+                else:
+                    to_name.add(item["name_it"]["root_id"])
             self.out.plain(self.delivery_line(item))
         if not items:
             self.out.plain("inbox empty")
@@ -1295,6 +1315,31 @@ class Agent(PipelineVerbs, TargetVerbs):
         held = result.get("blocks")
         self.out.plain("posted %s in %s (%s deliveries queued)%s" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"],
                                                                      "; it holds %s %s until it is answered" % (held["kind"], held["ref"]) if held else ""))
+        if options.reply_to:
+            self.namer_hint(result["message_id"])
+
+    def namer_hint(self, message_id):
+        """After a reply: when this agent now names its dossier, which nobody has named (item 479), the mint to run.
+        The reply is posted either way; a read that fails says so and leaves the mint to `mint`."""
+        try:
+            found = self.store.view(self.actor, "stack_namer", {"message_id": message_id})
+        except (StoreError, OSError):
+            found = {"error": {"code": "UNREAD"}}
+        if found.get("error"):
+            _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted; whether you name its dossier could not be read (%s). "
+                        "`stack_namer` says it; `mint %s WORDS` names it if you do." % (found["error"]["code"], message_id))
+        elif found["namer"] == self.actor:
+            self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
+
+    def do_mint(self):
+        """The name of the dossier a message is in, minted by the agent that names it (docs/reply-stacks.md, "Minted
+        names"): Core takes it on the dossier's first message, fenced on --expected (the name's revision when the agent
+        was told to name it), or else on the revision read now, and refuses it once anyone has named the dossier."""
+        options = self.options
+        found = self.view("stack_namer", {"message_id": options.message})
+        expected = found["name_revision"] if options.expected is None else options.expected
+        result = self.command("stack.name", {"message_id": found["root_id"]}, {"name": self.text(), "minted": True}, {"name_revision": expected})
+        self.out.plain('named the dossier of %s "%s"%s' % (result["message_id"], result["name"], "" if result["changed"] else " (already so)"))
 
     def do_whisper(self):
         """A whisper: to one agent, or an agent's answer to the person who whispered to it (--reply-to)."""

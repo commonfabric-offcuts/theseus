@@ -51,6 +51,10 @@ def developer_instructions(actor_id, cli, profile_path):
         "    and read shows it as \"(👍 NAME (yes))\"; if they take the 👍 back, the ask waits again",
         "  thumb MESSAGE              👍 read and understood; use it instead of posting \"got it\"",
         "    or \"thanks\" (it settles your delivery of that message; it never means \"do it\")",
+        "  mint MESSAGE --expected N \"Two to five words\"   name a dossier you are told to name: when the first reply",
+        "    lands in a dossier nobody has named, the outcome's coordinator names it if it takes part in the topic",
+        "    (else the first agent that replies), in two to five words for what it is about; a name a person",
+        "    typed is never replaced, and Core refuses any other mint (ALREADY_NAMED, NOT_THE_NAMER)",
         "  start OUTCOME --title T -  new topic",
         "  whisper TOPIC --to NAME --reply-to MESSAGE -   answer a whisper sent to you; only you and its sender read it",
         "  conversation OUTCOME [--new]    the outcome's conversation, and what became of each item there",
@@ -120,6 +124,8 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     count = len(named)
     lines = ["Theseus: %d %s %s for %s." % (count, "pending" if rewake else "new",
                                             "delivery" if count == 1 else "deliveries", actor_id)]
+    # Each dossier to name is said once, on its first delivery listed.
+    to_name = set()
     for number, item in enumerate(listed, 1):
         message = item["message"]
         if item.get("correction"):
@@ -141,9 +147,17 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                              number, _named(item["topic"]["id"]), sender, _named(message["id"]), message["seq"], _named(item["id"]),
                              sender, sender, sender))
             continue
-        lines.append("%d. topic %s, from %s, message %s (seq %d), delivery %s" % (
+        name_it = item.get("name_it")
+        if name_it and name_it["root_id"] in to_name:
+            name_it = None
+        elif name_it:
+            to_name.add(name_it["root_id"])
+        lines.append("%d. topic %s, from %s, message %s (seq %d), delivery %s%s" % (
             number, _named(item["topic"]["id"]), _named(message["author_id"]), _named(message["id"]),
-            message["seq"], _named(item["id"])))
+            message["seq"], _named(item["id"]),
+            # Core's words and ids: this agent names the message's dossier, which nobody has named (item 479).
+            "; its dossier has no name and you name it: mint %s --expected %d \"two to five words\"" % (
+                _named(name_it["root_id"]), name_it["name_revision"]) if name_it else ""))
     if len(named) > len(listed) or not complete:
         lines.append("%s more: run inbox" % ("%d" % (len(named) - len(listed)) if complete else "Possibly"))
     lines.append("Older pending: %d.%s" % (len(pending) - len(newer) if not rewake else 0,
