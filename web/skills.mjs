@@ -395,8 +395,9 @@ export class OutcomeTools {
       if (off) { off.setAttribute('data-focus-key', `unuse:${item.tool_id}`); off.disabled = this.leaving.has(item.tool_id); }
       return row(doc, item, this.open, off);
     }))] : [];
-    keepFocus(this.host, () => this.host.replaceChildren(this.heading(), this.status, own, ...used,
-      answer.reader_may_use ? this.finder.node : null), doc);
+    // Only what there is: a null handed to replaceChildren would be drawn as the word "null".
+    keepFocus(this.host, () => this.host.replaceChildren(...[this.heading(), this.status, own, ...used,
+      answer.reader_may_use ? this.finder.node : null].filter(Boolean)), doc);
     this.host.hidden = false;
   }
 }

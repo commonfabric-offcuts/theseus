@@ -131,7 +131,7 @@ test('the header paints the title and the subtitle, and shows the gear only wher
 });
 
 // A dialog with a box, as the browser lays it out, and its Tab stops.
-function settings(t, { box = { left: 448, right: 992, top: 200, bottom: 600 }, stops = ['close', 'state', 'note', 'save'] } = {}) {
+function settings(t, { box = { left: 448, right: 992, top: 200, bottom: 600 }, stops = ['close', 'state', 'note', 'save'], opened } = {}) {
   dom(t);
   const dialog = new Element('dialog', { open: false, modal: false });
   Object.assign(dialog, {
@@ -141,7 +141,7 @@ function settings(t, { box = { left: 448, right: 992, top: 200, bottom: 600 }, s
   dialog.stops = stops.map(control);
   const gear = new Element('button'), heading = new Element('h2'), close = dialog.stops[0];
   const win = { handlers: {}, addEventListener(name, fn, capture) { this.handlers[name] = [fn, capture]; } };
-  const panel = new TopicSettings({ dialog, gear, heading, close, win });
+  const panel = new TopicSettings({ dialog, gear, heading, close, win, opened });
   // A press that starts at down and ends at up (on the same spot unless
   // given), as the browser sends it: pointerdown on the window on its way
   // down, then the click to what holds both ends.
@@ -158,6 +158,16 @@ test('the gear opens Topic settings as a modal dialog with the focus on its titl
   const s = settings(t);
   s.gear.handlers.click();
   assert.deepEqual([s.dialog.open, s.dialog.modal, s.at()], [true, true, 'heading']);
+});
+
+test('each time Topic settings opens, a line in it is told, so it can read again (docs/skills-and-tools.md); closing tells nothing', t => {
+  const told = [];
+  const s = settings(t, { opened: () => told.push('opened') });
+  s.gear.handlers.click();
+  s.close.handlers.click();
+  assert.deepEqual(told, ['opened']);
+  s.gear.handlers.click();
+  assert.deepEqual(told, ['opened', 'opened'], 'and again on the next opening');
 });
 
 test('Escape, ✕ and a press on the backdrop each close Topic settings and give the focus back to the gear', t => {

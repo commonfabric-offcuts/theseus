@@ -251,6 +251,14 @@ test('the outcome page section is hidden with nothing in it for a reader who can
   assert.equal(other.querySelector('.finder-open'), null);
 });
 
+test('an outcome that homes and uses nothing shows a writer only its heading and + Uses a tool, and no stray words', async t => {
+  const h = harness(t, { tools: toolsAnswer({ own: [], used: [], reader_may_use: true }) });
+  const host = h.dom.host();
+  await new OutcomeTools({ host, workspace: 'kites', instanceId: 'i', read: h.read, send: h.send, open: h.open, doc: h.doc }).load();
+  assert.equal(host.hidden, false);
+  assert.equal(host.textContent, 'Skills and tools+ Uses a tool', 'its heading and the quiet line, nothing else');
+});
+
 test('the rail lists the same tools by name, each opening its page, the open one marked; hidden when there are none', async t => {
   const h = harness(t, { tools: toolsAnswer({ own: [item('spool', 'Spool winder')], used: [item('meter', 'Wind meter', { home: { workspace_id: 'wind', title: 'Wind watch', readable: true } })] }) });
   const section = h.dom.host(), host = h.dom.host();

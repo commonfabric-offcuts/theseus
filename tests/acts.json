@@ -19780,7 +19780,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "Link a topic on a tool's page and + Uses a tool"
+    "case": "Link a topic on a tool's page and"
    }
   },
   {
@@ -19795,7 +19795,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "Link a topic on a tool's page and + Uses a tool"
+    "case": "Link a topic on a tool's page and"
    }
   },
   {

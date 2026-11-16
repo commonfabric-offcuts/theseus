@@ -99,7 +99,7 @@ let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicTools = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
@@ -1898,13 +1898,13 @@ async function initialize() {
     $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
   }
   paintHeader(topic);
-  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
   // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
-  if (!here.page) {
-    const topicTools = new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
-    $('settings-open').addEventListener('click', () => run(() => topicTools.load()));
-    run(() => topicTools.load());
-  }
+  // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
+  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
+    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+  $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
+  topicTools = here.page ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
+  if (topicTools) { const tools = topicTools; run(() => tools.load()); }
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
@@ -2587,7 +2587,7 @@ async function initializeOutcomePage(route) {
     // and checks, the pipeline line, the improvement loop and the problems found
     // (D11), then its conversation's one row (outcome-conversation.mjs), then its topics;
     // its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-tools'),$('outcome-references'),$('page-here'));
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'),$('outcome-tools'));
     const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend});
     // Its skills and tools, and the ones it says it uses (docs/skills-and-tools.md).
     const outcomeTools=new OutcomeTools({host:$('outcome-tools'),workspace:route.id,instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
