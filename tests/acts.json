@@ -14125,17 +14125,17 @@
   },
   {
    "item": 465,
-   "act": "A long Team takes at most half the title row on a laptop, and the subtitle keeps the rest",
+   "act": "A long Team on a laptop wraps its pills before the subtitle beside it has less than 6rem",
    "break": [
     [
      "web/aim.css",
-     "grid-template-columns:minmax(0,1fr) fit-content(50%);column-gap:1.25rem",
+     "grid-template-columns:minmax(6rem,1fr) auto;column-gap:1.25rem",
      "grid-template-columns:minmax(0,1fr) auto;column-gap:1.25rem"
     ]
    ],
    "check": {
     "native": "header",
-    "case": "header a long Team takes"
+    "case": "header a long Team wraps"
    }
   },
   {

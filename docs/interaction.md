@@ -105,9 +105,9 @@ the pointer's way, the keys' and the phone's.
   under the title (under the subtitle on a phone): a pill each and "+ Add" for
   whoever may change them, as ever. The label sits beside the first pill; the
   people "+ Add" opens come in under the pills, taking no width of their own, so
-  the label and the subtitle stay where they were. A long Team takes at most
-  half the row, its pills wrapping, and the subtitle keeps the rest, so the
-  topic's state stays a line of words. They are among the header's buttons, so ←
+  the label and the subtitle stay where they were. The subtitle keeps at least
+  6rem beside it: a Team that would leave it less wraps its pills, so the
+  topic's state stays words, not a column one letter wide. They are among the header's buttons, so ←
   and → move along them with Topic settings and New message (below), and Tab
   reaches them in that order. (item 465)
 - **A Notebook page** opens in that sheet, over the feed, from wherever it is
