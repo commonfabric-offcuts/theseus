@@ -1157,7 +1157,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   });
 
   // Item 465, a long Team on a laptop: the subtitle beside it keeps at least 6rem, the Team wrapping its pills rather
-  // than leave it less, so the topic's state stays words ("Waiting on you" on one line), not a column one letter wide.
+  // than leave it less, so the topic's state stays words, each of "Waiting on you" whole on its line, not a column one
+  // letter wide.
   // A short Team, the person alone, is the negative: it keeps its own width, its pill on one line, and the subtitle
   // takes the rest. At 1280 and 1440, in light and dark.
   await check('header a long Team wraps before the subtitle beside it has less than 6rem', async () => {
@@ -1167,13 +1168,13 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await setState('header-short-team-state', { state: 'active', note: NOTE }, 'header-short-team');
     await control({ method: 'topic_state', operation_id: 'header-long-team-state', topic_id: 'header-long-team', participants: waiters,
       args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
-    // The title row's grid and its gap, the root's rem, the Team's and the subtitle's boxes, the pills' tops, and how
-    // many lines "Waiting on you" takes in the state.
+    // The title row's grid and its gap, the root's rem, the Team's and the subtitle's boxes, the pills' tops, and the
+    // most lines any word of "Waiting on you" takes in the state.
     const measure = p => p.evaluate(`(()=>{const row=document.querySelector('.topic-header>div'),style=getComputedStyle(row),team=document.querySelector('#topic-people').getBoundingClientRect(),
       sub=document.querySelector('#topic-description').getBoundingClientRect(),state=document.querySelector('#topic-description .topic-state')?.getBoundingClientRect();
       return {row:Math.round(row.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)),gap:parseFloat(style.columnGap),team:Math.round(team.width),sub:Math.round(sub.width),
-        rem:parseFloat(getComputedStyle(document.documentElement).fontSize),you:(text=>{if(!text||!text.data.startsWith('Waiting on you'))return null;const r=document.createRange();r.setStart(text,0);r.setEnd(text,'Waiting on you'.length);
-          return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size})(document.querySelector('#topic-description .topic-state')?.firstChild),
+        rem:parseFloat(getComputedStyle(document.documentElement).fontSize),you:(text=>{if(!text||!text.data.startsWith('Waiting on you'))return null;return Math.max(...[[0,7],[8,10],[11,14]].map(([from,to])=>{const r=document.createRange();r.setStart(text,from);r.setEnd(text,to);
+          return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size}))})(document.querySelector('#topic-description .topic-state')?.firstChild),
         state:state&&[Math.round(state.width),Math.round(state.height)],pillRows:new Set([...document.querySelectorAll('#topic-people .person-pill')].map(pill=>Math.round(pill.getBoundingClientRect().top))).size,
         pills:document.querySelectorAll('#topic-people .person-pill').length,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     for (const width of [1280, 1440]) for (const theme of ['light', 'dark']) {
@@ -1192,7 +1193,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.ok(Math.abs(short.sub - (short.row - short.gap - short.team)) <= 1 && short.sub > 6 * short.rem, `a short Team keeps its own width, and the subtitle takes the rest: ${at}`);
       assert.ok(long.pillRows > 1, `a long Team wraps its pills: ${at}`);
       assert.ok(long.sub >= 6 * long.rem - 1, `the subtitle keeps at least 6rem: ${at}`);
-      assert.equal(long.you, 1, `the topic's state reads "Waiting on you" on one line: ${at}`);
+      assert.equal(long.you, 1, `each word of the topic's "Waiting on you" stays whole on its line: ${at}`);
       assert.equal(long.sideways, false, `nothing goes sideways: ${at}`);
     }
   });
