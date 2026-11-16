@@ -481,5 +481,43 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await until(async () => (await messages()).includes('The door is 81 cm.'), 'a message sends now');
     assert.deepEqual(p.errors, []);
   });
+
+  await check('targets a person\'s own message offers Edit in its ⋯ while its outcome is open, and no Edit once the outcome is archived or completed', async () => {
+    await control({ method: 'light_outcome', outcome: 'tg-quill', title: 'Quill pens', topic: { id: 'tg-quill-notes', title: 'Quill notes' } });
+    const mine = (await control({ method: 'agent_message', operation_id: `targets-quill-${++serial}`, topic_id: 'tg-quill-notes', source: 'topic',
+      sender: 'person', body: 'Trimmed the goose feathers.' })).result.message_id;
+    const words = `#messages .message-card[data-id="${mine}"] > .message-preview`;
+    // The ⋯ of the person's own message, from the bar its words light under the pointer: its items' words.
+    const menu = async p => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(words)}).scrollIntoView({block:'center'})`);
+      await p.point(words, 'move');
+      await until(() => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].some(e=>e.dataset.id===${JSON.stringify(mine)})
+        && Boolean(document.querySelector('.message-bar:not([hidden]) [data-act=more]')?.getClientRects().length)`), 'the message lights with its bar');
+      await p.point('.message-bar [data-act=more]');
+      await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'its ⋯ opens');
+      const items = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].map(b=>b.firstChild.textContent)`);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
+      return items;
+    };
+    const kept = p => until(() => p.evaluate(`(h=>h&&!h.hidden&&h.getClientRects().length?h.textContent:null)(document.getElementById('outcome-kept'))`), 'the topic says it is kept to read');
+    const first = await open('targets-edit-open', '/?topic=tg-quill-notes');
+    await ready(first);
+    assert.ok((await menu(first)).includes('Edit'), 'open, the person\'s own message offers Edit');
+    for (const [state, theme] of [['archived', 'light'], ['completed', 'dark']]) {
+      await act('outcome.end_set', { state }, { workspace_id: 'tg-quill' });
+      const p = await open(`targets-edit-${state}`, '/?topic=tg-quill-notes', 'laptop', theme);
+      await ready(p);
+      // The line shows once the page has read the outcome's light, which is also what tells the page it is kept to read.
+      assert.match(await kept(p), state === 'archived' ? /^This outcome is archived; its topics are kept to read/ : /^This outcome was completed/);
+      const items = await menu(p);
+      assert.ok(items.includes('Copy Link'), `${state}: the ⋯ opens with its other items: ${items.join(', ')}`);
+      assert.equal(items.includes('Edit'), false, `${state}: the person\'s own message offers no Edit: ${items.join(', ')}`);
+      await shot(p, `targets-edit-${state}-laptop-${theme}`);
+      assert.deepEqual(p.errors, []);
+      await act('outcome.end_set', { state: 'open' }, { workspace_id: 'tg-quill' });
+    }
+    assert.deepEqual(first.errors, []);
+  });
 }
 

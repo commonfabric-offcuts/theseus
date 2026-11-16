@@ -19693,6 +19693,63 @@
     "native": "targets",
     "case": "archives by touch"
    }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome refuses a new assessment request, and attaching, reporting, abandoning or renewing an earlier one, until it is brought back",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "_clock(reached[1])))\n        self._refuse_if_closed(db, actor, workspace_id)\n",
+     "_clock(reached[1])))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An assessment's reader is told its outcome is archived or completed (outcome_closed) before spending anything on it",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "'outcome_closed':self._closed(db, record['workspace_id']) is not None}",
+     "'outcome_closed':False}"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The dispatcher starts no native context or model turn for an archived or completed outcome, nor one completed while it resumed",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "        if open_outcome and found['outcome_closed'] is not False:\n            raise DispatchError('OUTCOME_CLOSED')\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The topic page offers no Edit on the person's own message in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "web/app.mjs",
+     "outcomeReached = keptToRead(light);",
+     "outcomeReached = light?.lead?.kind === 'reached';"
+    ]
+   ],
+   "check": {
+    "native": "targets",
+    "case": "offers Edit in its ⋯ while its outcome is open"
+   }
   }
  ]
 }
