@@ -16,12 +16,14 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote, unquote, urlsplit
 
 from .authority import AuthorityError
 from .contract import LIMITS, Refusal
 from .effects_watch import WatchError
+from . import invite
 from .live import LiveFeed
 from .media import INLINE_TYPES
 from . import web_build
@@ -563,7 +565,10 @@ class Handler(BaseHTTPRequestHandler):
             # A read-through report is background work with a lane of its own,
             # so it never takes a command slot that a send or a save needs.
             lane = self.server.read_through_slots if value["kind"] == "topic.read_through" else None
-            result = self._store_call(lambda store: store.command(self.server.actor, value), command=True, lane=lane)
+            # An invitation writes the agent's sign-in file once Core has recorded it (invite.py).
+            act = ((lambda store: invite.invite(store, self.server.actor, value, self.server.sign_in_folder))
+                   if value["kind"] == invite.KIND else (lambda store: store.command(self.server.actor, value)))
+            result = self._store_call(act, command=True, lane=lane)
         else:
             if set(value) != {"name", "args"} or not isinstance(value["name"], str) or not isinstance(value["args"], dict):
                 raise RequestError(400, "INVALID_VIEW", "A view name and argument object are required.")
@@ -967,7 +972,7 @@ def _stderr(event):
 
 def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.1", port=0,
                   token=None, max_json_bytes=2 * 1024 * 1024, max_reads=2, tailnet_origin=None,
-                  live=None):
+                  live=None, sign_in_folder=None):
     external_authority = tailnet_authority(tailnet_origin)
     if host != "127.0.0.1":
         raise ValueError("The first instance binds explicit IPv4 loopback only")
@@ -985,6 +990,8 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     script_src = "'self'" + (" '%s'" % server.build.script_hash if server.build.script_hash else "")
     server.csp = ("default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
                   "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'" % script_src)
+    # Where an invited agent's sign-in file is written: beside the server's own profile (serve.py), or None to invite no one.
+    server.sign_in_folder = None if sign_in_folder is None else Path(sign_in_folder)
     server.session_token = token or secrets.token_urlsafe(32)
     server.max_json_bytes = max_json_bytes
     server.request_timeout = 10.0

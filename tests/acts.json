@@ -463,8 +463,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "      event.preventDefault();\n      this.act('reply');",
-     "      event.preventDefault();"
+     "      else this.act('reply');",
+     "      else return;"
     ]
    ],
    "check": {
@@ -478,8 +478,8 @@
    "break": [
     [
      "web/app.mjs",
-     "registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });",
-     "registry.current?.source?.source_ref?.id === id) return;"
+     "else reader.reply({ kind: 'message', id });",
+     "else return;"
     ]
    ],
    "check": {
@@ -1275,7 +1275,7 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "changed = answered and (self._topic_ask_thumbed if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)",
+     "changed = answered and (self._topic_ask_answered if thumbed else self._topic_ask_unthumbed)(db, topic, actor, message)",
      "changed = False"
     ]
    ],
@@ -1303,8 +1303,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\" AND author_id=? AND (private_to IS NULL OR private_to=?) LIMIT 1\"",
-     "\" AND author_id=? AND (1 OR private_to=?) LIMIT 1\""
+     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (1 OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -1905,7 +1905,7 @@
   },
   {
    "item": 286,
-   "act": "A press on an outline row moves in place and puts the focus on the page reached, on its heading, so the next key rings nothing in the rails",
+   "act": "Back lands on the page reached, on its heading, so the next key rings nothing in the rails",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -1915,7 +1915,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1924,13 +1924,13 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',",
-     "landing: 'page',"
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: !popped && this.keptByPress(at) ? 'keys' : 'page',"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1939,13 +1939,13 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',",
-     "landing: this.by === 'keys' && inRails(at) ? 'keys' : 'page',"
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -1960,12 +1960,12 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
    "item": 286,
-   "act": "At 390 a tap on a row in the outline's drawer lands on the page's heading, not on ☰ Outcomes",
+   "act": "At 390 a tap on a row in the outline's drawer, which closes as the page moves, lands on the page's heading, not on ☰ Outcomes",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -1989,7 +1989,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -2004,7 +2004,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on an outline row puts the focus on the page reached"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -2181,33 +2181,33 @@
    }
   },
   {
-   "item": 288,
-   "act": "A press on the row of the page being read lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "item": 462,
+   "act": "A press on the row of the page being read keeps the keys on the row, wearing their ring",
    "break": [
     [
-     "web/app.mjs",
-     "  try { const moved = await pending; if (!moved) shell.stayed(); return moved; }",
-     "  try { return await pending; }"
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on the row of the page being read leaves no ring"
+    "case": "rail a press on the row of the page being read moves nothing and keeps the keys on the row"
    }
   },
   {
-   "item": 288,
-   "act": "A press on a rail row whose move the page refuses lands the focus on the page's heading, so the next key rings nothing in the rails",
+   "item": 462,
+   "act": "A press on an outline row whose move the page refuses keeps the keys on the row pressed, wearing their ring",
    "break": [
     [
-     "web/app.mjs",
-     "    if(serial!==topicNavigation.serial)return;\n    shell.stayed();\n",
-     "    if(serial!==topicNavigation.serial)return;\n"
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
     ]
    ],
    "check": {
     "native": "rail",
-    "case": "rail a press on a row whose move the page refuses leaves no ring"
+    "case": "rail a press on a row whose move the page refuses keeps the keys on the row pressed"
    }
   },
   {
@@ -3743,8 +3743,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "    this.copy(item);\n",
-     ""
+     "    if (words) this.copy(item, words); else this.copy(item);\n",
+     "    if (words) this.copy(item, words);\n"
     ]
    ],
    "check": {
@@ -4785,12 +4785,12 @@
   },
   {
    "item": 281,
-   "act": "A person's whisper answers only the asks of the agent it goes to; another's ask keeps waiting",
+   "act": "A person's whisper answers only an ask of the agent it goes to; another's ask keeps waiting, even when the whisper replies to it",
    "break": [
     [
      "aim_next/topic_state.py",
-     "            if row[\"author_id\"] != to:",
-     "            if row[\"author_id\"] == \"nobody\":"
+     "\"SELECT id,seq,sent_ms FROM messages WHERE id=? AND author_id=?\"",
+     "\"SELECT id,seq,sent_ms FROM messages WHERE id=? AND (author_id=? OR 1)\""
     ]
    ],
    "check": {
@@ -4799,12 +4799,12 @@
   },
   {
    "item": 281,
-   "act": "When the wait is from the agent whispered to, it moves to the oldest ask nobody has answered",
+   "act": "When the wait is from the ask a person's whisper replies to, it moves to the oldest ask nobody has answered",
    "break": [
     [
-     "aim_next/topic_state.py",
-     "            following = self._next_open_ask(db, topic, author, row[\"seq\"])",
-     "            following = None"
+     "aim_next/reactions.py",
+     "following = self._next_open_ask(db, topic, member, message[\"seq\"])\n        if following is not None:\n            self._wait_from(db, topic, member, following)\n        elif row[\"said\"]:",
+     "following = None\n        if following is not None:\n            self._wait_from(db, topic, member, following)\n        elif row[\"said\"]:"
     ]
    ],
    "check": {
@@ -4813,7 +4813,7 @@
   },
   {
    "item": 281,
-   "act": "An ask the person already answered by whisper to whoever asked is not the next open ask",
+   "act": "An ask the person already answered by a whispered reply to whoever asked is not the next open ask",
    "break": [
     [
      "aim_next/reactions.py",
@@ -4957,8 +4957,8 @@
    "break": [
     [
      "aim_next/reactions.py",
-     "\" AND author_id=? AND (private_to IS NULL OR private_to=?) LIMIT 1\"",
-     "\" AND author_id=? AND (private_to IS NULL OR private_to='nobody' OR ?='') LIMIT 1\""
+     "\"AND (private_to IS NULL OR private_to=?) LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])",
+     "\"AND (private_to IS NULL OR private_to='nobody' OR ?='') LIMIT 1\", (message[\"id\"], actor, message[\"author_id\"])"
     ]
    ],
    "check": {
@@ -6397,7 +6397,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "a press on an outline row puts the focus"
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
    }
   },
   {
@@ -9914,8 +9914,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
-     "if (bottom !== room.bottom) this.sourceBody.scrollTop"
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (bottom !== room.bottom) this.moveTo("
     ]
    ],
    "check": {
@@ -9929,8 +9929,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "if (bottom > room.bottom && top > room.top) this.sourceBody.scrollTop",
-     "if (false) this.sourceBody.scrollTop"
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (false) this.moveTo("
     ]
    ],
    "check": {
@@ -9944,8 +9944,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "words = passage && range.getBoundingClientRect();",
-     "words = passage && passage.getBoundingClientRect();"
+     "measure = () => wordsBox(range);",
+     "measure = () => passage.getBoundingClientRect();"
     ]
    ],
    "check": {
@@ -9988,8 +9988,8 @@
    "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down",
    "break": [
     [
-     "web/reader.mjs",
-     "if (place) this.sourceBody.scrollTop = scrolled;",
+     "web/compose-bar.mjs",
+     "    back();",
      ""
     ]
    ],
@@ -10004,8 +10004,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "else if (top < room.top && bottom < room.bottom) this.sourceBody.scrollTop",
-     "else if (false) this.sourceBody.scrollTop"
+     "else if (top < room.top && bottom < room.bottom) this.moveTo(",
+     "else if (false) this.moveTo("
     ]
    ],
    "check": {
@@ -10026,6 +10026,126 @@
    "check": {
     "native": "compose",
     "case": "chromium stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoting keeps your place: what showed of the words quoted stays where it was on screen, the topic page behind the Reader too, and the quote lands after the writing with the cursor after it, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (bottom !== room.bottom) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words the opening reply would cover are shown the least way, just above the reply, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (bottom > room.bottom && top > room.top) this.moveTo(",
+     "if (false) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting keeps your place"
+   }
+  },
+  {
+   "item": 411,
+   "act": "What a quote keeps showing is the words it takes, not the whole passage they are in: a line of a log taller than the screen stays where it was, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "measure = () => wordsBox(range);",
+     "measure = () => passage.getBoundingClientRect();"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A passage lit whole and taller than the screen keeps what showed of it where it was, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "shows = top < bottom;",
+     "shows = false;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit wide: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Quoted words taller than the room the reply leaves fill it, their start kept on the screen, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.min(bottom - room.bottom, top - room.top)",
+     "(bottom - room.bottom)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Measuring the reply as a quote grows it does not pull a message scrolled to its end down, in Safari's engine",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "    back();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "A line quoted from above what shows comes into sight at its top, the least way, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "else if (top < room.top && bottom < room.bottom) this.moveTo(",
+     "else if (false) this.moveTo("
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
+   }
+  },
+  {
+   "item": 411,
+   "act": "Words taller than the room quoted from above it come into sight with their end at its bottom, the least way, in Safari's engine",
+   "break": [
+    [
+     "web/reader.mjs",
+     "Math.max(top - room.top, bottom - room.bottom)",
+     "(top - room.top)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting from a passage taller than what shows"
    }
   },
   {
@@ -11569,6 +11689,251 @@
    ],
    "check": {
     "python": "test_message_words.py"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A click or a tap on an outline row selects it as the keys would: its place opens and the keys stay on the row, wearing their ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The row a press selects wears the keys' ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    el.focus({ preventScroll: true, focusVisible: true });",
+     "    el.focus({ preventScroll: true });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on an outline row that moves keeps the keys on the row, not on the heading of the page reached",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on the outline's own row being read, the outcome's name on its Conversation, keeps the keys on it",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }",
+     "  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on the row of the page being read moves nothing and keeps the keys on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "At 390 the outline's drawer opens again on the row tapped, ringed",
+   "break": [
+    [
+     "web/rails.mjs",
+     "    shell.drawerFocus = () => rail.drawerOpened();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "Waiting on you pressed opens the question in the Reader, and closing it gives the keys back to the row pressed, ringed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A press on what opens in the outline keeps its own way: the row is selected before the control's own act, so New topic's title line has the focus, not the row pressed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);",
+     "    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), false);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press in the outline on what opens there keeps its own way"
+   }
+  },
+  {
+   "item": 462,
+   "act": "Waiting on you keeps the focus while it reads which question to open, so the Reader gives it back to the row pressed",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "    outcome.asking = true;",
+     "    outcome.asking = true; outcome.waiting.disabled = true;"
+    ],
+    [
+     "web/outline-rail.mjs",
+     "    } finally { outcome.asking = false; }",
+     "    } finally { outcome.asking = false; outcome.waiting.disabled = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
+  },
+  {
+   "item": 462,
+   "act": "However the Reader closes, what opened it gets the focus back wearing the ring it wore: Waiting on you tapped on a phone is ringed again when its question is closed",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      back.focus({ preventScroll: true, focusVisible: true });",
+     "      back.focus({ preventScroll: true });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail outcome clicks toggle"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A row drawn again takes the focus back wearing the ring the row that went wore: a mouse press in the right rail rings nothing, nor once its section draws again",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }",
+     "      try { place.el.focus({ preventScroll: true, focusVisible: true }); } finally { this.placing = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a mouse press in the right rail rings nothing"
+   }
+  },
+  {
+   "item": 462,
+   "act": "What a row drawn again wears is read from the focus that went, not assumed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "this.ringed = at.matches(':focus-visible');",
+     "this.ringed = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a mouse press in the right rail rings nothing"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The outline's row a press selected keeps the keys' ring when the page reached draws it again",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }",
+     "      try { place.el.focus({ preventScroll: true }); } finally { this.placing = false; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+   }
+  },
+  {
+   "item": 462,
+   "act": "At 390, after a move the outline did not begin (back, forward, a link in the page), the drawer opens on the place being read with no ring",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "chosen = this.chosen && this.standing && rows.find(",
+     "chosen = this.chosen && rows.find("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The shell tells the outline where each move in place began, so a back sets aside the row a tap chose",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    for (const listener of this.listeners) listener.leaving?.(began);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "A tap on a row in the drawer is the person's choice again after a move begun elsewhere: the drawer opens on it, ringed",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (row && !this.placing) { this.chosen = true; this.standing = true; this.visit(row); }",
+     "if (row && !this.placing) { this.chosen = true; this.visit(row); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 390 the drawer opens on the place being read"
+   }
+  },
+  {
+   "item": 462,
+   "act": "The Reader reads its opener's ring at each opening: a message the keys opened and then the mouse wears no ring when the mouse closes it",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (next !== this.opener || !this.dialog.open) this.openerRinged",
+     "if (next !== this.opener) this.openerRinged"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the Reader gives its opener back ringed only"
    }
   },
   {
@@ -14031,6 +14396,1840 @@
    ],
    "check": {
     "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if workspace is None or not organises(workspace, actor):",
+     "if workspace is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "An invitation registers the named agent and adds it to the outcome's team in the same act",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        db.execute(\"INSERT INTO workspace_members VALUES (?,?)\", (workspace[\"id\"], agent))\n",
+     "        None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A name or ID someone already has is refused, naming a free name to choose instead, and nothing is registered",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if _taken(db, name, agent):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The server writes the agent's sign-in file, private to its user, once Core has recorded the invitation",
+   "break": [
+    [
+     "aim_next/profile.py",
+     "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)",
+     "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A file already in the new agent's place, for anyone else, is kept, and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if agent and _binds(sign_in_path(folder, agent), store, agent) is False:",
+     "if agent and _binds(sign_in_path(folder, agent), store, agent) is None and False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The prompt tells the agent to read the agent guide first",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        \"Before anything else, read the agent guide: %s\" % (CODE_ROOT / \"docs\" / \"agent-guide.md\"),\n",
+     "        \"Before anything else, read the README.\",\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The page's invitation goes through the sign-in writer, so its answer carries the prompt",
+   "break": [
+    [
+     "aim_next/server.py",
+     "                   if value[\"kind\"] == invite.KIND else",
+     "                   if False else"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The server writes sign-in files in the folder of its own profile",
+   "break": [
+    [
+     "aim_next/serve.py",
+     "sign_in_folder=Path(profile_path).resolve().parent)",
+     "sign_in_folder=None)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "An answer that never came keeps the exact invitation, so the next Return sends the same one",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (!(kept && kept.target.workspace_id === workspace.id && kept.args.name === name && kept.args.harness === harness)) {",
+     "if (true) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A sign-in file not written keeps the invitation for Try again",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "{ again: true, retry: true, agent: result.agent });",
+     "{ again: true, agent: result.agent });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Someone else changing the team at the same moment sends the invitation once more at the revision Core names",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (Number.isInteger(current) && current !== this.pending.expected.workspace_revision) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_agent_invite.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Return in the name line invites, and the prompt shows with its copy glyph",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) this.go(); }",
+     "if (event.key === 'Enter') { event.preventDefault(); }"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A tap on Codex or Claude Code gives the focus back to the name, so Return invites",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.paintChips(); this.input.focus(); };",
+     "this.paintChips(); };"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused name is kept, focused and selected, to be changed in place",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (!failed.again) this.input.select();",
+     "    if (false) this.input.select();"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a taken name"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A member who does not organise the outcome is offered no invite",
+   "break": [
+    [
+     "web/app.mjs",
+     "teamInvite.paint(organises(workspace,bootstrap.actor));",
+     "teamInvite.paint(true);"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a member who does not organise"
+   }
+  },
+  {
+   "item": 324,
+   "act": "While the invitation is out a second Return sends nothing",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "  async go(again = false) {\n    if (this.busy) return;",
+     "  async go(again = false) {\n    if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite while the invitation is out"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A sign-in file not written shows Try again, which sends the same invitation",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (retry) {",
+     "    if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a sign-in file that could not be written"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A copy the browser refuses selects the prompt to copy by hand",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "    if (ok) return;\n",
+     "    return;\n"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "On a phone the copy glyph and × are at least 44px to touch",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copy,.invite-close{width:2.75rem;height:2.75rem}",
+     ".invite-copy,.invite-close{width:2rem;height:2rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
+  },
+  {
+   "item": 324,
+   "act": "On a phone the prompt wraps its long paths rather than scrolling sideways",
+   "break": [
+    [
+     "web/aim.css",
+     "white-space:pre-wrap;overflow-wrap:anywhere;font:.8rem/1.5",
+     "white-space:pre;overflow-wrap:anywhere;font:.8rem/1.5"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A lost answer's words fit at 320, 375 and 390 by touch and on a laptop, in light and dark",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.show(failed.message);",
+     "this.show(failed.message); if (failed.again) this.state.style.whiteSpace = 'nowrap';"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite while the invitation is out"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused copy's words fit at 320, 375 and 390 by touch and on a laptop, in light and dark",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied{margin:0;",
+     ".invite-copied{margin:0;white-space:nowrap;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refused copy's words never lie over the prompt",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied{margin:0;",
+     ".invite-copied{margin:-2.5rem 0 0;"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite a copy the browser refuses"
+   }
+  },
+  {
+   "item": 324,
+   "act": "Copied never lies over the prompt",
+   "break": [
+    [
+     "web/aim.css",
+     ".invite-copied.quiet{color:var(--muted)}",
+     ".invite-copied.quiet{color:var(--muted);margin-top:-2.5rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A refusal still said once the invite is gone fits on a phone and a laptop",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "this.opener.hidden = !manage;",
+     "this.opener.hidden = !manage; this.line.style.minWidth = manage ? '' : '30rem';"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite once the person no longer organises"
+   }
+  },
+  {
+   "item": 324,
+   "act": "The opener alone fits on a phone",
+   "break": [
+    [
+     "web/aim.css",
+     ".team-invite>.add-chip{justify-self:start}",
+     ".team-invite>.add-chip{justify-self:start}.team-invite:has(>.invite-line[hidden]):has(>.invite-prompt[hidden])>.add-chip{min-width:22rem}"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite on a phone by touch"
+   }
+  },
+  {
+   "item": 307,
+   "act": "A person's whisper replying to an ask to them, sent to whoever asked, answers it: the ask stops waiting on them and Waiting on you goes out",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "return ask is not None and self._topic_ask_answered(db, topic, author, ask)",
+     "return False"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 307,
+   "act": "A person's whisper that replies to no ask of theirs answers nothing, even sent to the agent that asked",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "        if to is not None:\n            ask = self._whispered_ask(db, topic, to, reply_to)",
+     "        if to is not None and reply_to is not None:\n            ask = self._whispered_ask(db, topic, to, reply_to)"
+    ]
+   ],
+   "check": {
+    "python": "test_whispers.py"
+   }
+  },
+  {
+   "item": 307,
+   "act": "A person's whisper answers the one ask it replies to, so a whisper to the asker replying to nothing leaves a 👍 taken back to put the wait back",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "        return not is_conversation(topic) and db.execute(\n            \"SELECT 1 FROM messages INDEXED BY topic_messages WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL LIMIT 1\",",
+     "        return not is_conversation(topic) and db.execute(\n            \"SELECT 1 FROM messages INDEXED BY topic_messages WHERE topic_id=? AND seq>? AND author_id=? AND (private_to IS NULL OR 1) LIMIT 1\","
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 307,
+   "act": "A whispered reply never answers an ask an open owner-gated stage still needs, and tells nobody a wait moved",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "if ask is None or record_ask(db, ask[\"id\"], topic[\"workspace_id\"], topic[\"id\"]):",
+     "if ask is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_thumb_answers.py"
+   }
+  },
+  {
+   "item": 307,
+   "act": "A blocking ask is cleared everywhere by a whispered reply to it, and not by one replying to another ask of the same agent",
+   "break": [
+    [
+     "aim_next/topic_state.py",
+     "return ask is not None and self._topic_ask_answered(db, topic, author, ask)",
+     "return ask is not None and self._answered(db, topic, author)"
+    ]
+   ],
+   "check": {
+    "python": "test_blocking_asks.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A deploy of a merged train ships its merge commit and refuses any other commit",
+   "break": [
+    [
+     "tools/train.py",
+     "    if sha != merge:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A merged train whose merge commit is not on the release branch as GitHub holds it now is refused, whatever the live checkout last fetched",
+   "break": [
+    [
+     "tools/train.py",
+     "    if status not in CONTAINED or compared.get(\"behind_by\") != 0 or base != merge:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The release check's deploy-refusals step runs every test of the train refusals beside the deploy's own refusals",
+   "break": [
+    [
+     "tools/release_check.py",
+     "\"-k\", \"test_tools_deploy.DeployRefuses\", \"-k\", \"test_tools_train.\", \"-v\"]",
+     "\"-k\", \"test_tools_deploy.DeployRefuses\", \"-v\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A merged train whose approved head is not in its merge commit is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "        if not _contains(git, item[\"approved_head\"], merge,",
+     "        if False and not _contains(git, item[\"approved_head\"], merge,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A read of the train's facts that fails refuses rather than counting as an answer",
+   "break": [
+    [
+     "tools/train.py",
+     "    if answer.returncode != 0:\n        raise Refused(\"%s could not be read (git",
+     "    if False:\n        raise Refused(\"%s could not be read (git"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The hosted run a train names must name the merge commit as its head",
+   "break": [
+    [
+     "tools/train.py",
+     "        if hosted[\"head_sha\"] != merge:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that changes the deploy tool, the controller or a data migration is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "        if kept:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's release record says its hosted judgment is pending",
+   "break": [
+    [
+     "tools/train.py",
+     "judgment = \"pending\" if train[\"judgment\"] is None",
+     "judgment = \"judged\" if train[\"judgment\"] is None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first train without its judgment is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if train[\"kind\"] == \"ordinary\":",
+     "    if train[\"kind\"] == \"ordinary\" or train[\"judgment\"] is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first judgment of a parent whose tree is not the merge commit's is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if judged_tree != tree:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judged-first judgment whose runs name a commit that is not a parent of the merge commit is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "    if head not in parents:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A judgment still running is not taken",
+   "break": [
+    [
+     "tools/train.py",
+     "        if found[\"status\"] != \"completed\":",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "attach-judgment refuses a run that names another commit than the release's",
+   "break": [
+    [
+     "tools/train.py",
+     "        if found[\"head_sha\"] != commit:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The store refuses a judgment whose runs name another commit than the release's",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "        if entry.get(\"head_sha\") != commit:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "Only a release whose record says its judgment is pending takes one",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "    if train.get(\"kind\") != \"ordinary\" or train.get(\"judgment\") != \"pending\":",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A release's hosted judgment is attached once; another is refused",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "        if row[\"hosted_judgment\"] == stored:",
+     "        if True:"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A failed case the live commit's policy admits is a known red, recorded as taken by the policy",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            if review is not None:\n                taken_by = \"policy\"",
+     "            if False:\n                taken_by = \"policy\""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The known-reds policy is read at the live commit, the event base, never at the candidate, so a candidate's own admission never counts for it",
+   "break": [
+    [
+     "tools/deploy.py",
+     "                                           lambda base: policy_reds(config, base, sha))",
+     "                                           lambda base: policy_reds(config, sha, sha))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The policy's plan is chosen with the live commit as its approved base, so what the candidate retires from it must be the plan's reviewed retirements",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit, base)\n",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The policy admits a case only by its exact identity: step, name, phase, engine and expectedFailure",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "red = self.reds.get((step, self.ci.key(row)))",
+     "red = {(s, json.loads(k)[\"name\"]): r for (s, k), r in self.reds.items()}.get((step, row.get(\"name\")))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A failed case neither the policy admits nor the live summary failed is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "                if case not in failed:",
+     "                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A policy that cannot be read refuses rather than admitting nothing",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if policy is None:\n        raise known_reds_check.Refused(",
+     "    if False:\n        raise known_reds_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A live compose run from before its end-of-run record counts when it names the case failed and its browser closed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not (before_end_record and not any(field in report for field in COMPOSE_END)):",
+     "        if True:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The candidate's own compose run still needs its end-of-run record",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "ended_cases(out, step, \"the candidate's\")",
+     "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance takes only a step and case it names exactly",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if {\"step\": red[\"step\"], \"case\": red[\"case\"]} not in cases:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance takes a case only with a non-empty by and message",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(acceptance[key], str) or not acceptance[key].strip():",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "attach-judgment finds the release on any page of the live CLI's release records, not only the newest",
+   "break": [
+    [
+     "tools/releases.py",
+     "found = [item for page in pages for item in page.get(\"items\") or []",
+     "found = [item for page in pages[:1] for item in page.get(\"items\") or []"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "Only an owner_acceptance of exactly true makes a live summary an owner's acceptance; \"true\", 1 or another truthy value is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "summary.get(\"owner_acceptance\") is True",
+     "summary.get(\"owner_acceptance\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "An owner's acceptance is exactly owner_acceptance, cases, by, message and why, each case exactly a step and a case",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if set(acceptance) != set(OWNER_KEYS):",
+     "    if False:"
+    ],
+    [
+     "tools/known_reds.py",
+     "isinstance(case, dict) and set(case) == {\"step\", \"case\"} for case in cases",
+     "isinstance(case, dict) for case in cases"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "A red an owner's acceptance took is recorded as taken by it, the file named as its live summary",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "(\"owner_acceptance\", acceptance[\"message\"])",
+     "(\"live\", acceptance[\"message\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 482,
+   "act": "The deploy's line says an owner's acceptance took the red, by whom and in which message",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        elif red[\"taken_by\"] == \"owner_acceptance\":",
+     "        elif False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An admitted case that fails for another reason (another assertion, values or test-source chain) is refused, as GitHub's classifier calls it unexpected",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "return (red[\"review\"], None) if same else",
+     "return (red[\"review\"], None) if True else"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A policy GitHub's classifier would not load admits nothing and refuses",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            ci_known_reds.load_policy(policy, root)\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A policy admits nothing at a commit whose reviewed test sources match none of its plans, as GitHub's classifier selects a plan before it matches",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        self.reds = {(red[\"step\"], ci_known_reds.key(red[\"case\"])): red for red in plan[\"reds\"]}",
+     "        self.reds = {(red[\"step\"], ci_known_reds.key(red[\"case\"])): red for red in policy[\"reds\"]}"
+    ],
+    [
+     "tools/known_reds.py",
+     "            plan, _ = ci_known_reds.select_plan(policy, root, commit, base)\n",
+     "            pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "At a commit whose reviewed test sources match none of the policy's plans, the policy refuses nothing, so a red still falls to its live summary or an owner's acceptance",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            self.unreviewed = \"the tests at %s are not ones it reviewed: %s\" % (commit[:12], error)\n            return\n",
+     "            raise Refused(\"the tests at %s are not ones %s reviewed\" % (commit[:12], POLICY))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A red refused at a commit whose reviewed test sources match none of the policy's plans says those tests are not ones it reviewed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    unreviewed = \"\" if admits is None or admits.unreviewed is None else \" (%s)\" % admits.unreviewed\n",
+     "    unreviewed = \"\"\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's merge commit is a merge of two parents, not a commit that only carries the merge's message",
+   "break": [
+    [
+     "tools/train.py",
+     "    if len(parents) != 2:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's merge commit is the one GitHub names as its pull request's merge commit",
+   "break": [
+    [
+     "tools/train.py",
+     " or pull.get(\"merge_commit_sha\") != merge:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request is merged, by GitHub's answer",
+   "break": [
+    [
+     "tools/train.py",
+     "if pull.get(\"merged\") is not True or ",
+     "if "
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request was merged into the release branch",
+   "break": [
+    [
+     "tools/train.py",
+     "    if base != release_branch:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train's pull request head is its merge commit's second parent",
+   "break": [
+    [
+     "tools/train.py",
+     "    if head != parents[1]:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "GitHub's answer for a train's pull request is that pull request",
+   "break": [
+    [
+     "tools/train.py",
+     " or pull.get(\"number\") != number:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that changes a tools/ module the deploy loads, or a file GitHub's classifier pins to the event base, is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\")",
+     "\"tools/ci_known_reds.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's paths are read from the live commit, so an earlier undeployed train that changed the deploy is refused",
+   "break": [
+    [
+     "tools/train.py",
+     "\"-z\", live, merge)",
+     "\"-z\", merge + \"^1\", merge)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train's judgment is recorded only when its runs and checks name the merge commit",
+   "break": [
+    [
+     "tools/train.py",
+     "train[\"judgment\"], merge, \"the merge commit\")",
+     "train[\"judgment\"], live, \"the merge commit\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "An ordinary train that comes with a judgment records it",
+   "break": [
+    [
+     "tools/train.py",
+     "judgment = \"pending\" if train[\"judgment\"] is None else on_commit(",
+     "judgment = \"pending\" if True else on_commit("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A live checkout that moves after the train was read stops the deploy before anything stops",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(trained is None or head == trained[\"live\"],",
+     "require(True,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train with an outcome to measure is refused, since it has no release check's summary",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        if config.outcome:\n            raise train_check.Refused(",
+     "        if False:\n            raise train_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "A train with --known-reds is refused, since it has no local release check",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        if known_reds is not None:\n            raise train_check.Refused(",
+     "        if False:\n            raise train_check.Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health view gives no release check for a release whose record keeps none of its counts, as a merged train's does",
+   "break": [
+    [
+     "aim_next/health.py",
+     "if not isinstance(measurements, dict) or not any(key in measurements for key in CHECK_KEYS):",
+     "if not isinstance(measurements, dict):"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health view says a train release's hosted judgment once it is attached",
+   "break": [
+    [
+     "aim_next/health.py",
+     "judgment = attached if train.get(\"judgment\") == \"pending\" and attached is not None else train.get(\"judgment\")",
+     "judgment = train.get(\"judgment\")"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page says a merged train's release ran no release check here and says its hosted judgment",
+   "break": [
+    [
+     "web/health.mjs",
+     "    if (train) {\n",
+     "    if (false) {\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_health.test.mjs"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page says a release check passed only when its counts were kept",
+   "break": [
+    [
+     "web/health.mjs",
+     "} else if (parts.length) {",
+     "} else if (check) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_health.test.mjs"
+   }
+  },
+  {
+   "item": 481,
+   "act": "The Health page in the browser says a merged train's release ran no release check here, at every phone width and a laptop",
+   "break": [
+    [
+     "web/health.mjs",
+     "    if (train) {\n",
+     "    if (false) {\n"
+    ]
+   ],
+   "check": {
+    "native": "health",
+    "case": "release from a merged train"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A screenshot that gets no answer, from a page that stopped answering, fails its case at its own bound instead of holding the step until the job is cancelled",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const timer = timers.set(",
+     "const timer = method === 'Page.captureScreenshot' ? undefined : timers.set("
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A browser command that gets no answer fails naming its method, the page it was sent to and its bound",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "reject(Error(`CDP timed out: ${method}${where}, no answer in ${seconds(bound)}`));",
+     "reject(Error(`CDP timed out: ${method}`));"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A fixture control or a view read from the fixture's server that gets no answer fails its case at its bound, naming it",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "    timer = timers.set(() => { onTimeout();",
+     "    timer = undefined && timers.set(() => { onTimeout();"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's start, with its time, is on the step's log before the case runs, so a run cancelled mid-case shows which case was running and since when",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "started: name => { const started = now().toISOString(); out(JSON.stringify({ case: name, started }) + '\\n'); return started; },",
+     "started: name => now().toISOString(),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case's result line, written after its cleanup, gives when it started and when it finished",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "finished: (result, started) => out(JSON.stringify({ ...result, started, finished: now().toISOString() }) + '\\n'),",
+     "finished: result => out(JSON.stringify(result) + '\\n'),"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "In the navigation step, a real page that stops answering fails its call naming the page, at the bound, and is still closed so the cases after it run",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "    pageNames.set(sessionId, suffix);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a page that stops answering"
+   }
+  },
+  {
+   "item": 483,
+   "act": "In the navigation step's harness, each case's start line is written before the case runs: a running case finds its own start line the last line written",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "const started = stamp.started(name);",
+     "const started = new Date().toISOString();"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness case lines"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness writes each case's result line after its cleanup, its final result with when it started and finished; the release check fails a step whose log lacks it",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "stamp.finished(results.at(-1), started);",
+     "process.stdout.write(JSON.stringify(results.at(-1)) + '\\n');"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness case lines"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The release check fails a persistence step whose log does not hold each case's start line and its timed result line, in order",
+   "break": [
+    [
+     "tools/release_check.py",
+     "lines = case_lines(log, results) if log is not None and step.harness == PERSISTENCE else []",
+     "lines = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Each case line goes to the step's log as it is kept, written at once",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const out = line => { write(line); written.push(line); };",
+     "const out = line => { written.push(line); };"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A page that will not close at the end of a case is named, and the pages after it are still closed and the next case runs",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "for (const targetId of pages) await tidy(`closing page ${pageNames.get(targetId) ?? targetId}`, () => cdp('Target.closeTarget', { targetId }));",
+     "for (const targetId of pages) await cdp('Target.closeTarget', { targetId });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A browser context that will not close at the end of a case is named, and the next case runs",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "await tidy(\"disposing the case's browser context\", () => cdp('Target.disposeBrowserContext', { browserContextId }));",
+     "await cdp('Target.disposeBrowserContext', { browserContextId });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "What a case's cleanup could not close is on that case's record, failing it unless the case arranged it",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "      results[results.length - 1] = cleanupVerdict(results.at(-1), unclosed, cleanupRefuses);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness cleanup refused"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A cleanup refusal no case arranged fails the case, naming what would not close",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "if (!unexpected.length && !missing.length)",
+     "if (!missing.length)"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness's fixture controls go through the bound: one the fixture leaves unanswered fails its case by name at the bound",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "}), `fixture control ${data.method}`, { onTimeout: () => requests.delete(id) });",
+     "}), `fixture control ${data.method}`, { ms: 2147483647, onTimeout: () => requests.delete(id) });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a fixture control and a view"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The harness's views read from the fixture's server go through the bound: one whose read is held fails its case by name at the bound",
+   "break": [
+    [
+     "tests/reader_persistence_native.mjs",
+     "`view ${name}`, { onTimeout: () => abort.abort() });",
+     "`view ${name}`, { ms: 2147483647, onTimeout: () => abort.abort() });"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation harness a fixture control and a view"
+   }
+  },
+  {
+   "item": 483,
+   "act": "A wait outside the browser takes the bound in force when it is made",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "{ ms = fixtureBound.ms, timers = clock,",
+     "{ ms = FIXTURE_BOUND_MS, timers = clock,"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "Chrome's exit after Browser.close has its bound at the end of a run, and the fixture is still closed",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "await step('Chrome exiting', () => bounded(browser.exit, 'Chrome exiting after Browser.close', { timers }));",
+     "await step('Chrome exiting', () => browser.exit);"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 483,
+   "act": "The fixture's exit once its input ends has its bound, and a fixture that does not exit is stopped by its handle",
+   "break": [
+    [
+     "tests/native-calls.mjs",
+     "const exitCode = await step('the fixture exiting', () => bounded(fixture.exit, 'the fixture exiting once its input ended', { timers }));",
+     "const exitCode = await step('the fixture exiting', () => fixture.exit);"
+    ]
+   ],
+   "check": {
+    "node": "tests/native_calls.test.mjs"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A passage of a card's message lights under the pointer as the Reader's do, on a topic's card and a dossier's",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (entry && entry === this.lit) this.passages.point(event, entry);",
+     "if (false) this.passages.point(event, entry);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Return on a lit passage of a card opens the Reader with those words quoted, in place of a reply with nothing quoted",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);",
+     "if (false) this.quote(item.id, cardIn(this.lit), chosen);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "⌘C while a passage of a card is lit copies exactly that passage's words, not the whole message",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (words) this.copy(item, words); else this.copy(item);",
+     "this.copy(item);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Moving with Shift held grows a card's light from the passage lit first to the one under the pointer, as in the Reader",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;",
+     "const anchor = span;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "The keys lighting another message put a card's passage light out, and Return there quotes nothing",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "follow(entry) { if (this.lit && this.lit.entry !== entry) this.clear(); }",
+     "follow(entry) {}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "⌘C in the Reader on a lit passage, nothing selected, copies exactly that passage's words",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a passage the pointer rests on"
+   }
+  },
+  {
+   "item": 478,
+   "act": "What lights on a card is the Reader's own passages, found among the card's blocks over exactly their characters",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    if (a < to) end = [node, offsetAt(node, to, true)];",
+     "    end = [node, offsetAt(node, to, true)];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A card's lit passage goes out as the focus moves where Return does something else (a control of the message or its bar, writing, a pop-up), as in the Reader",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a card lights from the passage lit first to the one under the pointer, opens nothing, and leaves no selection of the browser's beside the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      this.shifted = false;\n      if (!event.shiftKey",
+     "      this.shifted = false; return;\n      if (!event.shiftKey"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Words selected on a card are what Shift grows its light from, and the selection gives way to the light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const chosen = this.selected(entry);\n    if (!chosen) return;",
+     "    const chosen = null;\n    if (!chosen) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Return on words selected on a card quotes exactly those words, not the passage lit",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const selected = this.selected(entry);\n    if (selected) return selected;",
+     "    const selected = null;\n    if (selected) return selected;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a card grows the light"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
+   "item": 478,
+   "act": "A cut-off card drawn again under its lit passage, its whole message arriving in place of the excerpt, puts the light out, so Return and ⌘C act on no words of the excerpt",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading a cut-off card's lit passage goes out"
+   }
+  },
+  {
+   "item": 478,
+   "act": "An edit arriving under a card's lit passage puts the light out, so Return and ⌘C act on no words of the place lit on the old words",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.paint();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading an edit arriving under a card's lit passage"
+   }
+  },
+  {
+   "item": 478,
+   "act": "Shift-click on a link in a card's words is the browser's, which opens the link in a new window, and it grows no light",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (event.target.closest?.('a')) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading Shift-click on a link in a card's words"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.sourceBody.addEventListener('scroll', () => this.scrolled(), { passive: true });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The Reader's own moves of the message are not taken for the person's scroll: one who has not scrolled keeps the quoted words in sight as the reply grows",
+   "break": [
+    [
+     "web/reader.mjs",
+     "moveTo(top) { this.sourceBody.scrollTop = top; this.lastTop = this.sourceBody.scrollTop; }",
+     "moveTo(top) { this.sourceBody.scrollTop = top; }"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The browser's own pull of a message scrolled to its end, as its room grows, is no scroll of the person's",
+   "break": [
+    [
+     "web/reader.mjs",
+     "now < before && now >= body.scrollHeight - body.clientHeight - 1",
+     "false"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone: quoting at the end of a message"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Typing in a reply leaves a message scrolled to its end at its end",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "    back();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: typing in the reply leaves a message scrolled to its end"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Once the lines wrap anew the message shows the words quoted, measured again, not where they were",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (width !== this.kept.width) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium wide: quoting: once the lines wrap anew"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message down that the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size does not pull them back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (now === before || now < before",
+     "if (now >= before || now < before"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
   }
  ]

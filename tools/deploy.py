@@ -3,11 +3,14 @@ from __future__ import annotations
 
 """Deploy a reviewed Theseus commit to a live instance: stop, back up, fast-forward, migrate, restart.
 
-Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR
+Usage: tools/deploy.py --config CONFIG.json (--release-check SUMMARY.json | --train TRAIN.json) SHA EVIDENCE_DIR
                        [--release N] [--live-since TIME] [--no-items] [--known-reds FILE] [--dry-run]
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
 for exactly that commit; unless it passed, nothing is stopped or changed.
+--train TRAIN.json takes, in place of a summary, the record of a train merged
+into the config's release branch (tools/train.py): SHA is its merge commit, and
+each of its facts is read again from git and GitHub before anything stops.
 --known-reds FILE takes a summary whose only failures are browser cases the
 live commit's own release check failed too (tools/known_reds.py); the release
 record keeps them as known reds, never as passes.
@@ -41,15 +44,18 @@ if __package__ in (None, ""):
 
 from aim_next.contract import Refusal
 from aim_next.releases import release_row
-from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases
+from tools import checks as outcome_checks, known_reds as known_reds_check, release_check, releases, train as train_check
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
-    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile")
+    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile "
+    "release_branch repository")
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
-OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile")
+# release_branch, repository: the branch a merged train lands on and the GitHub repository that branch and its runs are
+# read from (owner/name), which --train needs (tools/train.py).
+OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository")
 
 
 class Refused(Exception):
@@ -78,11 +84,17 @@ def load_config(path):
         require(os.path.isabs(raw[key]), "deploy config: %s must be an absolute path" % key)
     instance = Path(raw["instance"])
     require(("outcome" in raw) == ("reporter_profile" in raw), "deploy config: outcome and reporter_profile go together")
+    require("release_branch" not in raw or (re.fullmatch(r"[A-Za-z0-9._/-]+", raw["release_branch"])
+                                            and not raw["release_branch"].startswith(("-", "/")) and ".." not in raw["release_branch"]),
+            "deploy config: release_branch is a branch name, such as release/live73")
+    require("repository" not in raw or re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", raw["repository"]),
+            "deploy config: repository is GitHub's owner/name")
     return Config(live=Path(raw["live"]), instance=instance, python=raw.get("python", PYTHON),
                   outcome=raw.get("outcome"), reporter_profile=instance / raw["reporter_profile"] if "reporter_profile" in raw else None,
                   server_profile=instance / raw["server_profile"], port=raw["port"],
                   tailnet_origin=raw.get("tailnet_origin"), runner_profile=instance / raw["runner_profile"],
-                  runner_id=raw["runner_id"], routes=instance / raw["routes"])
+                  runner_id=raw["runner_id"], routes=instance / raw["routes"],
+                  release_branch=raw.get("release_branch"), repository=raw.get("repository"))
 
 
 def server_argv(config):
@@ -361,6 +373,28 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
+def policy_reds(config, base, sha):
+    """Item 481: the reds the policy at the event base (.github/check-baseline.json at BASE, the live commit) admits for
+    SHA, read from the live checkout's git and matched as GitHub's classifier matches them (known_reds.Admissions); None
+    when BASE keeps no policy. The candidate's own copy is never read, so its own admissions never count for it. A read
+    that fails, or a policy that classifier would not load, is refused, not taken as no policy."""
+    listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", base, "--", known_reds_check.POLICY])
+    if listed.returncode != 0:
+        raise known_reds_check.Refused("whether %s keeps %s could not be read (exit %s): %s" % (
+            base[:12], known_reds_check.POLICY, listed.returncode, listed.stderr.strip()[:300]))
+    if not listed.stdout.strip():
+        return None
+    shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (base, known_reds_check.POLICY)])
+    try:
+        policy = json.loads(shown.stdout) if shown.returncode == 0 else None
+    except ValueError:
+        policy = None
+    if policy is None:
+        raise known_reds_check.Refused("%s at %s could not be read (exit %s): %s" % (
+            known_reds_check.POLICY, base[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
+    return known_reds_check.Admissions(policy, config.live, sha, base)
+
+
 def live_head(config):
     """The live checkout's HEAD, which the known reds must have been read beside."""
     head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
@@ -369,7 +403,7 @@ def live_head(config):
     return head.stdout.strip()
 
 
-def release_plan(config, head, sha, summary, number, no_items, live_since=None, accepted=(), flagged=()):
+def release_plan(config, head, sha, measured, number, no_items, live_since=None, flagged=()):
     """The records this deploy writes once the release is verified: (this release's, those before it, its commits, latest).
 
     Everything is read now, before anything stops, and each record is checked
@@ -378,7 +412,8 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None, 
     repository keeps for it (kept_lacked), then one for each commit a server run
     record started after the latest record (went_live). A deploy of the live
     commit is a restart: it ships nothing, and has no record of its own (None).
-    accepted: the known reds the deploy took (item 178), kept in the record's measurements.
+    measured: this release's measurements, from its release check's summary with the known reds the deploy took
+    (item 178), or from its merged train (items 481, 482); each revert in the range is added to them.
     flagged: items --revert names, each reverted in the range by a commit made before a revert carried its
     `Train-Item: Revert N` trailer; like a trailer's revert, the release does not ship them and the record says so."""
     restart = sha == head
@@ -414,9 +449,10 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None, 
             number = latest["release"] + 1
         require(latest is None or number == latest["release"] + 1,
                 "release %d would not follow the latest, %s" % (number, latest and latest["release"]))
+        # A revert in the range, by trailer or by --revert, with the commit that made it when the trailer says.
+        reverts = releases.reverted(commits, flagged)
         record = {"release": number, "commit": sha, "previous": head, "items": items,
-                  "measurements": releases.measurements(json.loads(Path(summary).read_text()), accepted,
-                                                        releases.reverted(commits, flagged)), "source": "deploy"}
+                  "measurements": dict(measured, **({"reverts": reverts} if reverts else {})), "source": "deploy"}
     planned = line + ([record] if record else [])
     # A commit is one release, and an item ships in one (the store refuses either again); say so now, before anything stops.
     release_of = {}
@@ -552,31 +588,70 @@ def enter_deploy(config, evidence, view, planned):
     record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})
 
 
-def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None, revert=()):
+def take_train(config, sha, evidence, train, known_reds, github):
+    """00-train (items 481, 482): the merged train, each of its facts read again from the live checkout's git and from
+    GitHub, or Refused before anything else is read. A record never claims a local check that did not run."""
+    try:
+        if config.outcome:
+            raise train_check.Refused("measuring %s reads a release check's summary, which a merged train does not have"
+                                      % config.outcome)
+        if known_reds is not None:
+            raise train_check.Refused("--known-reds stands for cases of a local release check's summary, not a merged train")
+        if not config.release_branch or not config.repository:
+            raise train_check.Refused("the deploy config names no release_branch and repository, which a merged train is "
+                                      "read against")
+        head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
+        if head.returncode != 0:
+            raise train_check.Refused("the live commit cannot be read: %s" % head.stderr.strip())
+        trained = train_check.judge(train, sha, head.stdout.strip(), config.release_branch, config.repository,
+                                    lambda *args: run(["git", "-C", str(config.live)] + list(args)), github)
+    except train_check.Refused as refusal:
+        record(evidence, "00-train", {"train": str(train), "commit": sha, "refused": str(refusal)})
+        raise Refused("train: %s; nothing was stopped" % refusal)
+    record(evidence, "00-train", trained)
+    print(train_check.said(trained))
+    return trained
+
+
+def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None, known_reds=None,
+           train=None, github=None, revert=()):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
+    require((summary is None) != (train is None), "the deploy takes a release check's summary or a merged train, one of them")
     evidence.mkdir(parents=True, exist_ok=True)
-    # 0. A summary of exactly this commit, or nothing is touched; one whose steps failed is still measured (7.2 step 1).
-    # One that skipped steps is taken only when what changed since the live commit, read here, lets them be skipped.
-    foreign, unpassed = release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha))
+    # 0. A merged train (items 481, 482), or a summary of exactly this commit; otherwise nothing is touched.
+    trained = take_train(config, sha, evidence, train, known_reds, github) if train is not None else None
+    # A summary whose steps failed is still measured (7.2 step 1). One that skipped steps is taken only when what
+    # changed since the live commit, read here, lets them be skipped.
+    foreign, unpassed = release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha)) if trained is None else ([], [])
     reasons = foreign + unpassed
     # Item 178: failed browser cases the live commit fails too, each listed, are known reds; they stay failures.
     known = None
     if known_reds is not None and not foreign:
         try:
-            known = known_reds_check.judge(known_reds, summary, unpassed, lambda: live_head(config))
+            known = known_reds_check.judge(known_reds, summary, unpassed, lambda: live_head(config),
+                                           lambda base: policy_reds(config, base, sha))
         except known_reds_check.Refused as refusal:
             known = {"file": str(known_reds), "refused": str(refusal)}
-    record(evidence, "00-release-check", dict({"summary": str(summary), "commit": sha, "passed": not reasons,
-                                               "reasons": reasons, "skipped": release_check.skipped_of(summary)},
-                                              **({"known_reds": known} if known_reds is not None else {})))
+    if trained is None:
+        record(evidence, "00-release-check", dict({"summary": str(summary), "commit": sha, "passed": not reasons,
+                                                   "reasons": reasons, "skipped": release_check.skipped_of(summary)},
+                                                  **({"known_reds": known} if known_reds is not None else {})))
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
     require(not foreign, unchecked)
     if known is not None and "refused" in known:
         raise Refused("known reds: %s; nothing was stopped" % known["refused"])
     accepted = known["accepted"] if known is not None else []
     for red in accepted:
-        print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
-              % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
+        if red["taken_by"] == "policy":
+            print("known red: %s %r failed; %s at %s admits it (review %s): %s"
+                  % (red["step"], red["case"], known_reds_check.POLICY, known["live_commit"][:12], red["review"], red["why"]))
+        elif red["taken_by"] == "owner_acceptance":
+            acceptance = known["acceptances"][red["live_summary"]]
+            print("known red: %s %r failed; an owner's acceptance took it (%s, by %s in %s): %s"
+                  % (red["step"], red["case"], red["live_summary"], acceptance["by"], acceptance["message"], red["why"]))
+        else:
+            print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
+                  % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
     for red in (known or {}).get("not_needed") or []:
         print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
@@ -612,6 +687,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
     require(not accepted or head == known["live_commit"], "the live checkout is at %s now, not %s, which the known reds "
             "were read beside; nothing was stopped" % (head, known and known["live_commit"]))
+    require(trained is None or head == trained["live"], "the live checkout is at %s now, not %s, which the train's changes "
+            "were read from; nothing was stopped" % (head, trained and trained["live"]))
 
     # 02-checks (12, 104): the candidate's readings beside the live release's, read as the reporter.
     view, found = None, []
@@ -655,7 +732,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if found:
         raise Refused("%s got worse: %s" % (names(found), "; ".join(item["why"] for item in found)))
     require(not unpassed or accepted, unchecked)
-    planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since, accepted, revert)
+    measured = (releases.train_measurements(trained) if trained is not None
+                else releases.measurements(json.loads(Path(summary).read_text()), accepted))
+    planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None
     record(evidence, "02-release", {"record": planned, "before": before, "commits": commits,
@@ -764,7 +843,10 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description="Deploy a reviewed Theseus commit to a live instance.")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--release-check", required=True, type=Path, help="the release check's summary.json")
+    checked = parser.add_mutually_exclusive_group(required=True)
+    checked.add_argument("--release-check", type=Path, help="the release check's summary.json")
+    checked.add_argument("--train", type=Path, help="an absolute JSON file: the train merged into the config's release "
+                         "branch, whose merge commit is SHA (docs/tools.md, A merged train)")
     parser.add_argument("sha")
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--release", type=int, help="this release's number; needed only when neither the instance nor "
@@ -781,7 +863,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run, args.release,
-               args.no_items, args.live_since, args.known_reds, revert=args.revert)
+               args.no_items, args.live_since, args.known_reds, revert=args.revert, train=args.train,
+               github=train_check.GhCli() if args.train else None)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         return 1
