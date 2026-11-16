@@ -698,27 +698,39 @@ function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const anchor = writing ? inline.field : field ? at : listAnchor();
+  const first = writing || field ? null : firstInView();
+  const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
+  const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
+  const edge = control?.getBoundingClientRect().top, last = cards.at(-1);
   paint();
+  const landed = control && last ? loadedAfter(list, new Set(cards), last) : null;
+  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
-// messages, first in view at the top edge, the list itself holds by its top:
-// what they load comes in where they were, and the Notebook below moves down,
-// rather than holding still while the page jumps past all of it. Loaded
-// replies can gather messages above into their stacks; the page still stays
-// where it was. A card in a reply stack is a card in view of its own, so a
-// reply arriving above it in its stack moves it no more than one above the stack.
+// messages, first in view at the top edge, what they load comes in where
+// they were, and the Notebook below moves down, rather than holding still
+// while the page jumps past all of it: the first card drawn after the last
+// one drawn before goes where the control was. Since item 465 the New
+// message composer rests between the last card and More, so the list's top
+// no longer holds that place. When the repaint draws nothing after the last
+// card, the list itself holds by its top. Loaded replies can gather messages
+// above into their stacks; the page still stays where it was. A card in a
+// reply stack is a card in view of its own, so a reply arriving above it in
+// its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
-function listAnchor() {
-  const first = [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
-  return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;
+function firstInView() {
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+}
+// The first card drawn now, after last, that was not drawn before.
+function loadedAfter(list, before, last) {
+  return entries(list).find(entry => !before.has(entry) && drawn(list, entry.dataset.id) && Boolean(last.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
