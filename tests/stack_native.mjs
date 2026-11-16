@@ -6681,12 +6681,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await actsOf(topic, ids.old))?.name?.text === 'Old renamed', 'Core holds the rename on Old');
     assert.equal((await actsOf(topic, ids.old)).joined, null, 'split for everyone');
     assert.equal((await actsOf(topic, ids.top)).name.text, 'Top name', 'and Top keeps its name');
-    // Joined again by ⇧⌘↓, its answer held: Old's messages, newer than Top's, still carry Old's position.
+    // Joined again by ⇧⌘↓, its answer held: Old's messages, newer than Top's, still carry Old's position. The page
+    // sends its acts one after another, so the join goes out once the rename's answer, and the positions it reads
+    // again, are handled; it is held from then on.
     await hold(p, ['stack.join', 'stack.name']);
     await keyTo(p, ids.old);
     await p.key('ArrowDown', 12);
     await becomes(() => stacks(p, ids), ['top', 'plain'], '⇧⌘↓ joins Old into Top at once');
-    assert.equal(await held(p), 1, 'the join waits for its answer');
+    await until(async () => (await held(p)) === 1, 'the join waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(p, ids.top), 'Top name', 'joined, before Core answers, the row names Top');
     await renameTo(p, ids.top, 'Top renamed', 'Top name');
     assert.equal(await nameIn(p, ids.top), 'Top renamed', 'the rename shows at once');
@@ -6743,7 +6745,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await hold(q, ['stack.join', 'stack.name']);
     await centre(q, split); await q.point(split);
     await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), 'Split back out draws Old as its own stack at once');
-    assert.equal(await held(q), 1, 'the split waits for its answer');
+    await until(async () => (await held(q)) === 1, 'the split waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(q, pids.old), 'Old name', 'split out, before Core answers, its row names Old, not the dossier it left');
     assert.equal(await nameIn(q, shown), 'Dossier renamed', 'and the dossier\'s names the dossier');
     await renameTo(q, pids.old, 'Old renamed', 'Old name');
@@ -6756,7 +6758,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(q, pids.old);
     await q.key('ArrowDown', 12);
     await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), '⇧⌘↓ joins Old into the dossier at once');
-    assert.equal(await held(q), 1, 'the join waits for its answer');
+    await until(async () => (await held(q)) === 1, 'the join waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(q, shown), 'Dossier renamed', 'joined, before Core answers, the row names the dossier');
     await renameTo(q, shown, 'Dossier again', 'Dossier renamed');
     assert.equal(await nameIn(q, shown), 'Dossier again', 'the rename shows at once');
