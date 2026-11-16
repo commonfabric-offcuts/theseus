@@ -394,22 +394,28 @@ class KeptToReadCase(EndCase):
     """The other places that ask whether an outcome is kept to read (docs/targets.md): each answers for an archived one too."""
 
     def test_no_notebook_pencil_no_edit_no_stack_name_and_no_thumb_answer_while_archived(self):
+        self.kept_to_read("archived", "OUTCOME_ARCHIVED")
+
+    def test_no_notebook_pencil_no_edit_no_stack_name_and_no_thumb_answer_while_completed(self):
+        self.kept_to_read("completed", "OUTCOME_COMPLETED")
+
+    def kept_to_read(self, state, code):
         # His own message first: writing in a topic answers every ask there to him that came before it.
         mine = self.post("My own words", actor="owner")
         ask = self.post("Is the plan ready?", addressees=["owner"], intent="ask")
         self.assertEqual(self.waiting_on(), [("owner", ask)])
         scope = {"owner_scope": {"kind": "workspace", "id": "w1"}}
         self.assertTrue(self.store.view("agent-a", "memory_items", scope)["reader_may_write"])
-        self.committed(self.end("archived"))
+        self.committed(self.end(state))
         self.assertFalse(self.store.view("agent-a", "memory_items", scope)["reader_may_write"], "no pencil")
         edit = self.command("message.edit", {"body": "Changed words"}, {"message_id": mine}, {"message_revision": 1})
-        self.rejected(edit, "OUTCOME_ARCHIVED")
+        self.rejected(edit, code)
         name = self.command("stack.name", {"name": "Plans"}, {"message_id": ask}, {"name_revision": 0})
-        self.rejected(name, "OUTCOME_ARCHIVED")
+        self.rejected(name, code)
         thumb = self.command("message.thumb", {"thumbed": True}, {"message_id": ask}, {"thumb_revision": 0})
         self.committed(thumb)
         self.committed(self.end("open"))
-        self.assertEqual(self.waiting_on(), [("owner", ask)], "a thumb given while archived answered no ask")
+        self.assertEqual(self.waiting_on(), [("owner", ask)], "a thumb given while %s answered no ask" % state)
 
 
 if __name__ == "__main__":

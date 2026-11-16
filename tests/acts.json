@@ -19750,6 +19750,62 @@
     "native": "targets",
     "case": "offers Edit in its ⋯ while its outcome is open"
    }
+  },
+  {
+   "item": 404,
+   "act": "A Notebook page in an archived or completed outcome tells its reader no pencil (reader_may_write false), as in a reached one",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "return self._closed(db, workspace) is None",
+     "return db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (workspace,)).fetchone() is None"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Core refuses an edit of the person's own message in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "self._refuse_if_closed(db, actor, db.execute(",
+     "(lambda w: self._end(db, w) is None and self._refuse_if_closed(db, actor, w))(db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A thumb given in an archived or completed outcome is kept and answers no ask, as in a reached one",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "self._closed(db, topic[\"workspace_id\"]) is not None",
+     "db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (topic[\"workspace_id\"],)).fetchone() is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A stack keeps its name and joins in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if closed is not None:\n                raise self._closed_refusal(",
+     "            if False:\n                raise self._closed_refusal("
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
   }
  ]
 }
