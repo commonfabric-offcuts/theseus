@@ -2587,6 +2587,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (laptop) await p.point(star); else await tap(p, star);
       await net.drop(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star reached Core; its answer is held'));
       await until(() => net.held().find(entry => stars(entry.payload)), at + ': the page asks Core about the star again');
+      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.startsWith('Not known yet whether starring'))(document.getElementById('app-status'))"), at + ': the status line says the star is not settled');
       // A send held on its way: a move now waits, and the rail says why.
       await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
       if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
@@ -2599,7 +2600,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       if (laptop) await p.point(row); else await tap(p, row);
       await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
-      await until(async () => (await notices547(p)).shown.length === 2, at + ': both notices show');
+      const both = await until(async () => { const seen = await notices547(p); return seen.shown.length === 2 ? seen : null; }, at + ': both notices show').catch(async error => {
+        throw Error(`${error.message}: ${JSON.stringify(await notices547(p))} ${await p.evaluate("JSON.stringify({status:document.getElementById('app-status').outerHTML.slice(0,300),drawer:document.getElementById('rail').className})")}`); });
+      assert.ok(both);
       // Scrolled down the rail (where a laptop pins its notices), and at its top.
       for (const where of ['scrolled', 'top']) {
         await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : 'r.scrollHeight'}})()`);
