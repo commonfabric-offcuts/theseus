@@ -342,7 +342,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     // The writing low on the screen, a little above its foot: the page is
     // scrolled no further than that, so what the reply below takes away
     // above it is more than any scroll can give back.
-    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"end"}); scrollBy(0, 8)');
+    await p.evaluate('(document.querySelector("#inline-writing-body").scrollIntoView({block:"end"}), scrollBy(0, 8))');
     const beforeArrival = await writingPosition(), aboveBefore = await above(), scrolledBefore = await p.evaluate('scrollY');
     assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
     const holds = (after, what) => {
