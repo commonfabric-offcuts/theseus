@@ -2198,6 +2198,147 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  // The person's Save on another device, through Core (docs/message-edit.md): message id edited from revision from to body.
+  const editElsewhere = async (id, from, body, operation) => {
+    const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
+    const b = await (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+      operation_id: operation, kind: 'message.edit', target: { message_id: id },
+      expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, message_revision: from }, args: { body } }) })).json();
+    assert.equal(receipt.status, 'committed', 'the edit elsewhere commits: ' + JSON.stringify(receipt.error ?? null));
+  };
+  // The words a card shows drawn again as they were keep its light on them (item 527): a reply's card is drawn again
+  // with its own unchanged words when the message it answers is edited (its "Replying to" line reads the new words).
+  // The light stays on the same words of the words drawn anew, and Return quotes them.
+  await check('reading a reply\'s card drawn again with its own words, as the message it answers is edited, keeps its lit passage', async () => {
+    const topic = 'reading-passage-same';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['mine', { sender: 'person', body: 'The message the reply answers.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'mine', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.reply);
+    const on = card(ids.reply);
+    await centre(p, on);
+    await moveTo(p, ids.reply, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights on the reply\'s card');
+    await p.evaluate(`window.wordsBefore = [...document.querySelector(${JSON.stringify(words(ids.reply))}).childNodes]`);
+    await editElsewhere(ids.mine, 1, 'The message the reply answers, edited elsewhere.', topic + '-elsewhere');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' > .message-reply-to')})?.textContent.includes('edited elsewhere')`), 'the reply\'s line reads the edited words');
+    assert.equal(await p.evaluate('window.wordsBefore.every(node => !node.isConnected)'), true, 'the reply\'s own words were drawn again');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.reply))}).textContent`), said.join(' '), 'as the same words');
+    assert.equal(await shiningOn(p), said[1] + ' ', 'the light stays on the same words, drawn anew');
+    assert.equal(await p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return Boolean(h&&h.size&&[...h][0].startContainer.isConnected)})()`), true, 'lit on the words as they are drawn now');
+    await shot(p, 'reading-passage-same');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${said[1]} \n\n`, 'Return quotes the passage still lit');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // A quote taken from a card names the revision of the words the card shows, the words it quotes (item 527). A card
+  // still showing an older revision than the Reader that Return opens on (the page has heard of an edit made
+  // elsewhere, and its read of the edited words is slow) quotes that revision's words and names that revision, and
+  // Core records it so; a quote naming the Reader's newer revision would name words it does not hold, which Core
+  // refuses.
+  await check('reading Return on a card still showing an older revision quotes that revision\'s words and names it, though the Reader opens on the newer one', async () => {
+    const topic = 'reading-passage-revision';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const edited = 'New words come first in this edit, longer. Then a second sentence. The end.';
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['mine', { sender: 'person', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.mine);
+    await centre(p, card(ids.mine));
+    await moveTo(p, ids.mine, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    // From here the page's reads of the topic's messages wait unsent, as a slow connection holds them.
+    await p.evaluate("window.waitView = 'topic_messages'");
+    await editElsewhere(ids.mine, 1, edited, topic + '-elsewhere');
+    await until(() => p.evaluate('window.waitingViews.length > 0'), 'the page hears of the edit, and its read of the edited words waits');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent`), said.join(' '), 'the card still shows revision 1');
+    assert.equal(await shiningOn(p), said[1] + ' ', 'with its passage lit');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p)) !== null && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader, the cursor in the reply');
+    assert.equal(await readerOn(p), edited, 'the Reader shows revision 2, the newer one');
+    assert.equal(await replyOf(p), `> ${said[1]} \n\n`, 'the reply quotes the words lit on the card');
+    await p.key('Enter', 4);
+    let sent = null;
+    await until(async () => {
+      const page = await view('topic_messages', { topic_id: topic, direction: 'before', limit: 5 });
+      const reply = page.items.find(item => item.reply_to === ids.mine && item.author_id === facts.actor);
+      if (!reply) return false;
+      sent = await view('source', { source_ref: { kind: 'message', id: reply.id } });
+      return true;
+    }, 'the reply lands in Core');
+    assert.deepEqual(sent.quotes.map(q => [q.source, q.excerpt]), [[{ kind: 'message', id: ids.mine, revision: 1 }, said[1] + ' ']],
+      'the quote names revision 1, the one the card showed and its words come from');
+    await p.evaluate('window.letViews()');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === ${JSON.stringify(edited)}`), 'the card then draws the edited words');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // The focus going to the message's ⋯ menu, opened from its bar or by a right-click on its words, puts a lit passage
+  // out (item 527, docs/interaction.md "The light"): Return there presses a menu item, and quotes nothing.
+  await check('reading a card\'s lit passage goes out as the message\'s ⋯ menu takes the focus, from its bar or a right-click', async () => {
+    const topic = 'reading-passage-menu';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const menu = () => p.evaluate(`(m=>m?{focused:m.contains(document.activeElement),items:[...m.querySelectorAll('[role=menuitem]')].map(b=>b.firstChild.textContent)}:null)(document.querySelector('.message-menu-list'))`);
+    await centre(p, card(ids.alone));
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    await p.point(BAR + ' [data-act="more"]');
+    await until(async () => (await menu())?.focused, 'the bar\'s ⋯ opens the message\'s menu, the focus on its first item');
+    assert.equal(await shiningOn(p), null, 'with the focus in the menu, where Return presses an item, no passage is lit');
+    await shot(p, 'reading-passage-menu-bar');
+    await p.key('Escape');
+    await until(async () => await menu() === null, 'Escape closes the menu');
+    assert.equal(await shiningOn(p), null, 'and lights nothing again');
+    // Back on the words, a passage lights; a right-click on them opens the menu where the pointer is.
+    await moveTo(p, ids.alone, 'Words after');
+    await becomes(() => shiningOn(p), said[2], 'the pointer on the words lights a passage again');
+    const at = await wordsAt(p, ids.alone, 'Words after');
+    for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'right', clickCount: 1 });
+    await until(async () => (await menu())?.focused, 'a right-click on the words opens the message\'s menu, the focus on its first item');
+    assert.equal(await shiningOn(p), null, 'with the focus in the menu a right-click opened, no passage is lit');
+    await shot(p, 'reading-passage-menu-right');
+    await p.key('Escape');
+    await until(async () => await menu() === null, 'Escape closes the menu');
+    assert.equal(await readerOn(p), null, 'nothing opened');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Tab off a lit passage on a dossier's card, to a control of its message, empties the page's light (item 527), as on
+  // a topic's card: CSS.highlights holds no passage, so nothing shows lit where Return would press the control.
+  await check('reading Tab off a lit passage on a dossier\'s card puts the light out, and back on the card it lights again', async () => {
+    const topic = 'reading-passage-dossier-tab';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.reply);
+    const on = card(ids.reply), empty = () => p.evaluate(`(h=>!h||h.size===0)(CSS.highlights.get('lit-passage'))`);
+    const focus = () => p.evaluate(`(c=>{const e=document.activeElement,b=document.querySelector('${BAR}');return e===c?'card':c.contains(e)||b.contains(e)?(e.getAttribute('aria-label')||e.title||e.textContent):e?e.tagName.toLowerCase():null})(document.querySelector(${JSON.stringify(on)}))`);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(on)}).closest('.reply-stack'))`), true, 'the reply\'s card is in a dossier');
+    await centre(p, on);
+    await moveTo(p, ids.reply, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights on the dossier\'s card');
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    await p.key('Tab');
+    await until(async () => !['card', 'body', null].includes(await focus()), 'Tab reaches a control of the message');
+    assert.equal(await empty(), true, `at ${await focus()}, where Return presses the control, CSS.highlights holds no lit passage`);
+    await shot(p, 'reading-passage-dossier-tab');
+    await p.key('Tab', 8);
+    await until(async () => await focus() === 'card', 'Shift-Tab comes back to the card');
+    await moveTo(p, ids.reply, 'Words after');
+    await becomes(() => shiningOn(p), said[2], 'back on the card the passage under the pointer lights again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Shift-click on a link in a card's words opens the link as the browser does, in a new window, as it did before a
   // card's passages lit (item 478); the page leaves it alone, as the Reader leaves a press on a link, and it grows no
   // light. Shift-click on the card's other words still grows the light, and opens nothing. The link goes to a file of
@@ -2227,20 +2368,24 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await becomes(() => shiningOn(p), said.join(' '), 'Shift-click on the card\'s words grows the light from the passage lit to the one under the pointer');
     assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), true, 'the page takes a Shift-click on words from the browser');
     assert.equal(await readerOn(p), null, 'Shift-click on words opens nothing');
-    // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does.
+    // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does. Words of
+    // the passage before it are then selected, as a drag over them selects them: Shift grows a light from words
+    // selected (the Shift-click case above), so a light the Shift-click grew would reach back over that passage, and
+    // differ from the one lit (item 527). The Shift-click lands where the pointer rests, so nothing moves before it.
     await moveTo(p, ids.alone, 'aim.css');
     await becomes(() => shiningOn(p), said[1] + ' ', 'the passage the link is in lights');
+    assert.equal(await selectOn(p, ids.alone, 'before the'), true, 'words of the passage before the link selected');
     const before = await windows.list();
     await shiftClick('aim.css');
+    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
+    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
+    const onLink = await p.evaluate('window.linkFocused === true');
+    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light, from the words selected or the passage lit (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
     assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), false, 'the page leaves a Shift-click on a link to the browser');
     const added = await until(async () => { const now = [...(await windows.list())].filter(([id]) => !before.has(id)); return now.some(([, url]) => url === ELSEWHERE) ? now : null; }, 'Shift-click on the link opens a new window at its address');
     assert.deepEqual(added.map(([, url]) => url), [ELSEWHERE], 'one new window, at the link\'s address');
     for (const [id] of added) await windows.close(id);
     await p.send('Page.bringToFront');
-    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
-    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
-    const onLink = await p.evaluate('window.linkFocused === true');
-    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
     assert.equal(await readerOn(p), null, 'and the card did not open');
     assert.deepEqual(p.errors, []);
     await p.close();
