@@ -2225,6 +2225,12 @@
       "inputs": [],
       "scope": "generated/system/product"
     },
+    "9e92a9772bc89c0957e4b9b362eb87bd9d37e13f9d925970133d9197e4100019": {
+      "inputs": [
+        "tests/fixtures/schema_45.sql"
+      ],
+      "scope": "repository"
+    },
     "9f8f5b134eadb64ffaa07d2d9945f7279f1bbaf7b23e8c45eb9562e175295471": {
       "inputs": [],
       "scope": "generated/system/product"

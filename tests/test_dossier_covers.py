@@ -169,6 +169,7 @@ class DoneCase(CoverCase):
         self.assertIsNone(self.shown(root)["payload"]["done"], "asking back answers nothing")
         word = self.post("Good, the second weekend it is.", reply_to=answer)
         done = self.shown(root, "agent-a")["payload"]["done"]
+        self.assertIsNotNone(done, "the owner's word makes it done")
         self.assertEqual((done["how"], done["by"], done["message_id"]), ("word", "owner", word))
 
     def test_nobody_but_the_owner_makes_it_done(self):
@@ -238,6 +239,7 @@ class WhisperCase(CoverCase):
         word = self.post("Yes, book it.", whisper=True, addressees=["agent-a"], reply_to=answer)
         for reader, expected in (("owner", word), ("agent-a", word), ("agent-b", None)):
             done = self.shown(root, reader)["payload"]["done"]
+            self.assertIsNotNone(done, reader)
             self.assertEqual((done["how"], done["by"], done.get("message_id"), "seq" in done), ("word", "owner", expected, expected is not None), reader)
 
     def rejected_view(self, actor, name, args, code):

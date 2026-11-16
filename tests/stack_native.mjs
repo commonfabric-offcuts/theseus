@@ -7149,7 +7149,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const coverOn = (p, root) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(root)}]');if(!s)return 'no folder';
     const c=s.querySelector(':scope > .dossier-cover');if(!c)return {covered:s.dataset.covered,sheet:null};
     const tab=s.querySelector('.stack-head').getBoundingClientRect(),box=c.getBoundingClientRect(),folder=s.getBoundingClientRect(),
-      next=[...s.children].slice([...s.children].indexOf(c)+1).find(e=>e.getClientRects().length&&e.getBoundingClientRect().height>0),
+      next=[...s.children].slice([...s.children].indexOf(c)+1).flatMap(e=>e.classList.contains('stack-replies')?[...e.children]:[e]).find(e=>e.getClientRects().length&&e.getBoundingClientRect().height>0&&!['absolute','fixed'].includes(getComputedStyle(e).position)),
       prev=c.previousElementSibling,pill=c.querySelector('.row-pill'),label=c.querySelector('.cover-wait .topic-state');
     return {covered:s.dataset.covered,after:prev?.dataset.id??prev?.className,before:c.nextElementSibling?.className.split(' ')[0],
       underTab:box.top>=tab.bottom-0.5,aboveNext:!next||box.bottom<=next.getBoundingClientRect().top+0.5,inside:box.left>=folder.left-0.5&&box.right<=folder.right+0.5,
