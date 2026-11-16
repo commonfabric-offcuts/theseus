@@ -3910,7 +3910,8 @@ class InviteStepCase(MigrationCase):
         self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
         self.assertEqual(sorted(os.listdir(folder)), ["late-scribe.profile.json"])
         given = invite(self.store, "agent-a", self.envelope("Night watch", "coordinator-retypes"), folder)
-        self.assertEqual((given["status"], given["result"]["agent"]["id"], given["sign_in"]["written"]), ("committed", "night-watch", True), given)
+        self.assertEqual(given["status"], "committed", given)
+        self.assertEqual((given["result"]["agent"]["id"], given["sign_in"]["written"]), ("night-watch", True), given)
         self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
 
     def test_a_name_invited_under_324s_id_rule_is_given_back_under_its_id_not_checked_at_the_new_rules_place(self):
@@ -3938,12 +3939,15 @@ class InviteStepCase(MigrationCase):
         # New names get IDs by 525's rule and the old ID stands: Bjørn is bjorn, and Soren, a name of its own, is soren.
         theirs.unlink()
         for name, agent in (("Bjørn", "bjorn"), ("Soren", "soren")):
-            self.assertEqual(invite(self.store, "owner", self.envelope(name, "fresh-" + agent), folder)["result"]["agent"]["id"], agent)
+            fresh = invite(self.store, "owner", self.envelope(name, "fresh-" + agent), folder)
+            self.assertEqual(fresh["status"], "committed", fresh)
+            self.assertEqual(fresh["result"]["agent"]["id"], agent)
         self.assertEqual(self.sql("SELECT id,name FROM actors WHERE id IN ('s-ren','soren','bjorn') ORDER BY id"),
                          [("bjorn", "Bjørn"), ("s-ren", "Søren"), ("soren", "Soren")])
         # With soren taken by another agent, the inviter typing Søren still gets s-ren back, found by its invitation.
         again = invite(self.store, "owner", self.envelope("Søren", "retyped-again"), folder)
-        self.assertEqual((again["status"], again["result"]["agent"]["id"], again["sign_in"]["written"]), ("committed", "s-ren", True), again)
+        self.assertEqual(again["status"], "committed", again)
+        self.assertEqual((again["result"]["agent"]["id"], again["sign_in"]["written"]), ("s-ren", True), again)
 
     def test_someone_elses_file_at_the_invited_agents_own_place_is_refused_before_core_is_asked(self):
         # The place checked before Core is asked is the invited agent's own, s-ren.profile.json, under 324's ID.
