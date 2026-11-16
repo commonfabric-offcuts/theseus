@@ -98,7 +98,10 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await ready(p, s.here);
       await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
       // The person's own writing in the composer, which setting aside leaves as it was.
-      await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Mine, typed here' });
+      // The field takes the keys as the page gives them to it; what this case looks at is the Review list.
+      await p.evaluate(`document.querySelector('#inline-writing-body').focus()`);
+      await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the composer has the keys');
+      await p.send('Input.insertText', { text: 'Mine, typed here' });
       await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value==='Mine, typed here'`), 'typed');
       await p.point('#inline-pending button');
       await until(async () => (await acts(p)).length === 2, 'each reply offers Set aside');
