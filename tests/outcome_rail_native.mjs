@@ -62,7 +62,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const b = await p.box(selector);
     assert.ok(b && b.width > 0 && b.height > 0, `${selector} is shown to tap`);
     const x = b.x + b.width / 2, y = b.y + b.height / 2;
-    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${x}, ${y}))`), true, `nothing covers ${selector}`);
+    const DIAG = `(async()=>{const t=document.querySelector(${JSON.stringify(selector)});const d=e=>e?e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+(e.className&&typeof e.className==='string'?'.'+e.className.trim().split(/\\s+/).join('.'):'')+' in '+[...(function*(n){while(n=n.parentElement)yield n})(e)].slice(0,4).map(n=>n.id||n.classList[0]||n.tagName).join('<'):'null';
+      const one=()=>{const h=document.elementFromPoint(${x},${y});const bar=document.querySelector('.message-bar');const lit=document.querySelector('#messages .lit');const r=e=>e?[...Object.values(e.getBoundingClientRect().toJSON())].map(Math.round).join(','):null;
+        return {ok:t.contains(h),hit:d(h),targetRect:r(t),barHidden:bar?.hidden,barRect:r(bar),bars:document.querySelectorAll('.message-bar').length,lit:lit?lit.dataset.id+' '+r(lit)+' conn='+lit.isConnected:null,
+          vw:innerWidth,vh:innerHeight,sy:scrollY,drawer:document.getElementById('rail').className,backdrop:!document.getElementById('rail-backdrop').hidden,mainInert:document.getElementById('main').inert,status:(n=>n.hidden?null:n.textContent)(document.getElementById('app-status')),
+          dialogs:[...document.querySelectorAll('dialog[open],[popover]:popover-open')].map(d).join('|'),fixed:[...document.querySelectorAll('body *')].filter(e=>{const c=getComputedStyle(e);return (c.position==='fixed'||c.position==='sticky')&&e.getClientRects().length&&c.visibility!=='hidden'}).map(e=>d(e)+' '+r(e)).slice(0,12)}};
+      const a=one();await new Promise(k=>requestAnimationFrame(()=>requestAnimationFrame(k)));const b=one();await new Promise(k=>setTimeout(k,1000));const c=one();return JSON.stringify({now:a,raf2:b,s1:c});})()`;
+    const covered = await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${x}, ${y}))`);
+    if (covered !== true) { const seen = await p.evaluate(DIAG); try { await shot(p, 'diag606-tap-' + selector.replace(/[^a-z]+/gi, '-')); } catch {} assert.fail(`nothing covers ${selector} DIAG606 at ${x},${y}: ${seen}`); }
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
