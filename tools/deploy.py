@@ -654,6 +654,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
                   % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
     for red in (known or {}).get("not_needed") or []:
         print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
+    # Item 553: steps this release check runs that the live policy did not review, named for the next policy to cover.
+    beyond = (known or {}).get("steps_beyond_policy") or []
+    if beyond:
+        print("the release check runs %s, which %s at %s did not review; the next policy covers %s"
+              % (", ".join(beyond), known_reds_check.POLICY, known["live_commit"][:12], "it" if len(beyond) == 1 else "them"))
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})
@@ -734,6 +739,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(not unpassed or accepted, unchecked)
     measured = (releases.train_measurements(trained) if trained is not None
                 else releases.measurements(json.loads(Path(summary).read_text()), accepted))
+    if beyond:
+        measured = dict(measured, steps_beyond_policy=beyond)
     planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None

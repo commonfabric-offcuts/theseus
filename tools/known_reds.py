@@ -21,6 +21,9 @@ Item 482: a red's live_summary may instead name an owner's acceptance, which tak
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
+import tempfile
 
 from tools import release_check
 
@@ -232,6 +235,37 @@ def live_cases(red, live_commit):
     return ended_cases(path.parent, found[0], "the live", before_end_record=True), None
 
 
+# Item 553: what a commit's own tools/release_check.py names, printed by a Python of its own run on a copy of that
+# commit's tools/ (argv[1] is the folder holding it).
+STEPS_AT = ("import json, sys; sys.path.insert(0, sys.argv[1]); from tools import release_check as checked; "
+            "print(json.dumps({'required': list(checked.REQUIRED), "
+            "'native': {'native-' + step.name: step.harness for step in checked.NATIVE_STEPS}}))")
+
+
+def steps_at(root, commit):
+    """Item 553: (the required steps, {native step: its harness}) as commit's own tools/release_check.py names them, read
+    from root's git and run in a Python of its own, never this checkout's; Refused when they cannot be read."""
+    said = "the release check's steps at %s could not be read" % commit[:12]
+    archive = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", commit, "tools"], capture_output=True)
+    if archive.returncode != 0:
+        raise Refused("%s (git archive exit %d): %s" % (said, archive.returncode, archive.stderr.decode(errors="replace").strip()[:300]))
+    with tempfile.TemporaryDirectory() as folder:
+        unpacked = subprocess.run(["tar", "-x", "-C", folder], input=archive.stdout, capture_output=True)
+        if unpacked.returncode != 0:
+            raise Refused("%s (tar exit %d): %s" % (said, unpacked.returncode, unpacked.stderr.decode(errors="replace").strip()[:300]))
+        read = subprocess.run([sys.executable, "-I", "-B", "-c", STEPS_AT, folder], capture_output=True, text=True)
+    try:
+        steps = json.loads(read.stdout) if read.returncode == 0 else None
+    except ValueError:
+        steps = None
+    required, native = (steps.get("required"), steps.get("native")) if isinstance(steps, dict) else (None, None)
+    if not (isinstance(required, list) and required and all(isinstance(name, str) for name in required)
+            and isinstance(native, dict) and all(isinstance(path, str) for path in native.values())
+            and set(native) <= set(required)):
+        raise Refused("%s (exit %d): %s" % (said, read.returncode, (read.stderr or read.stdout).strip()[-300:]))
+    return required, native
+
+
 class Admissions:
     """The reds a policy file admits, read and matched exactly as GitHub's classifier reads and matches them
     (tools/ci_known_reds.py): the policy is base's (the event base: the classifier reads the policy at the pull
@@ -242,17 +276,30 @@ class Admissions:
     each red falls to its live summary), its identity (key(): name, phase, engine, expectedFailure) is an admission of
     that plan, and the fingerprint of its failure (its assertion, values and test-source chain, read at commit) is that
     admission's. The one thing not compared is the runner profile: a local release check does not run on GitHub's
-    runners."""
+    runners. Item 553: load_policy() checks the policy against base's own steps (steps_at()); a policy that reviewed
+    other steps than the candidate's (beyond: the steps the candidate adds) admits nothing, as at an unreviewed plan."""
 
     def __init__(self, policy, root, commit, base):
         from tools import ci_known_reds
         self.ci, self.root, self.commit = ci_known_reds, root, commit
+        # Item 553: the policy is base's, so it is checked against base's own steps, as the classifier, running base's
+        # tools, checks it; this checkout's are the candidate's, compared below.
+        steps = steps_at(root, base)
         try:
-            ci_known_reds.load_policy(policy, root)
+            ci_known_reds.load_policy(policy, root, steps)
         except (ci_known_reds.Refused, KeyError, TypeError, AttributeError, ValueError) as error:
             # A malformed field the classifier would crash on is no more a policy it takes than one it refuses.
             raise Refused("%s at %s is not a policy GitHub's classifier takes (%s)" % (POLICY, base[:12], error))
         self.reds, self.unreviewed = {}, None
+        # The steps the candidate runs beyond those the policy reviewed, by name, for the next policy to cover; and those
+        # it no longer runs. Either way the policy did not review the candidate's check, so it admits nothing.
+        self.beyond = [name for name in release_check.REQUIRED if name not in policy["required"]]
+        dropped = [name for name in policy["required"] if name not in release_check.REQUIRED]
+        if self.beyond or dropped:
+            self.unreviewed = "the steps at %s are not the ones it reviewed: %s" % (commit[:12], "; ".join(
+                ([("it does not review %s" % ", ".join(self.beyond))] if self.beyond else [])
+                + ([("it reviews %s, which %s does not run" % (", ".join(dropped), commit[:12]))] if dropped else [])))
+            return
         try:
             plan, _ = ci_known_reds.select_plan(policy, root, commit, base)
         except ci_known_reds.Refused as error:
@@ -280,7 +327,8 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     live checkout's HEAD, as the deploy reads it. policy(base): the Admissions of POLICY at base, the live HEAD the
     known reds were read beside (the event base, never the candidate), None when that commit keeps none, or Refused when
     it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
-    review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
+    review}], not_needed: [{step, case}]}, and steps_beyond_policy (the steps this commit's release check runs that the
+    policy did not review) when a policy was read; accepted is empty only for a summary that passed."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
     taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [], "acceptances": {}}
@@ -291,6 +339,8 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     if known["live_commit"] != head:
         raise Refused("the known reds were read beside %s, but %s is live" % (known["live_commit"], head))
     admits = policy(head)
+    if admits is not None:
+        taken["steps_beyond_policy"] = admits.beyond
     summary = json.loads(Path(summary_path).read_text())
     failures = candidate_failures(summary, Path(summary_path).parent)
     for step in sorted(failures):

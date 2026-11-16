@@ -324,20 +324,25 @@ def unit_evidence(step, out, expected):
             name + ': reviewed check inventory omitted or duplicated')
 
 
-def load_policy(policy, base_root):
+def load_policy(policy, base_root, steps=None):
+    """The policy, or Refused. steps: (the required step names, {native step: its harness}) of the commit whose policy
+    this is; by default this tool's own, which are the event base's when the base's tools run it, as here. A deploy runs
+    the candidate's tools, so it passes the base's (known_reds.steps_at)."""
+    required, native = steps if steps is not None else (
+        release_check.REQUIRED, {name: step.harness for name, step in NATIVE.items()})
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
     fields = {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'}
     require(fields <= set(policy) <= fields | {'transitions'},
             'invalid baseline fields')
-    require(unique(policy['required'], 'policy required steps') == set(release_check.REQUIRED), 'incomplete reviewed steps')
-    require(set(policy['inventory']) == set(NATIVE) | set(UNITS), 'incomplete reviewed check inventory')
+    require(unique(policy['required'], 'policy required steps') == set(required), 'incomplete reviewed steps')
+    require(set(policy['inventory']) == set(native) | set(UNITS), 'incomplete reviewed check inventory')
     for name, rows in policy['inventory'].items():
         require(isinstance(rows, list) and bool(rows), name + ': empty reviewed inventory')
         require(len({key(r) for r in rows}) == len(rows), name + ': duplicate reviewed identity')
     require(isinstance(policy['source_hashes'], dict) and bool(policy['source_hashes']), 'missing inventory source hashes')
     for path, digest in policy['source_hashes'].items():
         require(blob(source(base_root, policy['source_commit'], path)) == digest, 'inventory source hash differs: ' + path)
-    require({s.harness for s in NATIVE.values()} <= set(policy['source_hashes']), 'inventory omits harness sources')
+    require(set(native.values()) <= set(policy['source_hashes']), 'inventory omits harness sources')
     require(definition_paths(base_root, policy['source_commit']) <= set(policy['source_hashes']),
             'reviewed source set omits test or producer definitions')
     require(isinstance(policy['reds'], list), 'invalid admissions')
@@ -346,7 +351,7 @@ def load_policy(policy, base_root):
         fields = {'step', 'case', 'owner', 'why', 'review', 'observed_profile', 'target_profile',
                   'source_commit', 'evidence_sha256', 'fingerprint', 'completion'}
         require(isinstance(red, dict) and fields <= set(red) <= fields | {'runner_evidence_sha256'}, 'invalid admission fields')
-        require(red['step'] in NATIVE, 'non-browser exception forbidden')
+        require(red['step'] in native, 'non-browser exception forbidden')
         pair = (red['step'], key(red['case']))
         require(pair not in seen, 'duplicate admission')
         seen.add(pair)
@@ -367,7 +372,7 @@ def load_policy(policy, base_root):
             text = source(base_root, red['source_commit'], frame['path']).decode().splitlines()
             matches = [line.strip() for line in text].count(frame['text'])
             require(matches == frame['count'] and 0 <= frame['index'] < matches, 'unverified admission source frame')
-        if NATIVE[red['step']].harness == release_check.COMPOSE:
+        if native[red['step']] == release_check.COMPOSE:
             require(compose_completed(red['completion']), 'baseline Compose completion unattested')
         else:
             require(red['completion'] == {'browserClosed': True, 'fixtureExitCode': 0, 'ended': True},
@@ -381,7 +386,7 @@ def load_policy(policy, base_root):
         require(isinstance(retired, list) and all(isinstance(path, str) and bool(path) for path in retired)
                 and len(set(retired)) == len(retired), 'invalid reviewed source retirements')
         require(isinstance(row['plan'], dict) and 'transitions' not in row['plan'], 'nested plan transitions forbidden')
-        load_policy(row['plan'], base_root)
+        load_policy(row['plan'], base_root, (required, native))
         approved = {json.dumps(red, sort_keys=True) for red in policy['reds']}
         require({json.dumps(red, sort_keys=True) for red in row['plan']['reds']} <= approved,
                 'plan transition cannot add or change failure admissions')

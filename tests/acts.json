@@ -15020,7 +15020,7 @@
    "break": [
     [
      "tools/known_reds.py",
-     "            ci_known_reds.load_policy(policy, root)\n",
+     "            ci_known_reds.load_policy(policy, root, steps)\n",
      "            pass\n"
     ]
    ],
@@ -19434,6 +19434,76 @@
    ],
    "check": {
     "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The deploy checks the live commit's policy against the live commit's own steps, read at that commit, never the candidate's",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            ci_known_reds.load_policy(policy, root, steps)\n",
+     "            ci_known_reds.load_policy(policy, root)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A policy that did not review the candidate's steps admits nothing and refuses nothing, and a red it would have admitted needs its live summary or an owner's acceptance",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if self.beyond or dropped:\n",
+     "        if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The live commit's steps that cannot be read refuse rather than counting as a step list",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if not (isinstance(required, list) and required and all(isinstance(name, str) for name in required)",
+     "    if False and not (isinstance(required, list) and required and all(isinstance(name, str) for name in required)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The deploy's record of its known reds names the steps the candidate's release check adds beyond the live policy",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        taken[\"steps_beyond_policy\"] = admits.beyond\n",
+     "        taken[\"steps_beyond_policy\"] = []\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The release record's measurements name the steps the candidate's release check adds beyond the live policy",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        measured = dict(measured, steps_beyond_policy=beyond)\n",
+     "        measured = dict(measured)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
    }
   }
  ]
