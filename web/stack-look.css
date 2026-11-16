@@ -15,17 +15,22 @@
      > [data-id]             its head's entry (a card, or a fold's card), the
                              card marked .stack-head-card and holding
        .stack-head           the head row: .stack-name (.stack-act), .stack-pen,
-                             .stack-who, .stack-named, .stack-new, .stack-star, .stack-meta
-                             (.stack-repliers, .stack-fresh), .stack-hide
+                             .stack-who, .card-carries (the first message's
+                             marks, aim.css), .stack-named, .stack-new, .stack-star, .stack-meta
+                             (.stack-count, .stack-repliers, .stack-fresh), .stack-hide
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
      > .stack-replies        the replies, oldest first, each an entry; between them
        .stack-join-line      above a joined stack's first message (.stack-join-words, .stack-split)
+       .stack-earlier        first, in an open dossier of more than seven messages: one row for
+                             the earlier ones (.stack-earlier-words, .stack-fresh), item 476
      > .stack-toggle         the header's expand/collapse button (aria-expanded)
      > .stack-placed-line    the reader placed it (.stack-placed-words, .stack-unplace)
    [data-starred=true]       on any message card the reader starred
    [data-folded=true]        on any message card the reader folded, holding
      .message-folded         its one row: .folded-author, .folded-words, .folded-thumb, .folded-cue
    .stack-folded             in a head row: its first message is folded
+   [data-earlier=true]       on a card shown as an earlier message's row this visit (item 476),
+     .message-earlier        its one row: .folded-author, .folded-words
 
    The stack is the folder's body; the head row stands above it as the tab, in
    the room the stack's top margin keeps, so the tab is always two lines high:
@@ -149,8 +154,8 @@
   background:var(--stack-tab-fillet,radial-gradient(circle at 100% 0,transparent calc(var(--stack-r-tab) - .5px),var(--stack-folder) var(--stack-r-tab)))}
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head>.stack-name,.reply-stack>.stack-rename)::before{content:"";position:absolute;inset:0 0 -6px;border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;pointer-events:none;
   clip-path:polygon(-8px -8px,calc(100% + 8px) -8px,calc(100% + 8px) calc(100% - 6px),0 calc(100% - 6px),0 100%,-8px 100%);box-shadow:var(--stack-tab-shadow,none)}
-/* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: the count and
-   who replied give way first. */
+/* The head row's two lines: the name and its pen, a break, then the rest, which never wraps to a third: who replied
+   and what is new give way first, then the first message's marks, then who began it; the count never does (below). */
 .reply-stack:not(.only-new *) .stack-head::after{content:"";order:1;flex-basis:100%;height:0}
 .reply-stack:not(.only-new *) .stack-head>:not(.stack-name,.stack-pen){order:2}
 .reply-stack[data-renaming=true]:not(.only-new *) .stack-head{display:none}
@@ -167,16 +172,39 @@
 }
 /* A touch screen has no pointer to show the pen: the name itself is the handle. */
 @media(hover:none){.stack-pen{display:none}}
-/* The second line, one quiet run joined by "·": who started it, New, the star, then the count, who replied and what is new. */
-.stack-who{flex:none;color:var(--stack-meta-ink)}
-/* A minted name (item 479) says who named it, after who started the dossier. Short of room the count gives way
-   first; only a name too long for the tab is shortened by its ellipsis. */
+/* The second line, one quiet run joined by "·": who started it, the marks of what the first message carries (item 127),
+   a minted name's Named by (item 479), New, the star, then the count, who replied and what is new. It never wraps to a
+   third: New, the star, Folded and the count keep their width, and the parts that can give way start from no width, so the line holds them all, and take
+   the room left in turn, by their weights: who began it first, then the marks, then who replied and what is new. On a
+   narrow tab who replied and what is new give way first, then the marks, whole glyphs dropped from the end (a mark
+   that does not fit wraps below the first line and is clipped; the empty first item holds that line at the run's
+   height and lets even the first mark go), then who began it, cut short, its whole name its tooltip (reply-stacks.mjs);
+   the count always shows, as it did before the marks. What room the marks do not fill sits before them, a space before
+   the glyphs. The count, who replied and what is new are parts of the line themselves: .stack-meta, which holds them
+   as one run of words, lays out as its children (below). */
+.stack-who{flex:10000 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
+.stack-head>.card-carries{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;align-self:center;flex:100 1 0;min-width:0;max-width:max-content;
+  height:var(--stack-meta-lh);overflow:hidden}
+.stack-head>.card-carries::before{content:"";width:0;height:var(--stack-meta-lh)}
+.stack-head .carry{flex:none;background-color:var(--stack-meta-ink)}
+/* A minted name (item 479) says who named it, after the marks of the first message. It keeps its own width ahead of
+   the parts that give way, so short of room who began it, the marks and who replied give way first; only a name too
+   long for the tab is shortened by its ellipsis. The count, New and the star keep theirs. */
 .stack-named{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink);font-style:italic}
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
 .stack-star{flex:none;color:var(--stack-star)}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
+/* On the tab (a compact row keeps .stack-meta whole, above), the count keeps its width and who replied and what is
+   new give way, each a part of the line. */
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta{display:contents}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta::before{content:none}
+/* Each stands on the second line, as the row's own parts do (order 2, above). */
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>*{order:2;margin-left:calc(.3em - .5rem)}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count{flex:none}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>.stack-count::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
+.reply-stack:not([data-compact=true]) .stack-head>.stack-meta>:is(.stack-repliers,.stack-fresh){flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis}
 .stack-fresh{color:var(--stack-new);font-weight:700}
 /* A click anywhere on the tab hides the full message again; its words are kept for a screen reader only. */
 .reply-stack:not(.only-new *) .stack-hide{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -248,6 +276,25 @@
 .stack-folded{flex:none;color:var(--stack-meta-ink);font-style:italic}
 .stack-head>.stack-folded{margin-left:calc(.3em - .5rem)}
 .stack-head>.stack-folded::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-style:normal}
+
+/* An open dossier of more than seven messages (item 476): its newest seven are sheets, and one quiet line at the top of
+   the folder stands for the earlier ones, as wide as its words and 44px tall to touch. A press shows each earlier
+   message as one row, as a folded message reads but saying nothing of a fold, since none is saved; a press on a row
+   shows it whole. Neither takes the read material: a card reads read or unread as it does anywhere. */
+.stack-earlier{align-self:flex-start;display:inline-flex;align-items:center;min-height:2.75rem;margin:0 0 var(--stack-sheet-gap);padding:0 .85rem 0 .7rem;
+  border:0;border-radius:var(--stack-r-sheet);background:transparent;color:var(--stack-folder-ink);font-size:.82rem;font-weight:600;text-align:left;cursor:pointer}
+.stack-earlier::before{content:"";flex:none;width:.4rem;height:.4rem;margin-right:.6rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg)}
+.stack-earlier>.stack-fresh{white-space:pre}
+.stack-earlier:hover{background:var(--stack-folder-deep)}
+.stack-earlier:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}
+.only-new :is(.stack-earlier,.message-earlier){display:none}
+.message-card[data-earlier=true]:not(.only-new *){display:flex;align-items:center;gap:.5rem;min-height:2.75rem;padding:.3rem 1.15rem;cursor:pointer}
+.message-card[data-earlier=true]:not(.only-new *)>:not(.message-earlier):not(.stack-head){display:none}
+.message-earlier{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true]{height:var(--stack-folded-height);min-height:var(--stack-folded-height);padding-block:0;opacity:1;transition:none}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true]>.message-earlier{opacity:1;transition:none}
+.reply-stack:not(.only-new *) .message-card[data-earlier=true][data-stack-covered=true]{padding-bottom:var(--stack-overlap)}
+.reply-stack:not(.only-new *) .message-earlier{color:var(--stack-folded-ink);align-items:center}
 
 /* Quiet edges keep full-strength ink, including agent-only talk: opacity on
    the card or its row would compound and make the words unreadable. */

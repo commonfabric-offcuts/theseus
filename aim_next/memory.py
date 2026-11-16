@@ -47,6 +47,21 @@ WRITERS = {
 }
 
 
+class _Carried:
+    """The images a revise may keep though the writer did not upload them: those the revision it follows carries, and
+    any other one of the page's revisions carried (Undo after × in a card, docs/decks.md "Images in a card"), since
+    whoever may read the page reads it at that revision already. The history is looked up only for an image the
+    revision it follows does not carry, and only for that image, so an ordinary edit reads that revision alone."""
+
+    def __init__(self, db, item_id, current):
+        self.db, self.item_id, self.current = db, item_id, {ref["id"] for ref in current}
+
+    def __contains__(self, media_id):
+        return media_id in self.current or self.db.execute(
+            "SELECT 1 FROM memory_revisions AS r, json_each(r.attachments) AS a WHERE r.item_id=? AND json_extract(a.value,'$.id')=? LIMIT 1",
+            (self.item_id, media_id)).fetchone() is not None
+
+
 class Memory:
     def _memory_scope(self, db, actor, scope, write=False):
         if not isinstance(scope, dict) or set(scope) != {"kind", "id"} or scope["kind"] not in ("topic", "workspace"):
@@ -140,7 +155,7 @@ class Memory:
             _revision(envelope["expected"], "item_revision", revision)
         current = None if creating else db.execute("SELECT attachments,draft FROM memory_revisions WHERE item_id=? AND revision=?",
                                                    (item_id, revision)).fetchone()
-        retained = [] if creating else [ref["id"] for ref in json.loads(current["attachments"])]
+        retained = () if creating else _Carried(db, item_id, json.loads(current["attachments"]))
         title, body, attachments, refs, draft = self._memory_content(db, actor, envelope["args"], retained=retained)
         was = bool(current and current["draft"])
         draft = was if draft is None else draft

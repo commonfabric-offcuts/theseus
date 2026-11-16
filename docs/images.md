@@ -1,7 +1,9 @@
 # Images while writing
 
 How an image gets into a reply or a new message on the topic page and in the
-Reader (`web/image-pick.mjs`, `web/reader.mjs`, `web/inline-composer.mjs`).
+Reader (`web/image-pick.mjs`, `web/reader.mjs`, `web/inline-composer.mjs`). A
+Notebook card takes an image the same ways, pasted, dropped or picked with
+`#img`, and shows it under its words ([decks.md](decks.md#images-in-a-card)).
 Every way in ends in the same place: the image goes through `Uploads`
 (`web/uploads.mjs`), with the same limits, device copy and confirmation as a
 file chosen with Add image.
@@ -44,6 +46,11 @@ goes ahead of thumbnails not yet started, and a thumbnail whose row has gone
 is not read. A sent message's images in the Reader keep their Open button;
 its read does not take a turn, so it can still meet a busy refusal while
 thumbnails load.
+
+A sent message's images also show as thumbnails in its card on the topic
+page and in a dossier, read in the same turns but behind every other read,
+so a composer's thumbnails never wait for a topic's cards, and only once the
+card is drawn near the window (docs/topic-reading.md, "Images in a card").
 
 A narrower row, on a phone, shows no thumbnail. Beside one, the row's words
 would have so little room that their lines change as Check confirmation or

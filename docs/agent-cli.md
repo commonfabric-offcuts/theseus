@@ -406,6 +406,12 @@ neither marks nor clears the mark, and `note revise` on a draft page is
 refused (`FORBIDDEN`, nothing written). Once a person clears the mark, the
 page reads as ever.
 
+A card on a page (a `##` to `######` heading and the words under it,
+[decks.md](decks.md)) shows one of the page's attachments when a line of its
+words holds only `![NAME](attachment:ID)`, ID being the attachment's id as
+`note read` prints it; keep such a line when revising the card, and keep the
+attachment on the page.
+
 `note read` prints `ITEM  "TITLE"  revision N of M by AUTHOR  (outcome W)`,
 a blank line, then the page's words, one line per attachment as `read`
 prints them, and one `[evidence: …]` line per message or page it cites.

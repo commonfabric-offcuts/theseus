@@ -12,7 +12,7 @@ act that did it.
 `?conversation=OUTCOME` is a topic page like any other: the messages, newest
 first, with the same cards, reply stacks, New line and counts, and the writing
 box below them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
-and who answers under it. A card's tags show three quiet dots pulsing in turn while nothing has settled its item ("Waiting for an answer", still under reduced motion; a topic page draws the same dots on the reader's own message until the first reply from anyone else, docs/topic-reading.md, "Waiting for a reply"), then say Answered (with the reply),
+and who answers under it. A card's tags show three quiet dots pulsing in turn while nothing has settled its item ("Waiting for an answer", still under reduced motion), then say Answered (with the reply),
 Taken into a topic (with the topic) or On the pipeline, and, beside any of
 them, Waiting on someone (with the ask). One filter chip, "Only new (N)", at
 the right of the row above the feed (beside "N messages marked unread · Read it"

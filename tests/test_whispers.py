@@ -950,7 +950,9 @@ MESSAGE_READS = {
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
-    "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),
+    "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
+                                  "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
+                                  "operation id that shows nothing of any message", 2),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
                                 "person's whisper replies to (its author and place, never shown), "
                                 "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),
@@ -968,11 +970,9 @@ MESSAGE_READS = {
                            "folds for them, checked by visible() before the fold is recorded; the acts and stars views, under the whisper rule; "
                            "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
                            "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
-                           "someone is outside never moves a position or a sequence they read; whether a message of the reader's own still waits for a "
-                           "reply (item 475): replies to it under VISIBLE, the newest message on the record by anyone else from the "
-                           "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
+                           "someone is outside never moves a position or a sequence they read; a dossier's namer (item 479), from "
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
-                           "whisper never makes its author a namer", 22),
+                           "whisper never makes its author a namer", 18),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

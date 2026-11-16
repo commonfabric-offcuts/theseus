@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -14,10 +15,12 @@ from aim_next import admin, conversation, migrations, recovery_io
 from aim_next import standing_conversation as standing
 from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
-from aim_next.contract import StoreError
+from aim_next.contract import StoreError, _json
+from aim_next.invite import invite
 from aim_next.migrations import MigrationError, migrate
-from aim_next.profile import load_profile
+from aim_next.profile import load_profile, write_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
+from aim_next.validation import _command_envelope
 import test_store as fixtures
 
 
@@ -122,6 +125,10 @@ SCHEMA_BEFORE_SESSION = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" %
 # here once, so a renumbering of the step changes only these two and the fixture's file name.
 BEFORE_JUDGMENT, JUDGMENT_VERSION = SESSION_VERSION, str(int(SESSION_VERSION) + 1)
 SCHEMA_BEFORE_JUDGMENT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_JUDGMENT)).read_text().splitlines()
+# The step that keeps who invited each agent into which outcome (item 525) follows the judgment's, so the layout
+# before it is version 42's, read from a fresh instance of release 81's code (e73e6e1e), where 324 went live.
+BEFORE_INVITES, INVITES_VERSION = JUDGMENT_VERSION, str(int(JUDGMENT_VERSION) + 1)
+SCHEMA_BEFORE_INVITES = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_INVITES)).read_text().splitlines()
 DELIVERIES_BEFORE_EDIT = ("CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), "
                           "recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), "
                           "state TEXT NOT NULL DEFAULT 'pending', topic_id TEXT, UNIQUE(message_id,recipient_id))")
@@ -149,6 +156,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The invitations' version keeps who invited each agent into which outcome: before it, no one is known to have.
+        db.execute("DROP TABLE agent_invitations")
+        if version == BEFORE_INVITES:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The judgment's version keeps the hosted judgment attached to a release beside its record.
         db.execute("DROP TABLE release_judgments")
         if version == BEFORE_JUDGMENT:
@@ -1931,9 +1943,11 @@ def everything(path):
 def horizon_taken(upgraded, stored):
     """Takes the session step's horizon out of an upgraded store's rows: the one row a step up writes, the last
     message sequence the older version had (0 with none), so every agent reader of those messages counts as handed
-    them (docs/message-edit.md, "What counts as handed")."""
+    them (docs/message-edit.md, "What counts as handed"). The invitations' step after it adds a table, and no row for
+    records that hold no invitation."""
     sequences = [row[0] for row in stored.get("messages", [])]
     assert upgraded.pop("message_edit_horizon") == [(max(sequences, default=0),)], "the horizon is the last message"
+    assert upgraded.pop("agent_invitations") == [], "no invitation is on these records, so none is filled in"
     return upgraded
 
 
@@ -1958,7 +1972,8 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_BLOCKS, SCHEMA_BEFORE_BLOCKS),
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
-                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT))
+                     (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
+                     (BEFORE_INVITES, SCHEMA_BEFORE_INVITES))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3560,7 +3575,7 @@ class EditStepCase(MigrationCase):
         after = everything(self.path)
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
                          "every delivery keeps its seq and id, at revision 1")
-        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon"):
+        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations"):
             after.pop(table)
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's step adds an empty table")
         self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
@@ -3621,14 +3636,15 @@ class JudgmentStepCase(MigrationCase):
         return self.store.attach_judgment(20, {"head": "a" * 40, "producer_runs": [found], "verdict_checks": [dict(found, kind="check")],
                                                "audit": "m-audit"})
 
-    def test_the_step_follows_the_sessions_and_the_head_is_its_version(self):
+    def test_the_step_follows_the_sessions_and_the_invitations_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
         self.assertIn((BEFORE_JUDGMENT, JUDGMENT_VERSION), steps)
         self.assertEqual(steps[steps.index((BEFORE_SESSION, SESSION_VERSION)) + 1], (BEFORE_JUDGMENT, JUDGMENT_VERSION),
                          "40->41 is the step before 41->42")
         self.assertEqual([step for step in steps if step[0] == BEFORE_JUDGMENT or step[1] == JUDGMENT_VERSION],
                          [(BEFORE_JUDGMENT, JUDGMENT_VERSION)], "one step leaves 41 and one reaches 42")
-        self.assertEqual(SCHEMA_VERSION, JUDGMENT_VERSION)
+        self.assertEqual(steps[steps.index((BEFORE_JUDGMENT, JUDGMENT_VERSION)) + 1], (BEFORE_INVITES, INVITES_VERSION),
+                         "the invitations' step follows it")
 
     def test_upgrade_keeps_an_open_edit_session_and_what_agents_were_handed_and_the_session_stays_live(self):
         """A store at 41 with an edit session open, its delivery held, an exposure and the horizon: the step up keeps
@@ -3645,10 +3661,11 @@ class JudgmentStepCase(MigrationCase):
         self.assertEqual(held, 1, "agent-a's delivery of the message is held")
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
-                                          "schema_version": JUDGMENT_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         after = everything(self.path)
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's table exists, empty")
+        self.assertEqual(after.pop("agent_invitations"), [], "and the invitations' step after it fills none")
         for table in ("message_edit_sessions", "message_exposures", "message_edit_horizon", "deliveries"):
             self.assertEqual(after[table], stored[table], "%s is kept as it was" % table)
         self.assertEqual(after, stored, "every row of every table is kept")
@@ -3668,10 +3685,10 @@ class JudgmentStepCase(MigrationCase):
         self.recorded()
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_JUDGMENT,
-                                          "schema_version": JUDGMENT_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         after = everything(self.path)
-        self.assertEqual(after.pop("release_judgments"), [])
+        self.assertEqual((after.pop("release_judgments"), after.pop("agent_invitations")), ([], []))
         self.assertEqual(after, stored, "every row is kept")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertTrue(self.attach()["attached"])
@@ -3695,7 +3712,7 @@ class JudgmentStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], JUDGMENT_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
 class SessionStepCase(MigrationCase):
@@ -3726,13 +3743,14 @@ class SessionStepCase(MigrationCase):
         stored = everything(self.path)
         top = self.sql("SELECT max(seq) FROM messages")[0][0]
         self.assertGreater(top, 0)
+        # Upgraded to the head, through the invitations' step, which adds a table and no row.
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_SESSION,
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
         after = everything(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
-        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures")), ([], []))
+        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations")), ([], [], []))
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's step, run next, adds an empty table")
         self.assertEqual(after, stored, "every row of every table is kept")
         # A fresh instance has horizon 0.
@@ -3809,6 +3827,204 @@ class SessionStepCase(MigrationCase):
         self.assertEqual(self.sql("SELECT seq FROM message_edit_horizon"), self.sql("SELECT max(seq) FROM messages"),
                          "every message before the second upgrade counts as handed: over-correcting, never missing one")
 
+class InviteStepCase(MigrationCase):
+    """An instance at the judgment's version (42), as release 81 leaves it, where agents are invited from an outcome's
+    page (item 324) and no one's invitation is kept: the invitations' step (42->43) keeps every row, matches a fresh
+    instance, and steps back only while no one has been invited (item 525, docs/agents.md "Inviting an agent")."""
+
+    VERSION, FIXTURE = BEFORE_INVITES, SCHEMA_BEFORE_INVITES
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_INVITES)
+
+    def invite(self, name):
+        version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        receipt = self.command("workspace.agent_invite", {"name": name, "harness": "codex"}, {"workspace_id": "w1"}, {"workspace_revision": version})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def recorded_at_42(self, actor, op, envelope, receipt):
+        """A receipt among the operations as release 81's Store.command records it, under its request's fingerprint."""
+        fingerprint = hashlib.sha256(_json(_command_envelope(envelope)).encode("utf-8")).hexdigest()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op, fingerprint, envelope["kind"], _json(receipt)))
+
+    def envelope(self, name, op):
+        version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        return {"v": 1, "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite",
+                "target": {"workspace_id": "w1"}, "expected": {"workspace_revision": version, "authority": dict(self.pin)},
+                "args": {"name": name, "harness": "codex"}}
+
+    def invited_at_42(self, name, agent, op="invite-at-42", actor="owner"):
+        """actor invites an agent from the page as release 81 does it (item 324): the agent registered under the ID
+        324's rule gave it, on w1's team, the outcome's version advanced and the committed receipt recorded, and no
+        invitation row, since version 42 keeps none. Returns the request, for sending again."""
+        envelope = self.envelope(name, op)
+        version = envelope["expected"]["workspace_revision"] + 1
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (agent, "agent", name))
+            db.execute("INSERT INTO workspace_members VALUES ('w1',?)", (agent,))
+            db.execute("UPDATE workspaces SET version=? WHERE id='w1'", (version,))
+        self.recorded_at_42(actor, op, envelope, {
+            "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite", "status": "committed",
+            "recorded": True, "result": {"workspace_id": "w1", "title": "Isolated test", "version": version, "harness": "codex",
+                                         "agent": {"id": agent, "name": name, "kind": "agent"}},
+            "affected": [{"kind": "workspace", "id": "w1", "version": version}]})
+        return envelope
+
+    def refused_at_42(self, actor, name, op, code):
+        """A refused invitation as release 81 records it: no result, nothing registered."""
+        envelope = self.envelope(name, op)
+        self.recorded_at_42(actor, op, envelope, {
+            "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite", "status": "rejected",
+            "recorded": True, "result": None, "affected": [], "error": {"code": code, "message": "Refused.", "retryable": False}})
+
+    def folder(self):
+        folder = Path(self.temp.name).resolve() / "profiles"
+        folder.mkdir(mode=0o700, exist_ok=True)
+        return folder
+
+    def test_an_agent_invited_at_42_is_given_back_to_its_inviter_after_the_upgrade_with_its_sign_in(self):
+        # 324 live: the owner invites Late scribe; the answer is lost, or the sign-in file is not written; a reload forgets
+        # the request. Release 81 refuses the name typed again (NAME_TAKEN) and no sign-in file exists. After the upgrade
+        # the same person typing it in the same outcome gets that agent back, and its sign-in file is written.
+        self.invited_at_42("Late scribe", "late-scribe")
+        # The coordinator invites one too: the receipt says who invited it, not the outcome's owner.
+        self.invited_at_42("Night watch", "night-watch", op="coordinator-invites", actor="agent-a")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder, actors = self.folder(), self.sql("SELECT * FROM actors ORDER BY id")
+        receipt = invite(self.store, "owner", self.envelope("Late scribe", "retyped"), folder)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations ORDER BY agent_id"),
+                         [("late-scribe", "w1", "owner"), ("night-watch", "w1", "agent-a")], "the upgrade filled each invitation from its receipt")
+        self.assertEqual(receipt["result"]["agent"], {"id": "late-scribe", "name": "Late scribe", "kind": "agent"})
+        self.assertTrue(receipt["sign_in"]["written"], receipt)
+        self.assertEqual(load_profile(folder / "late-scribe.profile.json").actor_id, "late-scribe")
+        self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
+        # Anyone else typing that name is still refused: the coordinator, though it organises the outcome.
+        refused = invite(self.store, "agent-a", self.envelope("Late scribe", "coordinator-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        # Night watch is the coordinator's to have back, and the owner typing it is refused.
+        refused = invite(self.store, "owner", self.envelope("Night watch", "owner-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        self.assertEqual(sorted(os.listdir(folder)), ["late-scribe.profile.json"])
+        given = invite(self.store, "agent-a", self.envelope("Night watch", "coordinator-retypes"), folder)
+        self.assertEqual(given["status"], "committed", given)
+        self.assertEqual((given["result"]["agent"]["id"], given["sign_in"]["written"]), ("night-watch", True), given)
+        self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
+
+    def test_a_name_invited_under_324s_id_rule_is_given_back_under_its_id_not_checked_at_the_new_rules_place(self):
+        # 324 cut IDs as [a-z0-9] without taking accents off, so Søren was registered s-ren; 525's rule makes soren. The
+        # server finds the agent through its invitation, so what is at soren.profile.json (here the coordinator's own
+        # sign-in file) is not looked at, retyped as a new request or the same request sent again after a lost answer.
+        sent = self.invited_at_42("Søren", "s-ren")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        # Someone else typing Søren is refused, and nothing is written.
+        refused = invite(self.store, "agent-a", self.envelope("Søren", "coordinator-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        self.assertEqual(os.listdir(folder), [])
+        theirs = folder / "soren.profile.json"
+        write_profile(theirs, self.path, "test-instance", "agent-a", binding=self.binding)
+        held, actors = theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")
+        for envelope in (self.envelope("Søren", "retyped"), sent):
+            receipt = invite(self.store, "owner", envelope, folder)
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual((receipt["result"]["agent"], receipt["sign_in"]["written"], receipt["sign_in"]["path"]),
+                             ({"id": "s-ren", "name": "Søren", "kind": "agent"}, True, str(folder / "s-ren.profile.json")))
+        self.assertEqual(load_profile(folder / "s-ren.profile.json").actor_id, "s-ren")
+        self.assertEqual((theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")), (held, actors), "kept, and no one registered")
+        # New names get IDs by 525's rule and the old ID stands: Bjørn is bjorn, and Soren, a name of its own, is soren.
+        theirs.unlink()
+        for name, agent in (("Bjørn", "bjorn"), ("Soren", "soren")):
+            fresh = invite(self.store, "owner", self.envelope(name, "fresh-" + agent), folder)
+            self.assertEqual(fresh["status"], "committed", fresh)
+            self.assertEqual(fresh["result"]["agent"]["id"], agent)
+        self.assertEqual(self.sql("SELECT id,name FROM actors WHERE id IN ('s-ren','soren','bjorn') ORDER BY id"),
+                         [("bjorn", "Bjørn"), ("s-ren", "Søren"), ("soren", "Soren")])
+        # With soren taken by another agent, the inviter typing Søren still gets s-ren back, found by its invitation.
+        again = invite(self.store, "owner", self.envelope("Søren", "retyped-again"), folder)
+        self.assertEqual(again["status"], "committed", again)
+        self.assertEqual((again["result"]["agent"]["id"], again["sign_in"]["written"]), ("s-ren", True), again)
+
+    def test_someone_elses_file_at_the_invited_agents_own_place_is_refused_before_core_is_asked(self):
+        # The place checked before Core is asked is the invited agent's own, s-ren.profile.json, under 324's ID.
+        self.invited_at_42("Søren", "s-ren")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        write_profile(folder / "s-ren.profile.json", self.path, "test-instance", "agent-a", binding=self.binding)
+        operations = self.sql("SELECT count(*) FROM operations")
+        receipt = invite(self.store, "owner", self.envelope("Søren", "retyped"), folder)
+        self.assertEqual((receipt["status"], receipt["recorded"], (receipt.get("error") or {}).get("code")), ("rejected", False, "SIGN_IN_TAKEN"), receipt)
+        self.assertIn("s-ren.profile.json", receipt["error"]["message"])
+        self.assertEqual(self.sql("SELECT count(*) FROM operations"), operations, "Core was not asked")
+
+    def test_a_fresh_soren_invited_after_the_upgrade_gets_525s_id(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        receipt = invite(self.store, "owner", self.envelope("Søren", "fresh"), folder)
+        self.assertEqual((receipt["result"]["agent"]["id"], receipt["sign_in"]["path"]), ("soren", str(folder / "soren.profile.json")), receipt)
+        self.assertEqual(load_profile(folder / "soren.profile.json").actor_id, "soren")
+
+    def test_a_receipt_that_never_committed_fills_no_invitation_and_the_step_keeps_every_row(self):
+        self.refused_at_42("agent-b", "Sneaky helper", "refused-forbidden", "FORBIDDEN")
+        self.refused_at_42("owner", "agent-a", "refused-taken", "NAME_TAKEN")
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade()["migrated"], True)
+        after = everything(self.path)
+        self.assertEqual(after.pop("agent_invitations"), [], "a refusal registered no one, so it invited no one")
+        self.assertEqual(after, stored, "every row of every table is kept")
+
+    def test_the_step_follows_the_judgments_and_the_head_is_its_version(self):
+        steps = [step[:2] for step in migrations.STEPS]
+        self.assertEqual(steps[-2:], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION)])
+        self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
+                         [(BEFORE_INVITES, INVITES_VERSION)], "one step leaves 42 and one reaches 43")
+        self.assertEqual((BEFORE_INVITES, INVITES_VERSION, SCHEMA_VERSION), ("42", "43", "43"))
+
+    def test_a_store_release_81_left_at_42_gains_the_invitations_once_upgraded(self):
+        # Release 81 (324 live) stores version 42 without agent_invitations: the upgrade must still create it, so a
+        # step numbered from 41 again, which a store at 42 never runs, leaves the live store without it.
+        self.assertEqual((self.metadata()["schema_version"], schema(self.path)), ("42", frozen(SCHEMA_BEFORE_INVITES)))
+        migrate(self.path, "test-instance", self.binding)
+        with sqlite3.connect(str(self.path)) as db:
+            tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        self.assertIn("agent_invitations", tables, "the invitations' step ran on a store release 81 left at 42")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.invite("Late scribe")["agent"]["id"], "late-scribe")
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")])
+
+    def test_upgrade_keeps_every_row_knows_no_invitation_and_matches_a_fresh_instance(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_INVITES,
+                                          "schema_version": INVITES_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("agent_invitations"), [], "no agent is known to have been invited before the step")
+        self.assertEqual(after, stored, "every row of every table is kept")
+
+    def test_step_back_is_refused_once_an_agent_is_invited_and_restores_the_layout_while_none_is(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"], "nothing invited yet")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_INVITES))
+        self.assertEqual(everything(self.path), stored)
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.invite("Late scribe")
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")])
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], INVITES_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -3871,6 +4087,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(EditStepCase, _name, None)
     if _name.startswith("test_") and _name not in SessionStepCase.__dict__:
         setattr(SessionStepCase, _name, None)
+    if _name.startswith("test_") and _name not in InviteStepCase.__dict__:
+        setattr(InviteStepCase, _name, None)
     if _name.startswith("test_") and _name not in JudgmentStepCase.__dict__:
         setattr(JudgmentStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:

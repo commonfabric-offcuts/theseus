@@ -205,69 +205,6 @@ def act_fields(db, actor, items):
         item["stack_position"] = positions[item["id"]]
 
 
-# Where the rule of a message waiting for a reply begins (item 475, docs/topic-reading.md, "Waiting for a reply"):
-# the sequence of the first message posted by a release that holds it, written once, by that post, and never moved.
-# A message before it was in the store when the rule shipped and never waits, so nothing already there starts
-# pulsing; a store no such release has posted to has none, and no message there waits.
-WAIT_FROM_KEY = "reply_wait_from_seq"
-
-
-def record_wait_start(db, seq):
-    """Called by every post (Conversation._publish) with its message's sequence: the first one records where the
-    rule of waiting for a reply begins; every later one leaves it as it is."""
-    db.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)", (WAIT_FROM_KEY, str(seq)))
-
-
-def awaiting_fields(db, actor, topic, items):
-    """Add `awaiting_reply` to every item of one page, after act_fields has placed each in its dossier (item 475,
-    docs/topic-reading.md, "Waiting for a reply"). True on a message of the reader's own, on the record (not a
-    whisper), posted from where the rule begins (WAIT_FROM_KEY), in a topic that is not an outcome's conversation,
-    that an agent received (a delivery of its first revision to an agent: one it was addressed to, or one taking part
-    and switched on when it was sent), until the first reply from anyone else. A reply is what Theseus already reads
-    as answering a message: a message by someone else the reader can see after it in its dossier, one whose reply_to
-    names it wherever it is stacked (as the Conversation's Answered reads an answer), a message on the record by
-    someone else after it that names the reader (an Ask or a Tell to them), or an agent's thumbs-up on it, its "got
-    it" (one given counts after it is taken back: the first reply was made). False on every other message. It is read
-    from what is stored, never stored: showing it changes nothing."""
-    start = db.execute("SELECT value FROM metadata WHERE key=?", (WAIT_FROM_KEY,)).fetchone()
-    own = [item for item in items if item["author_id"] == actor and not item.get("whisper")
-           and start is not None and item["seq"] >= int(start[0])]
-    received, answered, named = set(), set(), None
-    if own and topic["kind"] != "conversation":
-        ids = [item["id"] for item in own]
-        marks = ",".join("?" * len(ids))
-        received = {row[0] for row in db.execute(
-            "SELECT DISTINCT d.message_id FROM deliveries d JOIN actors a ON a.id=d.recipient_id "
-            "WHERE d.message_id IN (%s) AND d.revision=1 AND a.kind='agent'" % marks, ids)}
-        answered = {row[0] for row in db.execute(
-            "SELECT DISTINCT m.reply_to FROM messages m INDEXED BY message_reply_links WHERE m.reply_to IN (%s) "
-            "AND m.author_id<>:actor AND %s" % (",".join(":m%d" % n for n in range(len(ids))), VISIBLE),
-            dict({"actor": actor}, **{"m%d" % n: mid for n, mid in enumerate(ids)}))}
-        answered |= {row[0] for row in db.execute(
-            "SELECT DISTINCT r.message_id FROM message_reactions r JOIN actors a ON a.id=r.actor_id "
-            "WHERE r.message_id IN (%s) AND r.kind='thumb' AND a.kind='agent'" % marks, ids)}
-        # The newest message on the record by anyone but the reader, from the topic's summary (work.py: the latest
-        # message, or the latest by someone other than its author): a message naming the reader can be no newer, so
-        # what is read below lies between the reader's oldest message here and it, however the topic grows after.
-        newest = db.execute("SELECT CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END FROM topic_summaries s "
-                            "LEFT JOIN messages l ON l.id=s.latest_message_id LEFT JOIN messages o ON o.id=s.other_message_id "
-                            "WHERE s.topic_id=:topic", {"actor": actor, "topic": topic["id"]}).fetchone()
-        lowest = min(item["seq"] for item in own)
-        if newest is not None and newest[0] is not None and newest[0] > lowest:
-            named = db.execute("SELECT max(n.seq) FROM message_addressees n CROSS JOIN messages m ON m.seq=n.seq "
-                               "WHERE n.topic_id=? AND n.actor_id=? AND n.seq>? AND n.seq<=? AND m.author_id<>? AND m.private_to IS NULL",
-                               (topic["id"], actor, lowest, newest[0], actor)).fetchone()[0]
-    others = {}
-    for item in items:
-        item["awaiting_reply"] = False
-        if item["id"] not in received or item["id"] in answered or named is not None and named > item["seq"]:
-            continue
-        root = item["stack_position"]["root_id"]
-        if root not in others:
-            others[root] = _dossier(db, actor, root)[1]
-        item["awaiting_reply"] = others[root] is None or others[root] < item["seq"]
-
-
 class StackRoots:
     def __init__(self, db, actor):
         self.db, self.actor, self.roots = db, actor, {}

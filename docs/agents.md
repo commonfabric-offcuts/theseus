@@ -273,15 +273,52 @@ the invitation as one act, `workspace.agent_invite`:
 - Only the outcome's owner or its coordinator may take it, whatever a page
   shows: anyone else, a member too, is refused `FORBIDDEN` ("Only the
   outcome's owner or its coordinator can invite an agent to it.").
-- The agent's ID comes from its name: its ASCII letters and digits, lower
+- The agent's ID comes from its name: its Latin letters and digits, lower
   case, in words joined by hyphens ("Release scribe" is `release-scribe`).
-  The name is kept with its spaces collapsed. A name that has no letter or
-  digit for an ID is refused `NAME_UNUSABLE`, an empty one `NAME_REQUIRED`,
-  and one longer than 60 characters `NAME_TOO_LONG`.
+  Accents are taken off first, in Unicode's compatibility form (NFKD), so
+  "Zoë" is `zoe` and "Ça va" is `ca-va`. A Latin letter that form leaves
+  whole is written as the letter its Unicode name says it is made from:
+  "Søren" is `soren`, "Łukasz" `lukasz`, "Đorđe" `dorde`, "Yılmaz" `yilmaz`,
+  "Æsir" `aesir` and "Œuvre" `oeuvre`; a few have a spelling of their own
+  (þ is th, ð d, ŋ ng, ß ss, ə e), so "Þór" is `thor` and "Straße"
+  `strasse`. Letters of other scripts are not part of an ID. A plain name
+  keeps the ID it always had. An
+  ID longer than 40 characters keeps its first 31 characters (less a hyphen
+  at the end) and ends with a hyphen and the first 8 hexadecimal digits of the
+  whole ID's SHA-256 digest, so two long names that differ only past the cut
+  get IDs of their own. The
+  name is kept with its spaces collapsed. A name that has no Latin letter or
+  digit for an ID is refused `NAME_UNUSABLE`, an empty one `NAME_REQUIRED`, and one
+  longer than 60 characters `NAME_TOO_LONG`.
 - A name or ID someone already has (any actor, ignoring case) is refused
-  `NAME_TAKEN`, saying a free name to choose instead ("There is already
-  someone called Release scribe here. Choose another name, such as Release
-  scribe 2."). The page keeps the name, selected, to be changed in place.
+  `NAME_TAKEN`, naming whoever has it, and a free name to choose instead
+  ("There is already someone called Release scribe here. Choose another name,
+  such as Release-Scribe! 2." for "Release-Scribe!"). The page keeps the
+  name, selected, to be changed in place.
+- The same name typed again by the person whose invitation registered the
+  agent, in the outcome it was invited to, while the agent is still on that
+  team and enabled and no one else has its name, gives that agent back: a new request (a reload, another outcome and back, or
+  another device forgets the first one) is committed with the agent as
+  recorded, and nothing is registered or added again, so the outcome's
+  version stands and no change is written. Its result carries this request's
+  `harness`, for the prompt. The agent is found by its invitation and its
+  name, whatever rule made its ID: release 81 kept only ASCII letters, so
+  "Søren" invited then is `s-ren`, and the same person typing "Søren" gets
+  `s-ren` back, even once someone else has `soren`. Anyone else typing the name (the coordinator
+  too), the same person in another outcome (even one whose team the
+  agent is on), or after the agent has left the team or been disabled, is refused
+  `NAME_TAKEN`. Core keeps who invited each agent into which
+  outcome in `agent_invitations` (schema version 43). Release 81 (version
+  42) invited agents from the page without keeping by whom, so the step to 43
+  fills the table from the committed `workspace.agent_invite` receipts
+  already on the record: who invited which agent, under the ID it was
+  registered with, into which outcome. An agent invited then is given back to
+  its inviter like any other, with its sign-in file written; a refused
+  invitation registered no one and fills nothing.
+- A team already at its limit (128 members, its owner included) refuses a new
+  agent, `TOO_MANY_WORKSPACE_MEMBERS` ("This outcome's team is full: it has
+  128 members, its owner included."); an agent given back adds no one, so a
+  full team still gives it back.
 - It registers the agent (kind `agent`, enabled) and adds it to the team in
   the same transaction, as `workspace.member_set` would: the outcome's
   version advances and its change keys are written, and the agent is not one
@@ -304,15 +341,30 @@ with `watch --once`. A copy glyph puts the prompt on the clipboard; where the
 browser refuses, the page says so and selects the prompt.
 
 - A refused invitation writes no file.
-- A file already in the new agent's place that binds anyone else is never
-  overwritten or adopted: the server refuses before asking Core,
-  unrecorded, `SIGN_IN_TAKEN`. A server started without a sign-in folder
-  refuses every invitation, `NO_SIGN_IN_FOLDER`.
+- A file already in the new agent's place that is someone else's is never
+  overwritten or adopted: one that binds another actor (the coordinator's
+  own sign-in file too, whole and valid here), another instance, another
+  database or another authority; one that holds anything but this agent's
+  own sign-in; and anything in its place that is not a private regular file
+  of this user's (a file others can read, a pipe, a folder, or a link,
+  wherever it leads). A retry of either kind, the same request or the same
+  name typed again, is refused the same way. The server refuses before asking Core, unrecorded,
+  `SIGN_IN_TAKEN`. The place it looks at is the one for the agent Core will
+  answer with, read in a short read before the act: the agent this same
+  request's recorded receipt names, else the agent given back to this
+  inviter (`s-ren.profile.json` for Søren above, never `soren.profile.json`),
+  else the ID the name makes. A server started without a sign-in folder refuses every
+  invitation, `NO_SIGN_IN_FOLDER`.
 - An answer that never came keeps the exact request, and the next Return
   sends it again; so does Try again after a file that could not be written.
   Core answers the same operation with its recorded receipt, so nothing is
   registered twice, and the server writes the file that receipt names (a
-  file already there for that agent is kept as it is).
+  file already there for that agent is kept as it is). After a reload, the
+  same name typed again does the same as a new request (above).
+- A write cut short (a full disk after the file was created) leaves a file
+  that holds the beginning of this agent's own sign-in, or nothing: private,
+  this user's, and exactly the first bytes `profile.write_profile` writes for
+  it. The next attempt for that agent removes it and writes the file whole.
 - The page asks again at the revision Core names, as a new request, when
   someone else changed the team at the same moment.
 

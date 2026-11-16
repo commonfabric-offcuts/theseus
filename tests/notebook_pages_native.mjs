@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
+import { cardImageChecks } from './notebook_card_images_native.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages are listed on the right rail of a topic (All of this outcome) and of
@@ -123,6 +124,12 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await until(async()=>(await current()).attachments.length===2,'picked image is copied, published and saved to the same page');
     assert.equal((await current()).body.includes('#imgnotebook-chart'),false,'the picker token is removed from the actual saved body');
     assert.ok((await current()).body.includes('Writing.'),'picking an image preserves the surrounding words');
+    // Picked while a card is written, the image goes into that card (decks.md, "Images in a card"); pasted in Text, it
+    // is attached to the page with no line, as before.
+    const [pasted,picked]=(await current()).attachments;
+    await until(async()=>(await current()).body.includes(`![notebook-chart.png](attachment:${picked.id})`),'the card names the image picked into it');
+    assert.equal((await current()).body,`## First\n\nWriting.\n\n![notebook-chart.png](attachment:${picked.id})\n`);
+    assert.equal(pasted.name,'notebook-paste.png');
     await p.point('.notebook-views button:first-child');
     await shot(p,'notebook-writing-images');
     assert.deepEqual(p.errors,[]);await p.close();
@@ -483,7 +490,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // The Reader's ⋯ at a revision copies its links and offers no Edit page.
       p = await opened('nb-reader-menu-' + label, `${facts.origin}/?topic=${read.topic_id}&page=${theirs}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Their page'`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Copy Link to Revision 1'), 'the ⋯ opens');
       assert.equal((await menuItems(p)).includes('Edit page'), false, 'no Edit page for a reader Core does not let write');
@@ -515,7 +522,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // And the Reader's ⋯ offers its owner Edit page.
       p = await opened('nb-owner-menu-' + label, `${facts.origin}/?topic=${own.topic_id}&page=${made.id}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(name)}`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Edit page'), 'Edit page for the topic\'s owner');
       assert.deepEqual(p.errors, []); await p.close();
@@ -1509,4 +1516,6 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   });
   // A page in the composer over the feed (item 396), in a module of its own.
   await notebookSheetChecks({ check, page, until, control, view, facts, shot });
+  // Images in a card (item 321), in a module of its own.
+  await cardImageChecks({ check, page, until, control, view, facts, shot });
 }

@@ -7,6 +7,7 @@ from .authority import AuthorityError
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import INTENT_REQUIRED
 from . import addressing, whispers
+from .topic_reading import writing_version
 
 
 DRAFT_SCHEMA = [
@@ -49,6 +50,12 @@ def _topic_composition(ref, topic_id):
 
 
 class Drafts:
+    def _tell_writing(self, db, actor, ref):
+        """The person's private writing on a message changed: their own changes say so, keyed by the message, so a
+        page showing its card reads whether it now has their note or saved reply (docs/topic-reading.md, item 127)."""
+        if isinstance(ref, dict) and ref.get("kind") == "message":
+            self._change(db, "actor", actor, "yours", ref["id"], writing_version(db, actor, ref["id"]))
+
     def _as_shown(self, db, actor, topic_id, payload):
         """A draft's writing as its person last saw it: one saved before TELL_FIRST that names exactly one agent in a
         topic, by its addressees or its leading @names, and says neither whisper, ask nor tell, is their Whisper."""
@@ -162,6 +169,7 @@ class Drafts:
             db.execute("INSERT INTO drafts VALUES (?,?,?,?,?,?,?)",
                        (draft_id, actor, source_key, topic_id, 1, generation, _json(payload)))
         self._change(db, "actor", actor, "draft", draft_id, revision + 1)
+        self._tell_writing(db, actor, ref)
         return {"draft_id": draft_id, "draft_revision": revision + 1, "generation": generation}, [
             {"kind": "draft", "id": draft_id, "version": revision + 1}]
 
@@ -189,6 +197,7 @@ class Drafts:
         else:
             db.execute("INSERT INTO notes VALUES (?,?,?,?,?)", (note_id, actor, key, 1, _json(payload)))
         self._change(db, "actor", actor, "note", note_id, revision + 1)
+        self._tell_writing(db, actor, ref)
         return {"note_id": note_id, "note_revision": revision + 1}, [{"kind": "note", "id": note_id, "version": revision + 1}]
 
     def _command_submission_prepare(self, db, actor, envelope):
@@ -244,6 +253,7 @@ class Drafts:
                    (row["revision"] + 1, generation, _json(successor), actor, row["id"]))
         self._change(db, "actor", actor, "draft", row["id"], row["revision"] + 1)
         self._change(db, "actor", actor, "submission", submission_id, 1)
+        self._tell_writing(db, actor, snapshot["source_ref"])
         # seq places the reply in its source's list of replies (see _view_submissions).
         return {"submission_id": submission_id, "send_operation_id": send_op, "phase": "prepared", "seq": seq,
                 "draft_id": row["id"], "draft_revision": row["revision"],

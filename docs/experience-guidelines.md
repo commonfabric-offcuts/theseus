@@ -137,7 +137,10 @@ where they were asked for.
   "live with no card on the screen, a message arriving scrolls nothing".
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   "reading Show full message on a card scrolled inside keeps the words being
-  read where they were".
+  read where they were"; `tests/stack_native.mjs` (the same steps): "reading
+  stacks a message arriving in an open dossier hides nothing being read: …",
+  the newest seven counted when the dossier opened, so a reply arriving never
+  puts the card or row being read behind the earlier-messages row.
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads
   continue through retries, resyncs and failures, and a "caught up" state is
   claimed only after a pass of reads has run to its end
@@ -165,6 +168,14 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   no page has a header bar or Refresh; …"; "rail on a laptop each pencil is
   quiet until the pointer is on its row or heading: …" (a pencil, not a
   + New topic row, and none shown on a row neither pointed at nor keyed).
+- `tests/card_marks_native.mjs` (`native-card-marks`): "marks at …: an image,
+  your note and your saved reply each show a quiet named glyph beside the
+  time; another's never does", at 320, 375 and 390 points and a laptop, light
+  and dark, in Chrome and Safari's engine: each mark is in the card's line on
+  the time's line, never a control, and a card with all three keeps a one-line
+  author line; "head rows at …" checks a stack's head row keeps its reply count
+  whole beside them ([topic-reading.md](topic-reading.md), "What a card
+  carries").
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
@@ -189,10 +200,14 @@ content needs: a title line is about a sentence wide, and a few sentences about
 - `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
   "pipeline turning it on is one tap from the outcome page, and one line and
   Return adds an item whose words and size are set in place".
-- `tests/team_invite_native.mjs` (`native-forms`): "forms invite an agent from
-  the Team panel: a name, Codex, Return; …", and each of its states measured at
-  320, 375 and 390 pixels by touch and on a laptop, in light and dark ("forms
-  invite on a phone by touch the line and the prompt fit …").
+- `tests/team_invite_native.mjs` (`native-forms`, `native-webkit-invite`):
+  "forms invite an agent from the Team panel: a name, Codex, Return; …", and
+  each of its states measured at 320, 375 and 390 pixels by touch and on a
+  laptop, in light and dark ("forms invite on a phone by touch the line and
+  the prompt fit …"); after a reload, or a lost answer and another outcome,
+  the same name typed again gives back the same agent ("forms invite after a
+  sign-in file not written and a reload …", "forms invite after a lost answer
+  and a move to another outcome and back …").
 
 ## No coloured left edges
 

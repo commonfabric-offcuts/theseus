@@ -938,6 +938,79 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => ((await chip(p)).pressed === 'true') === on, on ? 'Only new is pressed' : 'Only new is off');
   };
 
+  // Item 476 under Only new: an open dossier of more than seven shows its earlier-messages row, saying how many of
+  // them are new, until Only new is pressed; then the row goes and each New message among the earlier ones shows as
+  // a card, as Only new shows every New item. Off again, the row is back as it was: closed, or opened to its rows.
+  // At a laptop's width and 390, 375 and 320 on a phone.
+  await check('conversation Only new: an open dossier\'s earlier-messages row, closed or opened to its rows, gives way to the New messages among them and comes back when Only new is off', async () => {
+    const DESK = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
+    const topicId = await ownConversation('rv476');
+    // The person's own: each an item still waiting, so New, the replies included.
+    const mine = async (operation, body, args = {}) => (await control({ method: 'agent_message', operation_id: operation, topic_id: topicId,
+      whole_topic: !args.reply_to, sender: 'person', body, ...args })).result.message_id;
+    const ids = [await mine('rv476-root', 'Earlier check: the plan.')];
+    for (let n = 1; n <= 8; n++) ids.push(await mine(`rv476-${n}`, `Earlier check: reply ${n}.`, { reply_to: ids[0] }));
+    // A person's reply folds the message it answers for them (Core); unfolded again, the first message shows as any does.
+    await control({ method: 'stack_act', sender: person, kind: 'message.fold', message_id: ids[0], operation_id: 'rv476-unfold', args: { folded: false } });
+    const p = await open('rv476', '/?conversation=rv476', { beforeNavigate: async q => q.send('Emulation.setDeviceMetricsOverride', DESK) });
+    const toggle = `.reply-stack[data-stack="${ids[0]}"] > .stack-toggle`;
+    const fold = () => quiet(p, `document.querySelector('.reply-stack[data-stack="${ids[0]}"]')?.dataset.fold ?? null`);
+    await until(async () => await fold() !== null, 'the dossier is drawn');
+    for (let n = 0; n < 2 && await fold() !== 'open'; n++) {
+      const was = await fold();
+      await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).scrollIntoView({block:'center'})`);
+      await p.point(toggle);
+      await until(async () => await fold() !== was, 'the dossier changes level');
+    }
+    assert.equal(await fold(), 'open', 'the dossier is open');
+    // The row's words while it shows, and each of the nine: whether it shows, and as a row or a card. A card that
+    // also shows an earlier message's row inside it reads 'card+row': under Only new a card is the card alone.
+    const seen = () => quiet(p, `(()=>{const s=document.querySelector('.reply-stack[data-stack="${ids[0]}"]'),b=s.querySelector('.stack-earlier'),shown=e=>Boolean(e)&&e.getClientRects().length>0;
+      return {row:b&&shown(b)?b.textContent:null,messages:${JSON.stringify(ids)}.map(id=>{const c=document.querySelector('#messages .message-card[data-id="'+id+'"]'),r=c?.querySelector(':scope > .message-earlier');
+        return !c||!shown(c)?'hidden':shown(c.querySelector(':scope > .message-preview'))?(shown(r)?'card+row':'card'):shown(r)?'row':'tab'})}})()`);
+    const widths = async (want, label) => {
+      for (const [width, mobile] of [[1280, false], [390, true], [375, true], [320, true]]) {
+        await p.send('Emulation.setDeviceMetricsOverride', { width, height: mobile ? 844 : 900, deviceScaleFactor: 1, mobile });
+        // What the dossier's first message shows when it does not settle: its stack's state and each of its parts.
+        const first = () => quiet(p, `(c=>c&&{stack:{...c.closest('.reply-stack').dataset},card:{...c.dataset},lit:c.classList.contains('lit'),
+          parts:[...c.children].map(e=>e.className+':'+getComputedStyle(e).display)})(document.querySelector('#messages .message-card[data-id="${ids[0]}"]'))`);
+        try { await until(async () => JSON.stringify(await seen()) === JSON.stringify(want), `${width}px: ${label}`); }
+        catch (error) {
+          const state = await quiet(p, `import('/reply-stacks.mjs').then(m=>{const s=m.stackState(document.getElementById('messages')),id=${JSON.stringify(ids[0])},st=s.stacks.find(x=>x.id===id);
+            return JSON.stringify({level:s.levels.get(id),earlier:[...s.earlier],whole:[...s.whole],folded:[...s.folded],earlierRows:[...s.earlierRows],only:Boolean(s.only),head:st?.head?.id,replies:st?.replies.map(r=>r.id),acts:st?.head?.acts})})`);
+          throw new Error(`${error.message}: ${JSON.stringify(await seen())}, its first message ${JSON.stringify(await first())}, the stack state ${state}`);
+        }
+        assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}px: ${label}: nothing scrolls sideways`);
+      }
+      await p.send('Emulation.setDeviceMetricsOverride', DESK);
+    };
+    const cards = Array(9).fill('card');
+    await widths({ row: '2 earlier messages', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'open, the row stands for the two earlier ones');
+    await shot(p, 'conversation-earlier-row');
+    await toggleOnlyNew(p, true);
+    await widths({ row: null, messages: cards }, 'under Only new the row goes and the New ones among the earlier show as cards');
+    await toggleOnlyNew(p, false);
+    await widths({ row: '2 earlier messages', messages: ['tab', 'hidden', ...cards.slice(2)] }, 'Only new off, the row is back, closed');
+    await p.evaluate(`document.querySelector('.reply-stack[data-stack="${ids[0]}"] .stack-earlier').scrollIntoView({block:'center'})`);
+    await p.point(`.reply-stack[data-stack="${ids[0]}"] .stack-earlier`);
+    await widths({ row: null, messages: ['row', 'row', ...cards.slice(2)] }, 'opened, the earlier ones are rows');
+    await toggleOnlyNew(p, true);
+    await widths({ row: null, messages: cards }, 'under Only new the rows show as cards');
+    await shot(p, 'conversation-earlier-only-new');
+    // Under Only new an earlier message is a card like any other: a press on it, or on the first message's words,
+    // opens the Reader on it as a card's press does, and the row it is drawn as off Only new is untouched.
+    await openCard(p, ids[1], 'Earlier check: reply 1.');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    const rootWords = `#messages .message-card[data-id="${ids[0]}"] > .message-preview`;
+    await p.evaluate(`document.querySelector(${JSON.stringify(rootWords)}).scrollIntoView({block:'center'})`);
+    await p.point(rootWords);
+    await until(() => quiet(p, `document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Earlier check: the plan.')`), 'a press on the first message\'s words opens the Reader on it');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    await toggleOnlyNew(p, false);
+    await widths({ row: null, messages: ['row', 'row', ...cards.slice(2)] }, 'Only new off, the earlier ones are rows again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // shownView says a dossier put aside is on show under Only new; lineSeq reads it when placeLine runs (an act, a
   // message), and turning Only new off redraws the stacks without placing the line again.
   await check('conversation Only new: a line placed while Only new is on is not left below the closed More once it is off', async () => {

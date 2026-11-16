@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultChoice, choiceOf, chosen, naming, unnamed, sending, audienceWords, paintChoice, clearChoice, paintWhisperAuthor } from '../web/whisper-choice.mjs';
 import { cardClass } from '../web/author-colors.mjs';
+import { carriesNode } from '../web/marks.mjs';
 import { Freshness } from '../web/freshness.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { Editor } from '../web/editor.mjs';
@@ -246,6 +247,21 @@ test('a whisper\'s card keeps its author\'s colour, adds the dashed line, says w
   paintWhisperAuthor(own.author, { author_id: 'tony', private_to: 'aim-ux', no_answer: true, body: 'Is the copy final?' }, 'tony', document);
   paintWhisperAuthor(own.author, { author_id: 'tony', private_to: 'aim-ux', no_answer: false, body: 'Is the copy final?' }, 'tony', document);
   assert.equal(own.author.text, 'tony · whisper to aim-ux · 6:50 AM');
+});
+
+test('a whisper card\'s name says the marks of what it carries, as the words of every other card do, and only those it shows', () => {
+  const document = miniDocument();
+  const host = document.createElement('article'); host.className = 'message-card';
+  const author = document.createElement('div'), time = document.createElement('span');
+  time.className = 'message-time'; time.textContent = ' · 6:50 AM';
+  time.append(carriesNode(document, { images: 1, note: true, reply: false })); author.append('tony', time); host.append(author);
+  const item = { author_id: 'tony', private_to: 'aim-ux', body: 'Is the copy final?' };
+  paintWhisperAuthor(author, item, 'tony', document);
+  assert.equal(host.attributes['aria-label'], 'tony, whisper to aim-ux, 6:50 AM, Has an image, Your private note, which only you can see. Is the copy final?');
+  // The note's mark taken away (TopicViews' yours repaint): the name loses it with the card.
+  time.querySelector('.carry-note').remove();
+  paintWhisperAuthor(author, item, 'tony', document);
+  assert.equal(host.attributes['aria-label'], 'tony, whisper to aim-ux, 6:50 AM, Has an image. Is the copy final?');
 });
 
 function reader(t, { source, offered = ['fable'], kinds = kindOf } = {}) {

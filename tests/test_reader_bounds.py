@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 from aim_next import store as store_module
+from aim_next import topic_reading
 from reader_fixture import ReaderCase
 
 
@@ -73,6 +74,54 @@ class ReaderBoundsCase(ReaderCase):
         self.assertLess(bulk_work, work + 150)
         print(json.dumps({"phase": "notebook_scope_bounds", "setup_seconds": setup_seconds,
                           "baseline_vm": work, "bulk_vm": bulk_work}))
+
+    def test_a_page_reads_the_readers_replies_from_its_own_messages_alone_not_their_whole_send_history(self):
+        # Item 127: a card's `yours` reads whether the reader's newest reply prepared from its message was sent. That
+        # read is keyed by the page's messages, so a page costs the same however many replies the reader has
+        # prepared from other messages, in this topic or any other.
+        first = self.send("Answer me", ["owner"])
+        self.committed(self.command("draft.save", {"source_ref": {"kind": "message", "id": first["id"]}, "topic_id": "t1",
+                                                   "generation": "gA", "body": "Not sent yet", "attachments": [], "quotes": [],
+                                                   "addressees": []}, target={"draft_id": "unsent"}, expected={"draft_revision": 0}))
+        self.committed(self.prepare("unsent", "t1", submission="unsent", send_op="unsent-send"))
+        yours = lambda page: {row["id"]: row["yours"] for row in page["items"]}
+        baseline, work = self.measured(lambda: self.page(limit=50))
+        self.assertEqual(yours(baseline)[first["id"]]["reply"], True, "the prepared, unsent reply marks its card")
+        started = time.perf_counter()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('unrelated','w1','Other','owner',0)")
+            for index in range(5000):
+                topic = "t1" if index < 2500 else "unrelated"
+                db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,"
+                           "authority_id,authority_epoch,metadata,snapshot) VALUES (?,'owner',?,?,?,?,'message.send','a','e','{}','{}')",
+                           ("bulk-%s" % index, topic_reading.message_key("bulk-message-%s" % index), topic,
+                            "bulk-prepare-%s" % index, "bulk-send-%s" % index))
+            self.assertEqual(db.execute("SELECT count(*) FROM submissions WHERE actor_id='owner'").fetchone()[0] > 5000, True)
+        setup_seconds = time.perf_counter() - started
+        bulk, bulk_work = self.measured(lambda: self.page(limit=50))
+        self.assertEqual(yours(bulk), yours(baseline), "replies prepared from other messages mark no card on this page")
+        self.assertLess(bulk_work, work + 150)
+        print(json.dumps({"phase": "yours_submission_bounds", "setup_seconds": setup_seconds, "baseline_vm": work, "bulk_vm": bulk_work}))
+
+    def test_saving_a_note_on_a_message_reads_the_writers_replies_from_that_message_alone(self):
+        # Item 127: every save of private writing on a message tells the writer's changes its new version, counted from
+        # the replies sent from that message alone, so a save costs the same however long the writer's send history.
+        first = self.send("Note me", ["owner"])
+        note = lambda revision: self.store.command("owner", self.envelope("note.save", {"note_id": "mine"},
+                                                   {"source_ref": {"kind": "message", "id": first["id"]}, "body": "Note %s" % revision},
+                                                   expected={"note_revision": revision}))
+        _, work = self.measured(lambda: note(0))
+        with sqlite3.connect(str(self.path)) as db:
+            for index in range(5000):
+                db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,"
+                           "authority_id,authority_epoch,metadata,snapshot) VALUES (?,'owner',?,'t1',?,?,'message.send','a','e','{}','{}')",
+                           ("bulk-%s" % index, topic_reading.message_key("bulk-message-%s" % index), "bulk-prepare-%s" % index, "bulk-send-%s" % index))
+        saved, bulk_work = self.measured(lambda: note(1))
+        self.assertEqual(saved["status"], "committed", saved)
+        self.assertEqual(self.sql("SELECT version FROM changes WHERE resource_kind='yours' AND resource_id=? ORDER BY seq DESC LIMIT 1", (first["id"],))[0][0], 2,
+                         "replies prepared from other messages add nothing to this message's version")
+        self.assertLess(bulk_work, work + 150)
+        print(json.dumps({"phase": "yours_version_bounds", "baseline_vm": work, "bulk_vm": bulk_work}))
 
     def test_byte_capped_pages_continue_in_traversal_direction_without_holes(self):
         addresses = ["owner"] + ["long-%s-" % index + "é" * 150 for index in range(31)]

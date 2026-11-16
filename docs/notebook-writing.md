@@ -18,7 +18,9 @@ save is a normal `memory.revise` revision, immediately readable by agents.
 The saving sign distinguishes a device copy, an in-flight save, a confirmed
 revision, and writing that needs attention. The existing writing keys,
 including Option-arrow line moves, remain available. Images and `#img` use
-the page's topic (or its outcome's Conversation) and become page attachments.
+the page's topic (or its outcome's Conversation) and become page attachments;
+one pasted, dropped or picked into a card being written is also named in that
+card, which shows it ([decks.md](decks.md#images-in-a-card)).
 There is no Cards view of a message draft.
 
 A reload with a pending choice draws the retained writing in both views before

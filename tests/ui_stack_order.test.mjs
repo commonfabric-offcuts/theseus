@@ -6,12 +6,12 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
 const stacksOf = items => ordered(gather(items));
-const words = rows => rows.map(row => row.kind === 'reply' ? row.item.id + (row.folded ? ' (folded)' : '') : row.kind === 'join' ? `join ${row.item.id}` : row.words + (row.fresh ? ` · ${row.fresh} new` : ''));
+const words = rows => rows.map(row => row.kind === 'reply' ? row.item.id + (row.folded ? ' (folded)' : '') + (row.earlier ? ' (earlier)' : '') : row.kind === 'join' ? `join ${row.item.id}` : row.words + (row.fresh ? ` · ${row.fresh} new` : ''));
 
 test('a stack keeps its first message on top and reads its replies oldest first, replies to replies with them', () => {
   const items = [message(1), message(2, { reply_to: 'm1' }), message(3), message(4, { reply_to: 'm2' }), message(5, { reply_to: 'm1' })];
@@ -169,7 +169,7 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
     const together = stacksOf(joined);
     assert.equal(together.length, 1, 'one stack');
     assert.equal(together[0].id, shown.open, 'the stack opened is the one heading the two');
-    return rowsOf(together[0], { level: shown.level }).filter(row => row.kind !== 'fold-all');
+    return rowsOf(together[0], { level: shown.level });
   };
   for (const acted of ['m1', 'm3']) {
     const up = joinShown(stacks, 1, 'up', acted);
@@ -194,7 +194,9 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
 const named = (id, seq, extra = {}) => ({ id, seq, author_id: 'agent-a', body: `${id}\nmore`, ...extra });
 const joinedA = { joined: { into: 'B', by: 'owner', at_ms: 50 } };
 const tonys = (joined = joinedA) => [named('B', 1), named('A', 3, { acts: joined }), named('b1', 5, { reply_to: 'B' }), named('a2', 7, { reply_to: 'A' }), named('b3', 9, { reply_to: 'B' })];
-const shownRows = (stack, level = 'open') => words(rowsOf(stack, { level }).filter(row => row.kind !== 'fold-all'));
+// The rows a join makes; an open dossier of more than seven begins with its earlier-messages row (item 476), which
+// the cases on that row read, not these.
+const shownRows = (stack, level = 'open') => words(rowsOf(stack, { level }).filter(row => row.kind !== 'earlier'));
 
 test('a join interleaves both stacks oldest first under the head, the join line staying on the joined stack\'s first message', () => {
   const [stack, ...rest] = stacksOf(tonys());
@@ -243,7 +245,8 @@ test('a fold shows the newest reply and every kept one in its place, with a line
   const [stack] = stacksOf(items);
   const kept = item => item.seq === 5;
   assert.deepEqual(words(rowsOf(stack, { kept })), ['3 earlier replies', 'm5', '2 more replies', 'm8']);
-  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['Fold 5 earlier replies', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
+  // Open, a dossier of eight shows its newest seven and one row for the first (item 476); no fold line.
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['1 earlier message', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
   assert.deepEqual(words(rowsOf(stack, { level: 'head', kept })), ['7 replies'], 'every reply folded: one line counts them all');
   // Stars do not override an explicit closed state.
   const starred = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { starred: true } } : item))[0];
@@ -432,7 +435,7 @@ test('a message the reader folded reads as its one-line row wherever its stack s
   const items = [message(1), ...[2, 3, 4, 5].map(seq => message(seq, { reply_to: 'm1', ...(seq === 3 || seq === 5 ? { acts: fold } : {}) }))];
   const [stack] = stacksOf(items);
   const kept = item => item.seq === 3;
-  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['Fold 2 earlier replies', 'm2', 'm3 (folded)', 'm4', 'm5 (folded)'],
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept })), ['m2', 'm3 (folded)', 'm4', 'm5 (folded)'],
     'fully open: each folded message is its row, in its place, and nothing else changes');
   assert.deepEqual(words(rowsOf(stack, { level: 'folded', kept })), ['1 earlier reply', 'm3 (folded)', '1 more reply', 'm5 (folded)'],
     'latest and unread: a folded reply the view keeps, and a folded newest, are rows, never taken away');
@@ -447,10 +450,10 @@ test('a message the reader folded reads as its one-line row wherever its stack s
   const both = stacksOf(items.map(item => item.seq === 5 ? { ...item, acts: { ...fold, starred: true, star_revision: 1 } } : item))[0];
   assert.deepEqual(words(rowsOf(both, { level: 'open', kept })).slice(-1), ['m5']);
   // Opened for this view (a link, search, Starred): the message shows whole, its fold kept in Core.
-  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept, peeked: item => item.id === 'm3' })).slice(1), ['m2', 'm3', 'm4', 'm5 (folded)']);
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', kept, peeked: item => item.id === 'm3' })), ['m2', 'm3', 'm4', 'm5 (folded)']);
   // Unfolded (folded: false at a later revision), it reads whole again.
   const back = stacksOf(items.map(item => item.seq === 3 ? { ...item, acts: { folded: false, fold_revision: 2 } } : item))[0];
-  assert.deepEqual(words(rowsOf(back, { level: 'open', kept })).slice(1), ['m2', 'm3', 'm4', 'm5 (folded)']);
+  assert.deepEqual(words(rowsOf(back, { level: 'open', kept })), ['m2', 'm3', 'm4', 'm5 (folded)']);
 });
 
 test('a folded first message reads as its stack\'s head row alone, and a message on its own as its row', () => {
@@ -468,4 +471,63 @@ test('the page holds a fold or unfold until Core answers it, and an older answer
   const known = { folded: true, fold_revision: 2, starred: false, star_revision: 0 };
   assert.deepEqual(laterActs(known, { folded: false, fold_revision: 1, starred: false, star_revision: 0 }).folded, true, 'an answer read before the fold puts back nothing');
   assert.deepEqual(laterActs(known, { folded: false, fold_revision: 3, starred: false, star_revision: 0 }).folded, false, 'a later unfold, from another device, shows');
+});
+
+// Item 476: an open dossier shows its newest seven messages and one row for the rest, which shows them all as rows
+// for this visit only. It is a way of showing the dossier: every message stays in it, in its place, and nothing is
+// recorded, so latest plus unread and a dossier of seven or fewer read as before.
+test('an open dossier of more than seven shows its newest seven and one row for the earlier ones; opened, that row shows them all as rows in their places', () => {
+  const items = [message(1), ...Array.from({ length: 20 }, (_, n) => message(n + 2, { reply_to: 'm1' }))];
+  const [stack] = stacksOf(items), unread = item => item.seq === 3 || item.seq === 20;
+  assert.equal(RECENT, 7);
+  assert.deepEqual(ids(earlierOf(stack, 'open')), ['m1', ...Array.from({ length: 13 }, (_, n) => 'm' + (n + 2))], 'the first fourteen of twenty-one, the first message among them');
+  const recent = Array.from({ length: 7 }, (_, n) => 'm' + (n + 15));
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', unread })), ['14 earlier messages · 1 new', ...recent], 'one row says how many, and how many of them are new');
+  // Opened for this visit: every earlier reply is its row, in its place, oldest first, then the seven as before.
+  assert.deepEqual(words(rowsOf(stack, { level: 'open', unread, earlier: true })),
+    [...Array.from({ length: 13 }, (_, n) => `m${n + 2} (earlier)`), ...recent], 'every message is reachable in place; none is lost or moved');
+  // Whether a reply shows: hidden behind the row until it is opened; the seven always.
+  assert.deepEqual([shown(stack, items[2], { level: 'open' }), shown(stack, items[2], { level: 'open', earlier: true }), shown(stack, items[20], { level: 'open' })], [false, true, true]);
+  // The other state is untouched: latest plus unread shows what it showed.
+  assert.deepEqual(earlierOf(stack, 'folded'), []);
+  assert.deepEqual(words(rowsOf(stack, { unread, kept: unread })), ['1 earlier reply', 'm3', '16 more replies', 'm20', 'm21']);
+  // A reply the reader folded keeps its own row, and a starred one stays whole, opened or not.
+  const marked = stacksOf(items.map(item => item.seq === 4 ? { ...item, acts: { folded: true, fold_revision: 1 } } : item.seq === 5 ? { ...item, acts: { starred: true } } : item))[0];
+  assert.deepEqual(words(rowsOf(marked, { level: 'open', earlier: true })).slice(1, 4), ['m3 (earlier)', 'm4 (folded) (earlier)', 'm5 (earlier)']);
+  // A joined stack's first message among the earlier keeps its join line, shown with it once the row is opened.
+  const joined = stacksOf(items.map(item => item.seq === 6 ? { ...item, reply_to: undefined, acts: { joined: { into: 'm1', by: 'owner' } } } : item))[0];
+  assert.deepEqual(words(rowsOf(joined, { level: 'open' })).filter(row => row.startsWith('join')), [], 'closed: no join line over messages it hides');
+  assert.ok(words(rowsOf(joined, { level: 'open', earlier: true })).includes('join m6'), 'opened: the join line sits before its message');
+});
+
+test('a dossier of seven messages or fewer shows no earlier row; one of eight shows one for its first message', () => {
+  const dossier = n => stacksOf([message(1), ...Array.from({ length: n - 1 }, (_, i) => message(i + 2, { reply_to: 'm1' }))])[0];
+  for (const n of [2, 5, 7]) {
+    assert.deepEqual(earlierOf(dossier(n), 'open'), [], `${n} messages`);
+    assert.ok(rowsOf(dossier(n), { level: 'open' }).every(row => row.kind === 'reply' && !row.earlier), `${n} messages: every reply a card`);
+  }
+  assert.deepEqual(ids(earlierOf(dossier(8), 'open')), ['m1']);
+  assert.deepEqual(words(rowsOf(dossier(8), { level: 'open' })), ['1 earlier message', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
+});
+
+// Your place holds (docs/experience-guidelines.md): the newest seven are counted once, when the dossier is drawn open,
+// and the page holds the first message it showed then (held). A message arriving after that joins the shown ones
+// below and hides nothing; one loaded from before goes behind the row. Held gone from the dossier, they are counted
+// afresh; at latest plus unread none is earlier, held or not.
+test('the newest seven are counted when the dossier is drawn open: a message arriving after that hides nothing', () => {
+  const dossier = n => stacksOf([message(1), ...Array.from({ length: n - 1 }, (_, i) => message(i + 2, { reply_to: 'm1' }))])[0];
+  // Seven drawn open, the first message shown: an eighth arrives and the first message stays shown, no row.
+  assert.deepEqual(earlierOf(dossier(8), 'open', { held: 'm1' }), [], 'seven held from m1, an eighth arrives');
+  assert.deepEqual(words(rowsOf(dossier(8), { level: 'open', held: 'm1' })), ['m2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'], 'every reply a card, no earlier row');
+  // Ten drawn open showed m4 on: an eleventh arrives, and m4 is still shown, the row still three.
+  const eleven = dossier(11);
+  assert.deepEqual(ids(earlierOf(eleven, 'open', { held: 'm4' })), ['m1', 'm2', 'm3']);
+  assert.deepEqual(words(rowsOf(eleven, { level: 'open', held: 'm4' })), ['3 earlier messages', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11']);
+  assert.equal(shown(eleven, eleven.replies[2], { level: 'open', held: 'm4' }), true, 'the card being read stays shown');
+  assert.equal(shown(eleven, eleven.replies[1], { level: 'open', held: 'm4' }), false, 'the earlier ones stay behind the row');
+  // Held is no longer in the dossier: counted afresh. Latest plus unread: none is earlier.
+  assert.deepEqual(ids(earlierOf(dossier(9), 'open', { held: 'gone' })), ['m1', 'm2']);
+  assert.deepEqual(earlierOf(eleven, 'folded', { held: 'm4' }), []);
+  // Not held (drawn open for the first time): the last seven, as before.
+  assert.deepEqual(ids(earlierOf(eleven, 'open')), ['m1', 'm2', 'm3', 'm4']);
 });

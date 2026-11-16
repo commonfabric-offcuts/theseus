@@ -149,6 +149,91 @@ Tab or an undo, unfolds it to show the card where it went; a remove beside a
 folded card leaves it folded. On a phone, where one card shows at a time, a
 child card shows its parent's title above its own.
 
+## Images in a card
+
+An image goes into a card while it is written (item 321): pasted into its box,
+dropped on it, or picked with `#img`. The card shows it under its words, and
+the page keeps it: the image is one of the page's attachments, and a line of
+the card's words names it, `![NAME](attachment:ID)`, as a reply stack's line
+names its stack. The line moves with the card through moves, merges and edits,
+a card's removal takes it and Undo brings it back. The box leaves such lines
+out, as it leaves out the stacks', and shows the card's images under what is
+written, each at the height it showed at on the card, with × beside it to take
+it out of the card (named "Remove the image NAME from this card", 44 points to
+touch on a phone; it never covers the image); the lines go back under what is written, before any stack's, when
+the card is saved. A line inside a fenced block is words, and so is one that
+holds anything else. A new card holding only images is named for the first of
+them; a card cleared of all its text is removed, its images with it.
+
+Each file is taken or refused at once, before its bytes are read, by the
+page's own limits, which are Core's (`bootstrap.limits`): a PNG, JPEG, GIF or
+WebP image, at most 16 MB, and at most 8 attachments and 64 MB to a page,
+counting those still uploading. A refusal is one line in the saving sign
+saying what was not added and why ("notes.pdf was not added: it is not a PNG,
+JPEG, GIF or WebP image.", "huge.png was not added: an image may be at most
+16 MB."), and nothing goes to Core; of several files, those before the first
+refused are taken. The line goes when an image is taken or another card
+opens.
+
+A taken image is named in the card at once, by the media id it will upload
+under, and uploads through the page's images (`web/notebook-images.mjs`, the
+same `media.begin`/`media.publish` as every image, its bytes kept on the device
+until Core has them). Until then the card shows it from those bytes, its name
+saying "Uploading…" or why its upload failed, with Retry in the page's list of
+images; once Core has it, it is attached to the page. Its name stays with it
+for screen readers; it shows beside the picture while the image uploads or after
+its upload failed, and in the picture's place while the picture does not show:
+before it loads, or when the page holds no such image ("· not on this page").
+An image smaller than a thumbnail shows at a thumbnail's size. The page's list of
+images under the head leaves an image a card shows to the card, unless it needs
+Retry. × takes the image off the page too, unless another card still shows it.
+Undo, bringing back the card's line, puts the image back on the page (and so
+does writing its line again while the page is open), so a card never names an
+image the page lost: one uploaded is attached again, one still uploading when ×
+was pressed goes on uploading from its bytes and is attached once Core has it,
+and one someone else added is attached again by its id, which Core takes from a
+writer of the page because one of its revisions carried it
+(`NotebookImages.restore`). Core still refuses an image someone else uploaded
+that no revision of the page carried. A revise reads the revision it follows,
+and looks through the page's history only for such an image, that image alone,
+so an ordinary save costs the same however many revisions autosave has made. An image taken off with Remove in the
+page's list of images is not put back.
+
+An image already on the page is read through the page as it stands
+(`/api/media/read` with the page's `source_ref`), so only someone who may read
+the page sees it; someone Core does not let write the page sees the images and
+no ×. In the Text view the line is words like any other, and an image pasted
+there is attached to the page without a line, as before.
+
+Everywhere else a card's words are drawn, the line is never its markup. Where
+the page is read, the Reader (a page at a revision) and a page opened in place
+on its outcome's page, it is
+the image, as wide as it is up to the width of the words and never taller than
+most of the screen, with its name under it, read through the page at the
+revision shown (`web/page-image.mjs`); an image the page does not carry is its
+name alone, "· not on this page", and nothing is read for it. Where only words
+show, the topic's Notebook card (an excerpt of the page), what changed since
+the person last read the page, and an ask quoting the card, it is the image's
+name after an image glyph, "🖼 chart.png" (`imageStandIns`). A line in a code
+span, in a quote or inside a fenced block, and an image from the web
+(`![x](https://…)`), are words there as in the card.
+
+The rules for the line are `cardImages`, `imageLine` and `boxText` in
+`web/deck.mjs`, checked by `tests/ui_card_images.test.mjs`, with the page's
+limits and putting an image back; reading through the page and attaching an
+image again, `tests/test_memory_card_images.py`; in the browser,
+`tests/notebook_card_images_native.mjs` in the `notebook` and
+`webkit-notebook` modes: a paste and a drop while the card is written, a
+reload, ×, Undo after ×, × on an image two cards show, a new card holding only
+an image, the refusals and a large image within the limit, and each state of a
+card's image at 320, 375, 390 and a laptop, light and dark; the image in the
+Reader at 320, 390 and a laptop and in place on an outcome's page, the topic's
+Notebook card naming it and an ask quoting it, each in light and dark (with
+`imageStandIns` and `lineImage` in `tests/ui_card_images.test.mjs`, and the
+Reader's passages, a page in place and what changed in
+`tests/ui_card_image_words.test.mjs`); an image picked with `#img` into a card,
+`tests/notebook_pages_native.mjs` ("notebook images paste and img picker").
+
 ## Saving
 
 Text and Cards now share `NotebookWriting` (302, notebook-writing.md), using

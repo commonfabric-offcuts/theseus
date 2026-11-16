@@ -837,7 +837,8 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await replaceWords(p, 'Saved across a reload.');
     await p.evaluate('window.holdEdit = true');
     await p.key('Enter', 4);
-    await until(async () => await state(p) === 'saving', 'the Save is out');
+    // Saving… shows before the Save's request leaves (the device keeps it first), so the case waits on the request itself.
+    await until(async () => await state(p) === 'saving' && (await kindsOf(p)).includes('edit'), 'the Save is out');
     const save = (await sessionOf(p)).find(([kind]) => kind === 'edit');
     await p.close();
     assert.deepEqual(await coreItem(topic, ids.mine), { revision: 1, body: 'My own words, as I sent them.', edited: false }, 'the Save never reached Core');

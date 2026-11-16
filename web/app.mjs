@@ -31,7 +31,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -43,6 +43,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
+import { imageStandIns } from './deck.mjs';
 import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting, PLACE as CONVERSATION_PLACE } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
@@ -61,8 +62,9 @@ import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } fro
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
-import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
+import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -655,6 +657,8 @@ function attachmentControl(attachment, sourceRef, current, notice) {
   }); host.append(show);
   return host;
 }
+// One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
+async function pageImage(attachment, ref) { return (await api.media(bootstrap.instance_id, attachment, ref)).blob; }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
   const current = () => registry.isSourceCurrent(presentation) && !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
@@ -750,6 +754,8 @@ function paintViews(kind) {
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
+  // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
+  if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -783,7 +789,7 @@ function paintViews(kind) {
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
-        if (foldedClick($('messages'), messageEntries.get(item.id))) return;
+        if (foldedClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);
@@ -797,6 +803,8 @@ function paintViews(kind) {
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
       card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed' }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
+      paintCardImages(card, item, cardImageBytes(item.id));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
@@ -828,7 +836,9 @@ function paintViews(kind) {
     if (card.dataset.source !== identity || card.dataset.changed !== changed) {
       const [title, body] = card.children;
       card.dataset.source = identity; card.dataset.changed = changed;
-      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); linkWords(body, item.body, { partial: item.preview === true });
+      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item);
+      // A card's image line reads as the image's name after its glyph (deck.mjs, imageStandIns), never its markup.
+      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });
     }
     card.onclick = () => run(() => openNotebook(item.id, { opener: card }));
   }
@@ -843,6 +853,8 @@ function paintViews(kind) {
 // paint finds a card without searching every card loaded. Cards stay for the
 // page's life.
 const messageEntries = new Map(), memoryCards = new Map();
+// A card's image, read through its message, so only a reader of the message gets it (item 474).
+const cardImageBytes = id => async attachment => (await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob;
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
 // Only the label changes; all record lookup, color and routing keep the ID.
@@ -888,19 +900,16 @@ const stillOwed = item => Boolean(here?.page && (conversationItem(item.id)?.item
 const openedIds = new Set();
 function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
-// Each loaded card's read look, agent talk, reply arrow and the dots on the
-// reader's own message while it waits for a reply, as they now stand.
+// Each loaded card's read look, agent talk and reply arrow, as they now stand.
 function paintCardReading() {
   if (!views) return;
   const { kindOf } = whisperPeople();
-  learnAnswered(views.messages, bootstrap.actor, kindOf);
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
-    paintAwaiting(card, item);
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -973,9 +982,11 @@ function paintHeader(current) {
     $('topic-description').textContent = conversationSubtitle(here?.view?.coordinator?.actor_id); $('topic-description').hidden = false;
   }
 }
-// Messages sent before times were kept have none.
+// Messages sent before times were kept have none. Beside the time, the marks of
+// what the message carries: an image, the person's private note, a reply they
+// saved and have not sent (carriesOf, item 127).
 function paintCardAuthor(author, item) {
-  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item));
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
@@ -1413,6 +1424,21 @@ async function messageEdited(key, version, read, current) {
   reader.redrawSource();
   return done;
 }
+// Each card whose marks of the person's own note and saved reply changed
+// (TopicViews.takeYours): its author line, then what the page puts back on
+// that line as it is drawn afresh (the reply arrow, the bar), and the row of
+// the stack it heads, which shows its marks (paintHeadCarries).
+function repaintYours(ids) {
+  for (const id of ids) {
+    const item = views.messages.get(id), entry = messageEntries.get(id);
+    if (!item || !entry) continue;
+    const card = cardIn(entry);
+    paintCardAuthor(card.querySelector(':scope > .message-author'), item);
+    paintHeadCarries(card, item);
+  }
+  // The reply arrow goes back into each line painted again; the stacks are not arranged again, so the New line stays where it is.
+  paintCardReading(); menu?.paint();
+}
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
 // message's words, its excerpt cue, its folded line and its author line's
 // "Edited", and the reply line of each loaded reply to it; then the
@@ -1438,6 +1464,7 @@ function repaintEdited(ids, edits) {
       else if (cue && !item.preview) cue.remove();
       else if (cue) { cue.textContent = CUE; cue.hidden = false; }
     }
+    paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
     cardScroll?.forget(id, card);
   }
@@ -1539,6 +1566,8 @@ async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
+    // Nor the pictures of its messages (card-images.mjs).
+    dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();
@@ -1937,7 +1966,7 @@ async function initialize() {
     recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
-    images: topicImages, imageBytes,
+    images: topicImages, imageBytes, pageImage,
     actorName: displayActor,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -2774,7 +2803,7 @@ function pagesInPlace(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
+  pageHere=new PageHere({host:$('page-here'),reads,read:ref=>pipelineView('source',ref),media:pageImage,cards:id=>routeHref({kind:'cards',id,view:'text'})});pageHereOutcome=workspace;
 }
 // The outcome's own page lists its Notebook pages after its topics, each opening
 // in the composer over it; the side rail lists none (docs/notebook-pages.md).

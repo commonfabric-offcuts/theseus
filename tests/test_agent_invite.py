@@ -4,6 +4,7 @@ import http.client
 import json
 import os
 from pathlib import Path
+import sqlite3
 import stat
 import tempfile
 import threading
@@ -11,7 +12,7 @@ import unittest
 
 from aim_next import Store
 from aim_next.invite import invite
-from aim_next.profile import load_profile, write_profile
+from aim_next.profile import load_profile, profile_bytes, write_profile
 from aim_next.serve import server_for_profile
 from aim_next.server import create_server
 import test_store as fixtures
@@ -104,14 +105,137 @@ class Core(InviteCase):
 
     def test_a_name_already_taken_is_refused_with_another_to_choose_and_nothing_changes(self):
         self.assertEqual(self.store.command("owner", self.envelope("Release scribe"))["status"], "committed")
-        for name in ("release SCRIBE", "Release-Scribe!", "Outside agent", "agent-a"):
+        # The coordinator did not invite Release scribe, so typing its name is never taken as asking for it again (item 525).
+        for actor, name in (("agent-a", "release SCRIBE"), ("owner", "Release-Scribe!"), ("owner", "Outside agent"), ("owner", "agent-a")):
             before = self.state()
-            receipt = self.store.command("owner", self.envelope(name))
+            receipt = self.store.command(actor, self.envelope(name))
             self.refused(receipt, "NAME_TAKEN")
             self.assertEqual(self.state(), before)
-        message = self.error(self.store.command("owner", self.envelope("Release scribe")))["message"]
+        message = self.error(self.store.command("agent-a", self.envelope("Release scribe")))["message"]
         self.assertEqual(message, "There is already someone called Release scribe here. Choose another name, such as Release scribe 2.")
-        self.assertEqual(self.store.command("owner", self.envelope("Release scribe 2"))["status"], "committed", "the suggestion is free")
+        self.assertEqual(self.store.command("agent-a", self.envelope("Release scribe 2"))["status"], "committed", "the suggestion is free")
+
+    def test_a_refusal_names_whoever_has_the_name_or_its_id_not_the_words_typed(self):
+        self.assertEqual(self.store.command("owner", self.envelope("Release scribe"))["status"], "committed")
+        self.assertEqual(self.error(self.store.command("owner", self.envelope("Release-Scribe!")))["message"],
+                         "There is already someone called Release scribe here. Choose another name, such as Release-Scribe! 2.")
+        self.assertEqual(self.error(self.store.command("owner", self.envelope("AGENT A")))["message"],
+                         "There is already someone called agent-a here. Choose another name, such as AGENT A 2.")
+
+    def test_long_names_that_share_their_first_forty_letters_get_ids_of_their_own(self):
+        # The reviewer's pair (item 525): cut at 40 characters, both were release-notes-scribe-for-the-weekly-trai.
+        first, second = "Release notes scribe for the weekly train review", "Release notes scribe for the weekly train reviewer"
+        ids = []
+        for name in (first, second):
+            receipt = self.store.command("owner", self.envelope(name))
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual(receipt["result"]["agent"]["name"], name)
+            ids.append(receipt["result"]["agent"]["id"])
+        self.assertNotEqual(ids[0], ids[1])
+        for agent in ids:
+            self.assertLessEqual(len(agent), 40)
+            self.assertTrue(agent.startswith("release-notes-scribe-for-the-"), agent)
+            self.assertRegex(agent, r"^[a-z0-9]+(-[a-z0-9]+)*$")
+        self.assertEqual(sorted(row[0] for row in self.sql("SELECT actor_id FROM workspace_members WHERE workspace_id='w1'") if row[0] in ids), sorted(ids))
+
+    def test_a_long_name_taken_is_refused_naming_it_with_a_suggestion_free_after_the_cut(self):
+        long = "Release notes scribe for the weekly train review"
+        self.assertEqual(self.store.command("owner", self.envelope(long))["status"], "committed")
+        # Someone else types it again (a NAME 2 cut at 40 characters was the taken ID again, so none was offered).
+        refused = self.store.command("agent-a", self.envelope(long.upper()))
+        self.refused(refused, "NAME_TAKEN")
+        self.assertEqual(self.error(refused)["message"], "There is already someone called %s here. Choose another name, such as %s 2." % (long, long.upper()))
+        receipt = self.store.command("agent-a", self.envelope(long.upper() + " 2"))
+        self.assertEqual(receipt["status"], "committed", "the suggestion is free: %s" % receipt)
+
+    def test_letters_with_accents_keep_their_letters_in_the_id_and_plain_names_keep_their_ids(self):
+        for name, agent in (("Zoë", "zoe"), ("Ça va", "ca-va"), ("Crème brûlée bot", "creme-brulee-bot"),
+                            # Plain names keep the IDs they always had, a 40-letter one too, uncut.
+                            ("Release  scribe ", "release-scribe"), ("R2-D2 unit", "r2-d2-unit"), ("Night watch #3", "night-watch-3"),
+                            ("abcdefghij abcdefghij abcdefghij abcdefg", "abcdefghij-abcdefghij-abcdefghij-abcdefg")):
+            receipt = self.store.command("owner", self.envelope(name))
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual(receipt["result"]["agent"]["id"], agent, name)
+
+    def test_latin_letters_unicode_leaves_whole_are_spelled_in_the_id_never_dropped(self):
+        # The reviewer's names (item 525): NFKD leaves these letters whole, so taking off accents alone dropped them
+        # (Søren was s-ren, Łukasz ukasz, Þór or). A letter with a mark is its letter; a few have a spelling of their own.
+        for name, agent in (("Søren", "soren"), ("Bjørn", "bjorn"), ("Łukasz", "lukasz"), ("Æsir", "aesir"), ("Đorđe", "dorde"),
+                            ("Þór", "thor"), ("Guðrún", "gudrun"), ("Œuvre bot", "oeuvre-bot"), ("Ħal Far", "hal-far"),
+                            ("Yılmaz", "yilmaz"), ("Əliyev", "eliyev"), ("Ŋoŋ", "ngong"),
+                            # ß and its capital are ss, as the ID's rule says, whatever their case.
+                            ("Straße", "strasse"), ("GROẞ", "gross")):
+            receipt = self.store.command("owner", self.envelope(name))
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual(receipt["result"]["agent"], {"id": agent, "name": name, "kind": "agent"}, name)
+        # The same name written without its letters' marks is the same ID, so it is taken, named as it was written.
+        self.assertEqual(self.error(self.store.command("agent-a", self.envelope("Soren")))["message"],
+                         "There is already someone called Søren here. Choose another name, such as Soren 2.")
+
+    def test_the_inviter_typing_the_same_name_again_gets_the_same_agent_back_and_nothing_changes(self):
+        # After a lost answer or a sign-in file not written, a reload or another outcome forgets the request (item 525):
+        # the same name typed again is a new request, and Core gives back the agent this invitation put on the team.
+        first = self.store.command("owner", self.envelope("Late scribe", harness="claude-code"))
+        self.assertEqual(first["status"], "committed", first)
+        before, changes = self.state(), self.sql("SELECT count(*) FROM changes")
+        for name, harness in (("Late scribe", "claude-code"), ("late SCRIBE", "codex")):
+            again = self.store.command("owner", self.envelope(name, harness=harness))
+            self.assertEqual(again["status"], "committed", again)
+            self.assertNotEqual(again["operation_id"], first["operation_id"])
+            self.assertEqual(again["result"], dict(first["result"], harness=harness))
+            self.assertEqual(self.state(), before, "no one registered or added again, and the outcome's version stands")
+            self.assertEqual(self.sql("SELECT count(*) FROM changes"), changes, "nothing changed, so no change is written")
+
+    def test_only_the_inviter_in_the_same_outcome_gets_its_agent_back(self):
+        self.assertEqual(self.store.command("owner", self.envelope("Late scribe"))["status"], "committed")
+        self.assertEqual(self.command("workspace.create", {"id": "w2", "title": "Another", "team": []})["status"], "committed")
+        # The coordinator organises w1 but did not invite it; in another outcome the owner did not invite it there.
+        for actor, workspace in (("agent-a", "w1"), ("owner", "w2")):
+            before = self.state()
+            receipt = self.store.command(actor, self.envelope("Late scribe", workspace=workspace,
+                                                               revision=self.sql("SELECT version FROM workspaces WHERE id=?", (workspace,))[0][0]))
+            self.refused(receipt, "NAME_TAKEN")
+            self.assertEqual(self.state(), before, "%s in %s" % (actor, workspace))
+        # The owner invited it into w1; where it is on the team of another outcome the owner organises, typing it there is
+        # refused too (the reviewer's case: the outcome is checked, not only the membership).
+        self.assertEqual(self.command("workspace.create", {"id": "w3", "title": "Its other team", "team": ["late-scribe"]})["status"], "committed")
+        self.assertIn(("late-scribe",), self.sql("SELECT actor_id FROM workspace_members WHERE workspace_id='w3'"))
+        before, changes = self.state(), self.sql("SELECT count(*) FROM changes")
+        receipt = self.store.command("owner", self.envelope("Late scribe", workspace="w3",
+                                                           revision=self.sql("SELECT version FROM workspaces WHERE id='w3'")[0][0]))
+        self.refused(receipt, "NAME_TAKEN")
+        self.assertEqual((self.state(), self.sql("SELECT count(*) FROM changes")), (before, changes))
+        self.assertEqual(self.sql("SELECT workspace_id,inviter_id FROM agent_invitations WHERE agent_id='late-scribe'"), [("w1", "owner")])
+        # A disabled agent, still on the team, is not given back to its inviter.
+        self.sql("UPDATE actors SET enabled=0 WHERE id='late-scribe'")
+        self.refused(self.store.command("owner", self.envelope("Late scribe")), "NAME_TAKEN")
+        self.sql("UPDATE actors SET enabled=1 WHERE id='late-scribe'")
+        # Someone else with the same name as well: the name is not this agent's alone, so it is not given back.
+        self.sql("INSERT INTO actors(id,kind,name) VALUES ('zz-namesake','agent','Late scribe')")
+        self.refused(self.store.command("owner", self.envelope("Late scribe")), "NAME_TAKEN")
+        self.sql("DELETE FROM actors WHERE id='zz-namesake'")
+        self.assertEqual(self.store.command("owner", self.envelope("Late scribe"))["status"], "committed", "given back again")
+        # Once off the team it is not given back, by the inviter either.
+        self.assertEqual(self.command("workspace.member_set", {"actor_id": "late-scribe", "present": False}, {"workspace_id": "w1"},
+                                      {"workspace_revision": self.version()})["status"], "committed")
+        self.refused(self.store.command("owner", self.envelope("Late scribe")), "NAME_TAKEN")
+
+    def test_a_full_team_refuses_an_invitation_in_plain_words_and_one_place_short_takes_it(self):
+        limit = 128
+        count = self.sql("SELECT count(*) FROM workspace_members WHERE workspace_id='w1'")[0][0]
+        with sqlite3.connect(str(self.path)) as db:
+            for number in range(limit - 1 - count):
+                db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", ("filler-%d" % number, "agent", "Filler %d" % number))
+                db.execute("INSERT INTO workspace_members VALUES ('w1',?)", ("filler-%d" % number,))
+        self.assertEqual(self.store.command("owner", self.envelope("Last place"))["status"], "committed", "the 128th member")
+        self.assertEqual(self.sql("SELECT count(*) FROM workspace_members WHERE workspace_id='w1'"), [(limit,)])
+        before = self.state()
+        receipt = self.store.command("owner", self.envelope("One too many"))
+        self.refused(receipt, "TOO_MANY_WORKSPACE_MEMBERS")
+        self.assertEqual(self.error(receipt)["message"], "This outcome's team is full: it has 128 members, its owner included.")
+        self.assertEqual(self.state(), before, "no one registered or added")
+        # An agent already on the full team is still given back to its inviter: no one is added.
+        self.assertEqual(self.store.command("owner", self.envelope("Last place"))["status"], "committed")
 
     def test_a_name_that_cannot_name_an_agent_and_an_unknown_program_are_refused(self):
         before = self.state()
@@ -203,6 +327,156 @@ class SignIn(InviteCase):
         self.assertTrue(self.sign_in(invite(self.store, "owner", envelope, missing))["written"])
         self.assertEqual((missing / "release-scribe.profile.json").read_bytes(), before)
 
+    def written_by_write_profile(self, agent, store_path=None, instance="test-instance", binding=None):
+        """The exact bytes write_profile writes for agent, from a folder of their own."""
+        scratch = Path(tempfile.mkdtemp(dir=self.temp.name))
+        write_profile(scratch / "p.json", store_path or self.path, instance, agent, binding=binding or self.binding)
+        return (scratch / "p.json").read_bytes()
+
+    def test_a_retyped_invitation_after_a_file_not_written_writes_the_file_for_the_same_agent(self):
+        # The reviewer's steps (item 525): invite Late scribe while the folder refuses writes, reload, invite Late scribe again.
+        missing = self.folder / "not-yet"
+        first = invite(self.store, "owner", self.envelope("Late scribe"), missing)
+        self.assertFalse(self.sign_in(first)["written"])
+        missing.mkdir(mode=0o700)
+        before = self.state()
+        again = invite(self.store, "owner", self.envelope("Late scribe"), missing)
+        self.assertNotEqual(again["operation_id"], first["operation_id"], "a new request: the page kept nothing")
+        self.assertTrue(self.sign_in(again)["written"], again)
+        self.assertEqual(again["result"]["agent"], first["result"]["agent"])
+        self.assertIn("You are Late scribe", self.sign_in(again)["prompt"])
+        self.assertEqual(load_profile(missing / "late-scribe.profile.json").actor_id, "late-scribe")
+        self.assertEqual(self.state(), before, "the agent was registered and added once")
+
+    def test_a_retyped_invitation_after_a_lost_answer_keeps_the_file_written_and_gives_the_prompt(self):
+        first = self.invite(name="Late scribe")
+        self.assertTrue(self.sign_in(first)["written"])
+        written = (self.folder / "late-scribe.profile.json").read_bytes()
+        again = self.invite(name="Late scribe")
+        self.assertTrue(self.sign_in(again)["written"], again)
+        self.assertEqual(self.sign_in(again)["prompt"], self.sign_in(first)["prompt"])
+        self.assertEqual((self.folder / "late-scribe.profile.json").read_bytes(), written, "the file is kept as it is")
+        # The coordinator typing it is refused, and nothing is written for it.
+        self.refused(self.invite(actor="agent-a", name="Late scribe"), "NAME_TAKEN")
+        self.assertEqual(sorted(os.listdir(self.folder)), ["late-scribe.profile.json"])
+
+    def test_a_retry_of_either_kind_never_takes_over_someone_elses_sign_in_file(self):
+        # The file was not written; then the coordinator's own sign-in file lands in the agent's place. Neither the same
+        # request sent again nor the same name typed again as a new request adopts it, and no prompt hands it out.
+        missing = self.folder / "not-yet"
+        envelope = self.envelope("Late scribe")
+        self.assertFalse(self.sign_in(invite(self.store, "owner", envelope, missing))["written"])
+        missing.mkdir(mode=0o700)
+        path = missing / "late-scribe.profile.json"
+        coordinator = self.written_by_write_profile("agent-a")
+        path.write_bytes(coordinator)
+        path.chmod(0o600)
+        before = self.state()
+        for again in (envelope, self.envelope("Late scribe")):
+            receipt = invite(self.store, "owner", again, missing)
+            self.refused(receipt, "SIGN_IN_TAKEN", recorded=False)
+            self.assertNotIn("sign_in", receipt)
+            self.assertEqual((self.state(), path.read_bytes()), (before, coordinator))
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(1,)], "only the first was asked")
+
+    def test_a_sign_in_file_cut_short_for_this_agent_is_written_over_by_the_same_invitation_sent_again(self):
+        # write_profile died after creating the file (a full disk): the file holds the start of this agent's sign-in, or nothing.
+        missing = self.folder / "not-yet"
+        envelope = self.envelope()
+        self.assertFalse(self.sign_in(invite(self.store, "owner", envelope, missing))["written"])
+        whole = self.written_by_write_profile("release-scribe")
+        missing.mkdir(mode=0o700)
+        path = missing / "release-scribe.profile.json"
+        for cut in (len(whole) // 2, 0):
+            if path.exists():
+                path.unlink()
+            path.write_bytes(whole[:cut])
+            path.chmod(0o600)
+            again = invite(self.store, "owner", envelope, missing)
+            self.assertTrue(self.sign_in(again)["written"], again)
+            self.assertEqual(path.read_bytes(), whole)
+            self.assertEqual(load_profile(path).actor_id, "release-scribe")
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(1,)], "Core recorded it once")
+
+    def test_only_a_private_regular_file_can_be_a_cut_short_sign_in_and_anything_else_in_its_place_is_kept(self):
+        # Each holds, or leads to, the start of this agent's own sign-in, yet none is a private regular file in the agent's
+        # place: a readable copy, a pipe, a folder, a link to nowhere and a link to a private cut-short copy elsewhere.
+        # The agent is not registered yet, so write_profile would refuse; these are the bytes it writes once it is.
+        whole = profile_bytes(self.path, "test-instance", "release-scribe", self.binding)
+        path = self.folder / "release-scribe.profile.json"
+        aside = Path(tempfile.mkdtemp(dir=self.temp.name)) / "cut.json"
+        aside.write_bytes(whole[:10])
+        aside.chmod(0o600)
+
+        def readable():
+            path.write_bytes(whole[:10])
+            path.chmod(0o644)
+
+        for kind, place in (("readable", readable), ("pipe", lambda: os.mkfifo(str(path), 0o600)),
+                            ("folder", lambda: path.mkdir(mode=0o700)),
+                            ("link to nowhere", lambda: path.symlink_to(self.folder / "nowhere.json")),
+                            ("link to a cut-short copy", lambda: path.symlink_to(aside))):
+            with self.subTest(kind=kind):
+                if path.is_dir() and not path.is_symlink():
+                    path.rmdir()
+                elif os.path.lexists(str(path)):
+                    path.unlink()
+                place()
+                before = (self.state(), os.lstat(str(path)))
+                self.refused(self.invite(), "SIGN_IN_TAKEN", recorded=False)
+                self.assertEqual((self.state(), os.lstat(str(path))), before)
+                self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
+        self.assertEqual(aside.read_bytes(), whole[:10])
+
+    def test_a_file_that_begins_like_someone_elses_sign_in_is_kept_and_never_taken_over(self):
+        # The start of a sign-in for the same ID in another instance: not this agent's, whatever its name.
+        other = Path(self.temp.name).resolve() / "other"
+        other.mkdir(mode=0o700)
+        from aim_next import initialize
+        theirs = initialize(other / "db.sqlite3", "other-instance", [{"id": "release-scribe", "kind": "agent"}],
+                            authority_path=other / "authority.json")["binding"]
+        whole = self.written_by_write_profile("release-scribe", other / "db.sqlite3", "other-instance", theirs)
+        path = self.folder / "release-scribe.profile.json"
+        path.write_bytes(whole[:len(whole) - 5])
+        path.chmod(0o600)
+        before = self.state()
+        self.refused(self.invite(), "SIGN_IN_TAKEN", recorded=False)
+        self.assertEqual(self.state(), before)
+        self.assertEqual(path.read_bytes(), whole[:len(whole) - 5])
+
+    def test_a_sign_in_file_for_the_same_id_in_another_instance_database_or_binding_is_kept_and_core_is_not_asked(self):
+        path = self.folder / "release-scribe.profile.json"
+        mine = json.loads(self.written_by_write_profile("agent-a").decode("utf-8"))
+        mine["actor_id"] = "release-scribe"
+        elsewhere = Path(self.temp.name).resolve() / "elsewhere.sqlite3"
+        for field, value in (("instance_id", "other-instance"), ("db_path", str(elsewhere)), ("authority_epoch", "another-epoch"),
+                             ("authority_id", "another-authority"), ("authority_path", str(Path(self.temp.name).resolve() / "other-authority.json"))):
+            with self.subTest(field=field):
+                path.write_text(json.dumps(dict(mine, **{field: value})) + "\n")
+                path.chmod(0o600)
+                before = (self.state(), path.read_bytes())
+                self.refused(self.invite(), "SIGN_IN_TAKEN", recorded=False)
+                self.assertEqual((self.state(), path.read_bytes()), before)
+                self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
+                path.unlink()
+        # The coordinator's own sign-in file, whole and valid for this instance, database and authority, binds agent-a:
+        # it is someone else's (the reviewer's case), and neither the new agent nor the inviter is handed it.
+        coordinator = self.written_by_write_profile("agent-a")
+        self.assertEqual(json.loads(coordinator.decode("utf-8")), dict(mine, actor_id="agent-a"))
+        path.write_bytes(coordinator)
+        path.chmod(0o600)
+        before = self.state()
+        receipt = self.invite()
+        self.refused(receipt, "SIGN_IN_TAKEN", recorded=False)
+        self.assertNotIn("sign_in", receipt)
+        self.assertEqual((self.state(), path.read_bytes()), (before, coordinator))
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.agent_invite'"), [(0,)])
+        path.unlink()
+        # The same file binding this instance is this agent's, once Core has registered it.
+        path.write_text(json.dumps(mine) + "\n")
+        path.chmod(0o600)
+        self.assertTrue(self.sign_in(self.invite())["written"])
+
 
 class OverHTTP(Receipts, unittest.TestCase):
     """The page's path: POST /api/command with the invitation, as the server's own actor."""
@@ -261,10 +535,10 @@ class OverHTTP(Receipts, unittest.TestCase):
                          [{"id": "night-watch", "kind": "agent", "name": "Night watch", "name_truncated": False}])
 
     def test_a_duplicate_over_http_says_what_to_do(self):
-        self.post("w-mine", "Night watch", "http-invite-1")
-        refused = self.post("w-mine", "night watch", "http-invite-2")
+        # Someone already here, whom no invitation of this person's registered, is never given back (item 525).
+        refused = self.post("w-mine", "Test Other", "http-invite-2")
         self.assertEqual(self.error(refused), {"code": "NAME_TAKEN", "retryable": False,
-                                            "message": "There is already someone called night watch here. Choose another name, such as night watch 2."})
+                                            "message": "There is already someone called test-other here. Choose another name, such as Test Other 2."})
 
 
 class Launcher(unittest.TestCase):

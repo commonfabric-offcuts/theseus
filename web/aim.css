@@ -965,6 +965,21 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 :where(.deck-pointing) .deck-bubble:hover{border-color:var(--line);color:var(--ink)}.deck-bubble:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .deck-ask{opacity:0}:where(.deck-pointing) .deck-card:hover .deck-ask,.deck-card[aria-current=true] .deck-ask,.deck-ask:focus{opacity:1}.deck-editing .deck-ask{display:none}
 .deck-unread,.deck-unread:hover{color:var(--accent);font-weight:600}.deck-unread svg{fill:currentColor}.deck-unread::after{content:'';width:.5rem;height:.5rem;border-radius:50%;background:var(--accent)}
+/* A card's images (item 321), under its words: each as tall as it needs up to a line of cards, never wider than the card. Its name shows until it loads, or with what it waits on; once it shows, screen readers alone hear the name. */
+/* × stands beside its image, never over it; a small image still shows at a thumb's size. */
+.deck-images{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}.deck-image{display:flex;align-items:flex-start;gap:.3rem;margin:0;min-width:0;max-width:100%}
+.deck-image>.image-thumb{display:block;flex:0 1 auto;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:14rem;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.deck-image-name{min-width:0;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.deck-image:not([data-state]):has(>.image-thumb:not([hidden]))>.deck-image-name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.deck-image:has(>.image-thumb[hidden])>.deck-image-name,.deck-image:not(:has(>.image-thumb))>.deck-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image[data-state]:has(>.image-thumb:not([hidden]))>.deck-image-name{order:1;align-self:center;max-width:12rem}
+.deck-image-remove{order:2;flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
+@media(pointer:coarse){.deck-image-remove{width:2.75rem;height:2.75rem}}
+/* On a phone a card being written keeps room for its images beside the box, both on the screen at once. */
+@media(max-width:760px){.deck-writing:has(>.deck-images)>.deck-editor{min-height:min(26dvh,14rem)}.deck-image>.image-thumb{max-height:min(30dvh,14rem)}}
+.deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
+/* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
+.md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
+.page-image>.image-thumb:not([hidden]){display:block;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:min(28rem,60dvh);object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
 @media(max-width:760px){.deck-page{max-width:none}.deck-cards{display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}.deck-cards::-webkit-scrollbar{display:none}.deck-cards.deck-editing{overflow-x:hidden}
@@ -1050,6 +1065,16 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .message-edit-conflict-title{flex-basis:100%;font-weight:600;font-size:.9rem}
 .message-edit-saved{flex-basis:100%;margin:0;font:inherit;font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere;max-height:min(10rem,20dvh);overflow:auto;color:var(--muted)}
 .message-edited{color:var(--muted)}
+/* What a card's message carries (item 127): small glyphs in the card's line beside its time, in the line's quiet color on every card face, light and dark. A mark, not a control: its words are its accessible name and tooltip. */
+.card-carries{white-space:nowrap;margin-left:.15rem}
+/* The star (stack-look.css) shows only on a lit card, but always has its place. On a marked line its room is kept at the end of what comes before it (the time and its marks, or Edited), and the star sits in that room taking no width of its own, so a line the marks fill wraps with its star instead of leaving the star alone on a line that shows nothing. */
+.message-author:has(.card-carries)>:has(+ .card-star){padding-right:1.3rem}
+.message-author:has(.card-carries)>.card-star{box-sizing:border-box;width:1rem;margin-left:-1rem;padding:0;text-align:center}
+.carry{display:inline-block;width:.95rem;height:.95rem;margin-left:.3rem;vertical-align:-.15rem;background-color:var(--muted);-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
+.carry-image{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='1.75' y='2.75' width='12.5' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.5' cy='6.5' r='1.1'/%3E%3Cpath d='M2.5 12l3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
+.carry-note{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.25 1.75h6.5l3 3v9.5h-9.5z'/%3E%3Cpath d='M9.75 1.75v3h3M5.5 8.25h5M5.5 11h3.5'/%3E%3C/svg%3E")}
+.carry-reply{--carry:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.75 13.25l.6-2.85 7.4-7.4a1.5 1.5 0 0 1 2.1 2.1l-7.4 7.4z'/%3E%3Cpath d='M9.75 4l2.25 2.25'/%3E%3C/svg%3E")}
+@media(forced-colors:active){.carry{background-color:CanvasText}}
 
 /* Fenced text in reading views. The action lane is outside the horizontal
    scroller; hover/focus changes visibility, never the payload's geometry. */
@@ -1082,3 +1107,15 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
 
 .feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
+
+/* A message's images in its card (item 474, card-images.mjs): after its words, a row of squares the right rail's
+   thumbnail size (rails.css, .things-thumbs), which wraps on a phone and never runs past the card. A square holds its
+   place, blank, while its picture is coming (data-coming, before it is near the window) and while it loads; only one
+   whose read brought nothing gives it to the image's name. The card stays one button: a press
+   opens the Reader, where each image keeps its Open. */
+.card-images{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.55rem;max-width:100%}
+.card-image{position:relative;display:block;flex:none;width:4.2rem;height:4.2rem;overflow:hidden;border:1px solid var(--line);border-radius:.45rem;background:var(--soft)}
+.card-image>img.image-thumb{display:block;width:100%;height:100%;margin:0;object-fit:cover;border:0;border-radius:0}
+.card-image>img.image-thumb[hidden]{display:none}
+.card-image-name{display:none}
+.card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;padding:.3rem;font-size:.66rem;line-height:1.25;color:var(--muted);overflow-wrap:anywhere;overflow:hidden}

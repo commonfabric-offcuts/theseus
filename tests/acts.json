@@ -3126,6 +3126,36 @@
   },
   {
    "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
    "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
    "break": [
     [
@@ -5254,7 +5284,7 @@
    "break": [
     [
      "web/app.mjs",
-     "        if (foldedClick($('messages'), messageEntries.get(item.id))) return;",
+     "        if (foldedClick($('messages'), messageEntries.get(item.id), event)) return;",
      "        if (false) return;"
     ]
    ],
@@ -13539,36 +13569,6 @@
    }
   },
   {
-   "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -14170,40 +14170,12 @@
   },
   {
    "item": 324,
-   "act": "A name or ID someone already has is refused, naming a free name to choose instead, and nothing is registered",
-   "break": [
-    [
-     "aim_next/invite.py",
-     "        if _taken(db, name, agent):",
-     "        if False:"
-    ]
-   ],
-   "check": {
-    "python": "test_agent_invite.py"
-   }
-  },
-  {
-   "item": 324,
    "act": "The server writes the agent's sign-in file, private to its user, once Core has recorded the invitation",
    "break": [
     [
      "aim_next/profile.py",
      "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)",
      "os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)"
-    ]
-   ],
-   "check": {
-    "python": "test_agent_invite.py"
-   }
-  },
-  {
-   "item": 324,
-   "act": "A file already in the new agent's place, for anyone else, is kept, and Core is not asked",
-   "break": [
-    [
-     "aim_next/invite.py",
-     "if agent and _binds(sign_in_path(folder, agent), store, agent) is False:",
-     "if agent and _binds(sign_in_path(folder, agent), store, agent) is None and False:"
     ]
    ],
    "check": {
@@ -17151,434 +17123,6 @@
    }
   },
   {
-   "item": 475,
-   "act": "The reader's message waits for a reply only when an agent received it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "if item[\"id\"] not in received or item[\"id\"] in answered",
-     "if item[\"id\"] in answered"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "An edit's correction to an agent is no receipt: only a delivery of the first revision is",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     " AND d.revision=1 AND a.kind='agent'",
-     " AND a.kind='agent'"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A reply by anyone else after it in its dossier ends the wait",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "others[root] is None or others[root] < item[\"seq\"]",
-     "others[root] is None"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A whisper never waits for a reply",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
-     "item[\"author_id\"] == actor\n"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "In an outcome's conversation the item's own dots stand alone",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "if own and topic[\"kind\"] != \"conversation\":",
-     "if own:"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "The page draws the Conversation's three dots on a message Core says waits, and none on any other",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (item.awaiting_reply !== true) { row?.remove(); return; }",
-     "if (item.awaiting_reply === undefined) { row?.remove(); return; }"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message arriving ends the dots only when someone else wrote it",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
-     "if (!Number.isSafeInteger(item.seq)) continue;"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message arriving with no dossier root ends no wait",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (typeof root === 'string') latest.set(root,",
-     "latest.set(root,"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message arriving with no sequence ends no wait",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
-     "if (item.author_id === viewer) continue;"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page a reply arriving ends the dots at once, without a reload",
-   "break": [
-    [
-     "web/app.mjs",
-     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading dots after the person posts"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page the dots show on the reader's message after they post",
-   "break": [
-    [
-     "web/app.mjs",
-     "    paintAwaiting(card, item);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading dots after the person posts"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A reply to the reader's message ends its wait wherever it is stacked, a reply joined to another stack too",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "answered = {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to",
-     "answered = set() and {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "The reader's own reply to their message is no reply to it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "\"AND m.author_id<>:actor AND %s\" % (",
-     "\"AND %s\" % ("
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message on the record by someone else naming the reader ends the waits of their messages before it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     " or named is not None and named > item[\"seq\"]:",
-     ":"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message naming the reader before theirs is no reply to it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "named is not None and named > item[\"seq\"]",
-     "named is not None"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A whisper naming the reader is no reply to their message on the record",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     " AND m.author_id<>? AND m.private_to IS NULL\",",
-     " AND m.author_id<>?\","
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "An agent's thumbs-up on the reader's message ends its wait",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "r.kind='thumb' AND a.kind='agent'",
-     "r.kind='thumb' AND a.kind='nobody'"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A person's thumbs-up on the reader's message is no reply",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "r.kind='thumb' AND a.kind='agent'",
-     "r.kind='thumb'"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "A message from before where the rule begins never waits",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "and item[\"seq\"] >= int(start[0])]",
-     "]"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "The first post records where the rule begins",
-   "break": [
-    [
-     "aim_next/conversation.py",
-     "        record_wait_start(db, sequence)\n",
-     ""
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "Where the rule begins is recorded once and no later post moves it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "INSERT OR IGNORE INTO metadata(key,value)",
-     "INSERT OR REPLACE INTO metadata(key,value)"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page a reply to the waiting message arriving from another dossier ends its wait",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (typeof item.reply_to === 'string') replied.add(item.reply_to);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page a message naming the reader arriving after the waiting message ends its wait",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "named = Math.max(named, item.seq);",
-     "named = named;"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page a whisper naming the reader is no reply",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "if (item.whisper !== true && (item.addressees ?? []).includes(viewer))",
-     "if ((item.addressees ?? []).includes(viewer))"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page an agent's thumbs-up on the waiting message ends its wait",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "kindOf(thumb.actor_id) === 'agent'",
-     "kindOf(thumb.actor_id) === 'nobody'"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page a person's thumbs-up is no reply",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     " && kindOf(thumb.actor_id) === 'agent'",
-     ""
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page ending a wait needs to know who reads it and who is an agent",
-   "break": [
-    [
-     "web/card-reading.mjs",
-     "!viewer || typeof kindOf !== 'function') throw Error('Whether a message is answered",
-     "!viewer) throw Error('Whether a message is answered"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_card_reading.test.mjs"
-   }
-  },
-  {
-   "item": 475,
-   "act": "On the page an agent's thumbs-up ends the dots at once, without a reload",
-   "break": [
-    [
-     "web/app.mjs",
-     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
-     "  learnAnswered(views.messages, bootstrap.actor, () => undefined);\n"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading dots end on a reply joined"
-   }
-  },
-  {
-   "item": 475,
-   "act": "The newest message by someone else bounds the messages naming the reader, the topic's newest one included",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END",
-     "o.seq"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
-   "item": 475,
-   "act": "Whether a message waits for a reply reads no more as the topic grows after it",
-   "break": [
-    [
-     "aim_next/stacks.py",
-     "newest[0] > lowest:",
-     "newest[0] > -1:"
-    ],
-    [
-     "aim_next/stacks.py",
-     "AND n.seq>? AND n.seq<=? AND m.author_id<>?",
-     "AND n.seq>? AND ? IS NOT NULL AND m.author_id<>?"
-    ]
-   ],
-   "check": {
-    "python": "test_topic_reading.py"
-   }
-  },
-  {
    "item": 479,
    "act": "Core takes a minted name only from the dossier's namer: the outcome's coordinator, or else the first agent that replied",
    "break": [
@@ -17896,6 +17440,2000 @@
    ],
    "check": {
     "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A card shows a quiet mark for each image its message carries, and a text attachment is no image",
+   "break": [
+    [
+     "web/marks.mjs",
+     "return { images: attachments.filter(attachment => /^image\\//.test(attachment?.content_type ?? '')).length,",
+     "return { images: attachments.length,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A card marks the person's own private note on its message",
+   "break": [
+    [
+     "web/marks.mjs",
+     "note: item?.yours?.note === true, reply:",
+     "note: false, reply:"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A card marks a reply the person saved from its message and has not sent",
+   "break": [
+    [
+     "web/marks.mjs",
+     "reply: item?.yours?.reply === true };",
+     "reply: false };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Each mark is a glyph named and titled in words, and never a control",
+   "break": [
+    [
+     "web/marks.mjs",
+     "mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', words); mark.title = words;",
+     "mark.setAttribute('role', 'button'); mark.tabIndex = 0;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Core says a note or saved reply is the reader's only when it is their own, never another reader's",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "FROM %s WHERE actor_id=? AND source_key IN (%s)",
+     "FROM %s WHERE ?<>'' AND source_key IN (%s)"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A note emptied of words, or a reply with no words or images, is no mark",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "if payload.get(\"body\", \"\").strip() or field",
+     "if payload.get(\"body\", \"\") is not None or field"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A save of the person's note or reply on a message tells their own changes, keyed by the message, with a growing version",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "            self._change(db, \"actor\", actor, \"yours\", ref[\"id\"], writing_version(db, actor, ref[\"id\"]))",
+     "            pass"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "The page reads a message again when the person's own writing on it changes",
+   "break": [
+    [
+     "web/freshness.mjs",
+     "if (item.resource_kind === 'yours' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('yours:' + item.resource_id, item.version);",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A read that answers late never puts back a mark the person's newer writing took away",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "const later = yoursVersion(item.yours) >= yoursVersion(known?.yours) ? item.yours : known.yours;",
+     "const later = item.yours;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_carries.test.mjs"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Each mark shows as a glyph the size of a letter beside the card's time, at a phone's width",
+   "break": [
+    [
+     "web/aim.css",
+     ".carry{display:inline-block;",
+     ".carry{display:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "marks at 375px dark"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A note or reply saved or emptied on another device repaints the card's marks without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }",
+     "if (kind === 'yours') return;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "writing saved or emptied on another device"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A message that heads a stack shows its marks in the stack's head row while its card is folded in",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "...(carried ? [carried] : []),",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "a note and a reply saved in the Reader"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A note or reply saved or emptied on another device moves the marks on the row of the stack its message heads",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (carried) who.after(carried);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "a note and a reply saved in the Reader"
+   }
+  },
+  {
+   "item": 127,
+   "act": "On a stack's head row who began it gives way, so at 320 the second line never wraps to a third",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-who{flex:10000 1 0;",
+     ".stack-who{flex:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "On a phone a stack head row's marks give way instead of holding their whole width beside a name cut short",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-self:center;flex:100 1 0;",
+     "align-self:center;flex:none;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 375px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A head row's marks give way before who began it is cut short",
+   "break": [
+    [
+     "web/stack-look.css",
+     "align-self:center;flex:100 1 0;",
+     "align-self:center;flex:1000000 1 0;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 375px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A head row's mark shows whole or not at all, the first one included",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-head>.card-carries::before{content:\"\";width:0;height:var(--stack-meta-lh)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Who began a stack is titled in full on its head row, so a name cut short on a phone can still be read",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     " who.title = who.textContent;",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 1280px light"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A whisper card's name says the marks of what its message carries, as every other card's words do, and follows them as they change",
+   "break": [
+    [
+     "web/whisper-choice.mjs",
+     "${time ? `, ${time}` : ''}${carried}. ${item.body}",
+     "${time ? `, ${time}` : ''}. ${item.body}"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "whisper: a whisper card with an image and a note"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A reply prepared to send keeps its mark while its send is refused or not yet made, until a reply from the message is sent",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "            if not sent:\n",
+     "            if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "An accepted send tells the writer's own changes, keyed by the message, so a page takes the reply's mark away",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        self._tell_writing(db, actor, source)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "Each accepted send raises the version of the writer's writing on its message, so a page keeps the read after it",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "\"(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND \" + SENT + \")\"",
+     "\"(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND 0)\""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A page reads the reader's prepared replies by its own messages, so its cost does not grow with their send history",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "\"SELECT s.source_key,%s AS sent FROM submissions s INDEXED BY editor_submissions \"",
+     "\"SELECT s.source_key,%s AS sent FROM submissions s \""
+    ]
+   ],
+   "check": {
+    "python": "test_reader_bounds.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A save's version counts the writer's sent replies from that message alone, so its cost does not grow with their send history",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "submissions s INDEXED BY editor_submissions WHERE",
+     "submissions s INDEXED BY actor_submissions WHERE"
+    ]
+   ],
+   "check": {
+    "python": "test_reader_bounds.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "On a phone a stack head row's reply count keeps its width: the marks give way before it",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not([data-compact=true]) .stack-head>.stack-meta{display:contents}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 320px light"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A line of a card's words that holds only ![name](attachment:ID) is one of its images, and the card's words leave it out",
+   "break": [
+    [
+     "web/deck.mjs",
+     "const image = IMAGE_LINE.exec(line); return image && {",
+     "const image = null; return image && {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image line inside a fenced block is words, as a heading there is",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    const named = !before && !fence && take(lineText(line));",
+     "    const named = take(lineText(line));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The line the deck writes for an image keeps brackets and line breaks in its name from ending the line",
+   "break": [
+    [
+     "web/deck.mjs",
+     "name.replace(/[ \\t]*[[\\]\\\\\\r\\n]+[ \\t]*/g, ' ')",
+     "name"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A file that is not a PNG, JPEG, GIF or WebP image is refused at once, in words that say what was not added and why",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(!TYPES.has(file.type)||!file.size)throw",
+     "if(!file.size)throw"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image one byte past Core's image limit is refused at once, saying the limit; one at the limit is taken",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(file.size>limits.image_bytes)throw",
+     "if(file.size>limits.image_bytes+1)throw"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The page's limits count the images still being read in, not only those uploading",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const pending=[...w.images.filter(i=>!i.removed&&!i.ready),...this.arriving.values()];",
+     "const pending=[...w.images.filter(i=>!i.removed&&!i.ready)];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image removed while it is still being read in is never taken in",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(this.dropped.delete(media))return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image taken in uploads under the media id the card names it by",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const id=e.media??crypto.randomUUID()",
+     "const id=crypto.randomUUID()"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Core opens a card's image through the page only for someone who may read the page",
+   "break": [
+    [
+     "aim_next/media.py",
+     "            source = self._source(db, actor, args[\"source_ref\"])",
+     "            source = self._source(db, row[\"actor_id\"] if row else actor, args[\"source_ref\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Through the page, only an image the page carries opens, whatever a card's words name",
+   "break": [
+    [
+     "aim_next/media.py",
+     "            allowed = any(ref.get(\"id\") == media_id for ref in source[\"attachments\"])",
+     "            allowed = True"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image pasted into a card being written is named in that card and shows in it at once, the box keeping its words",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "      if(field!==this.text){event.preventDefault();this.addToCard(files,field);return;}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image file dropped on a card being written goes into it",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "lit(false);this.addToCard([...event.dataTransfer.files],this.editing.field);});",
+     "lit(false);});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card's image shows from this device while it uploads",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    const local=own?.bytes?new Blob([own.bytes],{type:own.type}):own?.file??null;",
+     "    const local=null;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The card box leaves the card's image lines out and shows its images under the words, each with its ×",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    return { words: shown.words, stacks, images: shown.images.map(image => image.line) };",
+     "    return { words, stacks, images: [] };"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "× takes an image out of the card and off the page",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id,{keep:true})",
+     "    if(false)this.images.remove(image.id)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The page's own list of images leaves an image a card shows to the card",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "const attached=w.value.attachments.filter(ref=>!named.has(ref.id)).map(",
+     "const attached=w.value.attachments.map("
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card's image already on the page is read through the page as it stands, so a reader sees an image another uploaded",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     ":(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob)",
+     ":(await this.api.media(this.bootstrap.instance_id,attached)).blob)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images every state of a card's image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A refusal says what was not added and why, and nothing refused goes to Core",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "      try {admitted=this.images.admit(file);} catch(error) {this.imageError=error.message;break;}",
+     "      try {admitted=this.images.admit(file);} catch(error) {break;}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images a file that is not an image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "On a phone a card image's × is a 44-point target",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(pointer:coarse){.deck-image-remove{width:2.75rem;height:2.75rem}}",
+     "@media(pointer:coarse){.deck-image-remove{width:2rem;height:2rem}}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images every state of a card's image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Undo after × puts the image back on the page, so the card never names an image the page lost: one uploaded, one still uploading, and one someone else added",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "for(const id of this.namedImages(body))if(this.images.released.has(id))",
+     "for(const id of this.namedImages(body))if(false)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images Undo after × puts the image back on the page"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image × took off the page goes back on it, once, from what it reached: attached again, its upload going on, or by its id",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(old.ready){old.removed=false;old.associated=false;this.associate(old);w.notify();return old;}\n",
+     "    if(old.ready){old.removed=false;old.associated=false;w.notify();return old;}\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image still uploading when × took it off goes on uploading from its bytes when Undo puts it back",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const entry={...old,id:crypto.randomUUID(),bytes:kept.bytes,",
+     "const entry={...old,id:crypto.randomUUID(),bytes:null,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Only an image × took off is put back; one removed from the page's list stays off",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(keep)this.released.set(",
+     "    this.released.set("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Core takes back from a writer of a page an image one of its revisions carried, though another uploaded it",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        return media_id in self.current or self.db.execute(",
+     "        return media_id in self.current or None and self.db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A revise reads the revision it follows, not the page's history, so an ordinary save costs the same however many revisions the page has",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        retained = () if creating else _Carried(db, item_id, json.loads(current[\"attachments\"]))",
+     "        retained = [] if creating else [ref[\"id\"] for row in db.execute(\"SELECT attachments FROM memory_revisions WHERE item_id=?\", (item_id,)) for ref in json.loads(row[\"attachments\"])]"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An attachment put back on the page is described as Core described it once its revision is saved",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };",
+     "attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Someone else's image put back by Undo after × shows on its card as before",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };",
+     "attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images Undo after × puts the image back on the page"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A new card holding only images is made, named for the first of them",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  return written;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image pasted into a new card with no words makes a card named for it",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  return written;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a new card with no words"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card cleared of its text is removed with its images, and an empty new card is never made",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  if (!images.length) return written;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image picked with #img while a card is written is named in that card",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "if(field!==this.text&&this.editing?.field===field)this.addToCard([file],field);",
+     "if(false)this.addToCard([file],field);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook images paste and img picker"
+   }
+  },
+  {
+   "item": 321,
+   "act": "× keeps an image on the page while another card still shows it",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id,{keep:true})",
+     "    if(true)this.images.remove(image.id,{keep:true})"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images × keeps an image on the page while another card shows it"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image × took off the page stays off when the page draws what Core confirmed: only words the person changed bring an image back",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(edited)this.keepNamed(body);\n  }\n  save() {",
+     "    this.keepNamed(body);\n  }\n  save() {"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images × keeps an image on the page while another card shows it"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Outside its card, the Reader shows a card's image line as the image at its reading size, read through the page, never the line's markup",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });",
+     "      images: null });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the Reader shows"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A page opened in place on its outcome's page shows a card's image line as the image, read through the page",
+   "break": [
+    [
+     "web/page-here.mjs",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc, pageImages(source, this.media && (attachment => this.media(attachment, source.source_ref)))));",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images a page opened in place"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The topic's Notebook card names a card's image after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/app.mjs",
+     "      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });",
+     "      linkWords(body, item.body, { partial: item.preview === true });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the topic's Notebook card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An ask about a card quotes its image by name after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "...imageStandIns(cardStacks(card.words, messageOf).words).split('\\n')];",
+     "...cardStacks(card.words, messageOf).words.split('\\n')];"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an ask about a card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "What changed in a page names an image a card gained or lost after its glyph, never by its markup",
+   "break": [
+    [
+     "web/page-changes.mjs",
+     "  const runs = changes(imageStandIns(before), imageStandIns(after));",
+     "  const runs = changes(before, after);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where a page's images are drawn, an image line is a passage of its own, even straight under words",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j, images)) tick(meter, lines[j++].text.length + 1);",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j)) tick(meter, lines[j++].text.length + 1);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image the page does not carry shows its name alone where the page is read, and nothing is read for it",
+   "break": [
+    [
+     "web/page-image.mjs",
+     "  if (attached?.inline && read) paintThumb(figure, 'card:' + image.id, () => read(attached), img => caption.before(img));",
+     "  if (read) paintThumb(figure, 'card:' + image.id, () => read(attached ?? image), img => caption.before(img));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where only words show, an image line inside a fenced block stays words",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    if (before || fence) return line;\n    const image = lineImage(line), end",
+     "    const image = lineImage(line), end"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An excerpt cut inside an image line's address still names the image after its glyph",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    const cut = partial && i === lines.length - 1 && CUT_LINE.exec(line);",
+     "    const cut = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "An open dossier of more than seven messages shows its newest seven and one row for the earlier ones, which opened shows them all in their places",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return [];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "On the page an open dossier of more than seven shows its newest seven as cards and one row, \"8 earlier messages\", for the rest",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];",
+     "  return [];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A dossier of seven messages or fewer shows no earlier-messages row",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const RECENT = 7;",
+     "export const RECENT = 6;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Opened, each earlier message shows as one row in its place, who wrote it and its line",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "      if (row.earlier && !row.folded && row.item.acts?.starred !== true && !state.whole.has(row.item.id)) state.earlierRows.add(row.item.id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A press on an earlier message's row shows it whole in its place, its image with it, and from there the Reader opens on it with its Open",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (onEarlierRow(entry, event?.target) && state.earlierRows.has(id)) { state.whole.add(id); state.again(); return true; }",
+     "  if (onEarlierRow(entry, event?.target) && state.earlierRows.has(id)) { state.again(); return true; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The first message among the earlier ones is its tab alone until the row is opened, then a row under the tab that a press shows whole",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }",
+     "  if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.again(); return true; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Return on the earlier-messages row takes the keys on to the first earlier message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        if (focused && first) cardIn(first).focus({ preventScroll: true });",
+     "        if (focused && first) void first;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Changing the dossier's state lets the earlier-messages row go: folded and opened again, it is closed",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);",
+     "  void stack;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A link to an earlier message opens the dossier's row and shows that message whole in its place",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (!state.whole.has(own)) { state.whole.add(own); changed = true; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Opening the earlier-messages row sends nothing: a fold among the earlier messages stays the reader's own, and after a reload it is still its row",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);",
+     "        state.earlier.add(stack.id); for (const item of row.items) state.on?.unfold?.(item.id); state.again(); state.on?.earlier?.(stack, row.items.length);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The earlier-messages row is the page's own for this visit: nothing keeps it open, so after a reload the dossier opened shows it closed again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        state.earlier.add(stack.id); state.again(); state.on?.earlier?.(stack, row.items.length);",
+     "        state.earlier.add(stack.id); sessionStorage.setItem('earlier', JSON.stringify([...state.earlier])); state.again(); state.on?.earlier?.(stack, row.items.length);"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map() });"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "  state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);",
+     "  for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an open dossier of more than seven"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Under Only new the earlier-messages row, closed or opened, gives way to the New messages among the earlier ones as whole cards, with no row inside them, and comes back when Only new is off",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".only-new :is(.stack-earlier,.message-earlier){display:none}",
+     ".only-new .stack-earlier{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: an open dossier's earlier-messages row"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The newest seven are counted once, when the dossier is drawn open: held, a message arriving after that hides nothing, and held gone, they are counted afresh",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (at >= 0) return all.slice(0, at);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A message arriving in an open dossier hides nothing being read: the card being read, or an earlier message's row once the row is opened, stays shown where it was",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a message arriving in an open dossier hides nothing"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Changing an open dossier's state lets go of its newest seven: folded and opened again, they are counted afresh",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!drawnOpen) state.held.delete(stack.id);",
+     "  void drawnOpen;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a message arriving in an open dossier hides nothing"
+   }
+  },
+  {
+   "item": 476,
+   "act": "On a phone the first tap on an open dossier's tab lights it and the next folds it, its first message drawn as an earlier message's row or not",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (onEarlierRow(entry, event.target)) return;",
+     "      if (cardIn(entry).dataset.earlier === 'true') return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A press on a dossier's tab acts as the tab, never as its first message's earlier row under it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head') && !card.closest('.only-new');",
+     "  return card.dataset.earlier === 'true' && !card.closest('.only-new');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "A finger's tap on the earlier-messages row lights nothing, so the dossier's tab still lights at its first tap",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "        const focused = doc.activeElement === button && event?.pointerType !== 'touch';",
+     "        const focused = doc.activeElement === button;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the first tap on an open dossier's tab"
+   }
+  },
+  {
+   "item": 476,
+   "act": "Under Only new a press on an earlier message's whole card, or on the first message's words, opens the Reader as on any card",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head') && !card.closest('.only-new');",
+     "  return card.dataset.earlier === 'true' && !target?.closest?.('.stack-head');"
+    ]
+   ],
+   "check": {
+    "native": "conversation",
+    "case": "Only new: an open dossier's earlier-messages row"
+   }
+  },
+  {
+   "item": 476,
+   "act": "The rail's Starred lands on a dossier's first message that is an earlier one: the row opens and that message shows whole",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section && stack && (own !== id || full) && earlierOf(",
+     "  if (section && stack && own !== id && earlierOf("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A message's images show as thumbnails in its card, on the topic page and in a dossier",
+   "break": [
+    [
+     "web/app.mjs",
+     "      paintCardImages(card, item, cardImageBytes(item.id));",
+     "      void cardImageBytes;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are the right rail's thumbnail size",
+   "break": [
+    [
+     "web/aim.css",
+     "flex:none;width:4.2rem;height:4.2rem;overflow:hidden;",
+     "flex:none;width:5rem;height:5rem;overflow:hidden;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "Each thumbnail has an accessible name, \"Image: \" and its file's name",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "    host.setAttribute('aria-label', `Image: ${name}`); host.title = name;",
+     "    host.title = name;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "Each thumbnail is read through the message that carries it, so only a reader of that message gets it",
+   "break": [
+    [
+     "web/app.mjs",
+     "(await api.media(bootstrap.instance_id, attachment, { kind: 'message', id })).blob",
+     "(await api.media(bootstrap.instance_id, attachment, { kind: 'message', id: attachment.id })).blob"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A file that is not an image, or an image not verified inline, shows no thumbnail",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "filter(attachment => attachment?.inline === true && INLINE.includes(attachment.content_type))",
+     "filter(attachment => Boolean(attachment))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 474,
+   "act": "On the page a message with no image, a file and a folded row draw no thumbnails",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "filter(attachment => attachment?.inline === true && INLINE.includes(attachment.content_type))",
+     "filter(attachment => Boolean(attachment))"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "An image Theseus refuses shows its name in its square, and no picture",
+   "break": [
+    [
+     "web/aim.css",
+     ".card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;",
+     ".card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:none;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading thumbnails"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A topic the reader can no longer read keeps none of its cards' thumbnails nor their bytes, as the right rail keeps none of its pictures",
+   "break": [
+    [
+     "web/app.mjs",
+     "    dropCardImages($('messages'));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a topic the page can no longer read leaves the right rail at once"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are read only once it is drawn as a card near the window: at load a folded row, an earlier message behind its row and a card far below read nothing",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });",
+     "      delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnails are read when it comes near later: a scroll, an unfold, an earlier message shown whole",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "const go = waiting.get(each.target); forget(each.target); go(); }",
+     "forget(each.target); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnail square on its way, not yet near the window, draws no name (the look of a refused image): no square in view shows its name in any frame at load or after a jump to the card furthest from the window",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "      host.append(words); host.dataset.coming = '';",
+     "      host.append(words);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnail read waits behind every other image read, so the composer's own thumbnails never queue behind a topic's cards",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "    const behind = later ? -1 : reads.findIndex(each => each.later);",
+     "    const behind = -1;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_image_pick.test.mjs"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A name or ID someone already has is refused, naming a free name to choose instead, and nothing is registered",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if holders:\n            other = _free(db, name)",
+     "        if False:\n            other = _free(db, name)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 324,
+   "act": "A file already in the new agent's place, for anyone else, is kept, and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if agent and _held(sign_in_path(folder, agent), store, agent) == OTHER:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The inviter typing the same name again in the same outcome gets the same agent back from Core, as a new request, and nothing is registered or added again",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Only the person who invited the agent gets it back: the coordinator typing its name in the same outcome is refused",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?\",\n                         (agent, workspace, actor))",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=?\",\n                         (agent, workspace))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The agent is given back only in the outcome it was invited to: its inviter typing its name in another outcome whose team it is on is refused",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?\",\n                         (agent, workspace, actor))",
+     "\"SELECT 1 FROM agent_invitations WHERE agent_id=? AND inviter_id=?\",\n                         (agent, actor))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A disabled agent is not given back, though it is still on the team",
+   "break": [
+    [
+     "aim_next/invite.py",
+     " or not holders[0][\"enabled\"]:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent is not given back when someone else has its name too",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if len(holders) != 1 or not",
+     "if not holders or not"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent no longer on the outcome's team is not given back",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return holders[0] if invited and member else None",
+     "return holders[0] if invited else None"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Core records who invited each agent into which outcome",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        db.execute(\"INSERT INTO agent_invitations VALUES (?,?,?)\", (agent, workspace[\"id\"], actor))\n",
+     "        None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Long names that share their first forty letters get IDs of their own, and a taken one gets a suggestion that is free after the cut",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "    if len(whole) <= ID_MAX:\n        return whole\n",
+     "    if True:\n        return whole[:ID_MAX].strip(\"-\")\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A refusal names whoever has the name or its ID, not the words typed",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "                holders[0][\"name\"], \", such as %s\"",
+     "                name, \", such as %s\""
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Accents are taken off before the ID is made, so Zoë is zoe and Ça va is ca-va",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"\".join(_spelled(c) for c in _unaccented(name))",
+     "name.lower()"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A Latin letter Unicode leaves whole is written as its letter in the ID, never dropped: Søren is soren, Łukasz lukasz, Æsir aesir",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "letter.lower() if re.fullmatch(r\"[A-Z]{1,2}\", letter) else \" \"",
+     "\" \""
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A few Latin letters are written with a spelling of their own in the ID: Þór is thor, Guðrún gudrun",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return SPELLED.get(letter) or (",
+     "return ("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "ß and its capital are ss in the ID",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "\"SHARP S\": \"ss\", ",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file cut short for this agent is written whole by the next attempt",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if held == CUT_SHORT:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file cut short for this agent does not stop its retry before Core is asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return CUT_SHORT if _begins(path, profile_bytes(store.path, store.instance_id, agent, store.binding)) else OTHER",
+     "return OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A file that begins like someone else's sign-in is never taken over",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return len(part) < len(whole) and whole.startswith(part)",
+     "return len(part) < len(whole)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A full team refuses a new agent in plain words, and one place short takes it",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "(workspace[\"id\"],)).fetchone()[0] >= LIMITS[\"workspace_members\"]:",
+     "(workspace[\"id\"],)).fetchone()[0] > LIMITS[\"workspace_members\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A full team refuses a new agent at all",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if db.execute(\"SELECT count(*) FROM workspace_members WHERE workspace_id=?\", (workspace[\"id\"],)).fetchone()[0] >= LIMITS",
+     "        if False and db.execute(\"SELECT count(*) FROM workspace_members WHERE workspace_id=?\", (workspace[\"id\"],)).fetchone()[0] >= LIMITS"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID with another database is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.instance_id, held.binding) == (agent, store.instance_id, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID in another instance is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.db_path, held.binding) == (agent, store.path, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file for the same ID under another authority is someone else's",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id) == (agent, store.path, store.instance_id) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A sign-in file in the agent's place that binds another actor, the coordinator's own whole and valid file too, is someone else's, on a first invitation and on a retry of either kind",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER",
+     "return MINE if (held.db_path, held.instance_id, held.binding) == (store.path, store.instance_id, store.binding) else OTHER"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A link in the agent's place, to nowhere or to a cut-short copy, is kept and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if not path.exists() and not path.is_symlink():",
+     "if not path.exists():"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A file others can read in the agent's place is kept, though it begins like this agent's sign-in, and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     " or info.st_mode & 0o077:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "A pipe or a folder in the agent's place is kept and Core is not asked",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "if not stat.S_ISREG(info.st_mode) or info.st_uid",
+     "if info.st_uid"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_invite.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "Stepping back below version 43 is refused once anyone has been invited",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "INVITATIONS_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM agent_invitations)\"",
+     "INVITATIONS_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "After a sign-in file not written and a reload, the same name typed again on the page gives back the same agent and writes its file",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite after a sign-in file not written and a reload"
+   }
+  },
+  {
+   "item": 525,
+   "act": "After a lost answer and a move to another outcome, the same name typed again on the page gives back the same agent",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "forms",
+    "case": "forms invite after a lost answer and a move to another outcome"
+   }
+  },
+  {
+   "item": 525,
+   "act": "In Safari's engine, Return in the name line invites and the prompt shows",
+   "break": [
+    [
+     "web/agent-invite.mjs",
+     "if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) this.go(); }",
+     "if (event.key === 'Enter') { event.preventDefault(); }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-invite",
+    "case": "forms invite an agent from the Team panel"
+   }
+  },
+  {
+   "item": 525,
+   "act": "In Safari's engine, the same name typed again after a reload gives back the same agent",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if given is not None:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "native": "webkit-invite",
+    "case": "forms invite after a sign-in file not written and a reload"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The invitations' step follows release 81's 42, so a store live at 42 gains agent_invitations once upgraded",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA",
+     "(\"41\", \"42\", INVITATIONS_SCHEMA"
+    ],
+    [
+     "aim_next/store.py",
+     "SCHEMA_VERSION = \"43\"",
+     "SCHEMA_VERSION = \"42\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The step to 43 fills who invited each agent from the committed invite receipts on the record, so an agent invited while 324 is live is given back to its inviter",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL,",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA,"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An invitation filled from a receipt names whoever the receipt says invited the agent, the coordinator too, not the outcome's owner",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], inviter))",
+     "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], \"owner\"))"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The place checked before Core is asked is the invited agent's own, found through its invitation: Søren invited as s-ren under 324's rule is given back, whatever is at soren.profile.json",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        given = _given_back(db, _identifier(envelope[\"target\"].get(\"workspace_id\"), \"workspace_id\"), actor, name)\n        return given[\"id\"] if given is not None else agent_id(name)\n",
+     "        return agent_id(name)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The same request sent again after a lost answer is checked at the place its recorded receipt names",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if place.get(\"status\") == \"committed\" and place.get(\"kind\") == KIND:\n            return place[\"result\"][\"agent\"][\"id\"]\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent is given back by its invitation and its name, though another actor has the ID the name makes now",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "    holders = db.execute(\"SELECT id,name,enabled FROM actors WHERE name=? COLLATE NOCASE\", (name,)).fetchall()\n",
+     "    holders = _holders(db, name, agent_id(name))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
    }
   }
  ]

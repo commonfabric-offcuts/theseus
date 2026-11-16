@@ -46,19 +46,78 @@ function fenceAfter(fence, line, next = '') {
 // named for each line, in order.
 const LINK_LINE = /^[ \t]*(?:\[[^\]\n]*\]\([ \t]*<?([^\s<>()]+)>?[ \t]*\)|<?(https?:\/\/[^\s<>]+)>?)[ \t]*$/;
 export function cardStacks(text, stackOf) {
-  const kept = [], stacks = [], lines = text.split('\n');
+  const { words: kept, taken } = takeLines(text, line => { const link = LINK_LINE.exec(line); return link && stackOf(link[1] ?? link[2]); });
+  return { words: kept, stacks: taken };
+}
+// The lines of a card's words, outside a fenced block, that take(line) names: the words without them, and what
+// take named for each, in order.
+function takeLines(text, take) {
+  const kept = [], taken = [], lines = text.split('\n');
   let fence = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const before = fence;
     fence = fenceAfter(fence, line, lines[i + 1]);
-    const link = !before && !fence && LINK_LINE.exec(lineText(line)), stack = link && stackOf(link[1] ?? link[2]);
-    if (stack) stacks.push(stack); else kept.push(line);
+    const named = !before && !fence && take(lineText(line));
+    if (named) taken.push(named); else kept.push(line);
   }
-  return { words: words(kept.join('\n')), stacks };
+  return { words: words(kept.join('\n')), taken };
 }
 // The line that names a card's reply stack, as the deck writes it.
 export const stackLine = address => `[Reply stack](${address})`;
+
+// A card's images (item 321): each line of its words, outside a fenced block, that holds only one of the page's
+// attachments written as an image, ![name](attachment:ID). Gives the words without those lines, and each image's
+// {name, id, line}, in order. The page's attachments hold the bytes; the line says which card shows them.
+const IMAGE_LINE = /^[ \t]*!\[([^\]\n]*)\]\(attachment:([A-Za-z0-9._-]{1,200})\)[ \t]*$/;
+export function cardImages(text) {
+  const { words: kept, taken } = takeLines(text, line => { const image = IMAGE_LINE.exec(line); return image && { name: image[1], id: image[2], line: line.trim() }; });
+  return { words: kept, images: taken };
+}
+// The image a line of a page names, {name, id}, when it holds only ![name](attachment:ID); null for any other line.
+// Whether the line stands outside a fenced block is the reader's to know (cardImages, imageStandIns).
+export function lineImage(line) {
+  const image = IMAGE_LINE.exec(lineText(line));
+  return image && { name: image[1], id: image[2] };
+}
+// Where a page's words show only as words (a Notebook card's excerpt, what changed in a page, an ask quoting a
+// card), each image line reads as the image's name after an image glyph, never as its markup. partial: the words are
+// an excerpt cut short, so their last line may be an image line cut inside its address, which reads the same way.
+export const IMAGE_GLYPH = '🖼';
+const standIn = name => `${IMAGE_GLYPH} ${name.trim() || 'Image'}`;
+const CUT_LINE = /^[ \t]*!\[([^\]\n]*)\]\(([A-Za-z0-9._:-]*)$/;
+export function imageStandIns(text, { partial = false } = {}) {
+  const lines = String(text ?? '').split('\n');
+  let fence = null;
+  return lines.map((line, i) => {
+    const before = fence;
+    fence = fenceAfter(fence, line, lines[i + 1]);
+    if (before || fence) return line;
+    const image = lineImage(line), end = line.endsWith('\r') ? '\r' : '';
+    if (image) return standIn(image.name) + end;
+    const cut = partial && i === lines.length - 1 && CUT_LINE.exec(line);
+    const address = cut && cut[2];
+    return cut && (address.length <= 11 ? 'attachment:'.startsWith(address) : /^attachment:[A-Za-z0-9._-]*$/.test(address)) ? standIn(cut[1]) : line;
+  }).join('\n');
+}
+// The line that puts one of the page's attachments in a card, as the deck writes it: brackets and line breaks in
+// its name, which would end the line's words, are spaces.
+export function imageLine(name, id) {
+  if (!/^[A-Za-z0-9._-]{1,200}$/.test(id)) throw Error(`No image line names the attachment ${JSON.stringify(id)}`);
+  return `![${name.replace(/[ \t]*[[\]\\\r\n]+[ \t]*/g, ' ').trim() || 'Image'}](attachment:${id})`;
+}
+
+// What a card box makes of its card: what is written, then the lines naming its images and its stacks under it. A
+// new card holding only images is named for the first of them, so it is made with them; a card cleared of all its
+// text is still removed, its images with it, and a new card with nothing in it is never made.
+export function boxText({ written, images = [], stacks = [], fresh = false }) {
+  const kept = [...images, ...stacks];
+  if (!kept.length) return written;
+  if (/\S/.test(written)) return `${written.trimEnd()}\n\n${kept.join('\n')}`;
+  if (!fresh || !images.length) return written;
+  const [first] = cardImages(images[0]).images;
+  return `${first.name.replace(/\.[A-Za-z0-9]{1,5}$/, '').trim() || 'Image'}\n\n${kept.join('\n')}`;
+}
 
 // A card from the text a person wrote: the first line that is not blank is
 // its title, any heading marks on it dropped; the rest are its words.

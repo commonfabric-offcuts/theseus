@@ -2,14 +2,13 @@
 
 A topic reads like an inbox: newest on top, each message answered in the
 Reader. This page says how each card shows where the person stands with it
-(pipeline items 31, 102, 103, 11 and 475). Nothing here changes a record; Core
-says three more facts per message, and the page shows them.
+(pipeline items 31, 102, 103, 11 and 127). Nothing here changes a record; Core
+says a few more facts per message, and the page shows them.
 
 ## What Core says
 
 `topic_messages` items carry three fields, read for the page's own messages
-only, through indexes keyed by message. The first two come from
-`aim_next/topic_reading.py`:
+only (`aim_next/topic_reading.py`), through indexes keyed by message:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
   the same deliveries the counts and the New line read. The reader's own
@@ -18,97 +17,32 @@ only, through indexes keyed by message. The first two come from
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
   null. A reply is in its parent's topic, and the reader always sees their own
   messages, whispers included, so it never names a message they cannot read.
+- `yours`: what the reader has written privately on the message,
+  `{note, reply, version}`, from their own notes and drafts only, so another
+  reader's never shows. `note` is true while their private note on it holds
+  words; `reply` while they have a reply from it that is not sent: a reply
+  saved there holding words or an image, or the newest reply they prepared
+  from it while its send has not been accepted. Preparing a reply empties its
+  draft, so without the second a send refused after it (the authority
+  changed, or the person left the topic) would leave the reply unsent and
+  unmarked. A send is accepted when it made its message, which carries the
+  send's operation id; a reply prepared again from a refused one, once
+  accepted, answers for it. `version` is the note's revision, every such
+  draft's and the count of replies from the message that were sent, added up:
+  each save, preparation and accepted send raises one of them and none is
+  ever lowered, so it grows with each, and a page keeps the newer of two
+  reads. The prepared replies are read by the page's messages
+  (`editor_submissions`), never by the reader's whole send history, so a
+  page costs the same however many replies they prepared from other messages,
+  in this topic or another; so does a save's version
+  (`tests/test_reader_bounds.py`).
 
-The third, from `aim_next/stacks.py` (`awaiting_fields`), once each message
-is placed in its dossier:
-
-- `awaiting_reply`: true on a message of the reader's own, on the record (not
-  a whisper), posted from where the rule begins (below), in a topic that is
-  not an outcome's conversation, that an agent received, until the first
-  reply from anyone else ("Waiting for a reply", below). An agent received it when Core delivered its first
-  revision to an agent: one it was addressed to, or one taking part and
-  switched on when it was sent (the deliveries `message.send` and
-  `message.post` write). The correction an edit queues to an agent that
-  read the old words is a later revision's delivery (docs/message-edit.md),
-  so it is no receipt: a message no agent was handed when it was sent does
-  not wait because it was edited after an agent read it. False on every
-  other message, the reader's own included. It is read from the messages and
-  deliveries as they stand, never stored, so a reload, another device and
-  the CLI all read the same.
-
-Where the rule begins is the sequence of the first message posted by a
-release that holds it: that post writes it once into the store's metadata
-(`reply_wait_from_seq`, `record_wait_start` in `aim_next/stacks.py`, called
-from every post in the same transaction), and no later post moves it. A
-message before it was already in the store when the rule shipped and never
-waits, so nothing there starts pulsing on deploy; a store no such release has
-posted to has no value and reads as before, with no message waiting. It is a
-sequence, not a time, so neither Core nor the page compares clocks.
-
-Messages naming the reader are read only between the reader's oldest message
-on the page and the newest message on the record by anyone else, which the
-topic's summary already keeps (`topic_summaries`, work.py), and replies and
-thumbs-up by the page's own messages, so the read does not grow as the topic
-grows after them.
-
-No table, command or schema step: the metadata table holds the one value.
-
-## Waiting for a reply (475)
-
-After the person posts, their message shows the Conversation's three quiet
-dots (docs/conversation.md: the same element, `waitingDots` in
-`web/outcome-conversation.mjs`, pulsing in turn in the card's own ink and
-still under reduced motion), at the foot of the card, until the first reply
-from anyone else, a person or an agent. Named "Waiting for a reply" for a
-screen reader and the pointer; they are a mark, not a control.
-
-- A reply is what Theseus already reads as answering a message, by someone
-  else:
-  - a message in the same dossier, after the person's message: a reply to it,
-    to a reply under it, or anywhere in a stack joined to it;
-  - a message whose `reply_to` names it, wherever it is stacked (a reply
-    someone joined to another stack still answers it, as the Conversation
-    reads an answer by its `reply_to`, docs/conversation.md);
-  - a message on the record after it that names the person, an Ask or a Tell
-    to them, in a subject of its own or anywhere (a message for them,
-    docs/attention.md); it answers each of their messages before it;
-  - an agent's thumbs-up on it, its "got it". One given counts after it is
-    taken back: the first reply was made.
-- Not a reply: the person's own next message, which waits in its turn; a
-  message someone else starts as a new subject that names nobody or only
-  others; a whisper to the person (an agent's whisper answers their whisper);
-  a person's thumbs-up, which says they read it and understand
-  (docs/thumbs.md).
-- Never on a whisper.
-- Not at all when no agent receives the message: with nobody named and no
-  agent taking part, or only people named in a topic no agent takes part in.
-- Not in an outcome's conversation, where each item already shows its own
-  dots until something settles it.
-
-Core says it (`awaiting_reply`, above), so a reload keeps it and nothing on
-the page starts none. A message or a thumbs-up arriving while the page is
-open ends the dots at once by the same rule (`learnAnswered`,
-`web/card-reading.mjs`): a message by someone else after the waiting one in
-its dossier (its `stack_position.root_id`), replying to it, or on the record
-naming the person; or a thumbs-up on it by someone the page knows is an
-agent. A message with no sequence is after nothing, and one with no dossier
-root is in no dossier, so neither ends a wait by those. A message folded to
-one line shows only that line, without its dots.
-
-Checks: `tests/test_topic_reading.py` (Core: addressee, taking part, whisper,
-conversation, a person's reply, the reader's own reply, a message outside the
-dossier, a reply joined to another stack, a Tell naming the reader, an
-agent's thumbs-up and its taking back, a person's thumbs-up, a message to
-nobody or to others and an agent's whisper, a message from before where the
-rule begins, an edit's correction to an agent that read the topic, and
-nothing stored by reading it), `tests/ui_card_reading.test.mjs` (the page's
-rule, outside the dossier too, a message with no dossier root or sequence,
-and the dots), and `tests/topic_reading_native.mjs` (`native-reading`,
-`native-webkit-reading`): "reading dots after the person posts to an agent
-…", "reading dots end on a reply joined to another stack, an agent's
-thumbs-up and a message naming the person …", "reading dots never show where
-no agent receives the message …" and "reading dots on a waiting message sit
-inside its card …" (320, 375 and 390 wide and a laptop, light and dark).
+A save of a private note or a draft about a message, a reply's preparation and
+its accepted send record a `yours` change in the writer's own scope, keyed by
+the message and carrying that version, so a page showing the card reads the
+message again (`topic_messages {topic_id, message_ids: [id]}`), on this
+device or another. A refused send changes nothing, so the mark stays. No
+table, command or schema step.
 
 ## Read cards (31)
 
@@ -148,6 +82,46 @@ on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
 
+## What a card carries (127)
+
+A card shows at a glance what its message carries: a small, quiet glyph in
+its author line, just after the time, for an image (a picture; "Has 2 images"
+for more than one), for the person's own private note (a page), and for a
+reply they saved and have not sent (a pencil). They are marks, not controls:
+no Tab stop and no press of their own, so a press on one opens the message
+as a press anywhere on the card does. Each says its words as its accessible
+name and its tooltip ("Has an image", "Your private note, which only you can
+see", "Your reply, saved and not sent"), so a screen reader hears them with
+the card; a whisper's card, whose name is set to say who it is to, says them
+in that name after its time (`paintWhisperAuthor`, `web/whisper-choice.mjs`). They are drawn in the line's quiet color (`--muted`), which every
+card face sets for light and dark, and held to the time (`.together`), so a
+line that wraps keeps them beside it; a message from before times were kept
+shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
+The card's star (item 376) shows only on a lit card but always has its place
+after them. On a marked line that place is kept at the end of what comes
+before the star (the time and its marks, or Edited), and the star sits in it
+taking no width of its own (`aim.css`), so a line the marks fill wraps with
+its star rather than leaving the star alone on a line that shows nothing.
+A message that heads a reply stack shows them on the stack's head row too,
+beside who started it, since that row stands for the message while its card
+is folded into it (docs/reply-stacks.md, "The head"). The row's second line
+never wraps: on a narrow tab who replied and what is new give way first, then
+its marks, whole glyphs dropped from the end, then who started it, cut short;
+the reply count always shows, as it did before the marks, so a phone may show
+fewer marks there than the card does.
+
+They follow the person's writing as Core keeps it: a note saved in the
+Reader, or a reply saved there or on another device, marks the card once its
+`yours` change is read (`TopicViews`, key `yours:<id>`); a note emptied, a
+reply emptied or a reply whose send is accepted takes its mark away. A reply
+whose send is refused keeps its mark until a reply from that message is sent.
+Another reader's note or draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
+checks them in Chrome and Safari's engine at 320, 375 and 390 points with
+touch and on a laptop, light and dark, and at every width that a marked line
+holds no line showing nothing and the star's place stays inside the card,
+that every head row shows its reply count whole and only whole marks, and
+that a whisper's card says its marks in the name the browser gives it.
+
 ## Reply stacks (103, 283)
 
 A message and every loaded reply to it, and to those replies, read as one
@@ -163,6 +137,9 @@ order and folds, and the one file that sets the look. In short:
   read, and any they starred. Each run folded away is one line where it
   sits ("3 earlier replies"), with how many in it are new in red. A click or
   tap opens them in place, and again folds them.
+- Open, a dossier of more than seven messages shows its newest seven and one
+  row for the rest, "8 earlier messages", which shows them all as rows in
+  place for this visit, recording nothing (item 476).
 - A message whose parent is not loaded heads its own stack until the parent
   loads.
 - The conversation page stacks its replies by the same rule. There a folded
@@ -180,6 +157,56 @@ what was on screen. A range runs over messages in the topic's order and
 ends at a loaded message that was not seen (`seenRanges`). So a folded
 reply, or a message between a stack and its new place, is never reported
 read.
+
+## Images in a card (474)
+
+A message's images show as thumbnails in its card, after its words, on the
+topic page, in the Conversation and in a dossier (`web/card-images.mjs`). Each
+verified inline image (PNG, JPEG, GIF, WebP) is a square the right rail's
+thumbnail size (4.2rem, `.things-thumbs`), in the order it was sent; the
+squares wrap on a phone and never run past the card. Each is named for a
+screen reader ("Image: screen.png") and shows its file's name under the
+pointer. A square holds its place, blank, from the moment it is drawn until
+its picture comes, also while it waits to come near the window before its
+picture is asked for; only one whose read brings nothing shows the image's
+name instead, so a picture on its way never looks refused.
+
+Each thumbnail reads its bytes through the message that carries it
+(`/api/media/read` with that message as its source), so Theseus gives them
+only to someone who may read the message, and the reads
+take turns with every other image read on the page (docs/images.md), behind
+the composer's own thumbnails, the Reader's and the right rail's. A thumbnail
+is read only once its card is drawn as a card within half a window of the
+window: a card shown as one row (folded, between others, or behind a dossier's
+earlier-messages row) or further away reads nothing, so a long topic's load
+reads only the pictures near where the reader is. Scrolling a card near,
+unfolding it, or showing an earlier message whole reads its pictures then. When
+the topic becomes one the reader can no longer read, the thumbnails go at once
+with the right rail's pictures, and the page holds none of their bytes. The card
+stays one button: a press opens the Reader, where each attachment keeps its
+Open. A message with no image, a file that is not an image and a message shown
+as one row (folded, between others, or an earlier message's row) draw no
+thumbnails.
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading thumbnails a message's images show in its card …", at a laptop's
+  width and 390, 375 and 320 on a phone, light and dark, with a refused image
+  showing its name.
+- Read only near the window: `tests/stack_native.mjs` (`native-reading`,
+  `native-webkit-reading`), "reading card thumbnails are read only for cards
+  drawn near the window …", on a topic of thirty messages each with an image,
+  which counts the reads at load and after a scroll, an unfold, the dossier
+  and its earlier-messages row opened, and an earlier message shown whole.
+  The same case samples every frame before it is painted, at load and after
+  a jump to the card furthest from the window, and no square in view draws
+  its image's name while its picture is on the way.
+  Behind the composer's own: `tests/ui_image_pick.test.mjs`, "a card thumbnail
+  waits behind every other image read …".
+- A topic no longer readable keeps none of the bytes: `tests/outcome_rail_native.mjs`
+  (`native-rail`), "rail a topic the page can no longer read leaves the right rail at once …",
+  which counts every picture's bytes the page holds.
+- Who may read an attachment: `tests/test_media.py`,
+  `test_exact_attached_source_grants_read_but_id_or_unattached_source_does_not`.
 
 ## Formatted words (11)
 

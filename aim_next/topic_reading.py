@@ -11,8 +11,26 @@ indexes keyed by message, so a page never reads the topic's history:
   null. A reply is always in its parent's topic and the reader always sees
   their own messages, whispers included, so it never names a message the
   reader cannot read.
+
+`yours` says what the reader has written privately on each message (item 127),
+from their own rows only, keyed by the message as a source:
+
+- `note`: the reader's private note on the message holds words.
+- `reply`: the reader has a reply from the message that is not sent: a saved
+  reply holding words or an image, or the newest reply they prepared from it
+  while its send has not been accepted (preparing empties the draft, so a
+  send refused after it would otherwise leave the reply unsent and unmarked).
+  A send is accepted when it made its message, which carries the send's
+  operation id; a reply prepared again from a refused one and accepted
+  answers for it.
+- `version`: grows with every save of either, every preparation and every
+  accepted send (writing_version), so a page keeps the newer of two reads.
 """
 from __future__ import annotations
+
+import json
+
+from .contract import _json
 
 
 def unread_groups(db, actor, topic_id, direct):
@@ -40,3 +58,53 @@ def reading_fields(db, actor, groups, items):
     for item in items:
         item["unread"] = item["id"] in unread and item["author_id"] != actor
         item["replied"] = replied.get(item["id"])
+
+
+def message_key(message_id):
+    """A message's key as a source of private writing (drafts._source_key)."""
+    return _json(["message", message_id])
+
+
+# Whether a prepared reply's send was accepted: its message is the author's with the send's operation id.
+SENT = "EXISTS(SELECT 1 FROM messages m WHERE m.author_id=s.actor_id AND m.operation_id=s.send_operation_id)"
+
+
+def writing_fields(db, actor, items):
+    """Add `yours` to every item of one page."""
+    keys = {message_key(item["id"]): item["id"] for item in items}
+    found = {mid: {"note": False, "reply": False, "version": 0} for mid in keys.values()}
+    if keys:
+        marks = ",".join("?" * len(keys))
+        for table, field in (("notes", "note"), ("drafts", "reply")):
+            for row in db.execute("SELECT source_key,revision,payload FROM %s WHERE actor_id=? AND source_key IN (%s)" % (table, marks), [actor] + list(keys)):
+                payload, yours = json.loads(row["payload"]), found[keys[row["source_key"]]]
+                yours["version"] += row["revision"]
+                # A note is its words; a reply is its words and its images.
+                if payload.get("body", "").strip() or field == "reply" and payload.get("attachments"):
+                    yours[field] = True
+        # The replies prepared from each message, oldest first: every accepted send raises the version, and the newest
+        # one's send not accepted (under way, refused or never made) is a reply not sent. The read goes by the page's
+        # messages (editor_submissions), never by the reader's whole send history (actor_submissions, which ORDER BY
+        # seq alone would choose), so a page costs the same however many replies they prepared elsewhere.
+        newest = {}
+        for row in db.execute("SELECT s.source_key,%s AS sent FROM submissions s INDEXED BY editor_submissions "
+                              "WHERE s.actor_id=? AND s.source_key IN (%s) ORDER BY s.seq" % (SENT, marks), [actor] + list(keys)):
+            found[keys[row["source_key"]]]["version"] += row["sent"]
+            newest[row["source_key"]] = row["sent"]
+        for key, sent in newest.items():
+            if not sent:
+                found[keys[key]]["reply"] = True
+    for item in items:
+        item["yours"] = found[item["id"]]
+
+
+def writing_version(db, actor, message_id):
+    """A version of the reader's private writing on a message that grows with every save to it, every preparation
+    and every accepted send: the note's revision, every draft's from the message and the count of its replies sent,
+    added up. None is ever removed or lowered, and each of those acts raises one. Like a page's read, it goes by the
+    message (editor_submissions), so a save costs the same however many replies the writer prepared elsewhere."""
+    key = message_key(message_id)
+    return db.execute("SELECT COALESCE((SELECT revision FROM notes WHERE actor_id=? AND source_key=?),0)+"
+                      "COALESCE((SELECT SUM(revision) FROM drafts WHERE actor_id=? AND source_key=?),0)+"
+                      "(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND " + SENT + ")",
+                      (actor, key, actor, key, actor, key)).fetchone()[0]

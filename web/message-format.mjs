@@ -220,8 +220,8 @@ const nextRow = (lines, i, width) => {
   return k < lines.length && looseWidth(lines[k]) === width ? k : -1;
 };
 const looseStart = (lines, i) => { const width = looseWidth(lines[i]); return width > 0 && nextRow(lines, i, width) >= 0; };
-const startsBlock = (lines, i) => fenceOpen(lines[i].text, lines[i + 1]?.text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
-  QUOTE.test(lines[i].text) || tableStart(lines, i) || boxStart(lines, i) || looseStart(lines, i);
+const startsBlock = (lines, i, images = null) => fenceOpen(lines[i].text, lines[i + 1]?.text) || HEADING.test(lines[i].text) || RULE.test(lines[i].text) || ITEM.test(lines[i].text) ||
+  QUOTE.test(lines[i].text) || tableStart(lines, i) || boxStart(lines, i) || looseStart(lines, i) || Boolean(images?.of(lines[i].text));
 
 // A heading's words, without its marks or a closing run of #s.
 function headingWords(line, opening) {
@@ -237,8 +237,10 @@ function headingWords(line, opening) {
 // The blocks of m, in order, each with the span of the message it was read
 // from ({kind, start, end, ...}). Blank lines only separate. partial: the
 // text is an excerpt cut short, so a table's last row may be cut and is left
-// as words. depth: how many quotes hold m.
-function blocksOf(m, partial, depth, meter) {
+// as words. depth: how many quotes hold m. images, for a Notebook page's words: images.of(line) names the image a
+// line outside a fenced block puts there ({name, id}, docs/decks.md "Images in a card"), or null; such a line is a
+// block of its own ({kind: 'image', image}), at the top only, never inside a quote.
+function blocksOf(m, partial, depth, meter, images = null) {
   const lines = linesOf(m, meter), blocks = [], n = lines.length;
   const words = (a, b) => (a <= b ? m.slice(lines[a].s, lines[b].e) : m.slice(lines[a - 1].e, lines[a - 1].e));
   const newline = k => m.slice(lines[k].e, lines[k].e + 1);
@@ -271,6 +273,8 @@ function blocksOf(m, partial, depth, meter) {
       blocks.push({ kind: 'code', fenced: true, complete: !partial || j < n - 1, lang: payloadAt !== null ? '' : fence.lang, ...span(i, Math.min(j, n - 1)), words: m.slice(from, to) });
       i = j + 1; continue;
     }
+    const image = images?.of(line.text);
+    if (image) { blocks.push({ kind: 'image', image, ...span(i, i) }); i++; continue; }
     if (boxStart(lines, i)) {
       // A table a terminal drew, kept as drawn: monospace, without the indent it was pasted with.
       let j = i;
@@ -314,7 +318,7 @@ function blocksOf(m, partial, depth, meter) {
           const task = TASK.exec(item[3]), at = lines[j].s + text.length - item[3].length + (task ? task[0].length : 0);
           items.push({ depth: Math.floor(item[1].replace(/\t/g, '  ').length / 2), marker: item[2], task: task ? (task[1] === ' ' ? 'open' : 'done') : null,
             parts: [m.slice(at, lines[j].e)], ...span(j, j) });
-        } else if (/^[ \t]/.test(text) && !startsBlock(lines, j)) {
+        } else if (/^[ \t]/.test(text) && !startsBlock(lines, j, images)) {
           // A line carried on under an item joins it, without its indent.
           const last = items.at(-1), lead = /^[ \t]*/.exec(text)[0].length;
           last.parts.push(newline(j - 1), m.slice(lines[j].s + lead, lines[j].s + text.trimEnd().length));
@@ -352,7 +356,7 @@ function blocksOf(m, partial, depth, meter) {
       }
     }
     let j = i + 1;
-    while (j < n && !blank(lines[j]) && !startsBlock(lines, j)) tick(meter, lines[j++].text.length + 1);
+    while (j < n && !blank(lines[j]) && !startsBlock(lines, j, images)) tick(meter, lines[j++].text.length + 1);
     blocks.push({ kind: 'paragraph', words: words(i, j - 1), ...span(i, j - 1) });
     i = j;
   }
@@ -360,8 +364,8 @@ function blocksOf(m, partial, depth, meter) {
 }
 
 // The blocks of text, in order, each with the span of the text it was read from.
-export function parseBlocks(text, { partial = false, meter } = {}) {
-  return blocksOf(Mapped.of(String(text ?? '')), partial, 0, meter);
+export function parseBlocks(text, { partial = false, meter, images = null } = {}) {
+  return blocksOf(Mapped.of(String(text ?? '')), partial, 0, meter, images);
 }
 
 // ---- Inline: `code`, **bold** and __bold__, *italics* and _italics_,
@@ -763,8 +767,9 @@ export function formatNodes(text, { doc = globalThis.document, partial = false, 
 }
 
 // A Notebook revision opened in place shows its source verbatim, with links.
-// Replace only fence lines. Raw gaps keep even quote prefixes and CRLFs.
-export function linkedFenceNodes(text, doc) {
+// Replace only fence lines, and, given images ({of, node}, as for drawPassages), each image line, by
+// images.node(image), the line break after it with it. Raw gaps keep even quote prefixes and CRLFs.
+export function linkedFenceNodes(text, doc, images = null) {
   const nodes = [];
   let at = 0;
   const emit = blocks => {
@@ -775,10 +780,14 @@ export function linkedFenceNodes(text, doc) {
         if (at < start) nodes.push(...wordNodes(text.slice(at, start), { doc }));
         nodes.push(blockNode(block, doc, false, undefined, true));
         at = block.end;
+      } else if (block.kind === 'image') {
+        if (at < block.start) nodes.push(...wordNodes(text.slice(at, block.start), { doc }));
+        nodes.push(el(doc, 'span', 'md-image', [images.node(block.image, doc)], { start: block.start, end: block.end }));
+        at = block.end + (text[block.end] === '\n' ? 1 : 0);
       } else if (block.blocks) emit(block.blocks);
     }
   };
-  emit(parseBlocks(text));
+  emit(parseBlocks(text, { images }));
   if (at < text.length || !nodes.length) nodes.push(...wordNodes(text.slice(at), { doc }));
   return nodes;
 }
@@ -804,12 +813,13 @@ export const drawnText = host => DRAWN.get(host);
 // the message's own words. A paragraph's passages are its sentences, as
 // before; a heading, a list item, a quote, a code block and a table are each
 // one passage, shown as a block. A passage never cuts a link, code or a
-// mark: the sentences one spans join, as the line's own reading says.
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences }))) return;
+// mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
+// names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images }))) return;
   body = String(body ?? '');
   host.replaceChildren();
-  const blocks = blocksOf(Mapped.of(body), false, 0, meter), drawn = [];
+  const blocks = blocksOf(Mapped.of(body), false, 0, meter, images), drawn = [];
   blocks.forEach((block, n) => {
     const next = blocks[n + 1];
     if (block.kind === 'paragraph') {
@@ -838,6 +848,10 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
         const tail = final ? (next?.kind === 'paragraph' ? '\n\n' : next ? '\n' : '') : '';
         drawn.push({ node: span, start: words.at(from), tail: tail ? doc.createTextNode(tail) : null, from: words.at(to) });
       });
+      return;
+    }
+    if (block.kind === 'image') {
+      drawn.push({ node: el(doc, 'span', 'md-block md-image', [images.node(block.image, doc)], { start: block.start, end: block.end }), start: block.start });
       return;
     }
     if (block.kind === 'list') {

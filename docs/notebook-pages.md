@@ -152,7 +152,8 @@ this page, as anywhere ([decks.md](decks.md#where-it-opens)), and ✕ gives the
 focus back to the row. A link to a page at a revision opens it in place below
 the list (`web/page-here.mjs`), with its title, its revision (named a draft
 while the revision is one), what changed since the person last read it, and
-its words, and, to someone who may write the page, Edit page; opening it reads
+its words (a card's image line showing its image, docs/decks.md "Images in a
+card"), and, to someone who may write the page, Edit page; opening it reads
 it as the Reader does. One page shows at a time; one opened while another is still
 opening replaces it, and Close gives the focus back to its row. The list is
 read again with the topics after every commit.
