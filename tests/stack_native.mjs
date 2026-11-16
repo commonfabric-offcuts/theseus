@@ -1698,12 +1698,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
-  await check('reading stacks an act asked again that Core takes is no longer said as not known when the positions read after it fails', async () => {
+  await check('reading stacks an act asked again that Core takes is no longer said as not known when the positions read after it fails: what the page says of a later act holds nothing of it', async () => {
     const topic = 'stack-aside-positions';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root moved aside.' }],
       ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An older unread reply.' }],
       ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply.' }],
-      ['b', { sender: other, addressees: [facts.actor], body: 'The card starred after.' }]]);
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card folded after.' }]]);
     const p = await open(topic, 'laptop', topic, ids.root);
     const net = await network(p), asides = payload => payload?.kind === 'stack.aside', positions = payload => payload?.name === 'stack_positions';
     const heldOf = test => net.held().find(entry => test(entry.payload));
@@ -1718,11 +1718,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     net.hold(null);
     for (const entry of [...net.held()]) await net.pass(entry);
     await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the move');
-    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Star for me');
-    await until(async () => (await actsOf(topic, ids.b))?.starred === true, 'Core takes the star');
-    await until(() => p.evaluate(`window.fetchesOut===0&&Boolean(document.querySelector(${JSON.stringify(card(ids.b))}+' .card-star[aria-pressed=true]'))`), 'the page has Core\'s answer to the star, and nothing is out');
-    await twoFrames(p);
-    assert.doesNotMatch((await statusLine(p)).text, /Not known yet whether moving/, 'Core took the move: it is not said as not known: ' + (await statusLine(p)).text);
+    // Another card's fold, its answer lost too: the line says that fold alone, and goes once Core answers it.
+    const foldsB = payload => payload?.kind === 'message.fold' && payload.target.message_id === ids.b;
+    net.hold(foldsB);
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Fold');
+    await net.drop(await until(() => heldOf(foldsB), 'the other card\'s fold reached Core; its answer is held, then lost'));
+    await becomes(() => statusLine(p), { shown: true, text: 'Not known yet whether folding “The card folded after.” was saved: the connection was interrupted. The page asks Theseus again.' },
+      'the line says the fold alone: the move Core took is not said as not known');
+    const againB = await until(() => heldOf(foldsB), 'the page asks Core about the fold again');
+    net.hold(null); await net.pass(againB);
+    await until(async () => !(await statusLine(p)).shown, 'Core answers the fold: the line goes, with nothing of the move left on it');
+    assert.equal((await actsOf(topic, ids.b))?.fold_revision, 1, 'Core holds the fold once');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
