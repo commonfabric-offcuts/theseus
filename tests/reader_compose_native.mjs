@@ -2061,6 +2061,9 @@ async function runSizes() {
       await shot(p, `size-${draft.replaceAll(' ', '-')}-reader`);
       await keyboard('reader', '#writing-body');
       await close(p);
+      // The next shape starts from the seeded writing, as the next case does:
+      // close() let this page's saves land, so its reply's image is Theseus's.
+      await control({ method: 'reset_drafts' });
     }
   });
 }
