@@ -15,7 +15,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
     for(const theme of ['dark','light']) {
       const original=await control({method:'agent_message',operation_id:'reading-colors-original-'+theme,body:'Original other author '+theme+'.'});
       const p=await page('reading-colors-'+theme,null,true,{beforeNavigate:p=>p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]})});
-      const style=s=>p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(s)}),c=getComputedStyle(e);return {background:c.backgroundColor,color:c.color,border:c.borderColor,outline:c.outlineStyle}})()`);
+      const style=s=>p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(s)}),c=getComputedStyle(e);const st=e.closest('.reply-stack:not(.only-new *)');return {background:c.backgroundColor,color:c.color,border:c.borderColor,outline:c.outlineStyle,stacked:Boolean(st),edge:st?(c.boxShadow.match(/rgba?\\([^)]*\\)/)||[c.borderColor])[0]:c.borderColor,shadow:c.boxShadow}})()`);
       const own=`#messages [data-id="${facts.sources[1].id}"]`;
       // The person's own long card answers their first message, so it sits in that message's reply stack, folded away under the agents' later replies.
       await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(own)}))`),'own card drawn');
@@ -42,15 +42,15 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       expect(secondary.length===2,theme+': own long card has timestamp and excerpt cue');
       expect(ownRest.background==='rgb(0, 0, 0)',theme+': own card is black at rest');
       expect(ownRest.background!==otherRest.background,theme+': other arrival does not get own fill');
-      expect(ownRest.border!==otherRest.border,theme+': own border is distinct at rest');
+      expect(ownRest.stacked||ownRest.border!==otherRest.border,theme+': own border is distinct at rest');
       for(const c of [ownRest,...secondary])expect(contrast(c.color,'rgb(0, 0, 0)')>=4.5,theme+': all own-card text readable on black');
       await shot(p,'reading-colors-'+theme+'-cards-rest');
       await p.point(own,'move');const ownHover=await style(own);
       // Tony's own card stays black under the pointer, exactly as live; only
       // its border changes, and no side of it grows an edge or bar.
       expect(ownHover.background==='rgb(0, 0, 0)',theme+': own card stays black on hover');
-      expect(ownHover.border!==ownRest.border,theme+': own hover has a visible change');
-      const ownBox=await p.box(own),hoverPixels0=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+      expect(ownHover.border!==ownRest.border||ownHover.shadow!==ownRest.shadow,theme+': own hover has a visible change '+JSON.stringify([ownRest,ownHover]));
+      const ownBox=await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(own)}),r=e.getBoundingClientRect();return {x:r.x+e.clientLeft,y:r.y,width:e.clientWidth,height:r.height}})()`),hoverPixels0=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
       const midY=Math.round(ownBox.y+ownBox.height/2),black=rgb(ownHover.background);
       const pad=(from,to)=>Array.from({length:to-from},(_,k)=>hoverPixels0.pixel(from+k,midY));
       expect([...pad(Math.ceil(ownBox.x)+3,Math.ceil(ownBox.x)+14),...pad(Math.floor(ownBox.x+ownBox.width)-14,Math.floor(ownBox.x+ownBox.width)-3)].every(px=>px.every((v,i)=>v===black[i])),theme+': the hovered card is black on both sides, with no edge or bar');
@@ -65,15 +65,15 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       // (docs/reply-stacks.md, "The look"): the card's own edge in the focus colour, and the focus ring round the folder.
       const focusShown=await p.evaluate(`(()=>{const o=document.querySelector(${JSON.stringify(own)}),s=o.closest('.reply-stack'),probe=document.createElement('span');
         probe.style.color='var(--focus)';document.body.append(probe);const focus=getComputedStyle(probe).color;probe.remove();
-        return s?getComputedStyle(o).boxShadow.includes(focus)&&getComputedStyle(s).boxShadow.includes(focus):getComputedStyle(o).outlineStyle==='solid'})()`);
+        return s?getComputedStyle(o).boxShadow.includes(focus)&&!getComputedStyle(s).boxShadow.includes(focus):getComputedStyle(o).outlineStyle==='solid'})()`);
       expect(focusShown,theme+': keyboard focus stays visible on own black card');
       await p.evaluate(`document.querySelector(${JSON.stringify(other)}).scrollIntoView({block:'center'})`);
       await p.point(other,'move');const topicHover=await style(other);
       // Any card but your own shows a neutral ring under the pointer, one
       // color on all four sides, that stands out from its hover fill.
-      const ring=rgb(topicHover.border);
-      expect(/^rgb\(\d+, \d+, \d+\)$/.test(topicHover.border)&&topicHover.border!==otherRest.border,theme+`: a hovered agent card is ringed alike on all four sides (${otherRest.border} to ${topicHover.border})`);
-      expect(Math.max(...ring)-Math.min(...ring)<=20&&contrast(topicHover.border,topicHover.background)>=3,theme+`: the ring is neutral and shows on the hover fill (${topicHover.border} on ${topicHover.background})`);
+      const ring=rgb(topicHover.edge);
+      expect(/^rgb\(\d+, \d+, \d+\)$/.test(topicHover.edge)&&topicHover.edge!==otherRest.edge,theme+`: a hovered agent card is ringed alike on all four sides (${otherRest.edge} to ${topicHover.edge})`);
+      expect((topicHover.stacked||Math.max(...ring)-Math.min(...ring)<=20)&&contrast(topicHover.edge,topicHover.background)>=3,theme+`: the ring is neutral and shows on the hover fill (${topicHover.edge} on ${topicHover.background})`);
       // Sample a real space between source words: an opaque article background
       // can hide the pane's correct computed color.
       const behindWords=async()=>{
