@@ -1343,6 +1343,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
           assert.deepEqual([button.text, button.title, button.inside], ['Reload', 'Reload Theseus', true], `${width}: Reload says so, with a tooltip, in the window`);
           if (device === 'phone') assert.ok(button.width >= 44 && button.height >= 44, `${width}: Reload is a finger's size: ${JSON.stringify(button)}`);
         }
+        // On a phone the rail is folded and its notices stand above the topic, inset from the screen's top and sides.
+        if (device === 'phone') {
+          const box = await p.evaluate(`(() => { const r = document.getElementById('topic-navigation-status').getBoundingClientRect();
+            return { folded: !document.querySelector('.rail').classList.contains('open'), left: r.left, right: innerWidth - r.right, top: r.top + scrollY }; })()`);
+          assert.ok(box.folded && box.left >= 12 && box.right >= 12 && box.top >= 8, `${width}: the notice sits inset from the screen's top and sides, the rail folded: ` + JSON.stringify(box));
+        }
         assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width}: nothing scrolls sideways`);
         for (const look of ['light', 'dark']) { await scheme(p, look); await shot(p, `edit-build-updated-${width}-${look}`); }
         await scheme(p, '');

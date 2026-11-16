@@ -22298,6 +22298,21 @@
    }
   },
   {
+   "item": 547,
+   "act": "On a phone with the rail folded, the page's notices sit inset from the screen's top and sides, as the folded rail's notices always did",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail:not(.open) #page-notices>.notice:not([hidden])",
+     ".rail:not(.open)>.page-notices>.notice:not([hidden])"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "edit build a move that finds another build"
+   }
+  },
+  {
    "item": 418,
    "act": "In the WebKit harness, a read out when its page navigates is \"not yet\": until() waits for the page it went to and reads it, instead of throwing \"Execution context was destroyed\"",
    "break": [
