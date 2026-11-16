@@ -94,11 +94,15 @@ export const panes = {
   },
 };
 
+// Whether an element is among the messages: in their list, but not in the New message sheet, which rests there just
+// above More (item 465) and whose controls are no message's, so the arrows go on from them as off the panes' keys.
+export const inMessages = (at, doc) => Boolean(doc.getElementById('messages')?.contains(at)) && !at.closest('#new-message-sheet');
+
 // Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
   const at = doc.activeElement;
   if (pageItself(at, doc)) return true;
-  return Boolean(doc.getElementById('messages')?.contains(at));
+  return inMessages(at, doc);
 }
 
 // The button the keys land on in a row they come to: the one they were last on

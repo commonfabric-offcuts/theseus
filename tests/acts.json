@@ -20684,6 +20684,51 @@
   },
   {
    "item": 301,
+   "act": "Home in the outline lands on its first row, New outcome (the Outcomes heading's pencil), just above the first outcome, and ↑ from it goes on up the side rail",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null, aside: true }];",
+     "const rows = [];"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the outline"
+   }
+  },
+  {
+   "item": 301,
+   "act": "→ from New outcome, a row with nothing under it, goes on into the messages: the side rail's way on to the page, so the arrows reach every control on it",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (action === 'right') { if (!this.tree.stepIn(row, rows, open)) panes.step('outline', 'right', this.doc); return; }",
+     "if (action === 'right') { if (!this.tree.stepIn(row, rows, open) && row.outcome) panes.step('outline', 'right', this.doc); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a phone's open drawer the page behind takes no keys: → from New outcome stays in the drawer",
+   "break": [
+    [
+     "web/rail-drawer.mjs",
+     "if (page) page.inert = open;",
+     "if (page) page.inert = false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a phone, in the side rail's drawer"
+   }
+  },
+  {
+   "item": 301,
    "act": "↑ above the right rail's first section reaches its chips, Just this topic and All of this outcome",
    "break": [
     [
@@ -21118,8 +21163,8 @@
    "break": [
     [
      "web/rails.mjs",
-     "|| Boolean(doc.getElementById('messages')?.contains(at))),",
-     "|| Boolean(doc.getElementById('messages')?.contains(at)) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
+     "|| inMessages(at, doc)),",
+     "|| inMessages(at, doc) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
     ]
    ],
    "check": {
