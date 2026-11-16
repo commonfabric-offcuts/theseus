@@ -1,0 +1,8 @@
+{
+ "step": "conversation",
+ "cases": [
+  "three quiet dots pulsing"
+ ],
+ "label": "606-conv-mutant-still-1",
+ "snapshot": "ec6eac2617850d96523425d773aa7c2b03f16bee"
+}
