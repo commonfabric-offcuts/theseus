@@ -43,11 +43,17 @@ const until = async (p, expression, description, arg, timeout = 8000) => {
   catch (error) { throw Error(`Timed out: ${description}`); }
 };
 
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
+const world = () => spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
+const fixture = world();
 const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
+// The header check's dossier with a short name lives in a fixture of its own, so
+// the topic, its messages and the pages that read them never reach the world the
+// other cases write their replies in.
+const shortFixture = world();
+const { control: shortControl, exit: shortExit, errors: shortErrors } = fixtureControl(shortFixture);
 
-// What the fixture is seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
-let facts, agent, first, second, log, wrap, short;
+// What the fixtures are seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
+let facts, shortFacts, agent, first, second, log, wrap, short;
 // Two long messages from an agent, newest last, so a reply to either is
 // offered to that agent; and the outcome's pipeline on, so the ⋯ offers it.
 const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, body })).result.message_id;
@@ -74,11 +80,12 @@ async function seed() {
   log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
   await control({ method: 'navigation_topics', topics: [{ id: 'compose-wrap', title: 'Long item' }] });
   wrap = (await control({ method: 'agent_message', operation_id: 'compose-wrap', topic_id: 'compose-wrap', join: true, source: 'topic', body: WRAP })).result.message_id;
-  // A dossier with a short name, in a topic of its own: an agent's question, its reply, and the name it was given.
-  await control({ method: 'navigation_topics', topics: [{ id: 'compose-short', title: 'Short name' }] });
-  const asked = (await control({ method: 'agent_message', operation_id: 'compose-short', topic_id: 'compose-short', join: true, source: 'topic', body: 'Where shall we stay for the cabin week?' })).result.message_id;
-  short = (await control({ method: 'agent_message', operation_id: 'compose-short-reply', topic_id: 'compose-short', reply_to: asked, body: SHORT_REPLY })).result.message_id;
-  await control({ method: 'stack_act', sender: agent, kind: 'stack.name', message_id: asked, operation_id: 'compose-short-name', args: { name: SHORT_NAME } });
+  // A dossier with a short name, in a topic of its own in its own fixture: an agent's question, its reply, and the name it was given.
+  shortFacts = await shortControl({ method: 'ready' });
+  await shortControl({ method: 'navigation_topics', topics: [{ id: 'compose-short', title: 'Short name' }] });
+  const asked = (await shortControl({ method: 'agent_message', operation_id: 'compose-short', topic_id: 'compose-short', join: true, source: 'topic', body: 'Where shall we stay for the cabin week?' })).result.message_id;
+  short = (await shortControl({ method: 'agent_message', operation_id: 'compose-short-reply', topic_id: 'compose-short', reply_to: asked, body: SHORT_REPLY })).result.message_id;
+  await shortControl({ method: 'stack_act', sender: shortFacts.agent, kind: 'stack.name', message_id: asked, operation_id: 'compose-short-name', args: { name: SHORT_NAME } });
 }
 
 const SHAPES = {
@@ -105,17 +112,18 @@ const KEYBOARD = 380;
 const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
-async function page(shape, scheme = 'light', path = '/?topic=t1') {
+// at: the fixture the page reads, the cases' own unless one says otherwise.
+async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts) {
   const options = SHAPES[shape];
   const context = await browser.newContext({ ...options, colorScheme: scheme });
   contexts.add(context);
-  if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: facts.origin });
-  const mode = JSON.stringify(['aim-next', facts.instance_id, 'reader-layout', 'mode']);
+  if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
+  const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
   await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
-  await p.goto(facts.origin + path);
+  await p.goto(at.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
   // The clipboard is the machine's: each case starts with text on it, not an image.
@@ -252,6 +260,7 @@ async function check(name, action) {
   // A fixture that has exited answers nothing more: the run stops here, its
   // evidence written, rather than failing every case left.
   if (fixture.exitCode !== null || fixture.signalCode !== null) throw Error(`The fixture exited during "${full}": ${fixtureErrors()}`);
+  if (shortFixture.exitCode !== null || shortFixture.signalCode !== null) throw Error(`The short dossier's fixture exited during "${full}": ${shortErrors()}`);
 }
 // A case closes its page once no save of its writing is on its way to
 // Theseus (a shown saving sign says so, data-save="saving", until the answer
@@ -428,7 +437,7 @@ async function run() {
     // dossier with a short name, and the fixture's, named by its long first line.
     await check(`header ${scheme}: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room`, async () => {
       for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) for (const dossier of shape.startsWith('phone') ? ['long', 'short'] : ['long']) {
-        const p = await page(shape, scheme, dossier === 'short' ? '/?topic=compose-short' : '/?topic=t1');
+        const p = dossier === 'short' ? await page(shape, scheme, '/?topic=compose-short', shortFacts) : await page(shape, scheme);
         if (dossier === 'short') await open(p, short, SHORT_REPLY); else await open(p, second);
         const at = await p.evaluate(id => {
           const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), row = rect('.reader-title-row'), close = rect('#reader-close');
@@ -2416,8 +2425,8 @@ async function runSending() {
 // How the run ended, which tools/known_reds.py reads from native.json: every browser it opened is closed again
 // (browserClosed); the planned phases, each a function run in each engine, and those that returned and whose browser
 // then closed, in order; harnessCompleted, set only once every planned phase returned; and the fixture's own exit code
-// and signal, held from its launch. Cleanup runs after an interruption too and writes native.json, but leaves
-// harnessCompleted false and the run's own error in place.
+// and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
+// interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = ['chromium', 'webkit'];
 const PHASES = [[run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
@@ -2435,15 +2444,16 @@ try {
   }
   harnessCompleted = true;
 } finally {
-  fixture.stdin.end();
-  const { code: fixtureExitCode, signal: fixtureExitSignal } = await fixtureExit;
+  fixture.stdin.end(); shortFixture.stdin.end();
+  const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
   await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
-    fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), measured, shots }, null, 2));
+    fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
   for (const m of measured) console.log(`lines ${m.engine} ${m.shape} ${m.scheme} ${m.state}: ${m.lines} (${m.visible}px at ${m.lineHeight}px)`);
   // An interrupted run keeps its own error; asserting here would replace it.
   if (harnessCompleted) assert.equal(fixtureExitCode, 0, `the fixture exited ${fixtureExitCode ?? fixtureExitSignal}: ${fixtureErrors()}`);
+  if (harnessCompleted) assert.equal(shortExitCode, 0, `the short dossier's fixture exited ${shortExitCode ?? shortExitSignal}: ${shortErrors()}`);
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
