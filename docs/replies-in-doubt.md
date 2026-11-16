@@ -73,7 +73,10 @@ list cannot be read or changed through it.
   in Theseus. A reply in doubt holds nothing: the first choice of a topic or an
   outcome leaves, sending nothing and discarding nothing, and says nothing.
   Asking every time made a loop of warnings the reader could only click
-  through, and its notice stayed over the rail (item 547).
+  through, and its notice stayed over the rail (item 547). On coming back, a
+  reply Core took whose answer was lost is settled, and one with the same words
+  that never went stays in doubt (`outcome_rail_native.mjs`, "rail a reply
+  whose send is not confirmed holds no move …").
 
 An open of a message's Reader dropped after its read (Escape, or another
 message chosen while the step keeps the writing in front) still keeps that
