@@ -157,8 +157,9 @@ export class StackFeed {
     // learns the revision the act before it left, as a loaded message does.
     this.standIns = new Map();
     // The acts shown and not yet answered, by message, in the order made; and
-    // the acts each message was last drawn with.
-    this.pending = new Map(); this.drawn = new Map();
+    // the acts each message was last drawn with; and when each act shown was
+    // made, as a count of the acts made, across messages (shownPlaces).
+    this.pending = new Map(); this.drawn = new Map(); this.made = new WeakMap(); this.makes = 0;
     // The acts not settled, by operation, each kept with its exact request
     // until Core answers it (waiting); and what the page says of each act not
     // settled or refused, by operation (or, for a card command it does not
@@ -210,18 +211,35 @@ export class StackFeed {
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
         if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };
       }
-      // A place on another message of the dossier (positions' places) shows as the page holds it where it holds that
-      // message at that place's revision or later: an act on it not yet answered, or answered before the positions
-      // are read again.
-      const places = stack_position?.places?.map(each => {
-        const known = messages.get(each.message_id) ?? this.standIns.get(each.message_id), acts = known && this.actsOf(each.message_id, known);
-        return acts && (acts.place_revision ?? 0) >= each.place_revision && acts.placed !== each.placed ? { ...each, placed: acts.placed ?? null } : each;
-      });
-      if (places?.some((each, index) => each !== stack_position.places[index])) stack_position = { ...stack_position, places };
+      const places = stack_position?.places && this.shownPlaces(stack_position, messages);
+      if (places && places !== stack_position.places) stack_position = { ...stack_position, places };
       // A join or split not yet answered: the positions Core sent name the dossier it left (stack-order.mjs, positionOf).
       const moving = (this.pending.get(id) ?? []).some(mark => 'joined' in mark);
       return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position, ...(moving ? { moving } : {}) } : item;
     } };
+  }
+  // The places on a dossier's other messages (its position's places, stack-order.mjs heldPlace) as the page holds
+  // them. A place act not yet answered on any message of the dossier is the one set last, the last made first, listed
+  // or not: the positions read after Let new replies move it list none of the places its ⌘Z puts back, and each shows
+  // at once, as one on a stack's head did before item 550. Another listed shows as the page holds its message at that
+  // place's revision or later, an act answered before the positions are read again. The list Core sent where nothing
+  // differs.
+  shownPlaces(position, messages) {
+    const root = position.root_id, known = id => messages.get(id) ?? this.standIns.get(id);
+    const making = [...this.pending].flatMap(([id, marks]) => {
+      const mark = marks.findLast(each => 'placed' in each), item = known(id);
+      return id !== root && mark && (item?.stack_position?.root_id ?? item?.dossier) === root ? [{ id, order: this.made.get(mark) }] : [];
+    }).sort((a, b) => b.order - a.order);
+    const listed = position.places.filter(each => !making.some(({ id }) => id === each.message_id)).map(each => {
+      const acts = known(each.message_id) && this.actsOf(each.message_id, known(each.message_id));
+      return acts && (acts.place_revision ?? 0) >= each.place_revision && acts.placed !== each.placed ? { ...each, placed: acts.placed ?? null } : each;
+    });
+    if (!making.length && listed.every((each, index) => each === position.places[index])) return position.places;
+    const latest = position.places.reduce((most, each) => Math.max(most, each.at_ms), 0);
+    return [...making.map(({ id }, index) => {
+      const acts = this.actsOf(id, known(id));
+      return { message_id: id, placed: acts.placed ?? null, place_revision: acts.place_revision ?? 0, at_ms: latest + making.length - index };
+    }), ...listed];
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, home: this.home, doc: this.doc, on: {
@@ -317,6 +335,7 @@ export class StackFeed {
     const shown = shownAct(kind, args, this.viewer, this.clock());
     const shows = [[item.id, shown], ...also];
     for (const [id, mark] of shows) this.pending.set(id, [...this.pending.get(id) ?? [], mark]);
+    this.made.set(shown, ++this.makes);
     const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
       for (const [id, mark] of shows) {
         const left = (this.pending.get(id) ?? []).filter(each => each !== mark);
@@ -555,12 +574,16 @@ export class StackFeed {
   // Let new replies move it takes away every place the dossier sorts by
   // (stack-order.mjs, gather): the one on its first message, and each one on
   // another of its messages that its position lists (places), set before
-  // places went on the first message, loaded or not. ⌘Z puts each back.
+  // places went on the first message, loaded or not. ⌘Z puts each back, the
+  // one set first first, as the positions list them the most recently set
+  // first, so the one set last is set last again and still places the dossier.
   unplace(stack) {
-    const first = this.placeOn(stack), listed = (positionOf(stack)?.places ?? []).filter(each => each.message_id !== first.id);
+    const position = positionOf(stack), first = this.placeOn(stack), listed = (position?.places ?? []).filter(each => each.message_id !== first.id).reverse();
     const held = listed.map(each => {
       if (!this.messages().has(each.message_id) && !this.standIns.has(each.message_id)) this.standIns.set(each.message_id, { id: each.message_id, acts: {} });
       const item = this.messages().get(each.message_id) ?? this.standIns.get(each.message_id);
+      // A stand-in says which dossier it is in, so a place act on it not yet answered shows there (shownPlaces).
+      if (!this.messages().has(item.id)) item.dossier = position.root_id;
       item.acts = laterActs(item.acts, { placed: each.placed, place_revision: each.place_revision });
       return item;
     });

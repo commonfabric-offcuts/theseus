@@ -140,6 +140,23 @@ class AsideCase(StackCase):
         self.committed(place(other, 9))
         self.assertEqual((places(ferry), places()), ([(other, 9, 1)], [(side, 5, 1), (older, 3, 1)]), 'another dossier lists its own alone')
 
+    def test_a_readers_listed_place_is_fenced_by_their_own_revisions_alone(self):
+        # Item 550: a reader's place on a message of the dossier is the latest of their own place acts there. Another
+        # reader placing that message again, so that it carries a later revision of theirs, neither hides this
+        # reader's place nor lists theirs; this reader placing it again lists the new place alone.
+        dossier = self.post('Lantern dossier')
+        answer = self.post('An answer about the harbour lanterns', reply_to=dossier)
+        place = lambda key, revision=0, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': answer},
+                                                                    expected={'place_revision': revision}, actor=actor)
+        places = lambda actor='owner': [(each['message_id'], each['placed'], each['place_revision']) for each in self.position(dossier, actor)['places']]
+        self.committed(place(3))
+        self.committed(place(4, actor='agent-a'))
+        self.committed(place(5, revision=1, actor='agent-a'))
+        self.assertEqual((places(), places('agent-a'), places('agent-b')), ([(answer, 3, 1)], [(answer, 5, 2)], []),
+                         'mine stands though agent-a has reached a later revision on the same message; theirs is theirs')
+        self.committed(place(6, revision=1))
+        self.assertEqual((places(), places('agent-a')), ([(answer, 6, 2)], [(answer, 5, 2)]), 'my own later place replaces my earlier one')
+
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
         first = self.aside(root, self.latest(), op='put-aside-once')

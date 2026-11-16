@@ -1454,6 +1454,62 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // Item 550: places set before item 550 on two messages of a dossier that disagree, the one set last winning. Let new
+  // replies move it takes both away, and ⌘Z puts both back so that the same one wins: the dossier is where it was, on
+  // the page and after a reload. Each way round: set last on top, and set last at the bottom.
+  await check('reading stacks a dossier placed on two of its messages that disagree is where the one set last puts it, after Let new replies move it and ⌘Z, and after a reload (item 550)', async () => {
+    for (const [way, first, last] of [['top', -1000000, 2000000], ['bottom', 2000000, -1000000]]) {
+      const topic = `stack-dossier-undo-order-${way}`, ids = await shipyardSeed(topic);
+      const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+      assert.deepEqual([(await place(ids.b1, first, 1)).status, (await place(ids.a2, last, 2)).status], ['committed', 'committed'], `${way}: b1 placed, then a2, set last`);
+      const where = async q => { const look = await shipyardLook(q, ids), all = await stacks(q, ids);
+        return [look?.placed, look?.head === all[0] ? 'top' : look?.head === all.at(-1) ? 'bottom' : 'between']; };
+      let p = await open(topic, 'laptop', topic, ids.near1);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: a2's place, set last, puts the dossier there`);
+      const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+      await centre(p, unplace); await p.point(unplace);
+      const held = async () => Promise.all([ids.b1, ids.a2, ids.root].map(async mid => (await actsOf(topic, mid))?.placed ?? null));
+      await until(async () => JSON.stringify(await held()) === JSON.stringify([null, null, null]), `${way}: Core holds no place on b1, a2 or the first message`);
+      await becomes(async () => (await where(p))[0], null, `${way}: the place line goes`);
+      await keyTo(p, ids.near); await p.key('z', 4);
+      await until(async () => JSON.stringify(await held()) === JSON.stringify([first, last, null]), `${way}: ⌘Z, Core holds b1 and a2 placed again`);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: ⌘Z puts the dossier back where a2's place, still the one set last, puts it`);
+      assert.deepEqual(p.errors, []); await p.close();
+      p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: and there after a reload`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: a stack headed by a reply the reader placed on itself, before item 550. Let new replies move it, the page
+  // settled, then ⌘Z with Core's answers to its place acts held: the place line and the place show at once, as they did
+  // before item 550, and stay once Core answers.
+  if (engine === 'chrome') await check('reading stacks ⌘Z of Let new replies move it on a stack placed on the reply heading it shows the place at once, before Core answers (item 550)', async () => {
+    const topic = 'stack-dossier-undo-at-once', ids = await shipyardSeed(topic);
+    assert.equal((await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.a1, operation_id: `${topic}-place-1`, args: { key: 2000000 } })).status, 'committed', 'a1, heading the stack, placed on top');
+    const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
+    const p = await open(topic, 'laptop', topic, ids.near1);
+    const state = async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await top(p)]; };
+    await becomes(state, ['a1', 'Placed here by you', true], 'on top by the place on a1, which heads the stack');
+    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
+    await becomes(state, ['a1', null, false], 'Let new replies move it: the place line goes');
+    await until(async () => (await actsOf(topic, ids.a1))?.placed === null, 'Core holds no place on a1');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page has every answer, its positions read again');
+    const places = payload => payload?.kind === 'stack.place';
+    p.intercept(payload => places(payload));
+    await keyTo(p, ids.near); await p.key('z', 4);
+    await until(() => p.held.some(entry => places(entry.payload)), 'the first place act of ⌘Z reached Core, its answer held');
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    const atOnce = await state();
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    await becomes(state, ['a1', 'Placed here by you', true], 'once Core answers, it stays');
+    assert.deepEqual(atOnce, ['a1', 'Placed here by you', true], '⌘Z shows the place line and the place at once');
+    assert.equal((await actsOf(topic, ids.a1))?.placed, 2000000, 'and Core holds a1 placed again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 550: the negatives. A place on the dossier's first message wins over one set on another of its messages, and a
   // place in another dossier places that dossier alone.
   await check('reading stacks a place on a dossier\'s first message wins over one set on another of its messages before item 550, and a place in another dossier places that dossier alone (item 550)', async () => {

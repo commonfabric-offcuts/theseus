@@ -24302,6 +24302,65 @@
    "check": {
     "python": "test_stack_aside.py"
    }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back the places on a dossier's other messages the one set first first, so the one set last still places it, on the page and after a reload",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".filter(each => each.message_id !== first.id).reverse();",
+     ".filter(each => each.message_id !== first.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on two of its messages that disagree"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back the places on a dossier's other messages the one set first first, so the one set last still places it, on the page and after a reload, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".filter(each => each.message_id !== first.id).reverse();",
+     ".filter(each => each.message_id !== first.id);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on two of its messages that disagree"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it shows each place it puts back on a dossier's other messages at once, before Core answers, as it did on a stack's head before item 550",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const making = [...this.pending].flatMap(([id, marks]) => {",
+     "const making = [].flatMap(([id, marks]) => {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shows the place at once, before Core answers"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A reader's place listed on a dossier's other message is fenced by their own place revisions alone, whatever another reader's reach there",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "b.kind='place' AND b.owner=:actor)",
+     "b.kind='place')"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
   }
  ]
 }
