@@ -8,7 +8,8 @@
 import { spokenNode, spokenTime } from './times.mjs';
 import { routeHref, topicTarget } from './topic-navigation.mjs';
 import { presses } from './waiting-questions.mjs';
-import { SOURCE, UNREADABLE_PEEK, alsoWords, factParts, lampKind, lastLine, leadWords, lightName, shortPieces } from './outcome-light-words.mjs';
+import { ENDED, SOURCE, UNREADABLE_PEEK, alsoWords, factParts, keptToRead, lampKind, lastLine, leadWords, lightName, shortPieces } from './outcome-light-words.mjs';
+import { BRING_BACK, BRING_BACK_BUSY, BRING_BACK_TITLE, wordButton } from './outcome-end.mjs';
 
 const element = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
@@ -88,8 +89,9 @@ function stateWords(light, facts, open, place, hold) {
 // place from the small ⓘ, and stays open across the repaint on each commit.
 // A control on the card that held focus (the ⓘ, a topic's link, Try again)
 // keeps it when it is drawn again, and the page does not move to it; focus
-// anywhere else is left alone.
-export function paintStanding(host, answer, { open, retry, outcome = '', place = null } = {}) {
+// anywhere else is left alone. bringBack: given to the owner of an outcome he
+// archived or completed (item 404), a Bring back word beside "tony archived it".
+export function paintStanding(host, answer, { open, retry, outcome = '', place = null, bringBack = null } = {}) {
   const light = answer?.light ?? null, facts = Array.isArray(answer?.facts) ? answer.facts : [], also = Array.isArray(answer?.also) ? answer.also : [];
   const unreadable = !light || light.light === null;
   const focused = globalThis.document.activeElement ?? null;
@@ -101,8 +103,8 @@ export function paintStanding(host, answer, { open, retry, outcome = '', place =
   if (lead.length) more.push(element('p', { className: 'lead' }, ...partsNodes(lead)));
   if (facts.length) more.push(element('ul', { className: 'standing-facts' }, ...facts.map(fact => factItem(fact, open, hold))));
   for (const line of also) more.push(element('p', { className: 'also' }, ...partsNodes(alsoWords(line))));
-  // A reached outcome's topics are closed and readable: nothing more to say about them.
-  if (!unreadable && answer?.lead?.kind !== 'reached') more.push(element('p', { className: 'muted source', textContent: SOURCE }));
+  // A reached, archived or completed outcome's topics are kept to read: nothing more to say about them.
+  if (!unreadable && !keptToRead(answer)) more.push(element('p', { className: 'muted source', textContent: SOURCE }));
   const shown = host.dataset.more === 'open';
   const details = element('div', { id: 'standing-more', className: 'standing-more', hidden: !shown }, ...more);
   const info = hold('info', element('button', { type: 'button', className: 'standing-info', textContent: 'i', title: 'What this is made of' }));
@@ -118,6 +120,14 @@ export function paintStanding(host, answer, { open, retry, outcome = '', place =
     element('p', { className: 'state-line' }, lightNode(light), stateWords(light, facts, open, place, hold)),
   ];
   const last = unreadable ? null : lastNode(answer, open, 'p', hold);
+  if (last && bringBack && ENDED.includes(answer?.lead?.kind)) {
+    const button = hold('bring-back', wordButton(globalThis.document, { word: BRING_BACK, title: BRING_BACK_TITLE, key: 'bring-back', onclick: () => {
+      button.textContent = BRING_BACK_BUSY; button.setAttribute('aria-disabled', 'true');
+      bringBack();
+    } }));
+    last.classList.add('with-end');
+    last.append(' ', button);
+  }
   if (last) children.push(last);
   if (unreadable && retry) children.push(hold('retry', element('button', { type: 'button', className: 'retry', textContent: 'Try again', onclick: retry })));
   host.replaceChildren(...children, details);

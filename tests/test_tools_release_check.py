@@ -690,6 +690,104 @@ class VerifySummary(unittest.TestCase):
         self.assertTrue(self.verdict({"tool": release_check.TOOL, "refused": "dirty", "passed": False}))
 
 
+class JudgedTree(unittest.TestCase):
+    """Item 588: a run on a tree already judged is never waited for. A pull request's run judges GitHub's merge of it,
+    a commit that is neither the merge commit nor the PR's head; the deploy takes that run's summary for a commit whose
+    tree, read from git, is the judged commit's. A real repository holds them: judged, the merged head with the same
+    tree, and another commit whose tree differs."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "repo"
+        self.root.mkdir()
+        self.git("init", "-q")
+        (self.root / "notes.txt").write_text("a harbour at dawn\n")
+        self.commit("the first plan")
+        (self.root / "notes.txt").write_text("a harbour at dusk\n")
+        self.judged = self.commit("what the pull request's run checked")
+        # The merged head: another commit, with the judged commit's tree.
+        self.merged = self.commit("the merge onto the release branch", "--allow-empty")
+        (self.root / "notes.txt").write_text("a lighthouse at dusk\n")
+        self.other = self.commit("a change the run never saw")
+        self.summary = Path(self.tmp.name) / "summary.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.root)] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, message, *more):
+        self.git("add", "-A")
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", message, *more)
+        return self.git("rev-parse", "HEAD")
+
+    def tree(self, commit):
+        return self.git("rev-parse", commit + "^{tree}")
+
+    def judge(self, ran_on, deployed, written=None):
+        """judge_summary of a passed summary of ran_on, for deployed, with the trees read from the real repository; and
+        each commit git was asked about."""
+        self.summary.write_text(json.dumps(written or good_summary(ran_on)))
+        asked = []
+
+        def git(*args):
+            asked.append(args)
+            return release_check.git(self.root, *args)
+        found = release_check.judge_summary(self.summary, deployed, tree=lambda judged: release_check.same_tree(git, judged, deployed))
+        return found, asked
+
+    def test_a_summary_of_a_commit_whose_tree_is_the_deployed_commits_is_taken(self):
+        self.assertNotEqual(self.judged, self.merged)
+        self.assertEqual(self.tree(self.judged), self.tree(self.merged))
+        self.assertEqual(self.judge(self.judged, self.merged)[0], ([], []))
+        self.assertEqual(release_check.same_tree(lambda *args: release_check.git(self.root, *args), self.judged, self.merged),
+                         self.tree(self.merged), "the tree they share is what the deploy records")
+
+    def test_a_summary_of_a_commit_with_another_tree_is_refused(self):
+        (foreign, unpassed), _ = self.judge(self.other, self.merged)
+        self.assertEqual(unpassed, [])
+        self.assertEqual(foreign, ["the release check ran on %s, not %s, and its tree %s is not %s's tree %s"
+                                   % (self.other, self.merged, self.tree(self.other), self.merged, self.tree(self.merged))])
+
+    def test_a_commit_git_cannot_read_is_refused_never_taken_as_the_same_tree(self):
+        missing = "f" * 40
+        # Neither tree read: two answers git could not give are not one tree.
+        for ran_on, deployed in ((missing, self.merged), (self.judged, missing), (missing, "e" * 40)):
+            with self.subTest(ran_on=ran_on, deployed=deployed):
+                (foreign, unpassed), _ = self.judge(ran_on, deployed)
+                [said] = foreign
+                self.assertTrue(said.startswith("the release check ran on %s, not %s, and the tree of %s could not be read"
+                                                % (ran_on, deployed, missing)), said)
+                self.assertEqual(unpassed, [])
+
+    def test_only_a_full_commit_named_by_the_summary_is_asked_of_git(self):
+        # A name git resolves (HEAD, a branch, an abbreviated commit) would read the deployed commit's own tree.
+        for ran_on in ("HEAD", "master", self.judged[:12], self.judged.upper(), None):
+            with self.subTest(ran_on):
+                (foreign, _), asked = self.judge(ran_on, self.merged, dict(good_summary(self.merged), commit=ran_on))
+                self.assertEqual(foreign, ["the release check ran on %s, not %s" % (ran_on, self.merged)])
+                self.assertEqual(asked, [], "git is never asked about a name that is not a full commit")
+
+    def test_the_tree_is_read_only_for_another_commit_and_only_when_the_caller_reads_it(self):
+        (found, asked) = self.judge(self.merged, self.merged)
+        self.assertEqual((found, asked), (([], []), []), "a summary of exactly the commit reads no tree, as before")
+        self.summary.write_text(json.dumps(good_summary(self.judged)))
+        self.assertEqual(release_check.verify_summary(self.summary, self.merged),
+                         ["the release check ran on %s, not %s" % (self.judged, self.merged)],
+                         "without a tree reader a summary of another commit is refused, whatever its tree")
+
+    def test_a_summary_of_the_same_tree_is_still_judged_as_any_summary_is(self):
+        failed = good_summary(self.judged)
+        failed["steps"][0].update(passed=False, exit=1)
+        self.assertEqual(self.judge(self.judged, self.merged, failed)[0], ([], ["python-units failed (exit 1)"]))
+        for change, words in (({"tree_unchanged": False}, "the checkout changed while the release check ran"),
+                              ({"only": ["node-units"]}, "the release check ran only node-units")):
+            with self.subTest(words):
+                (foreign, _), _ = self.judge(self.judged, self.merged, dict(good_summary(self.judged), **change))
+                self.assertTrue(any(words in reason for reason in foreign), foreign)
+
+
 class Parsers(unittest.TestCase):
     def test_python_counts(self):
         self.assertEqual(release_check.python_counts("Ran 5 tests in 1.0s\n\nOK\n"), ({"tests": 5, "status": "OK"}, True))
@@ -895,7 +993,7 @@ class NativeCoverage(unittest.TestCase):
         # page, the topic page's acts and how its cards read (each with its phone layouts), the
         # phone check page and the New line staying.
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
-        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite"))
+        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "targets"))
         for mode in release_check.WEBKIT_MODES:
             self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
             self.assertIn("native-webkit-" + mode, release_check.REQUIRED)

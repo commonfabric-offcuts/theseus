@@ -2717,7 +2717,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };",
+     "    return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };",
      "    return { first: items, last: moves };"
     ]
    ],
@@ -3121,6 +3121,36 @@
    "check": {
     "native": "reading",
     "case": "stacks the bar stays in the window while any of its card is"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
    }
   },
   {
@@ -7756,8 +7786,8 @@
    "break": [
     [
      "web/app.mjs",
-     "{ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } }",
-     "{ label: 'Edit page', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) }"
+     "{ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } }",
+     "{ label: 'Edit page', glyph: 'pencil', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) }"
     ]
    ],
    "check": {
@@ -8384,27 +8414,12 @@
   },
   {
    "item": 376,
-   "act": "The Reader's star follows the message's star as the stacks are drawn again, outline or filled",
-   "break": [
-    [
-     "web/app.mjs",
-     "redrawn: () => { paintReaderStar(); paintReaderAside(); },",
-     "redrawn: () => { paintReaderAside(); },"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's star beside its title"
-   }
-  },
-  {
-   "item": 376,
    "act": "The Reader's ⋯ offers Fold message, which folds it for the reader alone",
    "break": [
     [
      "web/app.mjs",
-     "else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });",
-     "else if (false) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });"
+     "else if (item && !acts.starred) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });",
+     "else if (false) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });"
     ]
    ],
    "check": {
@@ -8885,7 +8900,7 @@
    "break": [
     [
      "aim_next/memory.py",
-     "        return db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (workspace,)).fetchone() is None\n",
+     "        return self._closed(db, workspace) is None\n",
      "        return True\n"
     ]
    ],
@@ -9814,7 +9829,7 @@
    "break": [
     [
      "aim_next/assessments.py",
-     "self._assessment_open(db, topic['workspace_id'])\n        if topic['kind'] == 'conversation':",
+     "self._assessment_open(db, topic['workspace_id'], actor)\n        if topic['kind'] == 'conversation':",
      "if topic['kind'] == 'conversation':"
     ]
    ],
@@ -9828,7 +9843,7 @@
    "break": [
     [
      "aim_next/assessments.py",
-     "self._assessment_open(db, record['workspace_id'])\n        return record",
+     "self._assessment_open(db, record['workspace_id'], actor)\n        return record",
      "return record"
     ]
    ],
@@ -13538,36 +13553,6 @@
    }
   },
   {
-   "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -15088,8 +15073,8 @@
    "break": [
     [
      "web/aim.css",
-     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}}",
-     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}}"
+     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}}",
+     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}#reader:has(#reader-aside) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}}"
     ]
    ],
    "check": {
@@ -15257,8 +15242,8 @@
    "break": [
     [
      "web/aim.css",
-     "display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.6rem",
-     "display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:.6rem"
+     "display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.4rem",
+     "display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:.4rem"
     ]
    ],
    "check": {
@@ -15302,8 +15287,8 @@
    "break": [
     [
      "web/aim.css",
-     "grid-template-columns:minmax(6rem,1fr) auto;column-gap:1.25rem",
-     "grid-template-columns:minmax(0,1fr) auto;column-gap:1.25rem"
+     "grid-template-columns:minmax(6rem,1fr) auto;column-gap:.75rem",
+     "grid-template-columns:minmax(0,1fr) auto;column-gap:.75rem"
     ]
    ],
    "check": {
@@ -16084,7 +16069,7 @@
    "break": [
     [
      "aim_next/releases.py",
-     "    if train.get(\"kind\") != \"ordinary\" or train.get(\"judgment\") != \"pending\":",
+     "    if not judgment_pending(json.loads(row[\"measurements\"]) if row[\"measurements\"] is not None else None):",
      "    if False:"
     ]
    ],
@@ -16210,8 +16195,8 @@
    "break": [
     [
      "tools/known_reds.py",
-     "ended_cases(out, step, \"the candidate's\")",
-     "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+     "\"the candidate's\") for step in failed}",
+     "\"the candidate's\", before_end_record=True) for step in failed}"
     ]
    ],
    "check": {
@@ -20693,9 +20678,19 @@
      "(\"41\", \"42\", INVITATIONS_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"43\", \"44\", TOOLS_SCHEMA",
+     "(\"42\", \"43\", TOOLS_SCHEMA"
+    ],
+    [
+     "aim_next/migrations.py",
+     "(\"44\", \"45\", ENDS_SCHEMA",
+     "(\"43\", \"44\", ENDS_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"43\"",
-     "SCHEMA_VERSION = \"42\""
+     "SCHEMA_VERSION = \"45\"",
+     "SCHEMA_VERSION = \"44\""
     ]
    ],
    "check": {
@@ -24360,6 +24355,2223 @@
    ],
    "check": {
     "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's star follows the message's star as the stacks are drawn again, outline or filled",
+   "break": [
+    [
+     "web/app.mjs",
+     "redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); },",
+     "redrawn: () => { paintReaderAside(); paintReaderTitle(); },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The Team's pills and + Add stand apart, a modest gap after each, beside the subtitle as on a phone",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people .participants>.chips>:not(:first-child){margin-inline-start:.4rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team's pills and"
+   }
+  },
+  {
+   "item": 465,
+   "act": "A Team of two and + Add keeps one line at 1280 with room to spare beside the subtitle when a standard scrollbar takes its width",
+   "break": [
+    [
+     "web/aim.css",
+     "auto;column-gap:.75rem}",
+     "auto;column-gap:1.25rem}"
+    ],
+    [
+     "web/aim.css",
+     "justify-content:flex-end;gap:.4rem;max-width",
+     "justify-content:flex-end;gap:.6rem;max-width"
+    ],
+    [
+     "web/aim.css",
+     ".topic-people .person-pill .pill-name{padding:0 .7rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team's pills and"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A reply in a named dossier has the dossier's name as the Reader's title",
+   "break": [
+    [
+     "web/reader.mjs",
+     "const words = this.callbacks.dossierName?.(source) || topic.title;",
+     "const words = topic.title;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A name given while the Reader is open shows in its title at once",
+   "break": [
+    [
+     "web/app.mjs",
+     "paintReaderAside(); paintReaderTitle(); }",
+     "paintReaderAside(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A long title keeps one line, cut off with an ellipsis, the archive button and ✕ in the header",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-title-row .reader-topic{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A dossier nobody named is titled by its first line, as its tab is",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length ? head.name : '')",
+     "''"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A message of its own, in no dossier, keeps the topic's name as the Reader's title",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length ? head.name : '')",
+     "head.name"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title is the topic's name"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool whose check fails in a release ships at its live version: its files are put back in a new commit on the candidate",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                git(self.root, \"update-index\", \"--add\", \"--cacheinfo\", \"%s,%s,%s\" % (entry[0], entry[2], path), env=env)\n",
+     "                pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A first version whose check fails does not ship: its record and files leave the release",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            elif path in self.trees[\"head\"].entries:\n                git(self.root, \"update-index\", \"--force-remove\", \"--\", path, env=env)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The items whose change touched a tool that went back are taken back, named in a Train-Item: Revert trailer",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            if touched & paths:\n                taken.append(item[\"item\"])",
+     "            if False:\n                taken.append(item[\"item\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An item's new act rows on a tool's restored files leave the act ledger with it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        gone = [row for row in rows if key(row) not in live_keys and names(row) & paths]",
+     "        gone = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool that went back and still fails at its live version stops the release, with nothing recorded and no commit",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                run[\"fate\"] = \"live\"\n                if run[\"result\"] != \"passed\":",
+     "                run[\"fate\"] = \"live\"\n                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A still-new tool that fails on the restored commit goes back too, round after round",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                new = [tool_id for tool_id in new if tool_id not in failed]",
+     "                new = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A changed skill with no check ships new, and nothing runs for it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0] and head[0][tool_id][\"check\"]]",
+     "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0]]"
+    ],
+    [
+     "tools/tool_check.py",
+     "runner, module = next(iter(record[\"check\"].items()))",
+     "runner, module = next(iter((record[\"check\"] or {\"python\": \"tests/test_no_such_check.py\"}).items()))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A check that ran no tests is never a pass: its tool goes back",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "    total = ran - skipped\n",
+     "    total = max(ran - skipped, 1)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step refuses a checkout with changes before it runs or writes anything",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        if text(root, \"status\", \"--porcelain=v1\", \"--untracked-files=all\"):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A record that names the deploy's or the release check's own code is refused",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "                problems.append(\"%s names %s, which is %s; deploy and the release checks stay ordinary code.\" % (path, file, words))",
+     "                pass"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A file belongs to at most one tool",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "        if len(set(ids)) > 1:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A version that went back opens one topic in its home, addressed to its coordinator and linked to the tool",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        topic_id = self._open_back_topic(db, actor, workspace, run, envelope[\"operation_id\"]) if run[\"fate\"] == \"back\" else None",
+     "        topic_id = None"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An outcome uses a tool only while it says so",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "\"SELECT u.tool_id FROM tool_uses u WHERE u.workspace_id=? AND u.used=1 AND \"",
+     "\"SELECT u.tool_id FROM tool_uses u WHERE u.workspace_id=? AND \""
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A topic is linked to a tool only in the tool's home",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "            if topic[\"workspace_id\"] != record[\"home\"]:",
+     "            if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Saying again what is already so changes nothing",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        if (row[\"linked\"] if row else 0) == linked:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's word is a pass only with a recorded count of at least one, every test passed",
+   "break": [
+    [
+     "aim_next/tool_words.py",
+     "    if result == \"passed\" and isinstance(total, int) and total >= 1 and passed == total:",
+     "    if result == \"passed\":"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Only a version that went back is recorded as not passing",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "    if fate != \"back\" and result != \"passed\":",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The schema step from 43 to 44 adds the tables for skills and tools, and steps back",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "    (\"43\", \"44\", TOOLS_SCHEMA, TOOLS_DOWN, TOOLS_OCCUPIED),",
+     "    (\"43\", \"44\", \"\", TOOLS_DOWN, TOOLS_OCCUPIED),"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A page never paints a pass without a count of at least one, nor 0 of 0",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    if (!Number.isSafeInteger(word.total) || word.total < 1 || word.passed !== word.total || !Number.isSafeInteger(word.at_ms)) throw Error(FAILED);",
+     "    if (!Number.isSafeInteger(word.at_ms)) throw Error(FAILED);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Used by counts the outcomes the reader cannot open, never naming them",
+   "break": [
+    [
+     "web/skills.mjs",
+     "  const more = hidden ? `${usedBy.length ? 'and ' : ''}${hidden} ${hidden === 1 ? 'outcome' : 'outcomes'} you cannot open` : null;",
+     "  const more = null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The left rail lists the outcome's skills and tools, and hides with none",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      this.section.hidden = !items.length;",
+     "      this.section.hidden = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A refused tap on a tool's chip in Topic settings puts it back as it was and says why",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    catch (error) { this.answer = was; this.notice.textContent",
+     "    catch (error) { this.notice.textContent"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's page has its own address in its home outcome",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  else if (keys.length===2 && p.has('workspace') && p.has('tool')) route={kind:'tool',id:p.get('workspace'),tool:p.get('tool')};",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Link a topic finds an open topic of the home as it is typed, and Return links it",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      if (!event.repeat && found[this.active]) this.take(found[this.active]);",
+     "      if (false) this.take(found[this.active]);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Link a topic on a tool's page and"
+   }
+  },
+  {
+   "item": 17,
+   "act": "+ Uses a tool says the outcome uses the tool chosen",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    await sent(this.send('tool.use', { workspace_id: this.workspace }, { tool_id: toolId, used }));",
+     "    await sent(this.send('tool.use', { workspace_id: this.workspace }, { tool_id: toolId, used: false }));"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Link a topic on a tool's page and"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tap or the keys on a chip in Topic settings link the topic to the tool, and a second unlinks it",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      chip.onclick = () => { if (!this.pending.has(tool.tool_id)) this.toggle(tool); };",
+     "      chip.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Topic settings' Tools this topic improves"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The right rail lists a topic's skills and tools, and on a Conversation the outcome's",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      tools: found.tools === undefined ? undefined : this.toolSection(found.tools),",
+     "      tools: null,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Topic settings' Tools this topic improves"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Only the runs on the commit that ships are recorded: a still-new tool's run on a commit that never ships is not",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "chosen += [run for run in self.runs if run[\"fate\"] == \"new\" and run[\"commit\"] == head_out]",
+     "chosen += [run for run in self.runs if run[\"fate\"] == \"new\" and run[\"tool_id\"] not in back]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Topic settings reads its Tools this topic improves again each time it opens",
+   "break": [
+    [
+     "web/topic-settings.mjs",
+     "    this.heading.focus();\n    this.opened();",
+     "    this.heading.focus();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_header.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An outcome's empty Skills and tools shows a writer only its heading and + Uses a tool",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      answer.reader_may_use ? this.finder.node : null].filter(Boolean)), doc);",
+     "      answer.reader_may_use ? this.finder.node : null]), doc);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool that goes back gets every path it names at either commit put back: a file only its live record names is put back too, and its items and act rows leave with it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            for records in (live, head):",
+     "            for records in (head,):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Every run is recorded before the checkout moves: a refused record leaves the checkout at the candidate, and a rerun finishes",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        if self.recordable:\n            summary[\"records\"] = self.record(back, head_out, items)\n",
+     "        if head_out != self.head:\n            git(self.root, \"merge\", \"--ff-only\", \"--quiet\", head_out)\n        if self.recordable:\n            summary[\"records\"] = self.record(back, head_out, items)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's page counts a linked topic the reader cannot read, never naming it",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "            topic = self._readable_topic(db, actor, topic_id)",
+     "            topic = db.execute(\"SELECT id,title,workspace_id,state FROM topics WHERE id=?\", (topic_id,)).fetchone()"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's home is named only to a reader on it",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        readable = row is not None and self._may_write_outcome(db, actor, row)",
+     "        readable = row is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-use says the outcome uses the tool, and --off that it no longer does",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "{\"tool_id\": options.tool, \"used\": not options.off}",
+     "{\"tool_id\": options.tool, \"used\": options.off}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-link says a topic is about the tool, and --off that it is not",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "{\"tool_id\": options.tool, \"linked\": not options.off}",
+     "{\"tool_id\": options.tool, \"linked\": options.off}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-record records a run from its file, once",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "        result = self.command(\"tool.record\", {\"workspace_id\": home}, {\"run\": run})",
+     "        result = {\"recorded\": False, \"run\": {}}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool prints the word its check reads",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "self.out.plain(\"Its check: %s\" % _word(tool[\"word\"]))",
+     "self.out.plain(\"Its check: passed\")"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool counts the topics about it the reader cannot open",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "        if answer[\"topics_hidden\"]:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tools prints each tool with the word its check reads",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "_word(item[\"word\"]), where)",
+     "\"Its check passed\", where)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step records each run through the live CLI's tool-record",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        code, answer, said = self._run([\"--json\", \"tool-record\", str(path)])",
+     "        return {}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step reads the live code's views through the live CLI",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "\"view\": {\"name\": name, \"args\": args}}",
+     "\"view\": {\"name\": name, \"args\": {}}}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 593,
+   "act": "On a phone with the keyboard up and a long reply, the message under the Reader's two-row header still shows 7 lines",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}"
+    ],
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone light: reading shows at least 18 lines"
+   }
+  },
+  {
+   "item": 593,
+   "act": "The phone's two-row Reader header keeps no padding above or below its rows of 44px targets",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the message, when it is the first thing the pane shows, starts right under it, with no gap of the pane's own",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the message keeps its own room after its end, so ↑ Previous · ↓ Next stays clear of the composer",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}#reader:has(#reader-aside:not([hidden])) .reading-pane article{padding-bottom:0}}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "The phone's Reader header keeps the whole title, on a row of its own under ← and ✕, at 320, 375 and 390",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the access notice, being checked, keeps the pane's room above it",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "access notice being checked: on a phone"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the access notice, unconfirmed after a retry, keeps the pane's room above it",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "access notice unconfirmed after a retry: on a phone"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the access notice, unavailable, keeps the pane's room above it",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "access notice unavailable: on a phone"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the access notice, available, topic updates paused, keeps the pane's room above it",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "access notice available, topic updates paused: on a phone"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the access notice, unavailable, topic updates paused, keeps the pane's room above it",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "access notice unavailable, topic updates paused: on a phone"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy takes a release check's summary of another commit whose tree, read from the live checkout's git, is the commit it deploys, and says which commit it judged",
+   "break": [
+    [
+     "tools/deploy.py",
+     "lambda commit: judged.append(judged_tree(config, sha, commit)))",
+     "None)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A summary of a commit whose tree is not the deployed commit's is still refused",
+   "break": [
+    [
+     "tools/release_check.py",
+     "    if trees[0] != trees[1]:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A commit whose tree git cannot read is refused, never taken as the same tree",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if not COMMIT.fullmatch(tree):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "Only a full commit a summary names is asked of git; HEAD, a branch or an abbreviated commit is refused as another commit",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if tree is None or not isinstance(judged, str) or not COMMIT.fullmatch(judged):",
+     "        if tree is None or not isinstance(judged, str):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "The release record keeps both commits and the tree, its own commit's hosted judgment pending",
+   "break": [
+    [
+     "tools/releases.py",
+     "            **({\"judged_tree\": dict(judged, judgment=\"pending\")} if judged else {})}",
+     "            **({})}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "The push run on the merged head attaches to the release record of a deploy on its pull request's run, afterwards",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "            or (isinstance(judged, dict) and judged.get(\"judgment\") == \"pending\"))",
+     "            or False)"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy that measures an outcome takes only a summary of exactly the commit it deploys",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if config.outcome:\n        raise release_check.Refused(\"measuring %s records its run at the summary's own commit",
+     "    if False:\n        raise release_check.Refused(\"measuring %s records its run at the summary's own commit"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy on a pull request's run reads each failed step's evidence for its known reds in the shard of that run that ran it, downloaded beside the whole-run summary",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if shards is None:\n        return folder",
+     "    if True:\n        return folder"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run live summary's failed step is read from its shards too",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return ended_cases(step_evidence(summary, path.parent, found[0], \"the live %s\" % red[\"step\"]), found[0], \"the live\",",
+     "    return ended_cases(path.parent, found[0], \"the live\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run summary's shard of another commit is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(ran, dict) or ran.get(\"commit\") != summary.get(\"commit\"):",
+     "        if not isinstance(ran, dict):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A failed step no shard, or more than one, holds as the whole-run summary has it is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if len(holding) != 1:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A shard the whole-run summary names otherwise than check-N/summary.json is refused, never read",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(shard, str) or not SHARD.fullmatch(shard):",
+     "        if not isinstance(shard, str):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A summary refused as not describing the deployed commit records no judged tree, even when its tree is the deployed commit's",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    judged = judged[0] if judged and not foreign else None",
+     "    judged = judged[0] if judged else None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The reader's message waits for a reply only when an agent received it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "if item[\"id\"] not in received or item[\"id\"] in answered",
+     "if item[\"id\"] in answered"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "An edit's correction to an agent is no receipt: only a delivery of the first revision is",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND d.revision=1 AND a.kind='agent'",
+     " AND a.kind='agent'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply by anyone else after it in its dossier ends the wait",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "others[root] is None or others[root] < item[\"seq\"]",
+     "others[root] is None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper never waits for a reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
+     "item[\"author_id\"] == actor\n"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "In an outcome's conversation the item's own dots stand alone",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "if own and topic[\"kind\"] != \"conversation\":",
+     "if own:"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The page draws the Conversation's three dots on a message Core says waits, and none on any other",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.awaiting_reply !== true) { row?.remove(); return; }",
+     "if (item.awaiting_reply === undefined) { row?.remove(); return; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving ends the dots only when someone else wrote it",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (!Number.isSafeInteger(item.seq)) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no dossier root ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (typeof root === 'string') latest.set(root,",
+     "latest.set(root,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no sequence ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (item.author_id === viewer) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply arriving ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page the dots show on the reader's message after they post",
+   "break": [
+    [
+     "web/app.mjs",
+     "    paintAwaiting(card, item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply to the reader's message ends its wait wherever it is stacked, a reply joined to another stack too",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "answered = {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to",
+     "answered = set() and {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The reader's own reply to their message is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"AND m.author_id<>:actor AND %s\" % (",
+     "\"AND %s\" % ("
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message on the record by someone else naming the reader ends the waits of their messages before it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " or named is not None and named > item[\"seq\"]:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message naming the reader before theirs is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "named is not None and named > item[\"seq\"]",
+     "named is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper naming the reader is no reply to their message on the record",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND m.author_id<>? AND m.private_to IS NULL\",",
+     " AND m.author_id<>?\","
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "An agent's thumbs-up on the reader's message ends its wait",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb' AND a.kind='nobody'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A person's thumbs-up on the reader's message is no reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message from before where the rule begins never waits",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "and item[\"seq\"] >= int(start[0])]",
+     "]"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The first post records where the rule begins",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        record_wait_start(db, sequence)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Where the rule begins is recorded once and no later post moves it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "INSERT OR IGNORE INTO metadata(key,value)",
+     "INSERT OR REPLACE INTO metadata(key,value)"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 597,
+   "act": "The re-ship begins where its own first post is, never where the release that first shipped the rule began",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WAIT_FROM_KEY = \"reply_wait_from_seq.597\"",
+     "WAIT_FROM_KEY = \"reply_wait_from_seq\""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply to the waiting message arriving from another dossier ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (typeof item.reply_to === 'string') replied.add(item.reply_to);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a message naming the reader arriving after the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "named = Math.max(named, item.seq);",
+     "named = named;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a whisper naming the reader is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.whisper !== true && (item.addressees ?? []).includes(viewer))",
+     "if ((item.addressees ?? []).includes(viewer))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up on the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "kindOf(thumb.actor_id) === 'agent'",
+     "kindOf(thumb.actor_id) === 'nobody'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a person's thumbs-up is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " && kindOf(thumb.actor_id) === 'agent'",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page ending a wait needs to know who reads it and who is an agent",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "!viewer || typeof kindOf !== 'function') throw Error('Whether a message is answered",
+     "!viewer) throw Error('Whether a message is answered"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
+     "  learnAnswered(views.messages, bootstrap.actor, () => undefined);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots end on a reply joined"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The newest message by someone else bounds the messages naming the reader, the topic's newest one included",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END",
+     "o.seq"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Whether a message waits for a reply reads no more as the topic grows after it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "newest[0] > lowest:",
+     "newest[0] > -1:"
+    ],
+    [
+     "aim_next/stacks.py",
+     "AND n.seq>? AND n.seq<=? AND m.author_id<>?",
+     "AND n.seq>? AND ? IS NOT NULL AND m.author_id<>?"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Every item of a message's ⋯, a right-click, a dossier's menu and the phone's sheets shows its glyph: the menu draws each item's glyph in its row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    button.append(glyphs[index]);\n",
+     "    if (index) button.append(glyphs[index]);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, every menu item shows its glyph",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    button.append(glyphs[index]);\n",
+     "    if (index) button.append(glyphs[index]);\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Each stack move shows its own glyph: Move its stack up an arrow up, Move its stack down an arrow down",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "keys: '⌘↑', glyph: 'up',",
+     "keys: '⌘↑', glyph: 'down',"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "keys: '⌘↓', glyph: 'down',",
+     "keys: '⌘↓', glyph: 'up',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A menu item's glyph is drawn before its words, 18px, on their middle",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-menu-list .glyph,.pl-menu .glyph{order:-1;",
+     ".message-menu-list .glyph,.pl-menu .glyph{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ shows each item's glyph, in each state, on a phone and a laptop, in both engines",
+   "break": [
+    [
+     "web/app.mjs",
+     "glyph: 'topic', act: () => openStartLine()",
+     "glyph: 'pipeline', act: () => openStartLine()"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ on a Notebook page shows Edit page's pencil",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ label: 'Edit page', glyph: 'pencil',",
+     "{ label: 'Edit page', glyph: 'link',"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, the Reader's ⋯ on a Notebook page shows each item's glyph",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ label: 'Edit page', glyph: 'pencil',",
+     "{ label: 'Edit page', glyph: 'link',"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A pipeline item's ⋯ shows each item's glyph",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "el('span', { text: label }), menuGlyph(name), keys",
+     "el('span', { text: label }), keys"
+    ]
+   ],
+   "check": {
+    "native": "pipeline",
+    "case": "pipeline menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, a pipeline item's ⋯ shows each item's glyph",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "el('span', { text: label }), menuGlyph(name), keys",
+     "el('span', { text: label }), keys"
+    ]
+   ],
+   "check": {
+    "native": "webkit-pipeline",
+    "case": "pipeline menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A menu item that names no glyph, or one nobody draws, opens no menu",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  } else throw Error(`No glyph called ${name}.`);",
+     "  } else node = doc.createElement('span');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A pipeline item's ⋯ names the glyph of each of its items",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "'Open its record', null, 'openpage',",
+     "'Open its record', null, 'moveto',"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 601,
+   "act": "Move below More shows the Reader's archive tray in every menu",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "glyph: positionOf(stack).below ? 'back' : 'archive',",
+     "glyph: positionOf(stack).below ? 'back' : 'drop',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 601,
+   "act": "The archive glyph is the Reader's archive button's own drawing, which the button keeps",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "    node = drawing.cloneNode(true);",
+     "    node = drawing;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Edit, Edit page and Rename show the topic's New message button's own pencil: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ shows Edit with the New message button's own pencil, on a phone and a laptop, in both engines",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 602,
+   "act": "Rename and Edit in a message's ⋯ and a dossier's menu show the New message button's own pencil",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 601,
+   "act": "Move below More shows the Reader's archive button's own tray: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 601,
+   "act": "In every menu, Move below More shows the Reader's archive button's own tray",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Each glyph draws the approved design page's drawing: Move its stack up an arrow up to a line, Move its stack down an arrow down to one",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In the menus a person opens, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Quote selection's ❝ is drawn: the character the stylesheet puts before its words leaves ink, in Chrome and Safari's engine",
+   "break": [
+    [
+     "web/aim.css",
+     ".glyph[data-text]::before{content:attr(data-text)}",
+     ".glyph[data-text]::before{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 404,
+   "act": "A write into an archived or completed outcome is refused whole: the guard reads its end, not only Reached",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "        end = self._end(db, workspace_id)\n        return None if end is None else {\"how\": end[\"state\"], \"by\": end[\"by\"], \"ms\": end[\"ms\"]}\n",
+     "        return None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The guard looks at ends even where no outcome was ever reached",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "\"SELECT EXISTS (SELECT 1 FROM outcome_reached) OR EXISTS (SELECT 1 FROM outcome_ends)\"",
+     "\"SELECT EXISTS (SELECT 1 FROM outcome_reached)\""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Bring back unarchives exactly the topics the act archived, not a topic archived on its own before it",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "AND archived=1 AND id IN (SELECT value FROM json_each(?)) ORDER BY id",
+     "AND archived=1 AND json_valid(?) ORDER BY id"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Between archived and completed the topic list is carried, so Bring back after the switch restores the topics the first act archived",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "            listed, moved = end[\"topics\"], []\n",
+     "            listed, moved = [], []\n"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Only the outcome's owner archives, completes or brings it back",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "        if workspace[\"owner_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", \"Only %s, this outcome",
+     "        if False:\n            raise Refusal(\"FORBIDDEN\", \"Only %s, this outcome"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome leaves the outcome list and is listed alone with ended: true",
+   "break": [
+    [
+     "aim_next/store.py",
+     "which = reached_sql if reached else ENDED if ended else \"NOT %s AND NOT %s\" % (reached_sql, ENDED)",
+     "which = reached_sql if reached else ENDED if ended else \"NOT %s\" % reached_sql"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome is brought back before it is said to be reached",
+   "break": [
+    [
+     "aim_next/outcome_kind.py",
+     "        if end is not None:\n            raise self._closed_refusal(db, actor, workspace[\"id\"], {\"how\": end[\"state\"], \"ms\": end[\"ms\"]}, \"bring it back to say it is reached.\")\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The light of an archived outcome is Quiet and a completed one's Done, each led by who did it",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "return {\"light\": _light(\"done\" if end[\"state\"] == \"completed\" else \"quiet\"",
+     "return {\"light\": _light(\"quiet\""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "While it is archived or completed nobody is offered its kind or Say it is reached",
+   "break": [
+    [
+     "aim_next/checks.py",
+     "\"you_change\": actor == workspace[\"owner_id\"] and end is None}",
+     "\"you_change\": actor == workspace[\"owner_id\"]}"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The agent CLI's outcomes leaves ended outcomes out and says how many there are",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "archived or completed (",
+     "archived and completed ("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_targets.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A press on Complete or Archive reads Completing… or Archiving… while it is in flight",
+   "break": [
+    [
+     "web/targets.mjs",
+     "word: this.ending === state ? ACTS[state].busy : ACTS[state].word",
+     "word: ACTS[state].word"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_targets.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Archived (N) is hidden while nothing is archived or completed",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "this.ended.hidden=this.denied||!this.endedCount;",
+     "this.ended.hidden=this.denied;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Archived (N) sits directly above Reached (N)",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "more.after(this.ended,this.reached);",
+     "more.after(this.reached,this.ended);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Bring back on a row under Archived (N) is offered to the outcome's owner only",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "if(this.bringBack&&this.reader!==null&&item.owner_id===this.reader){",
+     "if(this.bringBack){"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Brought back from its row, the keys land on the outcome's row in the list",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "    [...this.host.children].find(link=>link.dataset.workspaceId===item.id)?.focus();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Where it stands offers Bring back for an archived or completed outcome only, never a reached one",
+   "break": [
+    [
+     "web/outcome-light.mjs",
+     "if (last && bringBack && ENDED.includes(answer?.lead?.kind)) {",
+     "if (last && bringBack) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_light.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A topic of a completed outcome says when it was completed",
+   "break": [
+    [
+     "web/outcome-end.mjs",
+     "return `This outcome was completed${endDay(ms) ? ' ' + endDay(ms) : ''}; its topics are kept to read`;",
+     "return 'This outcome was completed; its topics are kept to read';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_end.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The outcome page offers its owner Bring back on Where it stands",
+   "break": [
+    [
+     "web/app.mjs",
+     "bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});",
+     "bringBack:null});"
+    ]
+   ],
+   "check": {
+    "native": "targets",
+    "case": "archives by touch"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome refuses a new assessment request, and attaching, reporting, abandoning or renewing an earlier one, until it is brought back",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "_clock(reached[1])))\n        self._refuse_if_closed(db, actor, workspace_id)\n",
+     "_clock(reached[1])))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An assessment's reader is told its outcome is archived or completed (outcome_closed) before spending anything on it",
+   "break": [
+    [
+     "aim_next/assessments.py",
+     "'outcome_closed':self._closed(db, record['workspace_id']) is not None}",
+     "'outcome_closed':False}"
+    ]
+   ],
+   "check": {
+    "python": "test_assessments.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The dispatcher starts no native context or model turn for an archived or completed outcome, nor one completed while it resumed",
+   "break": [
+    [
+     "aim_next/assessment_dispatch.py",
+     "        if open_outcome and found['outcome_closed'] is not False:\n            raise DispatchError('OUTCOME_CLOSED')\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_assessment_dispatch.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The topic page offers no Edit on the person's own message in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "web/app.mjs",
+     "outcomeReached = keptToRead(light);",
+     "outcomeReached = light?.lead?.kind === 'reached';"
+    ]
+   ],
+   "check": {
+    "native": "targets",
+    "case": "offers Edit in its ⋯ while its outcome is open"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A Notebook page in an archived or completed outcome tells its reader no pencil (reader_may_write false), as in a reached one",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "return self._closed(db, workspace) is None",
+     "return db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (workspace,)).fetchone() is None"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Core refuses an edit of the person's own message in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "self._refuse_if_closed(db, actor, db.execute(",
+     "(lambda w: self._end(db, w) is None and self._refuse_if_closed(db, actor, w))(db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A thumb given in an archived or completed outcome is kept and answers no ask, as in a reached one",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "self._closed(db, topic[\"workspace_id\"]) is not None",
+     "db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (topic[\"workspace_id\"],)).fetchone() is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A stack keeps its name and joins in an archived or completed outcome, as in a reached one",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if closed is not None:\n                raise self._closed_refusal(",
+     "            if False:\n                raise self._closed_refusal("
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
    }
   }
  ]

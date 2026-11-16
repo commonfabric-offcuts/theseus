@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -1096,6 +1097,69 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await button()).name === 'Move below More: 1 message', `${device}: a message of its own moves alone`);
       assert.equal((await button()).count, '1');
       await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
+  // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
+  // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
+  // ellipsis, and the archive button (right of the title) and ✕ stay within the header's width: on a laptop and by a finger at 320, 375 and 390, in light
+  // and dark. A press on the title still goes back to the topic.
+  const titleOf = p => p.evaluate(`(()=>{const h=document.querySelector('#reader-title'),b=h.querySelector('.reader-topic'),header=document.querySelector('#reader .reader-header').getBoundingClientRect(),
+    box=id=>document.getElementById(id).getBoundingClientRect(),inside=r=>r.width>0&&r.left>=header.left-0.5&&r.right<=header.right+0.5;
+    const range=document.createRange();range.selectNodeContents(b??h);const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top))).size;
+    const cut=[b,h].some(e=>e&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow==='ellipsis'),title=h.getBoundingClientRect(),aside=box('reader-aside'),close=box('reader-close');
+    return {text:h.textContent,button:Boolean(b),lines,cut,aside:inside(aside)&&aside.left>=title.right-0.5,close:inside(close),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  await check('reading stacks the Reader\'s title names the dossier its reply goes into, its first line until it is named, on one line however long', async () => {
+    const ROOT = 'Where shall we stay for the cabin week?\nThe lake or the hills, either is fine.';
+    const LONG = 'The cabin week plan, with every booking, the lake, the long drive up and who brings the food for all seven days';
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-title-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Shall we book the lake cabin for the week?' }],
+        ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The lake cabin is free that week.' }],
+        ['plain', { sender: other, addressees: [facts.actor], body: ROOT }],
+        ['answer', { sender: other, reply_to: 'plain', addressees: [facts.actor], body: 'The hills, for the walks.' }]]);
+      await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-name`, args: { name: 'Cabin week plan' } });
+      const p = await open(topic, device, topic, ids.answer);
+      await openReader(p, device, ids.reply, 'The lake cabin');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button]; }, ['Cabin week plan', true], `${device}: a reply in a named dossier is titled by the dossier's name`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-title-named-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-long`, args: { name: LONG } });
+      await becomes(async () => (await titleOf(p)).text, LONG, `${device}: renamed while the Reader is open, the title follows`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const at = await titleOf(p);
+          assert.deepEqual([at.text, at.lines, at.cut, at.aside, at.close, at.sideways], [LONG, 1, true, true, true, false],
+            `${device} ${width} ${theme}: the long name stays on one line, cut off with an ellipsis, the archive button and ✕ in the header: ${JSON.stringify(at)}`);
+          await shot(p, `stack-title-long-${device}-${width}-${theme}`);
+        }
+        await dossierTheme(p, 'light');
+      }
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      await press(p, device, '#reader-title .reader-topic');
+      await until(async () => await readerOn(p) === null, `${device}: a press on the title goes back to the topic`);
+      await openReader(p, device, ids.answer, 'The hills');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button]; }, [messagePreview({ body: ROOT }), true], `${device}: a dossier nobody named is titled by its first line, as its tab is`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  // Item 561's other side: a message of the topic's own, in no dossier (nobody replied to it, nobody named it), keeps
+  // the topic's name as the Reader's title, a new one arriving while the page is open as well.
+  await check('reading stacks the Reader\'s title is the topic\'s name for a new topic-level message, in no dossier', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-title-topic-' + device;
+      const ids = await seed(topic, [['first', { sender: other, join: true, addressees: [facts.actor], body: 'A message of the topic, answered by nobody.' }]]);
+      const p = await open(topic, device, topic, ids.first);
+      const fresh = (await control({ method: 'agent_message', operation_id: `${topic}-new`, topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor], body: 'A new message at the topic level.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(fresh))}))`), `${device}: the new message arrives`);
+      await openReader(p, device, fresh, 'A new message at the topic level');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button, t.lines]; }, ['Reading ' + topic, true, 1], `${device}: its title is the topic's name`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-title-topic-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -2841,14 +2905,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(() => statusLine(p), { shown: true, text: A + ' ' + B }, 'each act not settled is said, with its own card');
     // The acts read again fails: nothing is settled by it.
     await net.drop(await until(() => heldOf(acts), 'the acts are read again; that answer is lost too'));
+    // Only that one read is lost. The page's later reads are answered: one held would only meet the page's own read
+    // deadline, which gives it up, and the end could then let through a request the page no longer waits on.
+    net.hold(payload => fold(ids.a)(payload) || fold(ids.b)(payload));
     const againA = await until(() => heldOf(fold(ids.a)), 'once Theseus answers anything, the first fold is asked again');
     assert.deepEqual(await statusLine(p), { shown: true, text: A + ' ' + B }, 'a read that failed clears neither');
     await net.pass(againA);
     const againB = await until(() => heldOf(fold(ids.b)), 'then the second');
     await becomes(() => statusLine(p), { shown: true, text: B }, 'Core\'s answer to the first leaves the second said');
-    const out = await p.evaluate('window.fetchesOut');
     await net.drop(againB);
-    await until(() => p.evaluate(`window.fetchesOut < ${out}`), 'the second fold\'s ask fails at the page');
+    // The page takes the failed ask as not known, reads the acts again and, at that answer, asks once more: that ask is the
+    // sign the failure was handled. A count of fetches under way cannot say it, as the page's next requests start at once.
+    await until(() => heldOf(fold(ids.b)), 'the second fold\'s ask failed at the page, and it is asked again at the next answer');
     assert.deepEqual(await statusLine(p), { shown: true, text: B }, 'an ask that failed does not clear it');
     net.hold(null);
     for (const entry of [...net.held()]) await net.pass(entry);
@@ -4176,11 +4244,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       reply_to: ids.one, addressees: [other], body: 'Mine.' })).result.message_id;
     await becomes(rows, ['mine'], 'my reply replaces the read latest');
     await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'my reply is dealt with');
-    ids.x = (await control({ method: 'agent_message', operation_id: topic + '-x', topic_id: topic, source: 'topic', sender: other,
-      reply_to: ids.root, addressees: [facts.actor], body: 'X, read on arrival.', read: true })).result.message_id;
+    // Another reader's reply that the person reads on arrival. The fixture writes it and then the person's read of it, two
+    // commands; a page that read the messages between them would see it unread, and an unread reply is rightly kept in
+    // view for the reader. So the page's reads of the messages wait while both are written, and it learns of the reply
+    // already read, in one answer, as a reader who read it on arrival does.
+    const readOnArrival = async (name, body) => {
+      await p.evaluate("window.waitView = 'topic_messages'");
+      await until(() => p.evaluate('window.fetchesOut === 0'), name + ': no read the page sent before is still out');
+      ids[name] = (await control({ method: 'agent_message', operation_id: topic + '-' + name, topic_id: topic, source: 'topic', sender: other,
+        reply_to: ids.root, addressees: [facts.actor], body, read: true })).result.message_id;
+      await p.evaluate('window.letViews()');
+    };
+    await readOnArrival('x', 'X, read on arrival.');
     await becomes(rows, ['mine', 'x'], 'my reply stays beside the newer reply');
-    ids.y = (await control({ method: 'agent_message', operation_id: topic + '-y', topic_id: topic, source: 'topic', sender: other,
-      reply_to: ids.root, addressees: [facts.actor], body: 'Y, read on arrival.', read: true })).result.message_id;
+    await readOnArrival('y', 'Y, read on arrival.');
     await becomes(rows, ['mine', 'y'], 'another reader\'s read reply is replaced by a newer one, not held as mine is');
     // The reader scrolls to the end of the page, where the stack is off screen, and comes back to the tab.
     const offScreen = () => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').getBoundingClientRect();return b.bottom<=0||b.top>=innerHeight})()`);
@@ -7380,5 +7457,105 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual([await below(), await revision()], [true, was], 'Core holds B below More, at the place it held');
     assert.equal(await drawn(), false, `after the swipe and Core's answer, B is below the closed More (More: ${JSON.stringify(await more())})`);
     assert.deepEqual(p.errors, []); await p.close();
+  });
+  // Items 602 and 601 (tests/menu_glyphs.mjs, docs/links.md "A message's menu"): every item of a message's ⋯, of a
+  // right-click on a cut-off message, of a dossier's menu and of the phone's two sheets shows its glyph before its
+  // words, in each state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each
+  // width and theme reads a topic of its own, its states made through Core as the person's other devices make them,
+  // so what this case's own presses change is no other's.
+  await check('reading menus every item of a message\'s ⋯, a right-click, a dossier\'s menu and the phone\'s sheets carries its glyph before its words, 18px and on their middle, in each state an item has, at 320, 375, 390 and a laptop, light and dark', async () => {
+    const seen = [], aligned = [], kept = [];
+    const WIDTHS = [['laptop', 'laptop', null], ['390', 'phone', 390], ['375', 'phone', 375], ['320', 'phone', 320]];
+    for (const [width, device, phoneWidth] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const topic = `menu-glyphs-${engine}-${width}-${theme}`;
+      const ids = await seed(topic, [
+        ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here for the fence.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The plan for the garden fence.', read: true }],
+        ['r1', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'The posts come on Tuesday.' }],
+        ['mine', { sender: facts.actor, addressees: [other], body: 'Then we paint on Thursday.' }],
+        ['asideRoot', { sender: 'aim-ux', addressees: [facts.actor], body: 'The shed can wait.', read: true }],
+        ['asideReply', { sender: other, reply_to: 'asideRoot', addressees: [facts.actor], body: 'Agreed, after the fence.', read: true }],
+        ['host', { sender: other, addressees: [facts.actor], body: 'Gate hinges are ordered.', read: true }],
+        ['joined', { sender: 'aim-ux', addressees: [facts.actor], body: 'And the latch with them.', read: true }],
+        ['placed', { sender: other, addressees: [facts.actor], body: 'The paint is the green one.', read: true }],
+        ['marked', { sender: 'aim-ux', addressees: [facts.actor], body: 'Brushes are in the shed.', read: true }],
+        ['folded', { sender: other, addressees: [facts.actor], body: 'Rain is due on Friday.', read: true }],
+        ['starred', { sender: 'aim-ux', addressees: [facts.actor], body: 'Keep the receipt for the posts.', read: true }],
+        ['long', { sender: other, addressees: [facts.actor], body: Array.from({ length: 40 }, (_, i) => `Step ${i + 1} of the fence, written out in full.`).join('\n'), read: true }],
+        ['plain', { sender: 'aim-ux', addressees: [facts.actor], body: 'The neighbours said yes.', read: true }],
+      ]);
+      const act = (kind, id, args) => control({ method: 'stack_act', sender: facts.actor, kind, message_id: id, operation_id: `${topic}-${kind}-${id}`, args });
+      await act('message.star', ids.starred, { starred: true });
+      await act('message.fold', ids.folded, { folded: true });
+      await act('stack.place', ids.placed, { key: 1 });
+      await act('stack.join', ids.joined, { into: ids.host });
+      const seqs = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 30 })).items;
+      await act('stack.aside', ids.asideRoot, { through: seqs.find(each => each.id === ids.asideReply).seq });
+      await control({ method: 'mark', operation_id: `${topic}-mark`, message_ids: [ids.marked], marked: true });
+      const p = await open(`menu-glyphs-${width}-${theme}`, device, topic, ids.plain);
+      await dossierTheme(p, theme);
+      if (phoneWidth) await p.send('Emulation.setDeviceMetricsOverride', { width: phoneWidth, height: 844, deviceScaleFactor: 1, mobile: true });
+      // The open menu's rows read and pictured, then put away by Escape.
+      const rows = async name => {
+        await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${width} ${theme} ${name}: the menu is open`);
+        const read = await p.evaluate(ROWS);
+        await shot(p, `menus-${width}-${theme}-${name}`);
+        seen.push(...read.map(row => ({ ...row, at: `${width} ${theme} ${name}` })));
+        const lefts = read.map(row => row.words?.left ?? NaN);
+        aligned.push([`${width} ${theme} ${name}`, Math.max(...lefts) - Math.min(...lefts)]);
+        return read.map(row => row.label);
+      };
+      const away = async () => { await p.key('Escape'); await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu is put away'); };
+      const sheet = async name => { await choose(p, device, 'Move or join…'); await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list[aria-label="Move or join"]'))`), `${width}: the second sheet`); return rows(name); };
+      // A message's ⋯, and on a phone its stack's moves on the second sheet.
+      const of = async (id, name, more = false) => { await menuOf(p, device, id); const labels = await rows(name); if (device === 'phone' && more) return [...labels, ...await sheet(name + '-moves')]; return labels; };
+      // A dossier's own menu: a right-click on its title row, at the row's end clear of its words (Safari's engine selects a word a right-click lands on).
+      const headMenu = async name => {
+        const head = `${card(ids.root)} > .stack-head`;
+        await centre(p, head);
+        const b = await p.box(head), x = b.x + b.width - 10, y = b.y + b.height / 2;
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x, y, button: 'right', clickCount: 1 });
+        return rows(name);
+      };
+      const has = (labels, want, where) => { for (const label of want) assert.ok(labels.includes(label), `${width} ${theme} ${where}: ${label} in ${labels.join(', ')}`); };
+      has(await of(ids.plain, 'plain', true), ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move below More', 'Move its stack up', 'Move its stack down', 'Join the stack above', 'Join the stack below', ...(device === 'phone' ? ['Move or join…'] : [])], 'a message on its own');
+      await away();
+      if (device === 'laptop') { await rightClick(p, card(ids.long)); has(await rows('long'), ['Show full message'], 'a right-click on a cut-off message'); }
+      else has(await of(ids.long, 'long'), ['Show full message'], 'a cut-off message');
+      await away();
+      has(await of(ids.starred, 'starred'), ['Unstar'], 'a starred message'); await away();
+      has(await of(ids.marked, 'marked'), ['Mark read'], 'a message marked unread'); await away();
+      has(await of(ids.joined, 'joined'), ['Split back out'], 'a message joined to the stack above'); await away();
+      has(await of(ids.mine, 'mine'), ['Edit'], 'the person\'s own message'); await away();
+      has(await of(ids.placed, 'placed', true), ['Let new replies move it'], 'a stack placed by the person'); await away();
+      has(await of(ids.r1, 'reply', true), ['Open its stack'], 'a reply in a dossier at its latest and unread'); await away();
+      if (device === 'laptop') {
+        // A message the person folded: its row's menu is the right click's (menuOf); a phone's tap on its row unfolds it.
+        has(await of(ids.folded, 'folded'), ['Unfold'], 'a folded message'); await away();
+        has(await headMenu('dossier'), ['Rename', 'Show all messages'], 'a dossier\'s title row');
+        await choose(p, device, 'Show all messages');
+        await until(() => p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle')?.dataset.state === 'open'`), 'the dossier shows all its messages');
+        has(await of(ids.root, 'dossier-open'), ['Show latest and unread replies', 'Fold its stack'], 'a dossier showing all its messages'); await away();
+      }
+      // Undo, once the page has made a move; then Bring back above More, in More opened.
+      await of(ids.plain, 'move', device === 'phone');
+      await choose(p, device, 'Move its stack down');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the move chosen');
+      // Undo is in every message's ⋯ once a move is made; asked of a message not lit since, as a press lights it afresh.
+      has(await of(ids.marked, 'undo', true), ['Undo'], 'after a move'); await away();
+      await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more');
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.asideReply))})?.getClientRects().length)`), 'More shows the dossier below it');
+      has(await of(ids.asideReply, 'below-more', true), ['Bring back above More'], 'a dossier below More'); await away();
+      // The pencil and the tray the menus borrow stay on their own buttons; the feed and the bar carry no menu glyph.
+      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]').length]`)]);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
   });
 }

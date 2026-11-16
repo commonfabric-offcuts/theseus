@@ -41,6 +41,7 @@ from .standing_conversation import StandingConversation, STANDING_SCHEMA
 from .pipeline import Pipeline, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_FACTS_SCHEMA, PIPELINE_SCHEMA, import_seed
 from .checks import Checks, CHECKS_SCHEMA, PROBLEMS_SCHEMA, import_checks, record_checks
 from .outcome_kind import OutcomeKind, KINDS_SCHEMA
+from .outcome_end import ENDED, ENDS_SCHEMA, OutcomeEnd, end_view
 from .outcome_rules import KIND_BEFORE_R21
 from .reactions import Reactions, REACTION_SCHEMA
 from .outline_order import OutlineOrder, ORDER_SCHEMA
@@ -48,10 +49,12 @@ from .stacks import Stacks, ACT_FRESH
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
 from .invite import Invites, INVITATIONS_SCHEMA
+from .tools_core import Tools, TOOLS_SCHEMA
+from .tool_records import Records as ToolRecords
 from . import message_edit
 
 
-SCHEMA_VERSION = "43"
+SCHEMA_VERSION = "45"
 
 
 def commit_identity_intact(metadata):
@@ -127,7 +130,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -167,10 +170,13 @@ class StoreOpenError(StoreError):
 _TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
 
 
-class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
-            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit, Invites):
-    def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None):
+class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit, Invites, Tools):
+    def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
+        # The skills' and tools' records, read once from this code's own checkout (or the directory a test passes in):
+        # the code a process runs does not change under it (tool_records.Records, docs/skills-and-tools.md).
+        self.tool_records = ToolRecords(Path(__file__).resolve().parents[1] if tools is None else tools)
         # What reads the Mac's load for the Health view (health.machine_load when None).
         self._machine = machine
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -415,8 +421,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                     raise Refusal("UNKNOWN_COMMAND", "Unsupported command kind")
                 since = db.execute("SELECT coalesce(max(seq),0) FROM changes").fetchone()[0]
                 result, affected = (effect if effect is not None else handler)(db, actor, envelope)
-                # A reached outcome is final: nothing a command writes may land in it (D42, 4.5).
-                self._refuse_reached(db, kind, since)
+                # A reached, archived or completed outcome is kept to read: nothing a command writes may land in it (D42, 4.5, item 404).
+                self._refuse_closed(db, actor, kind, since)
                 receipt = self._receipt(envelope, "committed", True, result, affected)
             except Refusal as exc:
                 db.execute("ROLLBACK TO effect")
@@ -616,24 +622,34 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         # Whether the outcome has its conversation (null for one made before version 28 and not
         # yet started), so a page keeps the conversation's row in its place before reading it.
         conversation = self._conversation_of(db, workspace["id"])
-        return {"instance_id": self.instance_id, "workspace": dict(workspace, conversation_id=conversation["id"] if conversation else None),
+        # Whether it is archived or completed, by whom and when (item 404), or null.
+        return {"instance_id": self.instance_id, "workspace": dict(workspace, conversation_id=conversation["id"] if conversation else None,
+                                                                    end=end_view(self._end(db, workspace["id"]))),
                 "relevant_versions": {"workspace": workspace["version"]}}
 
     def _view_workspaces(self, db, actor, args):
         limit = _page_size(args)
-        reached = args.get("reached", False)
+        reached, ended = args.get("reached", False), args.get("ended", False)
         if not isinstance(reached, bool):
             raise Refusal("INVALID_ARGUMENT", "reached is true or false")
+        if not isinstance(ended, bool):
+            raise Refusal("INVALID_ARGUMENT", "ended is true or false")
+        if reached and ended:
+            raise Refusal("INVALID_ARGUMENT", "List reached or ended outcomes, one at a time")
         # Creation always includes the owner in this indexed membership set.
         # BLOB substr bounds bytes, including titles containing embedded NUL.
-        # Reached outcomes are left out, or listed alone with reached: true (D42).
+        # Reached outcomes are left out, or listed alone with reached: true (D42); archived and completed ones
+        # likewise, listed alone with ended: true (item 404). A reached outcome is never archived or completed.
+        reached_sql = "EXISTS (SELECT 1 FROM outcome_reached r WHERE r.workspace_id=w.id)"
+        which = reached_sql if reached else ENDED if ended else "NOT %s AND NOT %s" % (reached_sql, ENDED)
         rows = db.execute("SELECT w.id,w.owner_id,substr(CAST(w.title AS BLOB),1,1025) AS title_prefix,w.version,w.coordinator_id "
                           "FROM workspace_members AS m JOIN workspaces AS w ON w.id=m.workspace_id "
-                          "WHERE m.actor_id=? AND m.workspace_id>? AND " + ("" if reached else "NOT ") +
-                          "EXISTS (SELECT 1 FROM outcome_reached r WHERE r.workspace_id=w.id) ORDER BY m.workspace_id LIMIT ?",
+                          "WHERE m.actor_id=? AND m.workspace_id>? AND " + which + " ORDER BY m.workspace_id LIMIT ?",
                           (actor, args.get("cursor", ""), limit + 1)).fetchall()
         reached_count = db.execute("SELECT count(*) FROM workspace_members m JOIN outcome_reached r ON r.workspace_id=m.workspace_id "
                                    "WHERE m.actor_id=?", (actor,)).fetchone()[0]
+        ended_count = db.execute("SELECT count(*) FROM workspace_members m JOIN workspaces w ON w.id=m.workspace_id "
+                                 "WHERE m.actor_id=? AND " + ENDED, (actor,)).fetchone()[0]
 
         totals = {}
         counts = self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]])
@@ -656,9 +672,10 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                     "title_truncated": truncated, "version": row["version"],
                     "unread": unread, "addressed": addressed, "build": build, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
+                    "end": end_view(self._end(db, row["id"])),
                     "light": self._outcome_stands(db, actor, row)["light"]}
         # The person's own order of their outcomes, on every page (outline_order.py).
-        return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count,
+        return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count, "ended_count": ended_count,
                               "order": self._outline_order(db, actor)}, rows, limit, item, "id")
 
     def _view_actors(self, db, actor, args):

@@ -200,11 +200,11 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 /* ✅ Done beside a state Ready for review: a pill the size of a tap, outlined in the accent as that state is; once pressed the subtitle says Done and holds the focus. */
 .topic-subtitle .mark-done{display:inline-flex;align-items:center;gap:.3rem;min-height:2.75rem;margin:0 .35rem 0 0;padding:.2rem .85rem;border:1px solid var(--accent);border-radius:1.4rem;background:var(--panel);color:var(--ink);font-size:.875rem;font-weight:600;line-height:1.2;vertical-align:middle}.topic-subtitle .mark-done:hover{background:var(--soft)}.topic-subtitle:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 /* The people, the topic's Team in its header: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
-/* The topic's Team (item 465): on the title row's right, under the title, its pills and "+ Add" flush right, beside the subtitle; on a phone, under the subtitle. Its label sits on the first pill's line (baseline), and the people "+ Add" opens come in under the pills taking no width of their own, so opening it moves neither the label nor the subtitle. The subtitle keeps at least 6rem beside it: a Team that would leave it less wraps its pills, so the topic's state stays words, not a column one letter wide. */
-.topic-header>div{display:grid;grid-template-columns:minmax(6rem,1fr) auto;column-gap:1.25rem}.topic-header>div>*{grid-column:1/-1}.topic-header>div>.topic-subtitle{grid-column:1}
-.topic-people{grid-column:2!important;grid-row:3;align-self:start;display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.6rem;max-width:min(36rem,62vw);margin-top:0}.topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.topic-people .participants{flex:0 1 auto;min-width:0;margin:0;align-items:center;justify-content:flex-end}
-/* Beside the subtitle, the people "+ Add" opens, and a notice, take no width of their own (contain), and no gap: the pills keep theirs as margins, so the Team is as wide open as closed. */
-@media(min-width:761px){.topic-people .participants{column-gap:0}.topic-people .participants>:not(:first-child,.people-add,.notice){margin-inline-start:.4rem}.topic-people .participants>:is(.people-add,.notice){contain:inline-size}}
+/* The topic's Team (item 465): on the title row's right, under the title, its pills and "+ Add" flush right, beside the subtitle; on a phone, under the subtitle. Its label sits on the first pill's line (baseline), and the people "+ Add" opens come in under the pills taking no width of their own, so opening it moves neither the label nor the subtitle. The subtitle keeps at least 6rem beside it: a Team that would leave it less wraps its pills, so the topic's state stays words, not a column one letter wide. Its spacing is kept modest (.75rem from the subtitle, .4rem from its label, .7rem inside a pill, as in "+ Add") so a Team of two and "+ Add" keeps one line at 1280 with room to spare even when a standard 15px scrollbar takes its width. */
+.topic-header>div{display:grid;grid-template-columns:minmax(6rem,1fr) auto;column-gap:.75rem}.topic-header>div>*{grid-column:1/-1}.topic-header>div>.topic-subtitle{grid-column:1}
+.topic-people{grid-column:2!important;grid-row:3;align-self:start;display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.4rem;max-width:min(36rem,62vw);margin-top:0}.topic-people .person-pill .pill-name{padding:0 .7rem}.topic-people .person-pill .wake-light{padding-right:.7rem}.topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.topic-people .participants{flex:0 1 auto;min-width:0;margin:0;align-items:center;justify-content:flex-end}
+/* Beside the subtitle, the people "+ Add" opens, and a notice, take no width of their own (contain), and no gap: the pills keep theirs as margins, so the Team is as wide open as closed. The pills and "+ Add" are the children of .chips, which draws no box of its own (display:contents), so the margins are theirs, each after the first. */
+@media(min-width:761px){.topic-people .participants{column-gap:0}.topic-people .participants>.chips>:not(:first-child){margin-inline-start:.4rem}.topic-people .participants>:is(.people-add,.notice){contain:inline-size}}
 @media(max-width:760px){.topic-people{grid-column:1/-1!important;grid-row:auto;justify-content:flex-start;max-width:none;margin-top:.6rem}.topic-people .participants{justify-content:flex-start}}
 .person-pill{display:inline-flex;align-items:center;min-height:2rem;border-radius:1rem;background:var(--agent-tag,#eff0f0);color:var(--ink);font-size:.82rem;font-weight:600;line-height:1}
 .person-pill .pill-name{display:inline-flex;align-items:center;min-height:2rem;padding:0 .8rem;border:0;border-radius:0;background:transparent;color:inherit;font:inherit}
@@ -429,9 +429,9 @@ a.pl-title:hover{text-decoration:underline}
 .pl-note{margin:.15rem 0 0 1.9rem;font-size:.78rem;color:var(--muted)}
 .pl-note button{min-height:1.8rem;padding:0 .45rem;font-size:.75rem;margin-left:.3rem}
 .pl-menu{position:absolute;right:.5rem;top:calc(100% - .3rem);z-index:20;min-width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 6px 24px rgb(0 0 0 / .18);display:flex;flex-direction:column}
-.pl-menu button{display:flex;justify-content:space-between;gap:1.2rem;min-height:2.4rem;border:0;text-align:left;font-size:.85rem;background:transparent}
+.pl-menu button{display:flex;align-items:center;justify-content:flex-start;min-height:2.4rem;border:0;text-align:left;font-size:.85rem;background:transparent}
 .pl-menu button:hover{background:var(--soft)}
-.pl-menu kbd{font:inherit;color:var(--muted);font-size:.78rem}
+.pl-menu kbd{font:inherit;color:var(--muted);font-size:.78rem;margin-left:auto;padding-left:1.2rem}
 .pl-menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
 .pl-group{margin:.8rem 0 .4rem}
 .pl-group>summary{cursor:pointer;font-size:.88rem;font-weight:600;width:max-content;max-width:100%}
@@ -661,8 +661,12 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
 /* The keys that do what an item does, at its end. */
-.message-menu-list button:has(.menu-keys){display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
+.message-menu-list button{display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+/* A menu item's glyph (glyphs.mjs, items 602 and 601): it follows the item's words in the document, so the row reads as
+   its words, and is drawn before them, 18px, in the words' own colour. The quote glyph is a character drawn here. */
+.message-menu-list .glyph,.pl-menu .glyph{order:-1;flex:none;align-self:center;width:18px;height:18px;margin-right:10px;opacity:.85}
+.glyph[data-text]{display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem;line-height:1}.glyph[data-text]::before{content:attr(data-text)}
 .message-bar [data-act=more][aria-expanded=true]{background:var(--soft)}
 /* Where a finger presses, each item of a message's menu is 44px tall, as the bar's buttons are. */
 @media(pointer:coarse){.message-menu-list button{min-height:2.75rem}}
@@ -708,7 +712,13 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .topic-target{margin:0 0 1rem}.tg-topic-line{padding:.55rem .85rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel)}.tg-topic-line>summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:.2rem .5rem}.tg-topic-line[open]>summary{margin-bottom:.5rem}.tg-topic-line .tg-text{font-size:1rem;margin-bottom:.4rem}
 /* An outcome's kind on its page: two chips, one tap each, each a word and its one line (the form rule). */
 .tg-kind .kind-question{flex-basis:100%;font-size:.85rem}.kind-chips{display:flex;flex-wrap:wrap;gap:.5rem}.kind-chip{display:grid;gap:.1rem;justify-items:start;text-align:left;white-space:normal;flex:0 1 auto;max-width:19.5rem;padding:.55rem .85rem;border-radius:.9rem}.kind-chip .muted{font-size:.82rem;line-height:1.35}.kind-chip[aria-pressed=true]{border-color:var(--accent);background:var(--soft)}.kind-chip[aria-pressed=true] strong::before{content:"✓ ";color:var(--accent)}
-.reached-outcomes{margin-top:.6rem}.reached-outcomes>summary{cursor:pointer;color:var(--muted);font-size:.85rem;padding:.3rem 0}.reached-outcomes a.nav-item{min-height:44px;padding:.6rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}.reached-outcomes a.nav-item:hover,.reached-outcomes a[aria-current=page]{background:var(--soft)}.reached-outcomes a>span,.reached-outcomes a>small{display:block}.reached-outcomes a small{font-size:.72rem;color:var(--muted);margin-top:.2rem}
+:is(.reached-outcomes,.ended-outcomes){margin-top:.6rem}:is(.reached-outcomes,.ended-outcomes)>summary{cursor:pointer;color:var(--muted);font-size:.85rem;padding:.3rem 0}:is(.reached-outcomes,.ended-outcomes) a.nav-item{min-height:44px;padding:.6rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}:is(.reached-outcomes,.ended-outcomes) a.nav-item:hover,:is(.reached-outcomes,.ended-outcomes) a[aria-current=page]{background:var(--soft)}:is(.reached-outcomes,.ended-outcomes) a>span,:is(.reached-outcomes,.ended-outcomes) a>small{display:block}:is(.reached-outcomes,.ended-outcomes) a small{font-size:.72rem;color:var(--muted);margin-top:.2rem}
+/* An outcome archived or completed, and brought back (item 404): quiet word buttons, Complete · Archive under the kind, Bring back beside who ended it, on a home row under "Archived (N)" and on a topic's line. Each is at least 44px to touch on a phone; on a laptop it keeps its line's height. */
+.tg-end{margin:.1rem 0 .6rem;font-size:.85rem;color:var(--muted)}.end-word{font-size:inherit;line-height:inherit;white-space:nowrap}.end-word[aria-disabled=true]{cursor:default;text-decoration:none;color:var(--muted)}.end-word:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:.2rem}
+.standing-last.with-end{flex-wrap:wrap;align-items:baseline;white-space:normal;gap:0 .5em}
+.ended-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 .5rem}.ended-row>a.nav-item{flex:1 1 12rem;min-width:0}.ended-row>.end-word{flex:none;font-size:.85rem}.ended-row>.notice{flex-basis:100%;padding:0 .6rem .4rem}
+.topic-header .outcome-kept{margin:.3rem 0 0;font-size:.9rem;overflow-wrap:anywhere}.outcome-kept .notice{display:inline}
+@media(max-width:640px){.end-word{min-height:44px;padding:0 .2rem}}
 @media(max-width:640px){.tg-reading{grid-template-columns:1fr}.tg-accepted{grid-column:1}.tg-check{margin-left:.3rem}}
 /* Writing the target in place (D8): a box a few sentences wide, the ask's topic as chips, and which words each check proves. */
 .tg-write-open{margin:.6rem 0 .2rem}.tg-write{display:grid;gap:.45rem;max-width:40rem;margin:.6rem 0 .2rem}.tg-write .tg-write-text{flex:none;width:100%;min-height:5.5rem;padding:.6rem .75rem;resize:vertical;font-size:1rem;line-height:1.5}.tg-write-how{margin:0;font-size:.88rem}.tg-write .tg-actions{align-items:center}.tg-write-keys{font-size:.78rem}.tg-topics{display:flex;flex-wrap:wrap;gap:.4rem}.tg-topics[hidden]{display:none}.tg-topic-chip{min-height:2.25rem;max-width:16rem;overflow:hidden;text-overflow:ellipsis;border-radius:1.2rem;padding:.2rem .75rem;font-size:.85rem}.tg-topic-chip[aria-pressed=true]{border-color:var(--accent);background:var(--soft)}.tg-proves{flex-basis:100%;padding-left:1rem;font-size:.85rem;color:var(--muted);font-style:italic;overflow-wrap:anywhere}.tg-no-checks{margin:.6rem 0 .2rem;max-width:44rem}
@@ -887,13 +897,15 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 #reader-stepping>button:disabled{opacity:.3}
 /* The star beside the Reader's title: a quiet glyph, outline until starred, filled once starred; its row keeps the heading's height however big its target. */
 .reader-title-row{display:flex;align-items:center;gap:.15rem;min-width:0}.reader-title-row h2{min-width:0}
+/* The title, a dossier's name or the topic's (item 561), keeps one line however long, cut off with an ellipsis, so the star, the archive button and ✕ keep their place. */
+.reader-title-row .reader-topic{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #reader-star{flex:none;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}
 #reader-star:hover{background:var(--soft);color:var(--ink)}#reader-star[aria-pressed=true]{color:var(--accent)}
 /* The archive button beside the star (item 378): its glyph and the count of the messages that move below More with it. A quiet button like the star, in the star's type, its count small: in the count's small type alone, its rounded corners drew it as a pill with no fill of its own. */
 #reader-aside{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:.2rem;min-width:2.5rem;min-height:2.5rem;margin:-.5rem 0;padding:0 .35rem;border-color:transparent;background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}
 #reader-aside .aside-count{font-size:.8rem;font-weight:600}#reader-aside svg{flex:none}#reader-aside:hover{background:var(--soft);color:var(--ink)}#reader-aside[aria-pressed=true]{color:var(--accent)}
-/* A phone's header has no room for ←, the title with its star and archive button, ↑ ↓, ⋯ and ✕ in one row of 44px targets (item 378): there the title, its star and the archive button take a row of their own under the others, and who wrote it and when stays in the first, beside ←. The second row's buttons keep their whole 44px, so no target reaches into the first row's. */
-@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}}
+/* A phone's header has no room for ←, the title with its star and archive button, ↑ ↓, ⋯ and ✕ in one row of 44px targets (item 378): there the title, its star and the archive button take a row of their own under the others, and who wrote it and when stays in the first, beside ←. The second row's buttons keep their whole 44px, so no target reaches into the first row's. The two rows cost the message no more than their targets (item 593): the header keeps no padding above or below them, and the message, when it is the first thing the pane shows, starts right under it, with no gap of the pane's own above it, so with a long reply and the keyboard up the message still shows 7 lines (docs/reader.md). Anything the pane shows above the message, such as the access notice, keeps the pane's gap under the header; the message's own room after its end stays, as text scrolls through it and only ↑ Previous · ↓ Next ever sits in it. */
+@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}#reader:has(#reader-aside:not([hidden])) .reading-pane:not(:has(>:not([hidden])~article)){padding-top:0}}
 /* ↑ Previous · ↓ Next at the end of the message, on a phone only. */
 .reader-end{display:none}
 /* The ⋯ as a sheet from the bottom, on a phone. */
@@ -1151,3 +1163,32 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #review-content .pending-card .attachment-label{display:block}
 #review-content .pending-card .attachment-label img{display:block;max-width:min(16rem,100%);max-height:12rem;object-fit:contain;border-radius:.4rem;margin:.4rem 0}
 .review-chips button.kept,#topic-pending button.kept{color:var(--muted);background:var(--panel);border-color:var(--line)}
+
+/* Skills and tools (item 17, skills.mjs; docs/skills-and-tools.md): the tool page, the outcome page's section, Topic
+   settings' chips. Plain lines, no cards and no coloured edges; the check word is words, never a colour alone. A glyph
+   button (×) is 2.75rem square, a target a finger can hit; a quiet line opened from a button is about a sentence wide. */
+.tool-page{display:grid;gap:.55rem;max-width:46rem}
+.tool-line{margin:0;overflow-wrap:anywhere}.tool-label{color:var(--muted)}
+.tool-section h2{font-size:1rem;margin:1.2rem 0 .4rem}.outcome-tools h3{font-size:.8rem;font-weight:600;color:var(--muted);margin:.9rem 0 .3rem}
+.tool-went-back,.tool-topics,.tool-rows{list-style:none;margin:0;padding:0}
+.tool-went-back li{margin:.3rem 0;overflow-wrap:anywhere}
+.tool-topic,.tool-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.75rem;border-bottom:1px solid var(--line)}
+.tool-topic-words,.tool-row-words{min-width:0;overflow-wrap:anywhere;padding:.35rem 0}
+.tool-row-words .tool-row-word{display:block;font-size:.85rem;color:var(--muted)}
+.glyph-button{flex:none;width:2.75rem;height:2.75rem;min-height:2.75rem;padding:0;font-size:1.15rem;line-height:1;color:var(--muted)}
+.glyph-button:hover{color:var(--ink)}
+.finder-host{margin-top:.5rem}.finder-open{padding-inline:.2rem;color:var(--accent)}
+.finder{display:grid;gap:.3rem;max-width:min(26rem,100%)}
+.finder-input{width:100%;min-height:2.75rem;padding:.3rem .65rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink)}
+.finder-list{list-style:none;margin:0;padding:0}
+.finder-list li{padding:.55rem .65rem;border-radius:.45rem;overflow-wrap:anywhere}
+.finder-option{cursor:pointer;min-height:2.75rem}.finder-option[aria-selected=true],.finder-option:hover{background:var(--soft)}
+.tool-files summary{cursor:pointer;color:var(--muted);min-height:2.75rem;display:flex;align-items:center}
+.tool-files ul{margin:.2rem 0 0;padding-left:1.1rem}.tool-files code{overflow-wrap:anywhere}
+.outcome-tools{margin-top:2rem}
+.tool-chips .choice-chip[aria-disabled=true]{opacity:.7;cursor:progress}
+@media(max-width:760px){.finder-input{font-size:16px}.tool-chips .choice-chip{min-height:2.75rem}}
+/* The rail's Skills and tools: names only, the same rows as its topics. */
+#skills-navigation{margin-top:1.3rem}#skills-links a.nav-item{min-height:44px;padding:.55rem .65rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
+#skills-links a.nav-item:hover{background:var(--soft)}#skills-links a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;border-color:var(--line)}
+@media(max-width:760px){#skills-links{display:flex;overflow:auto;gap:.35rem;padding:.25rem}#skills-links a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}}

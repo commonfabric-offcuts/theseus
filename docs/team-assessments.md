@@ -160,3 +160,12 @@ it was. A request made before Reached stays in the state it had. The
 `assessment` view says `outcome_reached`, and the dispatcher reads it before any
 native call and again just before a model turn, so it starts no thread and spends
 no turn for a reached outcome. Reading a recorded assessment stays open.
+
+An outcome archived or completed (docs/targets.md, "Archived and completed") is
+kept to read the same way until its owner brings it back: each of those
+commands refuses `OUTCOME_ARCHIVED` or `OUTCOME_COMPLETED`, in words that say
+who can bring it back, and leaves the assessment as it was. The `assessment`
+view keeps `outcome_reached` and adds `outcome_closed`, true while the outcome
+is reached, archived or completed; the dispatcher refuses `OUTCOME_CLOSED` on it
+at the same two reads, so no thread starts and no turn is spent there either.
+Brought back, the same commands go through again.

@@ -66,6 +66,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  // The outline at rest, as a person sees it before pressing in it: the rails have no read out (data-rails-reading,
+  // in-place-navigation.mjs), the outline holds the page's own topic list in a live list (outline-rail.mjs, place),
+  // which it takes in only once its first read of the outcomes has landed (a list a run that went left behind is
+  // inert), and that list has no read out either (topic-navigation.mjs marks its Retry aria-disabled meanwhile): a
+  // commit reorders its rows when it lands. Earlier cases leave many outcomes to read, and something new or waiting
+  // in them, so those reads can land late: until they do, a row in the outline can move under a press, and on a phone
+  // the line under the header saying what is new elsewhere comes in and pushes the messages down under a finger.
+  const OUTLINE_AT_REST = `!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`;
+  const outlineAtRest = (p, what) => until(() => p.evaluate(OUTLINE_AT_REST).catch(() => false), `${what}: the outline is at rest`);
+  // Up, with nothing more on its way: the page, the right rail's sections, and the outline at rest.
+  const settled = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true'
+    && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && ${OUTLINE_AT_REST}`).catch(() => false), what);
   const drawer = p => p.evaluate(`(()=>{const control=document.getElementById('rail-open');return {open:document.getElementById('rail').classList.contains('open'),
     backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
     focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
@@ -532,6 +544,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: 420 });
     } });
     await until(async () => (await outline(p)).outcomes['rail-move-o'], 'the outline lists the other outcome');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await p.evaluate("(window.railKept=document.getElementById('outline'),window.railMark='this window')");
     const opens = async () => Object.entries((await outline(p)).outcomes).filter(([, row]) => row.open).map(([id]) => id);
@@ -546,6 +559,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await outline(p)).outcomes['rail-move-o'].topics.some(row => row.id === 'rail-move-t'), 'its topics show under it');
     assert.deepEqual(await opens(), ['rail-move-o'], 'and every other outcome is folded');
     assert.equal((await outline(p)).outcomes['rail-move-o'].current, 'page', 'its name is marked as the page');
+    await outlineAtRest(p, 'on the Conversation');
     const room = await p.evaluate("(()=>{document.querySelector('#outline a[data-topic-id=\"rail-move-t\"]').scrollIntoView({block:'center'});return document.getElementById('rail').scrollTop})()");
     assert.ok(room > 0, 'the rail scrolls at this height');
     await p.point('#outline a[data-topic-id="rail-move-t"]');
@@ -613,6 +627,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail a new message raises a folded outcome\'s count and the new total live; open, the row counts only its Conversation; reading the topic lowers them', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-count-o', title: 'Counting outcome', topic: { id: 'rail-count-t', title: 'Counting topic' } });
     const p = await open('rail-count', '/?topic=t1');
+    await settled(p, 'the topic is up');
     const first = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-count-o'] && seen; }, 'the outline lists the outcome');
     assert.equal(first.outcomes['rail-count-o'].open, false, 'an outcome not being read starts folded');
     const before = await loaded(p), count = first.outcomes['rail-count-o'].count, total = parseInt(first.fresh.text, 10);
@@ -627,6 +642,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const opened = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o']; return row.topics.some(topic => topic.id === 'rail-count-t' && topic.unread === count + 1) && seen; }, 'open, the topic row counts its unread');
     assert.equal(opened.outcomes['rail-count-o'].count, 0, 'and the outcome row counts only its Conversation, which has nothing new');
     // Reading the topic lowers both.
+    await outlineAtRest(p, 'the outcome opened');
     await p.point('#outline a[data-topic-id="rail-count-t"]');
     await arrived(p, '?topic=rail-count-t', 'Counting topic', 'the topic opens in place');
     const read = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o'].topics.find(topic => topic.id === 'rail-count-t'); return row && row.unread === 0 && parseInt(seen.fresh.text, 10) <= total - count && seen; }, 'read, its count goes, and the total drops by it');
@@ -650,7 +666,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual([topic.heading, topic.chips], ['In this topic', ['Just this topic:true', 'All of this outcome:false']], 'a topic shows its own things, the whole outcome one tap away');
     assert.deepEqual(topic.prs, ['Sort species by common name https://github.com/acme/field/pull/12'], 'the pull request by the words it was posted with');
     assert.deepEqual(topic.previews, ['http://bench.example.ts.net:5192/preview/species'], 'the preview by its address');
-    assert.equal(topic.tools, 'Skills and tools are not recorded yet.', 'what Core does not record is said, not made up');
+    assert.ok(!topic.sections.includes('tools'), 'a topic about no skill or tool shows no Skills and tools (docs/skills-and-tools.md)');
     assert.ok(!topic.sections.includes('pipeline'), 'a topic with nothing in the pipeline shows no Pipeline section');
     await shot(p, 'rail-things-topic');
     await p.point('#things .things-scope .chip:nth-child(2)');
@@ -671,6 +687,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'navigation_topics', topics: [{ id: 'rail-leave-t', title: 'Leaving topic' }] });
     const p = await open('rail-leave', '/?topic=t1');
     await until(() => p.evaluate('Boolean(document.querySelector("#outline a[data-topic-id=rail-leave-t]")) && Boolean(document.getElementById("inline-writing-body"))'), 'the outline and the writing box are ready');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await p.evaluate("window.railKept=document.getElementById('outline')");
     // A send held on its way: leaving now would lose track of it, so the page stays.
@@ -679,6 +696,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Sent while the page tries to leave' });
     await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
     await until(() => p.held.some(entry => entry.payload?.kind === 'message.send'), 'the send is on its way');
+    // What the writing committed is read again, and t1 moves up the topic list above the row pressed.
+    await outlineAtRest(p, 'the send is on its way');
     await p.point('#outline a[data-topic-id="rail-leave-t"]');
     await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), 'the page says why it stays');
     const stayed = await placeOf(p);
@@ -686,7 +705,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     await until(() => p.evaluate("document.getElementById('messages').textContent.includes('Sent while the page tries to leave')"), 'the send lands');
-    // Writing not sent yet goes with the page as it moves, and is there on coming back.
+    // Writing not sent yet goes with the page as it moves, and is there on coming back. The outline at rest after the
+    // send landed first (its commit reorders the rows), then the writing, and the press before it is saved.
+    await outlineAtRest(p, 'the send landed');
     await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Kept for later' });
     await p.point('#outline a[data-topic-id="rail-leave-t"]');
     const moved = await arrived(p, '?topic=rail-leave-t', 'Leaving topic', 'with the send done, the page moves');
@@ -745,9 +766,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       things:{heading:t.querySelector('h2').textContent,name:t.querySelector('.things-name').textContent,
         chips:shown(t.querySelector('.things-scope'))?[...t.querySelectorAll('.things-scope .chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')):[],
         sections:[...t.querySelectorAll('.things-sec')].filter(shown).map(d=>d.dataset.key),nothing:shown(nothing)?nothing.textContent:null}}})()`);
-  // Up, with nothing more on its way: the page, both rails' reads, and the page's own list in the outline.
-  const settled = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
-    && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
   // A reload, waited out on the new document.
   const reloaded = async (p, what) => {
     const before = (await placeOf(p)).origin;
@@ -935,15 +953,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail a section of the right rail folded stays folded across a move in place and a reload, and opens again when unfolded', async () => {
     const p = await page('rail-section-fold', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
     await settled(p, 'the topic is up');
-    const tools = "document.querySelector('#things .things-sec[data-key=tools]')";
+    // The Notebook: the topic's pages, and on the Conversation the outcome's, empty but kept for its pencil.
+    const tools = "document.querySelector('#things .things-sec[data-key=notebook]')";
     const open = () => p.evaluate(`(()=>{const d=${tools};return d.getClientRects().length>0?d.open:null})()`);
     // A press on the section's heading, waited out until the section has said it folded or opened.
     const toggle = async () => {
       await p.evaluate(`(window.railToggled=new Promise(resolve=>${tools}.addEventListener('toggle',resolve,{once:true})),true)`);
-      await press(p, '#things .things-sec[data-key=tools] summary');
+      await press(p, '#things .things-sec[data-key=notebook] summary');
       await p.evaluate('window.railToggled.then(()=>true)');
     };
-    assert.equal(await open(), true, 'Skills and tools shows, open');
+    assert.equal(await open(), true, 'the Notebook shows, open');
     await toggle();
     assert.equal(await open(), false, 'a press on its heading folds it');
     await press(p, '.ol-outcome[data-workspace-id="w1"] .ol-name');
@@ -1077,6 +1096,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const words = `#messages .message-card[data-id="${asked.result.message_id}"] > .message-preview`;
     const p = await open('rail-stay', '/?topic=rail-stay-a');
     await until(() => p.evaluate('document.querySelector("#outline a[data-topic-id=rail-stay-b]")?.getClientRects().length>0'), 'the outline is ready');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await press(p, '#outline a[data-topic-id="rail-stay-b"]');
     await arrived(p, '?topic=rail-stay-b', 'Staying topic B', 'B opens in place');
@@ -1118,6 +1138,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer');
         const row = '#outline a.nav-item[data-topic-id="rail-keys-t"]';
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length>0`), at + ': the topic is in the drawer');
+        await outlineAtRest(p, at);
         await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
         await tap(p, row);
         await arrived(p, '?topic=rail-keys-t', 'Keyboard topic', at + ': the topic opens');
@@ -2405,6 +2426,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p=await open(oid,'/?topic='+tid,size);
       // On a laptop the page settles its things and its scroll first; a phone keeps them behind a sheet.
       if(size==='laptop')await settled(p,'the topic is up');
+      await outlineAtRest(p,size);
       const name=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
       const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
       // Brought into view and held there: the outline may still be settling its own scroll as the page comes up.
@@ -2472,6 +2494,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const reader = () => p.evaluate(`(r=>({open:r.open,text:r.textContent,topic:new URL(location.href).searchParams.get('topic')}))(document.querySelector('#reader'))`);
     // A press, then what the Reader shows; Escape puts it away before the next press.
     const pressed = async (selector, words) => {
+      await outlineAtRest(p, words);
       await p.point(selector);
       const shown = await until(async () => { const seen = await reader(); return seen.open && /question in [AB]/.test(seen.text) && seen; }, words + ': a question opens in the Reader');
       await p.key('Escape');
@@ -3136,6 +3159,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-build-done-1', topic_id: 'rb-review', args: { state: 'done' } });
     const done = await until(async () => { const now = await buildRail(p); return !now.rows.some(row => row.id === 'rb-review') && now.doneLabel === 'Done (1)' && now; }, 'marked Done, it leaves the right rail and the outline counts it Done, live');
     assert.deepEqual(done.outline.map(row => row.id), ['rb-plain'], 'it is not among the outline\'s open topics');
+    await outlineAtRest(p, 'marked Done');
     await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] details.topic-group > summary');
     await until(async () => (await buildRail(p)).done.includes('rb-review'), 'the outline\'s Done group lists it');
     await shot(p, 'rail-build-done');
@@ -3224,6 +3248,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const spoken = await p.evaluate(`document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name .sr-only')?.textContent ?? ''`);
     assert.match(spoken, /its Build topics$/, 'a screen reader hears where they are: ' + spoken);
     await shot(p, 'rail-build-chip');
+    await outlineAtRest(p, 'only what is new');
     await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name');
     await arrived(p, '?conversation=rail-build-o', null, 'a press on the row opens its Conversation');
     await settled(p, 'the Conversation is up');
@@ -3442,6 +3467,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-done-building-done', topic_id: 'rd-built', args: { state: 'done' } });
     try {
       await shows('marked Done, it leaves the right rail and the outline counts it Done, live', now => !now.rows.some(row => row.id === 'rd-built') && now.doneLabel === 'Done (1)');
+      await outlineAtRest(p, 'marked Done while building');
       await p.point('#outline .ol-outcome[data-workspace-id="rail-done-o"] details.topic-group > summary');
       await shows('the outline\'s Done group lists it', now => now.done.includes('rd-built'));
       assert.deepEqual([seen.rows.filter(row => row.id === 'rd-built').length, seen.outline.filter(row => row.id === 'rd-built').length, seen.done.filter(id => id === 'rd-built').length], [0, 0, 1],
@@ -4418,6 +4444,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const topic = 'rail-notices-t';
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
     const faults = [];
+    let sent = 0;
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
       const at = `${size} ${theme}`, laptop = size === 'laptop';
       // A card of its own each time, not starred yet.
@@ -4429,6 +4456,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       const card = `#messages .message-card[data-id="${message}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body'))`), at + ': the card and the writing box are up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
       net.hold(payload => stars(payload) || sends(payload));
       // A star Theseus is too busy to take, as in item 547 (its command lane full while the reader's own reply
@@ -4489,6 +4517,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       net.hold(null);
       for (const entry of [...net.held()]) await net.pass(entry);
       await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes').catch(error => faults.push(error.message));
+      // The send let through has landed in Core before the page closes: on its way still, it would write the topic while
+      // the next size's card joins its agent there, and that join would meet a topic changed under it (REVISION_CONFLICT).
+      sent += 1;
+      await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.filter(item => item.body === 'Sent while the page is asked to move').length === sent, at + ': the send let through is in Core');
       assert.deepEqual(p.errors, []); await p.close();
     }
     assert.deepEqual(faults, [], 'every size and theme');
@@ -4508,6 +4540,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       const card = `#messages .message-card[data-id="${message}"]`, words = card + ' > .message-preview', thumb = '.message-bar [data-act=thumb]';
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), at + ': the card is up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), thumbs = payload => payload?.kind === 'message.thumb';
       const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === message;
       net.hold(payload => thumbs(payload) || reactions(payload));
@@ -4560,6 +4593,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
     const row = `#outline a[data-topic-id="${other}"]`;
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the outline is up again');
+    await outlineAtRest(p, 'after the reload');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page');
@@ -4578,6 +4612,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await said(), 1, 'Core holds it');
     await net.drop(lost); net.hold(null);
     await until(async () => (await review()).includes('Review 2 replies'), 'both are in doubt now');
+    await outlineAtRest(p, 'back on the topic');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page again');
@@ -4599,6 +4634,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await open('rail-together-' + size, '/?topic=' + topic, size, theme);
       const card = `#messages .message-card[data-id="${message}"]`, row = `#outline a[data-topic-id="${other}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body')) && Boolean(document.querySelector(${JSON.stringify(row)}))`), at + ': the card, the writing box and the outline are up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
       // The star: Theseus too busy to take it, each time it goes, until the page has moved on.
       const lane = { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } };
@@ -4650,5 +4686,291 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: nothing is said of the star`);
       assert.deepEqual(p.errors, []); await p.close();
     }
+  });
+
+  // ---- Skills and tools (item 17; docs/skills-and-tools.md, section 1) ----
+  // Invented records (tests/fixtures/ui_http.py, tools_seed): Kite club homes Spool winder (its check passed, and one
+  // version went back) and Knot guide (a skill with no check); w1 homes Wind meter, whose check has not run; Glider
+  // bench, which the person is not on, homes Glide timer. Every state at 320, 375, 390 and on a laptop, light and dark.
+  const TOOL_WIDTHS = [[320, 'light'], [320, 'dark'], [375, 'light'], [375, 'dark'], [390, 'light'], [390, 'dark'], [1280, 'light'], [1280, 'dark']];
+  const sized = (key, url, width, theme, more = async () => {}) => page(key, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+    await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+    await q.send('Emulation.setDeviceMetricsOverride', width < SIZES.laptop.width ? { ...SIZES.phone, width } : SIZES.laptop);
+    if (width < SIZES.laptop.width) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await more(q);
+  } });
+  // A press as the size presses: a finger on a phone, the mouse on a laptop.
+  const pressAt = async (p, width, selector) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    if (width < SIZES.laptop.width) await tap(p, selector); else await p.point(selector);
+  };
+  // A page as drawn: the tool page's lines, the outcome page's Skills and tools, the rail's list, and what a finger
+  // or a screen reader needs (every button 44px tall on a phone, every glyph named, with a tooltip).
+  const toolsDrawn = p => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.getClientRects().length>0,text=(r,s)=>[...r.querySelectorAll(s)].filter(shown).map(e=>e.textContent);
+    const page=document.getElementById('tool-page'),uses=document.getElementById('outcome-tools'),status=page.querySelector('.tool-status'),brand=document.querySelector('.brand');
+    const buttons=[...document.querySelectorAll('#tool-page button,#outcome-tools button,#topic-tools button')].filter(shown);
+    return {ready:document.body.dataset.ready==='true',eyebrow:document.getElementById('workspace-name').textContent,title:document.getElementById('topic-title').textContent,
+      description:document.getElementById('topic-description').textContent,lines:text(page,'.tool-line'),went:text(page,'.tool-went-back li'),topics:text(page,'.tool-topic a'),
+      empty:text(page,'.empty'),hidden:text(page,'.tool-topics ~ .muted'),link:shown(page.querySelector('.finder-open')),files:page.querySelector('.tool-files')?.open??null,
+      timed:Boolean(page.querySelector('.tool-word time')),status:shown(status)?status.textContent:null,pageShown:shown(page),rail:shown(document.querySelector('.rail')),
+      skills:[...document.querySelectorAll('#skills-links a')].filter(shown).map(a=>a.textContent+(a.getAttribute('aria-current')?'*':'')),
+      brandIn:brand.parentElement.id||brand.parentElement.className,home:shown(document.getElementById('outcomes-home')),
+      uses:shown(uses)?{rows:text(uses,'.tool-row'),names:text(uses,'.tool-name'),used:text(uses,'h3'),add:shown(uses.querySelector('.finder-open')),offs:text(uses,'.glyph-button').length}:null,
+      small:buttons.filter(b=>innerWidth<761&&b.getBoundingClientRect().height<43.5).map(b=>b.textContent),
+      unnamed:buttons.filter(b=>b.classList.contains('glyph-button')&&!(b.getAttribute('aria-label')&&b.title)).length,
+      scroll:document.documentElement.scrollWidth<=innerWidth}})()`);
+  // A command held before the server has it: Chrome's Fetch, or WebKit's own route.
+  const holdTool = async (p, kind) => {
+    if (!p.pw) return holdCommands(p, kind);
+    const held = [], url = facts.origin + '/api/command';
+    const handler = route => { const payload = route.request().postDataJSON(); if (payload?.kind === kind) held.push({ route, payload }); else route.continue(); };
+    await p.pw.route(url, handler);
+    return {
+      first: what => until(() => held[0], what),
+      answer: (entry, receipt) => entry.route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(receipt) }),
+      stop: () => p.pw.unroute(url, handler),
+    };
+  };
+  // A topic page up with its outline, at any width (on a phone the right rail is not drawn, so it is not waited for).
+  const toolTopicUp = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
+    && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
+  // The topics linked to Spool winder: the topic its version that went back opened is one from the start.
+  const spoolTopics = async () => (await view('tool', { tool_id: 'spool-winder' })).topics.map(topic => topic.title).sort();
+  const toolUp = (p, what, ready = seen => seen.ready) => until(async () => { const seen = await toolsDrawn(p).catch(() => null); return seen && ready(seen) && seen; }, what);
+
+  await check('rail skills and tools: a tool\'s page at 320, 375, 390 and on a laptop, light and dark: Tool, its name and summary, Home, its check passed with its count and time, Used by, Went back with its topic, Topics about it with Link a topic, the files folded; in its home\'s rail; its outcome page lists it beside a skill with no check, which reads Not evaluated yet', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
+      const p = await sized(`tools-page-${width}-${theme}`, '/?workspace=kites&tool=spool-winder', width, theme);
+      const seen = await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual([seen.eyebrow, seen.title, seen.description], ['Tool', 'Spool winder', 'Winds a kite line back without a tangle'], at + ': the word Tool, its name and its summary');
+      assert.equal(seen.lines[0], 'Home: Kite club', at);
+      assert.match(seen.lines[1], /^Its check passed: 12 of 12 · \S/, at + ': the pass with its count and its time');
+      assert.equal(seen.timed, true, at + ': its time is a time');
+      assert.equal(seen.lines[2], 'Used by: No outcome says it uses this yet.', at);
+      assert.equal(seen.went.length, 1, at + ': the one version that went back');
+      assert.match(seen.went[0], /: a new version failed its check \(3 of 12 failed: test_winds_back, test_no_tangle, test_line_end\) and went back to its live version\. Topic: Spool winder went back to its live version\.$/, at);
+      assert.deepEqual([seen.link, seen.files, seen.status], [true, false, null], at + ': Link a topic, the files folded, nothing wrong');
+      assert.deepEqual([seen.small, seen.unnamed, seen.scroll], [[], 0, true], at + ': every button a finger can hit, every glyph named, no sideways scroll');
+      if (!phone) assert.deepEqual([seen.rail, seen.brandIn, seen.skills], [true, 'rail', ['Knot guide', 'Spool winder*']], at + ': the home\'s rail, its Skills and tools, this one marked');
+      await shot(p, `tools-page-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+      const o = await sized(`tools-outcome-${width}-${theme}`, '/?workspace=kites', width, theme);
+      const outcome = await toolUp(o, at + ': the outcome page is up', drawn => drawn.ready && drawn.uses?.rows.length === 2);
+      assert.deepEqual(outcome.uses.names, ['Knot guide', 'Spool winder'], at + ': its own skills and tools');
+      assert.match(outcome.uses.rows[0], /^Knot guide · SkillNot evaluated yet: it has no check$/, at + ': a skill with no check is never a pass');
+      assert.match(outcome.uses.rows[1], /^Spool winder · ToolIts check passed: 12 of 12 · \S/, at + ': the same words as its page');
+      assert.deepEqual([outcome.uses.used, outcome.uses.add, outcome.uses.offs], [[], true, 0], at + ': nothing used here yet, and + Uses a tool');
+      assert.deepEqual([outcome.small, outcome.scroll], [[], true], at);
+      await shot(o, `tools-outcome-${width}-${theme}`);
+      assert.deepEqual(o.errors, []); await o.close();
+    }
+  });
+
+  await check('rail skills and tools: empty, read-only and error, each at 320, 375, 390 and on a laptop, light and dark: a skill nothing uses or is about; a tool whose home the reader is not on, with no rail and no Link a topic; a tool that is not there, in the server\'s words', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`;
+      const e = await sized(`tools-empty-${width}-${theme}`, '/?workspace=kites&tool=knot-guide', width, theme);
+      const empty = await toolUp(e, at + ': the skill\'s page is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual([empty.eyebrow, empty.title], ['Skill', 'Knot guide'], at);
+      assert.deepEqual(empty.lines, ['Home: Kite club', 'Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.'], at + ': Not evaluated yet, never a pass');
+      assert.deepEqual([empty.went, empty.topics, empty.empty, empty.timed], [[], [], ['No topics about it yet.'], false], at + ': nothing went back and no topic is about it, said');
+      assert.deepEqual([empty.small, empty.scroll], [[], true], at);
+      await shot(e, `tools-empty-${width}-${theme}`);
+      assert.deepEqual(e.errors, []); await e.close();
+      const r = await sized(`tools-outside-${width}-${theme}`, '/?workspace=gliders&tool=glide-timer', width, theme);
+      const outside = await toolUp(r, at + ': the page of a tool homed outside the reader\'s outcomes is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual(outside.lines, ['Home: an outcome you are not on', 'Its check has not run on this version yet', 'Used by: No outcome says it uses this yet.'], at + ': its home unnamed; not run, never a pass');
+      assert.deepEqual([outside.link, outside.rail, outside.brandIn, outside.home], [false, false, 'main', true], at + ': no Link a topic and no rail; the logo block and ← Outcomes head the page');
+      assert.deepEqual([outside.small, outside.scroll], [[], true], at);
+      await shot(r, `tools-outside-${width}-${theme}`);
+      assert.deepEqual(r.errors, []); await r.close();
+      const x = await sized(`tools-missing-${width}-${theme}`, '/?workspace=kites&tool=no-such-tool', width, theme);
+      const missing = await toolUp(x, at + ': the page of a tool that is not there is up', drawn => drawn.ready && drawn.status !== null);
+      assert.deepEqual([missing.status, missing.lines, missing.rail, missing.home], ['That tool is not on this Theseus.', [], false, true], at + ': the server\'s words, nothing made up, and the way back');
+      assert.equal(missing.scroll, true, at);
+      await shot(x, `tools-missing-${width}-${theme}`);
+      assert.deepEqual(x.errors, []); await x.close();
+    }
+  });
+
+  // One quiet line's state: shown, what it holds, whether it has the cursor and is busy, what it says.
+  const finderState = (p, host) => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(host)}),line=h?.querySelector('.finder'),input=line?.querySelector('.finder-input'),say=line?.querySelector('.notice');
+    return {open:Boolean(line)&&!line.hidden,value:input?.value??null,focused:document.activeElement===input,button:document.activeElement===h?.querySelector('.finder-open'),
+      busy:input?.getAttribute('aria-busy')??null,said:say&&!say.hidden?say.textContent:null,options:[...(line?.querySelectorAll('.finder-option')??[])].map(o=>o.textContent),
+      tall:input?input.getBoundingClientRect().height>=43.5:null,inside:input?input.getBoundingClientRect().right<=innerWidth:null}})()`);
+
+  await check('rail skills and tools: Link a topic on a tool\'s page and + Uses a tool on an outcome page, typed and chosen with Return; Escape leaves things as they were; a × takes it off again', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of [[390, 'light'], [1280, 'light']]) {
+      const at = `${width} ${theme}`;
+      const p = await sized(`tools-link-${width}`, '/?workspace=kites&tool=spool-winder', width, theme);
+      const before = await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.link);
+      const linkedBefore = await spoolTopics();
+      assert.deepEqual([before.topics, linkedBefore], [['Spool winder went back to its live version'], ['Spool winder went back to its live version']],
+        at + ': the topic its version that went back opened is about it from the start');
+      // Escape: the line closes, nothing is linked, and the keys are back on Link a topic.
+      await pressAt(p, width, '#tool-page .finder-open');
+      await until(async () => (await finderState(p, '#tool-page')).focused, at + ': Link a topic opens one line, the cursor in it');
+      await until(async () => (await finderState(p, '#tool-page')).options.length === 2, at + ': the outcome\'s open topics are offered');
+      await p.send('Input.insertText', { text: 'tangled' });
+      assert.deepEqual((await finderState(p, '#tool-page')).options, ['Tangled lines'], at + ': typing finds a topic');
+      await p.key('Escape');
+      const closed = await until(async () => { const seen = await finderState(p, '#tool-page'); return !seen.open && seen; }, at + ': Escape closes the line');
+      assert.equal(closed.button, true, at + ': and gives Link a topic the keys');
+      assert.deepEqual(await spoolTopics(), linkedBefore, at + ': nothing was linked');
+      // Return links the topic typed.
+      await pressAt(p, width, '#tool-page .finder-open');
+      await until(async () => (await finderState(p, '#tool-page')).options.length === 2, at + ': the line again');
+      await p.send('Input.insertText', { text: 'tangled' });
+      await p.key('Enter');
+      const linked = await toolUp(p, at + ': Return links it, and the page lists it', drawn => drawn.topics.length === 2);
+      assert.deepEqual(linked.topics, ['Spool winder went back to its live version', 'Tangled lines'], at);
+      assert.deepEqual(await spoolTopics(), [...linkedBefore, 'Tangled lines'].sort(), at + ': Core has the link');
+      await shot(p, `tools-linked-${width}`);
+      // × takes it off.
+      await pressAt(p, width, '#tool-page .tool-topic:nth-child(2) .glyph-button');
+      await toolUp(p, at + ': × takes the topic off', drawn => drawn.topics.length === 1);
+      assert.deepEqual(await spoolTopics(), linkedBefore, at + ': Core has it off');
+      assert.deepEqual(p.errors, []); await p.close();
+      // + Uses a tool on w1's page: Wind meter is its own; Spool winder, homed in Kite club, is offered.
+      const o = await sized(`tools-uses-${width}`, '/?workspace=w1', width, theme);
+      await toolUp(o, at + ': w1\'s page is up', drawn => drawn.ready && drawn.uses?.names.length === 1);
+      await pressAt(o, width, '#outcome-tools .finder-open');
+      await until(async () => (await finderState(o, '#outcome-tools')).options.length >= 2, at + ': + Uses a tool offers the tools homed elsewhere');
+      assert.ok(!(await finderState(o, '#outcome-tools')).options.includes('Wind meter'), at + ': never its own');
+      await o.send('Input.insertText', { text: 'spool' });
+      await o.key('Escape');
+      await until(async () => !(await finderState(o, '#outcome-tools')).open, at + ': Escape closes the line');
+      assert.deepEqual((await view('tools', { workspace_id: 'w1' })).used, [], at + ': nothing said');
+      await pressAt(o, width, '#outcome-tools .finder-open');
+      await until(async () => (await finderState(o, '#outcome-tools')).options.length >= 2, at + ': the line again');
+      await o.send('Input.insertText', { text: 'spool' });
+      await o.key('Enter');
+      const used = await toolUp(o, at + ': Return says w1 uses it', drawn => drawn.uses?.used.length === 1);
+      assert.deepEqual([used.uses.names, used.uses.offs], [['Wind meter', 'Spool winder'], 1], at + ': under Used here, with a ×');
+      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).used_by.map(user => user.workspace_id), ['w1'], at + ': its page will say w1 uses it');
+      await shot(o, `tools-used-${width}`);
+      await pressAt(o, width, '#outcome-tools .glyph-button');
+      await toolUp(o, at + ': × says it no longer does', drawn => drawn.uses?.used.length === 0);
+      assert.deepEqual((await view('tools', { workspace_id: 'w1' })).used, [], at + ': Core has it off');
+      assert.deepEqual(o.errors, []); await o.close();
+    }
+  });
+
+  // Saving and refused, with the way back: the command held before the server has it (holdCommands), so the busy
+  // line is seen and a refusal given in its place leaves nothing made; Return again then saves it.
+  for (const [surface, url, host, kind, typed] of [['link', '/?workspace=kites&tool=spool-winder', '#tool-page', 'tool.link', 'faster'], ['uses', '/?workspace=w1', '#outcome-tools', 'tool.use', 'knot']]) {
+    const REFUSED = 'Kite club was reached; its topics are kept to read.';
+    const run = async (width, theme, upTo) => {
+      const at = `${surface} ${width} ${theme}`;
+      const p = await sized(`tools-${surface}-${upTo}-${width}-${theme}`, url, width, theme);
+      await toolUp(p, at + ': the page is up', drawn => drawn.ready && (surface === 'link' ? drawn.link : drawn.uses?.add));
+      await pressAt(p, width, `${host} .finder-open`);
+      await until(async () => (await finderState(p, host)).options.length >= 1, at + ': the line, with what it offers');
+      await p.send('Input.insertText', { text: typed });
+      const hold = await holdTool(p, kind);
+      await p.key('Enter');
+      const held = await hold.first(at + ': Return sends the command');
+      const busy = await until(async () => { const seen = await finderState(p, host); return seen.busy === 'true' && seen; }, at + ': the line is busy while it saves');
+      assert.deepEqual([busy.open, busy.value, busy.tall, busy.inside], [true, typed, true, true], at + ': still open, the words as typed, 44px tall, inside the page');
+      if (upTo === 'saving') {
+        await shot(p, `tools-${surface}-saving-${width}-${theme}`);
+        await hold.answer(held, { instance_id: held.payload.instance_id, operation_id: held.payload.operation_id, kind, status: 'rejected', recorded: false,
+          result: null, affected: [], error: { code: 'FORBIDDEN', message: REFUSED, retryable: false } });
+        await hold.stop();
+        assert.deepEqual(p.errors, []); await p.close();
+        return;
+      }
+      await hold.answer(held, { instance_id: held.payload.instance_id, operation_id: held.payload.operation_id, kind, status: 'rejected', recorded: false,
+        result: null, affected: [], error: { code: 'FORBIDDEN', message: REFUSED, retryable: false } });
+      const refused = await until(async () => { const seen = await finderState(p, host); return seen.said === REFUSED && seen; }, at + ': the refusal in the server\'s words');
+      assert.deepEqual([refused.open, refused.value, refused.focused, refused.busy], [true, typed, true, null], at + ': the line stays, the words as typed, the cursor in it, no longer busy');
+      await shot(p, `tools-${surface}-refused-${width}-${theme}`);
+      await hold.stop();
+      // The way back: Return again saves it.
+      await p.key('Enter');
+      if (surface === 'link') {
+        await toolUp(p, at + ': Return again links it', drawn => drawn.topics.includes('Faster spools'));
+        const row = await p.evaluate(`[...document.querySelectorAll('#tool-page .tool-topic')].findIndex(row=>row.querySelector('a').textContent==='Faster spools')+1`);
+        await pressAt(p, width, `#tool-page .tool-topic:nth-child(${row}) .glyph-button`);
+        await toolUp(p, at + ': and × takes it off', drawn => !drawn.topics.includes('Faster spools'));
+      } else {
+        await toolUp(p, at + ': Return again says w1 uses it', drawn => drawn.uses?.used.length === 1);
+        await pressAt(p, width, '#outcome-tools .glyph-button');
+        await toolUp(p, at + ': and × says it no longer does', drawn => drawn.uses?.used.length === 0);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    };
+    await check(`rail skills and tools: ${surface === 'link' ? 'Link a topic' : '+ Uses a tool'} saving, at 320, 375, 390 and on a laptop, light and dark: the line busy, open, the words as typed`, async () => {
+      await control({ method: 'tools_seed' });
+      for (const [width, theme] of TOOL_WIDTHS) await run(width, theme, 'saving');
+    });
+    await check(`rail skills and tools: ${surface === 'link' ? 'Link a topic' : '+ Uses a tool'} refused, at 320, 375, 390 and on a laptop, light and dark: the server's words, the line kept as typed with the cursor in it, and Return again saves it`, async () => {
+      await control({ method: 'tools_seed' });
+      for (const [width, theme] of TOOL_WIDTHS) await run(width, theme, 'refused');
+    });
+  }
+
+  await check('rail skills and tools: Topic settings\' Tools this topic improves links by a tap and by the keys and unlinks by a second; the right rail lists the topic\'s tools, the Conversation the outcome\'s, and hides the section when there are none', async () => {
+    await control({ method: 'tools_seed' });
+    const chips = p => p.evaluate(`(()=>{const h=document.getElementById('topic-tools');return {shown:Boolean(h)&&h.getClientRects().length>0,heading:h?.querySelector('h3')?.textContent??null,
+      chips:[...(h?.querySelectorAll('.tool-chip')??[])].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')+(c.getAttribute('aria-disabled')==='true'?':saving':'')),
+      focused:document.activeElement?.classList.contains('tool-chip')?document.activeElement.textContent:null,tall:[...(h?.querySelectorAll('.tool-chip')??[])].every(c=>innerWidth>760||c.getBoundingClientRect().height>=43.5)}})()`);
+    const linkedHere = async () => (await view('topic_tools', { topic_id: 'kite-spools' })).linked.map(tool => tool.tool_id);
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
+      const p = await sized(`tools-settings-${width}-${theme}`, '/?topic=kite-spools', width, theme);
+      await toolTopicUp(p, at + ': the topic is up');
+      await pressAt(p, width, '#settings-open');
+      const open = await until(async () => { const seen = await chips(p); return seen.shown && seen.chips.length === 2 && seen; }, at + ': Topic settings shows Tools this topic improves');
+      assert.deepEqual([open.heading, open.chips, open.tall], ['Tools this topic improves', ['Knot guide:false', 'Spool winder:false'], true], at + ': the home\'s tools as chips, none pressed, each a finger\'s size');
+      await shot(p, `tools-settings-${width}-${theme}`);
+      if (width === 390 || width === 1280) {
+        // A tap (a press on a laptop) links; Core has it at once.
+        await pressAt(p, width, '#topic-tools .tool-chip:nth-child(2)');
+        await until(async () => (await chips(p)).chips[1] === 'Spool winder:true', at + ': a tap links it');
+        await until(async () => JSON.stringify(await linkedHere()) === '["spool-winder"]', at + ': saved at once');
+        // The keys: from Knot guide, Tab to Spool winder, Return unlinks it, and the chip keeps the keys.
+        await p.evaluate(`document.querySelector('#topic-tools .tool-chip').focus()`);
+        await p.key('Tab');
+        await until(async () => (await chips(p)).focused === 'Spool winder', at + ': Tab reaches the next chip');
+        await p.key('Enter');
+        const unlinked = await until(async () => { const seen = await chips(p); return seen.chips[1] === 'Spool winder:false' && seen; }, at + ': Return on it unlinks it');
+        assert.equal(unlinked.focused, 'Spool winder', at + ': the chip keeps the keys');
+        await until(async () => (await linkedHere()).length === 0, at + ': saved at once');
+      }
+      await p.key('Escape');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // The right rail, on a laptop: the topic's own tools, the Conversation's, and none on w1's topic.
+    const p = await sized('tools-things', '/?topic=kite-spools', 1280, 'light');
+    await settled(p, 'the topic is up');
+    const rail = () => p.evaluate(`(()=>{const d=document.querySelector('#things .things-sec[data-key=tools]');return d&&d.getClientRects().length>0?[...d.querySelectorAll('.things-list a.row')].map(a=>a.textContent+' '+a.getAttribute('href')):null})()`);
+    assert.equal(await rail(), null, 'a topic about no tool shows no Skills and tools');
+    await pressAt(p, 1280, '#settings-open');
+    await until(async () => (await chips(p)).chips.length === 2, 'Topic settings is open');
+    await pressAt(p, 1280, '#topic-tools .tool-chip:nth-child(1)');
+    await until(async () => (await chips(p)).chips[0] === 'Knot guide:true', 'Knot guide is linked');
+    await p.key('Escape');
+    const listed = await until(async () => { const seen = await rail(); return seen?.length === 1 && seen; }, 'the right rail lists the topic\'s tool');
+    assert.deepEqual(listed, ['Knot guide ?workspace=kites&tool=knot-guide'], 'by name, opening its page');
+    await shot(p, 'tools-things-topic');
+    await outlineAtRest(p, 'before the press on Kite club\'s row');
+    await press(p, '.ol-outcome[data-workspace-id="kites"] .ol-name');
+    await arrived(p, '?conversation=kites', null, 'the Conversation opens in place');
+    const outcome = await until(async () => { const seen = await rail(); return seen?.length === 2 && seen; }, 'the Conversation lists the outcome\'s tools');
+    assert.deepEqual(outcome, ['Knot guide ?workspace=kites&tool=knot-guide', 'Spool winder ?workspace=kites&tool=spool-winder']);
+    await shot(p, 'tools-things-conversation');
+    await press(p, '#things .things-sec[data-key=tools] .things-list a.row');
+    await arrived(p, '?workspace=kites&tool=knot-guide', 'Knot guide', 'a row opens the tool\'s page');
+    assert.deepEqual(p.errors, []); await p.close();
+    await control({ method: 'tools_seed' });
+    const q = await sized('tools-things-none', '/?topic=t1', 1280, 'light');
+    await settled(q, 'w1\'s topic is up');
+    assert.equal(await (async () => q.evaluate(`(()=>{const d=document.querySelector('#things .things-sec[data-key=tools]');return d&&d.getClientRects().length>0})()`))(), false, 'a topic about no tool shows no Skills and tools');
+    assert.deepEqual(q.errors, []); await q.close();
   });
 }

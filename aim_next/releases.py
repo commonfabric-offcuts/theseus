@@ -14,8 +14,9 @@ the record already there, not a second one; a different record for a number
 or commit already recorded is refused, and so is an item an earlier record
 already shipped.
 
-A release deployed from an ordinary merged train (items 481, 482) says its
-hosted judgment is pending. Once GitHub's judgment of its commit lands, the
+A release deployed from an ordinary merged train (items 481, 482), or on the
+run of another commit whose tree is its own (item 588), says its hosted
+judgment is pending. Once GitHub's judgment of its commit lands, the
 operator attaches it (`bin/aim-next-admin attach-judgment`): a separate fact
 beside the record, written once, which the record's view shows as
 `hosted_judgment`; the record itself stays as it was written.
@@ -184,18 +185,28 @@ def _judged(entries, name, commit):
                           % (name, entry["id"], entry.get("head_sha"), commit))
 
 
+def judgment_pending(measurements):
+    """Whether a record's measurements say its own commit's hosted judgment is pending: an ordinary merged train's
+    (items 481, 482), or a release deployed on the run of another commit with its tree, `judged_tree` (item 588)."""
+    measurements = measurements if isinstance(measurements, dict) else {}
+    train, judged = measurements.get("train"), measurements.get("judged_tree")
+    return ((isinstance(train, dict) and train.get("kind") == "ordinary" and train.get("judgment") == "pending")
+            or (isinstance(judged, dict) and judged.get("judgment") == "pending"))
+
+
 def write_judgment(db, number, judgment, now_ms):
     """Attach the hosted judgment to release number, in the caller's write transaction: (the record, whether it was
-    attached now). Only a release whose record says its judgment is pending takes one, and only of its own commit;
+    attached now). Only a release whose record says its judgment is pending (judgment_pending) takes one, and only of
+    its own commit;
     the same judgment again is the one already attached, and another is refused."""
     _number(number, "release", 2 ** 31)
     row = db.execute(RECORDS + " WHERE releases.number=?", (number,)).fetchone()
     if row is None:
         raise Refusal("RELEASE_UNKNOWN", "No release %d is recorded" % number)
-    train = (json.loads(row["measurements"]) if row["measurements"] is not None else {}).get("train") or {}
-    if train.get("kind") != "ordinary" or train.get("judgment") != "pending":
+    if not judgment_pending(json.loads(row["measurements"]) if row["measurements"] is not None else None):
         raise Refusal("JUDGMENT_NOT_PENDING", "Release %d's record does not say its hosted judgment is pending; only an "
-                      "ordinary merged train's release takes one afterwards" % number)
+                      "ordinary merged train's release, or one deployed on another commit's run with its tree, takes one "
+                      "afterwards" % number)
     if not isinstance(judgment, dict) or set(judgment) != set(JUDGMENT_FIELDS):
         _refuse("A judgment is a JSON object with exactly %s" % ", ".join(JUDGMENT_FIELDS))
     commit = row["commit_sha"]

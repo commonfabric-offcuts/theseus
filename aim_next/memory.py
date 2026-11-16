@@ -81,11 +81,12 @@ class Memory:
 
     def _reader_may_write(self, db, actor, kind, scope_id, draft=False):
         """What a page is told before it offers a pencil or writing: whether Core would take a revision from this
-        reader here. The writers' rule, in an outcome not yet reached, and never an agent on a draft page."""
+        reader here. The writers' rule, in an outcome not reached, archived or completed, and never an agent on a draft page."""
         if not self._notebook_writer(db, actor, kind, scope_id) or (draft and actor_kind(db, actor) == "agent"):
             return False
         workspace = scope_id if kind == "workspace" else db.execute("SELECT workspace_id FROM topics WHERE id=?", (scope_id,)).fetchone()[0]
-        return db.execute("SELECT 1 FROM outcome_reached WHERE workspace_id=?", (workspace,)).fetchone() is None
+        # Not in an outcome kept to read: reached, archived or completed (item 404).
+        return self._closed(db, workspace) is None
 
     def _memory_identity(self, db, actor, item_id, write=False):
         row = db.execute("SELECT * FROM memory_items WHERE id=?", (_identifier(item_id, "item_id"),)).fetchone()

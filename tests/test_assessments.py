@@ -277,6 +277,62 @@ class AssessmentCase(unittest.TestCase):
         self.assertEqual(self.read(reported)['assessment']['state'],'reported')
         self.assertTrue(self.read(requested)['outcome_reached'])
 
+    def end_outcome(self, state, workspace='w1'):
+        version=self.store.view('owner','workspace',{'workspace_id':workspace})['workspace']['version']
+        self.ok(self.command('outcome.end_set',{'state':state},{'workspace_id':workspace},{'workspace_revision':version}))
+
+    def test_an_archived_or_completed_outcome_refuses_every_assessment_write_until_brought_back(self):
+        # As for a reached outcome (D42, 4.5), an archived or completed one is kept to read (item 404): the guard
+        # after a command cannot see assessment records, so each assessment write refuses in the outcome itself.
+        report=dict(body='Report',recommendation='continue',evidence_message_ids=[self.source],next_checkpoint='Artifact')
+        for state,code in (('archived','OUTCOME_ARCHIVED'),('completed','OUTCOME_COMPLETED')):
+            with self.subTest(state=state):
+                requested=self.ok(self.request(op='requested-'+state,assignment='Requested '+state))['assessment_id']
+                attached=self.ok(self.request(op='attached-'+state,assignment='Attached '+state))['assessment_id']; thread=str(uuid.uuid4())
+                self.ok(self.attach(attached,thread))
+                reported=self.ok(self.request(op='reported-'+state,assignment='Reported '+state))['assessment_id']; done=str(uuid.uuid4())
+                self.ok(self.attach(reported,done))
+                self.ok(self.command('assessment.finish',dict(report,thread_id=done),{'assessment_id':reported},actor='agent-b'))
+                self.assertEqual((self.read(requested)['outcome_reached'],self.read(requested)['outcome_closed']),(False,False))
+                self.end_outcome(state)
+                before=self.sql("SELECT key,value FROM metadata WHERE key LIKE 'assessment%' ORDER BY key")
+                messages=self.sql('SELECT count(*) FROM messages')
+                self.refused(self.request(op='after-'+state,assignment='After '+state),code)
+                self.refused(self.attach(requested),code)
+                self.refused(self.attach(attached,thread),code)
+                self.refused(self.command('assessment.finish',dict(report,thread_id=thread),{'assessment_id':attached},actor='agent-b'),code)
+                for identity,actor in ((requested,'owner'),(attached,'agent-b')):
+                    self.refused(self.command('assessment.abandon',{'reason':'Outcome '+state},{'assessment_id':identity},actor=actor),code)
+                self.refused(self.command('assessment.renew',dict(decision='retain',reason='Good',next_checkpoint='Artifact'),
+                                          {'assessment_id':reported}),code)
+                self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key LIKE 'assessment%' ORDER BY key"),before)
+                self.assertEqual(self.sql('SELECT count(*) FROM messages'),messages)
+                # Reading stays open, and says the outcome is kept to read, though not reached.
+                self.assertEqual(self.read(reported)['assessment']['state'],'reported')
+                self.assertEqual((self.read(requested)['outcome_reached'],self.read(requested)['outcome_closed']),(False,True))
+                # Brought back, the same writes go through again.
+                self.end_outcome('open')
+                self.assertEqual((self.read(requested)['outcome_reached'],self.read(requested)['outcome_closed']),(False,False))
+                self.ok(self.attach(requested))
+                for identity,actor in ((requested,'agent-b'),(attached,'agent-b')):
+                    self.ok(self.command('assessment.abandon',{'reason':'Not needed'},{'assessment_id':identity},actor=actor))
+                self.ok(self.command('assessment.renew',dict(decision='retain',reason='Good',next_checkpoint='Artifact'),
+                                     {'assessment_id':reported}))
+
+    def test_a_reached_outcome_is_closed_too(self):
+        identity=self.ok(self.request())['assessment_id']
+        self.reach_outcome()
+        self.assertEqual((self.read(identity)['outcome_reached'],self.read(identity)['outcome_closed']),(True,True))
+
+    def test_another_archived_outcome_leaves_this_outcomes_assessments_open(self):
+        self.ok(self.command('workspace.create',{'id':'w2','title':'Other','purpose':'','team':['agent-a','agent-b'],
+                                                 'coordinator':'agent-a'}))
+        self.end_outcome('archived','w2')
+        identity=self.ok(self.request())['assessment_id']
+        self.assertEqual((self.read(identity)['outcome_reached'],self.read(identity)['outcome_closed']),(False,False))
+        self.ok(self.attach(identity))
+        self.ok(self.command('assessment.abandon',{'reason':'Not needed'},{'assessment_id':identity}))
+
     def test_another_reached_outcome_leaves_this_outcomes_assessments_open(self):
         self.ok(self.command('workspace.create',{'id':'w2','title':'Other','purpose':'','team':['agent-a','agent-b'],
                                                  'coordinator':'agent-a'}))

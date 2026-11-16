@@ -22,6 +22,7 @@
 // was and the page over it with its card box open. One sheet, never a pile.
 import { paintChanges } from './page-changes.mjs';
 import { holdPlace } from './sheet-holder.mjs';
+import { glyph } from './glyphs.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
@@ -58,7 +59,8 @@ export class NotebookSheet {
     this.views = node('div', 'notebook-sheet-views'); this.status = node('div', 'notebook-sheet-status');
     this.full = node('a', 'sheet-glyph notebook-sheet-full');
     this.full.setAttribute('aria-label', 'Open as a full page'); this.full.title = 'Open as a full page';
-    this.full.innerHTML = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M11.5 3.5h5v5M16.5 3.5l-6 6M8.5 4.5h-4v11h11v-4"/></svg>';
+    // The box with an arrow out of it, which a pipeline item's Open its record shows too (glyphs.mjs).
+    this.full.append(glyph('openpage', doc));
     this.full.addEventListener('click', () => { if (this.current) this.full.href = this.fullHref(this.current.item, this.current.mode); });
     this.closer = node('button', 'sheet-glyph notebook-sheet-close', '✕'); this.closer.type = 'button';
     this.closer.setAttribute('aria-label', 'Close, keeping your writing'); this.closer.title = 'Close, keeping your writing';

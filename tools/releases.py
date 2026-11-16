@@ -16,10 +16,12 @@ claim after the revert ships it again. Other Train-Item values are display only.
 
 Usage: tools/releases.py attach-judgment RELEASE --config CONFIG.json --runs ID[,ID] --checks ID[,ID] --audit MESSAGE
 
-attaches the hosted judgment of an ordinary merged train's release, once it has
+attaches the hosted judgment of an ordinary merged train's release, or of one
+deployed on the run of another commit with its tree (item 588), once it has
 landed, to that release's record in the live instance (docs/tools.md, "A merged
-train"): each run and check, read from GitHub, completed and naming that
-release's commit as its head. Nothing else in the record changes.
+train" and "A merged head its pull request's run judged"): each run and check, read
+from GitHub, completed and naming that release's commit as its head. Nothing
+else in the record changes.
 """
 
 import json
@@ -32,6 +34,7 @@ import tempfile
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aim_next.releases import judgment_pending
 from tools import train as train_check
 
 NUMBER = re.compile(r"[1-9][0-9]*")
@@ -105,9 +108,11 @@ def reverted(commits, flagged=()):
             + [{"item": item, "commit": None, "by": "flag"} for item in flagged])
 
 
-def measurements(summary, known_reds=()):
+def measurements(summary, known_reds=(), judged=None):
     """The release check's counts for one release record (docs/releases.md), and the known reds the deploy accepted
-    (item 178: failed cases the live commit fails too, still counted as failed)."""
+    (item 178: failed cases the live commit fails too, still counted as failed). judged (item 588): for a summary of
+    another commit with the deployed commit's tree, {judged_commit, commit, tree}, kept as `judged_tree` with the hosted
+    judgment of the deployed commit itself pending until attach-judgment attaches it."""
     steps = {step.get("name"): step.get("counts") or {} for step in summary.get("steps") or [] if isinstance(step, dict)}
     native = {name[len("native-"):]: {"pass": counts.get("pass", 0), "total": counts.get("tests", 0)}
               for name, counts in steps.items() if name.startswith("native-")}
@@ -121,7 +126,8 @@ def measurements(summary, known_reds=()):
             **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {}),
             **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why", "taken_by")}
                                 for red in known_reds]}
-               if known_reds else {})}
+               if known_reds else {}),
+            **({"judged_tree": dict(judged, judgment="pending")} if judged else {})}
 
 
 def train_measurements(train):
@@ -154,8 +160,7 @@ def attach_judgment(config, number, runs, checks, audit, github):
     if not found:
         raise train_check.Refused("the live instance records no release %d" % number)
     record = found[0]
-    measured = (record.get("measurements") or {}).get("train") or {}
-    if measured.get("kind") != "ordinary" or measured.get("judgment") != "pending":
+    if not judgment_pending(record.get("measurements")):
         raise train_check.Refused("release %d's record does not say its hosted judgment is pending" % number)
     judgment = train_check.on_commit(github, config.repository, {"producer_runs": runs, "verdict_checks": checks, "audit": audit},
                                      record["commit"], "release %d's commit" % number)

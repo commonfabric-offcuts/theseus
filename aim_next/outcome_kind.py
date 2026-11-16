@@ -7,10 +7,11 @@ its owner: to reach (it ends, on its owner's word: Reached) or to keep (it goes
 on). An outcome made before release 21 has no kind record and reads to keep.
 Reached is final: every topic closes, and every later change to the outcome is
 refused OUTCOME_REACHED, while a reader's own state there still saves
-(REACHED_EXEMPT).
+(REACHED_EXEMPT; the guard is Store._refuse_closed, outcome_end.py).
 
-Seam until skills (17) lands: an outcome has no tools of its own, so nothing
-blocks Reached for TOOLS_IN_USE and nothing retires with it.
+Skills and tools (17; docs/skills-and-tools.md): Reached neither waits for nor
+retires the tools an outcome homes or uses. They stay in place for others to
+use; a reached outcome refuses tool.use and tool.link, as it refuses every change.
 """
 
 import json
@@ -38,8 +39,8 @@ KINDS_SCHEMA = [
 KINDS_DOWN = ("DROP TABLE outcome_reached", "DROP TABLE outcome_kinds")
 
 # Commands that touch only the sender's own record, and so still save in a
-# reached outcome's topics (4.5). Every other command that writes in a reached
-# outcome is refused OUTCOME_REACHED (Store._refuse_reached).
+# reached, archived or completed outcome's topics (4.5, item 404). Every other command that writes in one
+# is refused (Store._refuse_closed, outcome_end.py).
 REACHED_EXEMPT = frozenset({
     "topic.read_through", "message.mark", "delivery.ack", "note.save", "draft.save", "submission.prepare", "submission.set_aside",
     "media.begin", "media.publish", "color.set", "workspace.create", "memory.read",
@@ -52,7 +53,7 @@ def _clock(ms):
 
 
 class OutcomeKind:
-    """Store mixin: an outcome's kind (outcome.kind_set), Reached (outcome.reach) and the reached guard."""
+    """Store mixin: an outcome's kind (outcome.kind_set) and Reached (outcome.reach)."""
 
     def _kind_facts(self, db, workspace):
         """{kind, start: {by, ms} | None, reached: {by, ms, words, unmet} | None} for one outcome."""
@@ -107,6 +108,10 @@ class OutcomeKind:
         facts = self._kind_facts(db, workspace)
         if facts["reached"]:
             raise Refusal("OUTCOME_REACHED", "%s was reached on %s; its topics are kept to read." % (workspace["title"], _clock(facts["reached"]["ms"])))
+        # An archived or completed outcome is brought back first (item 404, outcome_end.py).
+        end = self._end(db, workspace["id"])
+        if end is not None:
+            raise self._closed_refusal(db, actor, workspace["id"], {"how": end["state"], "ms": end["ms"]}, "bring it back to say it is reached.")
         if facts["kind"] != "reach":
             raise Refusal("NOT_TO_REACH", "%s is an outcome to keep; it goes on. Its owner can change its kind first." % workspace["title"])
         words = args["words"]
@@ -139,17 +144,3 @@ class OutcomeKind:
         version = self._bump_workspace(db, workspace["id"])
         return {"workspace_id": workspace["id"], "reached_ms": ms, "topics_closed": closed, "workspace_revision": version}, [
             {"kind": "workspace", "id": workspace["id"], "version": version}]
-
-    def _refuse_reached(self, db, kind, since_seq):
-        """After a command wrote: refuse it when it wrote in a reached outcome, unless it only touches the sender's own record."""
-        if kind in REACHED_EXEMPT or kind == "outcome.reach":
-            return
-        if not db.execute("SELECT 1 FROM outcome_reached LIMIT 1").fetchone():
-            return
-        row = db.execute(
-            "SELECT w.title,r.reached_ms FROM changes c "
-            "LEFT JOIN topics t ON c.scope_kind='topic' AND t.id=c.scope_id "
-            "JOIN outcome_reached r ON r.workspace_id=CASE WHEN c.scope_kind='workspace' THEN c.scope_id ELSE t.workspace_id END "
-            "JOIN workspaces w ON w.id=r.workspace_id WHERE c.seq>? LIMIT 1", (since_seq,)).fetchone()
-        if row is not None:
-            raise Refusal("OUTCOME_REACHED", "%s was reached on %s; its topics are kept to read." % (row[0], _clock(row[1])))

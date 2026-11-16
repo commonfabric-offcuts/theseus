@@ -64,17 +64,32 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const reviews = p => p.evaluate(`[...document.querySelectorAll('#inline-pending button,#topic-pending button,#pending-submissions button')].filter(b=>b.getClientRects().length).map(b=>b.textContent)`);
   const topicRow = id => `#outline a[data-topic-id="${id}"]`;
   // A press on another topic's row in the outline, scrolled into view as a person scrolls to it: earlier
-  // cases add topics, so the row can sit below the window.
+  // cases add topics, so the row can sit below the window. The outline is at rest first, as outcome_rail_native.mjs's
+  // outlineAtRest has it: no rails read out, the page's own topic list taken into it in a live list (which happens once
+  // its first read of the outcomes lands) and that list not reading; until then a row can move under the press.
   const pressRow = async (p, id) => {
     await until(() => p.evaluate(`Boolean(document.querySelector(${q(topicRow(id))}))`), 'the other topic is in the outline');
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`), 'the outline is at rest');
     await p.evaluate(`document.querySelector(${q(topicRow(id))}).scrollIntoView({block:'center',inline:'nearest'})`);
     await p.point(topicRow(id));
+  };
+  // Nothing on the page is moving: no animation that ends is still running (an open dialog appears over .12s, rising 4px).
+  const atRest = p => until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'nothing is moving');
+  // A Review or Set aside button pressed from the keys: given them, as Tab gives them, and Return. Pressed with a
+  // pointer while the writing holds the keys, the press moves them, the composer draws its save line and this button
+  // again (app.mjs, reviewControl, sets its words at each draw), and a draw that lands between the press and its
+  // release costs the click in Chrome (the list never opens). Given the keys, it is in view as well: earlier cases
+  // leave the line under a phone's header saying what is new elsewhere, which puts it below a 320 window.
+  const pressReview = async (p, selector = '#inline-pending button') => {
+    await p.evaluate(`document.querySelector(${q(selector)}).focus()`);
+    await until(() => p.evaluate(`document.activeElement===document.querySelector(${q(selector)})`), `${selector} has the keys`);
+    await p.key('Enter');
   };
   // A press on the composer's writing as a person makes it: scrolled to the middle of the window, once nothing is
   // moving, so on a phone in WebKit the field is not under the window's edge or still settling.
   const pressWriting = async p => {
     await p.evaluate(`document.querySelector('#inline-writing-body').scrollIntoView({block:'center'})`);
-    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'nothing is moving');
+    await atRest(p);
     await p.point('#inline-writing-body');
   };
   // The composer given the keys as the page gives them, where what a case looks at is the Review list, not the press
@@ -82,6 +97,15 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const focusWriting = async p => {
     await p.evaluate(`document.querySelector('#inline-writing-body').focus()`);
     await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the composer has the keys');
+  };
+  // Words typed into the composer, saved: in Theseus as the draft,
+  const typeInComposer = async (p, s, text, reach = pressWriting) => {
+    await reach(p); await p.send('Input.insertText', { text });
+    await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value===${q(text)}`), 'typed');
+    await until(async () => (await draft(s))?.body === text, 'the typed words are saved as the draft');
+    // and the page says so: its save line shares a row with the Review button, and while it changes its words
+    // ("Saving on this device…", "Saved to Theseus") the button can move between the press and its release.
+    await until(() => p.evaluate(`document.querySelector('#inline-save-state').dataset.save==='saved'`), 'the page says the writing is saved to Theseus');
   };
   const card = s => `#review-content [data-id="${s.submission}"]`;
   const cardState = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,title:c.querySelector('h3').textContent,acts:[...c.querySelectorAll('.aside-act')].map(b=>({text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title}))})(document.querySelector(${q(card(s))}))`);
@@ -120,12 +144,11 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
       // The person's own writing in the composer, which setting aside leaves as it was.
       // The field takes the keys as the page gives them to it; what this case looks at is the Review list.
-      await p.evaluate(`document.querySelector('#inline-writing-body').focus()`);
-      await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the composer has the keys');
-      await p.send('Input.insertText', { text: 'Mine, typed here' });
-      await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value==='Mine, typed here'`), 'typed');
-      await p.point('#inline-pending button');
+      await typeInComposer(p, s, 'Mine, typed here', focusWriting);
+      await pressReview(p);
       await until(async () => (await acts(p)).length === 2, 'each reply offers Set aside');
+      // The list is looked at once it has appeared: measured while it rises, a 44px act reads 43.99998.
+      await atRest(p);
       const phone = size !== 'laptop';
       for (const act of await acts(p)) {
         assert.deepEqual([act.text, act.name, Boolean(act.tip), act.shown], ['Set aside', 'Set this reply aside', true, true], `${size} ${theme}`);
@@ -231,11 +254,6 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const chip = p => p.evaluate(`(b=>b&&{text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title})(document.querySelector('#inline-pending button'))`);
   const keptLine = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,words:c.querySelector('pre')?.textContent??null,acts:[...c.querySelectorAll('.aside-act')].map(b=>b.textContent)})(document.querySelector(${q(card(s))}))`);
   const undo = s => `${card(s)} .aside-act[aria-label^="Undo"]`;
-  const typeInComposer = async (p, s, text, reach = pressWriting) => {
-    await reach(p); await p.send('Input.insertText', { text });
-    await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value===${q(text)}`), 'typed');
-    await until(async () => (await draft(s))?.body === text, 'the typed words are saved as the draft');
-  };
   const closeList = async p => { await p.point('#review-close'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'the Review list closes'); };
   // Waits for what read() answers to be expected, and fails showing what it was instead.
   const settles = async (read, expected, label) => {
@@ -250,7 +268,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
     await typeInComposer(p, s, 'Mine, typed here');
     await clipboard(p);
-    await p.point('#inline-pending button');
+    await pressReview(p);
     await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
     await p.point(`${card(s)} .aside-act`);
     await until(async () => (await keptLine(p, s))?.state === 'aside', 'set aside');
@@ -263,7 +281,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await settles(() => reviews(p), ['Set aside 1'], 'with the list closed, the reply set aside has a Set aside chip, and nothing is in doubt');
     const named = await chip(p);
     assert.ok(named.name && named.tip, `the chip has its name and a tooltip: ${JSON.stringify(named)}`);
-    await p.point('#inline-pending button');
+    await pressReview(p);
     await until(async () => (await keptLine(p, s))?.words === s.body, 'the chip opens the list on its words');
     assert.deepEqual((await keptLine(p, s)).acts, ['Copy', 'Undo']);
     await closeList(p);
@@ -275,7 +293,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await ready(again, s.here);
     await settles(() => reviews(again), ['Set aside 1'], 'after a reload the chip is there');
     await clipboard(again);
-    await again.point('#inline-pending button');
+    await pressReview(again);
     await until(async () => (await keptLine(again, s))?.words === s.body, 'after a reload its words are readable on its line');
     await again.point(`${card(s)} .aside-act`);
     await until(async () => (await copied(again)).length === 1, 'Copy after a reload');
@@ -296,7 +314,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await ready(p, s.here);
     await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
     await typeInComposer(p, s, 'Mine, with no image');
-    await p.point('#inline-pending button');
+    await pressReview(p);
     await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
     await p.point(`${card(s)} .aside-act`);
     await until(async () => (await keptLine(p, s))?.state === 'aside', 'set aside');
@@ -313,7 +331,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     const again = await open('aside-kept-image-again', `/?topic=${s.here}`);
     await ready(again, s.here);
     await settles(() => reviews(again), ['Set aside 1'], 'after a reload the chip is there');
-    await again.point('#inline-pending button');
+    await pressReview(again);
     await opened(again);
   });
 
@@ -330,7 +348,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await ready(p, s.here);
       if (s.replyTo) { await openReader(p, s); await closeReader(p); }
       await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
-      await p.point(s.replyTo ? '#topic-pending button' : '#inline-pending button');
+      await pressReview(p, s.replyTo ? '#topic-pending button' : '#inline-pending button');
       await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
       await p.point(`${card(s)} .aside-act`);
       await until(async () => (await cardState(p, s))?.state === 'aside', 'set aside');
@@ -364,7 +382,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await ready(p, s.here);
       await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
       await typeInComposer(p, s, 'Mine', focusWriting);
-      await p.point('#inline-pending button');
+      await pressReview(p);
       for (const r of [s, t]) {
         await until(async () => (await cardState(p, r))?.state === 'doubt', 'listed');
         await p.evaluate(`document.querySelector(${q(card(r) + ' .aside-act')}).scrollIntoView({block:'nearest'})`);
@@ -387,7 +405,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await fits(p, size);
       if (shot) await shot(p, `set-aside-kept-${size}-${theme}-chip`);
       // Its words back in the writing: the composer emptied, the reply put back and set aside again.
-      await p.point('#inline-pending button');
+      await pressReview(p);
       await until(async () => (await keptLine(p, t))?.state === 'aside', 'the chip opens the list');
       await p.point(undo(t));
       await until(async () => (await cardState(p, t))?.state === 'doubt', 'Undo puts it back');
@@ -396,7 +414,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await p.evaluate(`document.querySelector('#inline-writing-body').select()`);
       await p.key('Backspace');
       await until(async () => (await draft(s))?.body === '', 'the composer is empty and saved so');
-      await p.point('#inline-pending button');
+      await pressReview(p);
       await until(async () => (await cardState(p, t))?.state === 'doubt', 'listed again');
       await p.point(`${card(t)} .aside-act`);
       await until(async () => (await cardState(p, t))?.state === 'aside' && /back in your writing/.test(await p.evaluate(`document.querySelector(${q(card(t))}).textContent`)), 'its words went back');

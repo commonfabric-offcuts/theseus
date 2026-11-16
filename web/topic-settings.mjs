@@ -18,8 +18,9 @@ export function tabStops(dialog) {
 export class TopicSettings {
   // dialog: <dialog id="topic-settings">; gear: the button that opens it;
   // heading: its h2, which takes the focus when it opens.
-  constructor({ dialog, gear, heading, close, win = window }) {
-    Object.assign(this, { dialog, gear, heading });
+  // opened: called each time it opens, so a line in it can read again.
+  constructor({ dialog, gear, heading, close, win = window, opened = () => {} }) {
+    Object.assign(this, { dialog, gear, heading, opened });
     gear.addEventListener('click', () => this.open());
     close.addEventListener('click', () => this.close());
     dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); });
@@ -30,6 +31,7 @@ export class TopicSettings {
   open() {
     if (!this.dialog.open) this.dialog.showModal();
     this.heading.focus();
+    this.opened();
   }
 
   close() {

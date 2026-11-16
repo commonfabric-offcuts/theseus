@@ -88,7 +88,8 @@ owner's go-ahead (below). An item being built
 stays in Now until it is dropped, its piece is done, or its piece is set aside,
 and dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
 Undo: on the page, each item on a piece card has its own ⋯ with Open its record,
-Set aside to Later… and Drop…, and Drop… asks first. Only the owner gives a stage their word, takes
+Set aside to Later… and Drop…, and Drop… asks first (each with its glyph before its words, as every
+menu item has, docs/links.md "A message's menu"). Only the owner gives a stage their word, takes
 it off, or removes a stage that waits on it (`FORBIDDEN`); a retired stage keeps
 the word it had.
 

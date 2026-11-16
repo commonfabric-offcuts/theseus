@@ -101,6 +101,18 @@ reds, or a merged train. It is left out when there are none, or the live
 commit keeps no policy, like `known_reds`. When the policy cannot be read, or
 names no list of required steps, `steps_beyond_policy_unread` says why
 instead: not read is not "none beyond it", and the deploy goes on.
+A release the deploy took on the run of another commit whose tree is its own
+(docs/tools.md, "A merged head its pull request's run judged": a pull
+request's run judges GitHub's merge of it, not the merged head) keeps both
+commits and the tree, and says its own commit's hosted judgment is pending
+until the push run on it is attached (below); `release_check.commit` is the
+judged commit, whose run the counts come from:
+
+```json
+{"judged_tree": {"judged_commit": "...", "commit": "...", "tree": "...", "judgment": "pending"}}
+```
+
+`judged_tree` is left out for a release check of exactly the release's commit.
 It sits inside `measurements`, which the store keeps as one JSON object of at
 most 16384 bytes, so the record's own fields and the admin verb are unchanged;
 a record too large for that is refused before anything stops.
@@ -125,11 +137,14 @@ listed it at the deploy. The Health page's latest release says such a record
 ran no release check here and says its judgment, never that checks passed
 ([health.md](health.md)).
 
-When an ordinary train's hosted judgment lands, it is attached to the record:
+When an ordinary train's hosted judgment lands, or the push run on a release
+deployed on another commit's run with its tree (`judged_tree`, above), it is
+attached to the record:
 a separate fact, written once, shown by the view as `hosted_judgment` in the
 judged-first form above, its `head` the release's commit. The record itself
 keeps saying `"pending"`, as it was written; a reader takes `hosted_judgment`
-for what landed since. Only a record whose train is ordinary and pending takes
+for what landed since. Only a record whose train is ordinary and pending, or
+whose `judged_tree` judgment is pending, takes
 one (`JUDGMENT_NOT_PENDING` otherwise), every run and check must name the
 release's commit (`JUDGMENT_OF_ANOTHER_COMMIT`), the same judgment again
 returns the one attached (`"attached": false`), and another is refused with

@@ -55,11 +55,15 @@
       <details id="archived-topics" class="topic-group" hidden><summary id="archived-topics-label">Archived</summary><div id="archived-topic-list" class="topic-list" aria-label="Archived topics"></div><button id="more-archived-topics" type="button" hidden>More archived topics</button></details>
       <p id="outcome-empty" class="empty" hidden>No topics yet. Start the first topic in this outcome.</p>
       </section>
+      <section id="skills-navigation" aria-labelledby="skills-heading" hidden>
+      <div class="rail-heading"><h2 id="skills-heading">Skills and tools</h2></div>
+      <div id="skills-links" aria-labelledby="skills-heading"></div>
+      </section>
     </nav>
     <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
+      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><p id="outcome-kept" class="muted outcome-kept" hidden></p><section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="topic-target" class="topic-target" aria-label="This outcome's target" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
@@ -73,6 +77,8 @@
       <section id="pipeline-page" class="pipeline-page" aria-label="Pipeline" hidden></section>
       <section id="health-page" class="health-page" aria-label="Health" hidden></section>
       <section id="measurements-page" class="measurements-page" aria-label="Measurements" hidden></section>
+      <section id="tool-page" class="tool-page" aria-label="Skill or tool" hidden></section>
+      <section id="outcome-tools" class="outcome-tools" aria-labelledby="tools-heading" hidden></section>
       <section id="deck-page" class="deck-page" aria-label="Cards" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div><div id="team-invite" class="team-invite" hidden></div></section>
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
@@ -208,6 +214,7 @@
     <div class="settings-body">
       <header class="settings-header"><h2 id="settings-title" tabindex="-1">Topic settings</h2><button id="settings-close" type="button" aria-label="Close topic settings">✕</button></header>
       <section id="topic-state" class="settings-section" aria-label="Where this topic stands" hidden></section>
+      <section id="topic-tools" class="settings-section" aria-labelledby="topic-tools-heading" hidden></section>
     </div>
   </dialog>
   <dialog id="version-review" aria-labelledby="review-title">

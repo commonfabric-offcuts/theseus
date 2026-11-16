@@ -9,9 +9,12 @@
 // --new-line mode's checks hold a read or lose an answer with Playwright's own
 // request routing, which they are written for (new_line_native.mjs). The
 // --invite mode holds or loses an answer for the Chrome harness's intercept,
-// release and fail with the same routing (team_invite_native.mjs).
+// release and fail with the same routing (team_invite_native.mjs). The --targets mode
+// runs an outcome's target, kind and checks, and archiving, completing and bringing
+// it back (targets_native.mjs), skipping the checks that hold a press across a commit,
+// which wait on the Chrome harness's network log.
 //
-// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite [case filter]
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite|--targets [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
@@ -33,10 +36,11 @@ import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
 import { teamInviteChecks } from './team_invite_native.mjs';
+import { targetsChecks } from './targets_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
-assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite', '--targets'].includes(mode), `a WebKit mode, not ${mode}`);
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
 assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
@@ -47,6 +51,7 @@ const { webkit } = createRequire(import.meta.url)(playwrightPath);
 // the reason they cannot run in this harness. A name here that its module no
 // longer offers fails the run, so a renamed check cannot silently leave WebKit.
 const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
+const ACROSS = 'holds a press down across a commit until the page\'s read after it lands, which it reads from the Chrome harness\'s network log (p.network), which this harness does not record';
 const SKIPPED = {
   '--rail': {
     'rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; the focus gone elsewhere, opened then by the mouse from the same message and closed with the mouse, nothing is ringed': 'WebKit rings the focus the Reader gives back after a mouse close however the opener was found, with the Reader as it was before item 462 too; Chrome holds the rule',
@@ -59,6 +64,15 @@ const SKIPPED = {
     'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place': HELD,
     'rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts': 'reads the window\'s and the document\'s listeners through Chrome DevTools (DOMDebugger.getEventListeners) and picks a file through its chooser, which this harness does not offer',
     'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
+  },
+  '--targets': {
+    'targets the owner reads No target yet and the kind as two chips, and one tap changes the kind': ACROSS,
+    'targets Write the target opens in place: Escape leaves the words as they were, Return saves them, and there is no Save button': ACROSS,
+    'targets a run of the checks shows with no reload, grouped, and each group and check opens from the keyboard; Measurements lists every reading': ACROSS,
+    'targets the loop: a chart says the mark under the pointer and the one Tab reaches; Ship it anyway opens with a press held across a commit, sends nothing without words and accepts on Return; the problems line opens from the keyboard and opens its topic': ACROSS,
+    'targets Reached opens in place, asks him to confirm when nothing checks it, and folds the outcome into Reached (1)': ACROSS,
+    'targets a topic opens with its outcome\'s target as one closed line that opens to its words': 'reads the target that Write the target saves, a check skipped here',
+    'targets the outcome page and Measurements fit 390 with no sideways scroll, light and dark': 'reads the checks a run of the checks records, a check skipped here',
   },
 }[mode] ?? {};
 
@@ -213,8 +227,9 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
-  'web/message-menu.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
+  'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
+  'tests/targets_native.mjs', 'web/targets.mjs', 'web/outcomes.mjs', 'web/outcome-end.mjs', 'web/outcome-light.mjs', 'web/outcome-light-words.mjs', 'aim_next/outcome_end.py',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
@@ -560,6 +575,8 @@ try {
     await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else if (mode === '--invite') {
     await teamInviteChecks({ check, page, until, control, view, facts, shot });
+  } else if (mode === '--targets') {
+    await targetsChecks({ check, page, until, control, view, facts, shot });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }

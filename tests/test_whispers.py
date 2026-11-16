@@ -910,6 +910,9 @@ VIEW_PATHS = {
                    "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
                    "so a whisper never names one",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
+    "tools": "no message words: the records, what each check found and which outcomes said they use each",
+    "tool": "no message words; a went-back line names its topic's title only when READABLE to the reader",
+    "topic_tools": "no message words: the tools a topic _topic lets the reader open is about",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
     "health_light": "the keys of what is red, counted on the record only",
@@ -970,11 +973,13 @@ MESSAGE_READS = {
                            "folds for them, checked by visible() before the fold is recorded; the acts and stars views, under the whisper rule; "
                            "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
                            "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
-                           "someone is outside never moves a position or a sequence they read; a dossier's namer (item 479), from "
+                           "someone is outside never moves a position or a sequence they read; whether a message of the reader's own still waits for a "
+                           "reply (item 475): replies to it under VISIBLE, the newest message on the record by anyone else from the "
+                           "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; and the reader's own places in a topic (item 550), "
-                           "each on a message under VISIBLE, so a whisper they are outside places nothing", 20),
+                           "each on a message under VISIBLE, so a whisper they are outside places nothing", 24),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

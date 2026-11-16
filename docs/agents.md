@@ -249,6 +249,17 @@ re-send it unchanged, and the original operation can be looked up. An
 `--attach` upload is not such a request: it is not saved, and when it fails the
 verb ends with `ATTACHMENT_NOT_SENT`, naming nothing to retry.
 
+## Changing a skill or tool
+
+A file named in a `skills/<id>.json` record belongs to that skill or tool
+([skills-and-tools.md](skills-and-tools.md)). Before changing one, run the
+tool's check (the module its record's `check` names) and keep it passing:
+a release runs every changed tool's check, and a tool whose check fails goes
+back to its live version, taking back the items that changed it, while the
+rest of the release ships. Its home outcome gets a topic saying what the
+check found. A tool with no check ships as changed and reads "Not evaluated
+yet".
+
 ## Team setup
 
 An outcome's owner or coordinator invites a new agent from the outcome's page

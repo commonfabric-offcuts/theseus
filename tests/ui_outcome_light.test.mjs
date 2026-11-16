@@ -24,6 +24,8 @@ class Element {
   append(...nodes) { for (const node of nodes) { if (node instanceof Element) node.parent = this; this.children.push(node); } }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   setAttribute(key, value) { this.attributes[key] = value; }
+  getAttribute(key) { return key in this.attributes ? this.attributes[key] : null; }
+  get classList() { return { add: name => { this.className = [this.className, name].filter(Boolean).join(' '); } }; }
   addEventListener(name, fn) { (this.listeners[name] ??= []).push(fn); }
   dispatch(name, event = {}) { for (const fn of this.listeners[name] ?? []) fn(event); }
   contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
@@ -527,4 +529,44 @@ test('the card\'s Waiting on you opens the oldest question first, then each next
   // Nothing waiting: the light's words are words, not a control.
   paintStanding(host, { light: light('quiet', { kind: 'quiet', ms: at(6, 6, 0) }), lead: { kind: 'topics_quiet' }, facts: [], also: [] }, { open() {}, place: 'outcome:test-148' });
   assert.equal(host.children[1].all().some(node => node.tag === 'button'), false);
+});
+
+// Item 404: an outcome its owner archived or completed. The row line and the light's name say the act and its day,
+// the second line who did it, and the ⓘ lead ends there, since nothing follows it.
+test('archived and completed say the act and its day, who did it, and a lead with nothing after it; Bring back is the owner\'s alone', t => {
+  dom(t);
+  const archived = light('quiet', { kind: 'archived', ms: YESTERDAY_315 }), completed = light('done', { kind: 'completed', ms: at(3, 16, 10, 2026, 9) });
+  assert.deepEqual(pieces(archived), ['Archived ·', 'yesterday']);
+  assert.deepEqual(pieces(completed), ['Done ·', 'completed Oct 3']);
+  assert.equal(words(shortPieces(light('quiet', { kind: 'archived', ms: TODAY_615 }))[1]), '6:15 AM', 'today, its time');
+  assert.equal(words(lightName(archived)), 'Archived · yesterday');
+  assert.equal(words(lightName(completed)), 'Done · completed Oct 3');
+  assert.deepEqual(lastLine({ lead: { kind: 'archived', by: 'tony', ms: YESTERDAY_315 }, facts: [] }), { text: ['tony archived it'] });
+  assert.deepEqual(lastLine({ lead: { kind: 'completed', by: 'fable', ms: YESTERDAY_315 }, facts: [] }), { text: ['fable completed it'] });
+  assert.equal(words(leadWords({ kind: 'archived', by: 'fable', ms: YESTERDAY_315 }, [], 'Garden shed')), 'fable archived Garden shed, yesterday at 3:15 PM.');
+  assert.equal(words(leadWords({ kind: 'completed', by: 'tony', ms: TODAY_615 }, [], 'Garden shed')), 'tony completed Garden shed, at 6:15 AM.');
+  // An old page knows neither kind: completed reads Done by its light, archived Quiet since the act.
+  assert.deepEqual(pieces(light('quiet', { kind: 'gone_away', ms: YESTERDAY_315 })), ['Quiet since', 'yesterday 3:15 PM']);
+  const host = new Element('section');
+  const visible = () => host.children.filter(node => !node.hidden).map(node => node.text);
+  const more = () => host.children.find(node => node.id === 'standing-more');
+  const answer = { light: archived, lead: { kind: 'archived', by: 'tony', ms: YESTERDAY_315 }, facts: [], also: [] };
+  paintStanding(host, answer, { outcome: 'Garden shed' });
+  assert.deepEqual(visible(), ['Where it standsi', 'Archived · yesterday', 'tony archived it'], 'no Bring back for anyone but the owner');
+  assert.equal(more().text, 'fable archived Garden shed, yesterday at 3:15 PM.'.replace('fable', 'tony'), 'and no small print about where it comes from');
+  let pressed = 0;
+  paintStanding(host, answer, { outcome: 'Garden shed', bringBack: () => { pressed += 1; } });
+  assert.deepEqual(visible(), ['Where it standsi', 'Archived · yesterday', 'tony archived it Bring back']);
+  const button = host.all().find(node => node.dataset.hold === 'bring-back');
+  assert.deepEqual([button.tag, button.getAttribute('type'), button.getAttribute('aria-label'), button.getAttribute('title'), button.getAttribute('class')],
+    ['button', 'button', 'Bring back this outcome: it returns to your outcomes with the topics archiving took',
+      'Bring back this outcome: it returns to your outcomes with the topics archiving took', 'link-button end-word']);
+  button.onclick();
+  assert.equal(pressed, 1);
+  assert.equal(button.textContent, 'Bringing back…');
+  button.onclick();
+  assert.equal(pressed, 1, 'a second press sends nothing');
+  paintStanding(host, { light: light('done', { kind: 'reached', ms: YESTERDAY_315 }), lead: { kind: 'reached', by: 'tony', ms: YESTERDAY_315, words: 'Done.' }, facts: [], also: [] },
+    { outcome: 'Garden shed', bringBack: () => {} });
+  assert.equal(host.all().find(node => node.dataset.hold === 'bring-back'), undefined, 'a reached outcome is never brought back');
 });

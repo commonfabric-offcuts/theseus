@@ -13,6 +13,8 @@ import { TopicViews, followEdits } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, topicTarget, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
+import { keptToRead } from './outcome-light-words.mjs';
+import { paintKeptLine, sendEnd } from './outcome-end.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
@@ -58,12 +60,13 @@ import { NotebookSheet, returning as notebookReturning } from './notebook-sheet.
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
+import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
-import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
+import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
@@ -101,7 +104,7 @@ let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicTools = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
@@ -977,7 +980,7 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet') });
   return stackFeed;
 }
 // The topic's feed, its Notebook and its Team, drawn or not, with any other
@@ -1003,16 +1006,19 @@ const stillOwed = item => Boolean(here?.page && (conversationItem(item.id)?.item
 const openedIds = new Set();
 function openedHere(id) { if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
-// Each loaded card's read look, agent talk and reply arrow, as they now stand.
+// Each loaded card's read look, agent talk, reply arrow and the dots on the
+// reader's own message while it waits for a reply, as they now stand.
 function paintCardReading() {
   if (!views) return;
   const { kindOf } = whisperPeople();
+  learnAnswered(views.messages, bootstrap.actor, kindOf);
   for (const entry of entries($('messages'))) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
+    paintAwaiting(card, item);
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -1276,6 +1282,18 @@ function paintReaderAside() {
   button.setAttribute('aria-pressed', String(offer.below));
   button.setAttribute('aria-label', words); button.title = words;
 }
+// The Reader's title names the dossier its message is in (item 561), as the
+// dossier's tab does (StackFeed.dossierName): only for a message of this topic
+// the page's stacks hold; another topic's message, a Notebook page and a message
+// opened alone keep their own titles. Painted again when the stacks are.
+function readerDossierName(source) {
+  const ref = source?.source_ref;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
+}
+function paintReaderTitle() {
+  const p = registry?.current;
+  if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
+}
 function asideFromReader() {
   const offer = readerAside();
   if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
@@ -1365,14 +1383,14 @@ function openMessageMore(item, more) {
 function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
   const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
-  const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+  const items = [...stack.first, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
-  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', act: () => run(() => cardScroll.showFull(card, item)) });
+  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
   // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
-  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
+  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
-    items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
+    items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
   return [...items, ...stack.last];
 }
@@ -1444,25 +1462,25 @@ async function copyPageLink(source, revision, say) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
+  if (message) items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
-  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', act: () => run(() => editMessage(ref.id, button)) });
+  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(ref.id, button)) });
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
-    items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
+    items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
+      { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
     // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
-    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
+    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
-  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
+  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', glyph: state.marked ? 'read' : 'unread', act: () => run(toggleMark) });
   // Fold message: the reader's own fold, as Fold in the card's ⋯ (StackFeed.setFold); a starred message offers none.
   const item = message ? readerFeedItem() : null, acts = item ? stackFeed.actsOf(item.id, item) : {};
-  if (item && acts.folded) items.push({ label: 'Unfold message', act: () => stackFeed.setFold(item, false, { focus: false }) });
-  else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });
-  if (reader.quotable) items.push({ label: 'Quote selection', act: () => reader.quote() });
-  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', act: () => openStartLine() });
-  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
-  if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
+  if (item && acts.folded) items.push({ label: 'Unfold message', glyph: 'unfold', act: () => stackFeed.setFold(item, false, { focus: false }) });
+  else if (item && !acts.starred) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });
+  if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
+  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => openStartLine() });
+  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', glyph: 'pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
+  if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).
@@ -2041,13 +2059,30 @@ async function initialize() {
     $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
   }
   paintHeader(topic);
-  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
+  // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
+  // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
+  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
+    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+  $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
+  topicTools = here.page ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
+  if (topicTools) { const tools = topicTools; run(() => tools.load()); }
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
-    // A reached outcome's messages are kept to read: none offers Edit. Read in the background; Core refuses an edit there anyway.
-    api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' })
-      .then(answer => { outcomeReached = checkedView(answer, bootstrap.instance_id).lead?.kind === 'reached'; }, () => {});
+    // A reached, archived or completed outcome's messages are kept to read: none offers Edit. Read in the background; Core
+    // refuses an edit there anyway. Archived or completed (item 404), the header says so, with Bring back for its owner.
+    const readKept = () => api.view('outcome_light', { workspace_id: workspace.id }, { readClass: 'background' }).then(answer => {
+      const light = checkedView(answer, bootstrap.instance_id);
+      outcomeReached = keptToRead(light);
+      paintKeptLine($('outcome-kept'), light, workspace.owner_id === bootstrap.actor ? async () => {
+        const current = validate(await api.view('workspace', { workspace_id: workspace.id })).workspace;
+        await sendEnd(pipelineSend, workspace.id, 'open', current.version);
+        await readKept();
+        freshness?.request();
+        $('inline-writing-body').focus();
+      } : null);
+    });
+    readKept().catch(() => {});
     here.has ||= hasConversation(workspace);
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
@@ -2147,6 +2182,7 @@ async function initialize() {
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
+    dossierName: source => readerDossierName(source),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
@@ -2704,7 +2740,9 @@ function initializeOutcomeNavigation(current=null,painted=()=>{},opens='workspac
   const peek=new LightPeek({host:$('light-tip'),read:async id=>checkedView(await api.view('outcome_light',{workspace_id:id},{readClass:'foreground'}),bootstrap.instance_id)});
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
-    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted,opens});
+    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted,opens,
+    // The home's "Archived (N)" rows: their owner brings one back from its row (item 404).
+    reader:bootstrap.actor,bringBack:opens==='conversation'?item=>sendEnd(pipelineSend,item.id,'open',item.version):null});
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
@@ -2713,6 +2751,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(route.kind==='health')return initializeHealthPage();
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
+  if(route.kind==='tool')return initializeToolPage(route);
   if(route.kind==='cards')return initializeDeckPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
@@ -2746,8 +2785,13 @@ async function initializeOutcomePage(route) {
     // and checks, the pipeline line, the improvement loop and the problems found
     // (D11), then its conversation's one row (outcome-conversation.mjs), then its topics;
     // its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
-    const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend});
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'),$('outcome-tools'));
+    // Archived, completed or brought back (item 404): the page reads again, and once it is archived or completed the keys
+    // go to Bring back on "Where it stands" (back, the target card gives them to the word that ended it).
+    const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend,
+      changed:async({state,refused})=>{await reload().catch(()=>{});if(!refused&&state!=='open')$('outcome-standing').querySelector('[data-hold="bring-back"]')?.focus();}});
+    // Its skills and tools, and the ones it says it uses (docs/skills-and-tools.md).
+    const outcomeTools=new OutcomeTools({host:$('outcome-tools'),workspace:route.id,instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
@@ -2763,7 +2807,8 @@ async function initializeOutcomePage(route) {
       const serial=++standingSerial,retry=()=>run(reload);
       try {
         const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
-        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+          bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});
         return true;
       } catch {
         if(serial===standingSerial)paintStandingFailed($('outcome-standing'),retry);
@@ -2783,7 +2828,7 @@ async function initializeOutcomePage(route) {
           permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
-          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;
+          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;$('outcome-tools').hidden=true;
         }
         throw error;
       }
@@ -2803,7 +2848,7 @@ async function initializeOutcomePage(route) {
         open:(id,title,message)=>openDestination(topicTarget(id,message),title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeReferences.load(),loadConversation(),
+      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeTools.load(),outcomeReferences.load(),loadConversation(),
         paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
@@ -2838,6 +2883,12 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
   const row=new PipelineRow({section:$('pipeline-navigation'),host:$('pipeline-links'),workspace,current,read:pipelineView,reader:bootstrap.actor});
   return {name:'pipeline',node:$('pipeline-navigation'),row,load:()=>row.load().then(read=>{loaded(read);return read;})};
 }
+// The rail's Skills and tools (docs/skills-and-tools.md): the outcome's own and
+// those it says it uses, names only; hidden when there are none.
+function skillsSection(workspace,current=null) {
+  const rail=new ToolsRail({section:$('skills-navigation'),host:$('skills-links'),workspace,current,instanceId:bootstrap.instance_id,read:pipelineView,open:openDestination});
+  return {name:'skills',node:$('skills-navigation'),load:()=>rail.load()};
+}
 // An outcome's pipeline, or one item's record in it: the rail shows this
 // outcome as a topic page's does (its conversation, Pipeline row, topics and
 // Notebook pages); the page and the rail read again on every commit.
@@ -2858,7 +2909,7 @@ async function initializePipelinePage(route) {
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
   try { const workspace=(await pipelineView('workspace',{workspace_id:route.id})).workspace;here.title=workspace.title;here.has=hasConversation(workspace); } catch {}
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'pipeline',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
@@ -2919,8 +2970,37 @@ async function initializeMeasurementsPage(route) {
     open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
   pagesInPlace(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
   placeBrand(document.querySelector('.rail'));
+  await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
+  document.body.dataset.ready='true';
+}
+// A skill's or tool's page (docs/skills-and-tools.md): in its home outcome, whose
+// rail it shows when the reader can read the home; with no rail otherwise, the
+// logo block and "← Outcomes" head it. The page and the rail read again on every commit.
+async function initializeToolPage(route) {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
+  const page=new ToolPage({host:$('tool-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},toolId:route.tool,
+    instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
+  await page.load();
+  const homeReadable=page.answer?.tool.home.readable===true&&page.answer.tool.home.workspace_id===route.id;
+  if(homeReadable) {
+    enableNewTopic(route.id);
+    topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+      retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+      read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+      open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    pagesInPlace(route.id,()=>{});
+    // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
+    here={workspaceId:route.id,title:page.answer.tool.home.title,view:null,page:false,has:false,onlyNew:false,items:new Map()};
+    try { here.has=hasConversation((await pipelineView('workspace',{workspace_id:route.id})).workspace); } catch {}
+  }
+  outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'skill',homeReadable,rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
+    sections:homeReadable?[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id,route.tool)]:[]});
+  if(homeReadable)placeBrand(document.querySelector('.rail'));
+  else { document.querySelector('.rail').hidden=true;$('main').prepend($('outcomes-home'));placeBrand($('main')); }
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
@@ -3046,7 +3126,7 @@ async function initializeOpeningPage(route) {
   pagesInPlace(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.workspace)]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),draft.follow().catch(()=>false)])).every(read=>read!==false))();
   document.body.dataset.ready='true';

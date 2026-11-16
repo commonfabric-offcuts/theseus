@@ -42,6 +42,8 @@ from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
+from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
+from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -182,6 +184,15 @@ STEPS = (
     # agents were already invited from the page: their invitations are filled from the committed receipts on the
     # record. Stepping back is refused once anyone has been invited, since 42 cannot say by whom.
     ("42", "43", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
+    # Version 44 keeps what is said about skills and tools (item 17, docs/skills-and-tools.md): which outcomes say they
+    # use each tool, which topics are about each, and what each tool's own check found in a release. Each is
+    # append-only. Stepping back is refused once any of them holds a row, since 43 cannot keep them.
+    ("43", "44", TOOLS_SCHEMA, TOOLS_DOWN, TOOLS_OCCUPIED),
+    # Version 45 keeps each outcome's ends (item 404, docs/targets.md "Archived and completed"): archived, completed or
+    # brought back, by its owner, and the topics each act archived. A store with no row reads as before: every outcome
+    # is open. Stepping back is refused once any outcome has been archived or completed, even one brought back since.
+    # Built on 43 beside item 17's step, it landed second and follows it.
+    ("44", "45", ENDS_SCHEMA, ENDS_DOWN, ENDS_OCCUPIED),
 )
 
 

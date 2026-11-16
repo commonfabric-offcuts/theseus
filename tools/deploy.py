@@ -7,7 +7,9 @@ Usage: tools/deploy.py --config CONFIG.json (--release-check SUMMARY.json | --tr
                        [--release N] [--live-since TIME] [--no-items] [--known-reds FILE] [--dry-run]
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
-for exactly that commit; unless it passed, nothing is stopped or changed.
+for exactly that commit, or for a commit whose tree, read from the live
+checkout's git, is SHA's (item 588: a pull request's run judges GitHub's merge
+of it, not the merged head); unless it passed, nothing is stopped or changed.
 --train TRAIN.json takes, in place of a summary, the record of a train merged
 into the config's release branch (tools/train.py): SHA is its merge commit, and
 each of its facts is read again from git and GitHub before anything stops.
@@ -614,6 +616,17 @@ def enter_deploy(config, evidence, view, planned):
     record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})
 
 
+def judged_tree(config, sha, judged):
+    """Item 588: for a summary of judged, another full commit: {judged_commit, commit, tree}, the tree it shares with
+    SHA read from the live checkout's git; or release_check.Refused when the trees differ or git cannot read either. A
+    deploy that measures an outcome records its run at the summary's own commit, so it takes no other commit's."""
+    if config.outcome:
+        raise release_check.Refused("measuring %s records its run at the summary's own commit, so it takes only a summary "
+                                    "of exactly %s" % (config.outcome, sha))
+    tree = release_check.same_tree(lambda *args: run(["git", "-C", str(config.live)] + list(args)), judged, sha)
+    return {"judged_commit": judged, "commit": sha, "tree": tree}
+
+
 def take_train(config, sha, evidence, train, known_reds, github):
     """00-train (items 481, 482): the merged train, each of its facts read again from the live checkout's git and from
     GitHub, or Refused before anything else is read. A record never claims a local check that did not run."""
@@ -648,7 +661,12 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     trained = take_train(config, sha, evidence, train, known_reds, github) if train is not None else None
     # A summary whose steps failed is still measured (7.2 step 1). One that skipped steps is taken only when what
     # changed since the live commit, read here, lets them be skipped.
-    foreign, unpassed = release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha)) if trained is None else ([], [])
+    # Item 588: a summary of another commit is taken when its tree, read here, is SHA's; the deploy records both.
+    judged = []
+    foreign, unpassed = (release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha),
+                                                     lambda commit: judged.append(judged_tree(config, sha, commit)))
+                         if trained is None else ([], []))
+    judged = judged[0] if judged and not foreign else None
     reasons = foreign + unpassed
     # Item 178: failed browser cases the live commit fails too, each listed, are known reds; they stay failures.
     known = None
@@ -661,6 +679,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if trained is None:
         record(evidence, "00-release-check", dict({"summary": str(summary), "commit": sha, "passed": not reasons,
                                                    "reasons": reasons, "skipped": release_check.skipped_of(summary)},
+                                                  **({"judged": judged} if judged else {}),
                                                   **({"known_reds": known} if known_reds is not None else {})))
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
     require(not foreign, unchecked)
@@ -759,7 +778,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         raise Refused("%s got worse: %s" % (names(found), "; ".join(item["why"] for item in found)))
     require(not unpassed or accepted, unchecked)
     measured = (releases.train_measurements(trained) if trained is not None
-                else releases.measurements(json.loads(Path(summary).read_text()), accepted))
+                else releases.measurements(json.loads(Path(summary).read_text()), accepted, judged))
     measured = dict(measured, **steps_beyond_policy(config, head))
     planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
     # A restart (planned is None) is of the latest release, when one places the live commit.

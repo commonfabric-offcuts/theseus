@@ -27,7 +27,8 @@ export function installDocument(t) {
     getAttributeNames() { return Object.keys(this.attributes); }
     hasAttribute(name) { return name in this.attributes; }
     removeAttribute(name) { delete this.attributes[name]; }
-    append(...kids) { for (const kid of kids) { const node = typeof kid === 'string' ? new Text(kid) : kid; node.remove?.(); node.parent = this; this.children.push(node); } }
+    // As a browser does, anything that is not a node (null too) goes in as its text.
+    append(...kids) { for (const kid of kids) { const node = kid === null || typeof kid !== 'object' ? new Text(String(kid)) : kid; node.remove?.(); node.parent = this; this.children.push(node); } }
     replaceChildren(...kids) { for (const child of this.children) child.parent = null; this.children = []; this.append(...kids); }
     insertBefore(node, before) { node.remove?.(); node.parent = this; const at = before ? this.children.indexOf(before) : -1; if (at < 0) this.children.push(node); else this.children.splice(at, 0, node); return node; }
     remove() { if (this.parent) { this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; } }

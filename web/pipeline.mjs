@@ -9,6 +9,7 @@ import { isBusy, unconfirmed } from './api.mjs';
 import { shell } from './in-place-navigation.mjs';
 import { clock, datedTime, shownTime } from './times.mjs';
 import { workNote } from './topic-state.mjs';
+import { glyph as menuGlyph } from './glyphs.mjs';
 import {
   BUSY_WORDS, EMPTY_WORDS, SIZE_WORDS, checkPipeline, duration, eventRuns, factBoxes, gatheringWords, glyphWords, heldWords, historyLine, listWords, missedWords,
   pieceTopicWords, placedWords, raisedWords, sentenceName, sourceRuns, stageLine, typicalCell, typicalWords, waitingWords, waitsWords,
@@ -424,23 +425,24 @@ export class PipelinePage {
   // when its piece's view says this reader may (`you_set_aside`, the server's own rule), and Drop….
   steerMenu(item, list, index, pipeline, underway = false, piece = null) {
     const words = pipeline.section_words ?? {};
-    const button = (label, keys, action) => el('button', { type: 'button', role: 'menuitem', onclick: () => { this.menu = null; action(); } },
-      el('span', { text: label }), keys ? el('kbd', { text: keys }) : null);
+    // Each item's glyph (glyphs.mjs, item 602) follows its words and is drawn before them (aim.css).
+    const button = (label, keys, name, action) => el('button', { type: 'button', role: 'menuitem', onclick: () => { this.menu = null; action(); } },
+      el('span', { text: label }), menuGlyph(name), keys ? el('kbd', { text: keys }) : null);
     const key = `item:${item.number}`;
     const up = index > 0 ? list[index - 1] : null, down = index < list.length - 1 ? list[index + 1] : null;
     const menu = el('div', { class: 'pl-menu', role: 'menu', 'aria-label': `Steer ${item.number}` });
     if (!underway) {
-      if (up) menu.append(button('Move up', '⌘↑', () => this.act(key, () => this.move(item, { above: up.number }))));
-      if (down) menu.append(button('Move down', '⌘↓', () => this.act(key, () => this.move(item, { below: down.number }))));
+      if (up) menu.append(button('Move up', '⌘↑', 'up', () => this.act(key, () => this.move(item, { above: up.number }))));
+      if (down) menu.append(button('Move down', '⌘↓', 'down', () => this.act(key, () => this.move(item, { below: down.number }))));
       menu.append(el('hr'));
-      for (const name of SECTION_ORDER) if (name !== item.section) menu.append(button(`Move to ${words[name] ?? name}`, null, () => this.act(key, () => this.move(item, { section: name }))));
+      for (const name of SECTION_ORDER) if (name !== item.section) menu.append(button(`Move to ${words[name] ?? name}`, null, 'moveto', () => this.act(key, () => this.move(item, { section: name }))));
       menu.append(el('hr'));
     }
-    menu.append(button('Open its record', null, () => shell.leave(pipelineHref(this.workspace, item.number))));
-    if (underway && piece?.you_set_aside) menu.append(button(`Set aside to ${words.later ?? 'Later'}…`, null, () => {
+    menu.append(button('Open its record', null, 'openpage', () => shell.leave(pipelineHref(this.workspace, item.number))));
+    if (underway && piece?.you_set_aside) menu.append(button(`Set aside to ${words.later ?? 'Later'}…`, null, 'moveto', () => {
       this.asiding = item.number; this.paint(); this.host.querySelector(`[data-key="item:${item.number}"] [data-role="aside-note"]`)?.focus();
     }));
-    menu.append(button('Drop…', null, () => {
+    menu.append(button('Drop…', null, 'drop', () => {
       if (item.stage) { this.confirming = item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="drop-keep"]`)?.focus(); }
       else this.act(key, () => this.move(item, { section: 'dropped' }));
     }));

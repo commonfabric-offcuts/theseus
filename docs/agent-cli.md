@@ -141,7 +141,7 @@ above; `binding`, `view` and `command` are unchanged.
 
 | Verb | Does |
 | --- | --- |
-| `outcomes [--reached]` | Lists the actor's outcomes, each with its owner, its kind and where it stands, then how many are reached; `--reached` lists those. |
+| `outcomes [--reached \| --ended]` | Lists the actor's outcomes, each with its owner, its kind and where it stands, then how many are reached (`reached (N): outcomes --reached`) and how many archived or completed (`archived or completed (N): outcomes --ended`); `--reached` lists the reached ones, `--ended` the archived and completed ones, each saying `archived Nov 15 by tony` or `completed Nov 15 by tony`. |
 | `new-outcome --title TITLE [--kind reach\|keep] [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. Without `--kind` it is an outcome to keep until its owner chooses on its page ([targets.md](targets.md#two-kinds-of-outcome)). |
 | `owner OUTCOME ACTOR` | Hands the outcome to ACTOR (`workspace.owner_set`, fenced on the outcome's version as read). Only its owner can, and only to someone already on its team; the former owner stays on the team, and the coordinator is unchanged. Prints `OUTCOME is now owned by ACTOR (was FORMER)`, or `OUTCOME is already owned by ACTOR` when nothing changed. The new owner and the coordinator, beside each topic's creator, change the team, rename and archive the outcome's topics, say where any of them stands and change who takes part; only the owner hands the outcome on, and the `wakes` notice goes to the owner ([openings.md](openings.md#workspaceowner_set)). |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
@@ -532,8 +532,45 @@ checks.
   `reached OUTCOME [--unmet] TEXT` says an outcome to reach is reached, in his
   words. Reached is final; `--unmet` confirms it while a check is not met, or
   while nothing checks it.
+- `outcome-end OUTCOME archived|completed|open` archives or completes an
+  outcome, or brings it back (the owner only, of an outcome not reached;
+  [targets.md](targets.md#archived-and-completed)). It prints `archived TITLE
+  (3 topics)`, `brought back TITLE (3 topics)`, `completed TITLE (topics
+  carried)` for a switch between the two, or `TITLE is already archived (no
+  change)`.
 
 The rules behind every word these verbs print are in [targets.md](targets.md).
+
+## Skills and tools
+
+A skill or tool is a record in `skills/<id>.json` and its files, homed in one
+outcome ([skills-and-tools.md](skills-and-tools.md)). These verbs read and say
+what Core keeps about them; the records themselves change only in a release.
+
+- `tools OUTCOME` prints the outcome's own skills and tools, then those it says
+  it uses, each with its id, name, kind and the word its check reads ("Its
+  check passed: 42 of 42 · TIME", "Its check has not run on this version yet",
+  "Not evaluated yet: it has no check").
+- `tool ID [--went-back N]` prints one: its kind and summary, its home, its
+  check's word, the outcomes that said they use it (and how many you cannot
+  open), the versions that went back, newest first, N of them (5 by default,
+  1 to 100), each with its topic, the topics about it, and its files, its check
+  marked.
+- `tool-use ID OUTCOME [--off]` says the outcome uses the tool, or with `--off`
+  that it no longer does. Anyone on the outcome may; a reached outcome refuses.
+  Nothing else makes an outcome a user: running the tool, linking a topic or
+  being its home does not.
+- `tool-link ID TOPIC [--off]` says a topic is about the tool, or with `--off`
+  that it is not. A link needs a topic in the tool's home, not its
+  Conversation; taking one off works wherever the topic now is.
+- `tool-record FILE` records one run of a tool's check from JSON: the run's
+  fields and its `home_workspace_id`, as `tools/tool_check.py` writes them in
+  `--out/records`. Only an agent on the home records; the same run again is
+  recorded once, and a version that went back opens its topic in the home.
+
+The same answer twice prints `(no change)` or `was already recorded`. These
+verbs are checked in `tests/test_agent_verbs_tools.py`, run as a deployed CLI
+runs them, over invented records.
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.
