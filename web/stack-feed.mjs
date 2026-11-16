@@ -208,6 +208,7 @@ export class StackFeed {
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
+        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };
       }
       // A join or split not yet answered: the positions Core sent name the dossier it left (stack-order.mjs, positionOf).
       const moving = (this.pending.get(id) ?? []).some(mark => 'joined' in mark);
@@ -430,8 +431,9 @@ export class StackFeed {
     }
     if (kind === 'message.star') this.starsChanged();
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
-    // messages to another dossier, whose positions they carry from then on (item 470).
-    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();
+    // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
+    // the page has not loaded is shown by those positions (item 550).
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !this.messages().has(item.id)) await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -526,15 +528,23 @@ export class StackFeed {
     if (!found) return;
     const side = this.sideOf(found), changes = moveOf(side.stacks, side.index, way);
     if (!changes) { this.say(way === 'up' ? 'Already at the top' : 'Already at the bottom'); return; }
-    const heads = changes.map(change => this.messages().get(change.id));
-    const before = heads.map(item => this.actsOf(item.id).placed ?? null);
+    const heads = changes.map(change => this.placeOn(side.stacks.find(stack => stack.id === change.id)));
+    const before = heads.map(item => this.actsOf(item.id, item).placed ?? null);
     changes.forEach((change, index) => this.act('stack.place', heads[index], { key: change.key }));
     this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });
     this.arrange(); this.focusOn(entry.dataset.id);
     this.say(`Moved ${way}, placed here by you`);
   }
+  // A place is the dossier's, as its name is (item 550): it goes on its first
+  // message, loaded or not, fenced on the place Core holds there, so loading
+  // more of the dossier keeps it. A page whose Core sends no positions places
+  // the head it shows.
+  placeOn(stack) {
+    const root = this.rootOf(stack);
+    return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);
+  }
   unplace(stack) {
-    const item = this.messages().get(stack.id), before = this.actsOf(stack.id).placed ?? null;
+    const item = this.placeOn(stack), before = this.actsOf(item.id, item).placed ?? null;
     this.act('stack.place', item, { key: null });
     this.remember(() => { this.act('stack.place', item, { key: before }); this.arrange(); });
     this.arrange(); this.say('New replies move it again');
@@ -653,10 +663,12 @@ export class StackFeed {
     if (!position) return null;
     if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
     const item = this.messages().get(root) ?? this.standIns.get(root);
-    // A stand-in also holds the revision its join is fenced on (item 550): a dossier's first message is joined by it.
+    // A stand-in also holds the revisions its join and place are fenced on (item 550): a dossier's first message is
+    // joined and placed by it.
     item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
       ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}),
-      ...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {}) });
+      ...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {}),
+      ...(!this.messages().has(root) && 'place_revision' in position ? { placed: position.placed, place_revision: position.place_revision } : {}) });
     return { item, position };
   }
   // What the Reader's archive button offers for the dossier a message is in

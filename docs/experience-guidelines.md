@@ -188,6 +188,14 @@ page shorter under what is being read.
   messages, the fork and then its first message, shows every message once
   and leaves it one stack ([reply-stacks.md](reply-stacks.md), "One dossier,
   one stack").
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks a dossier whose first message is above the page stays as
+  the reader left it …" and "… a dossier the reader placed, its first
+  message above the page, keeps its place …": Earlier messages loading an
+  older reply to a dossier's first message, then that first message, leaves
+  the dossier open with the seven it showed and its earlier-messages row as
+  it was, at 320, 375 and 390 and a laptop, and where the reader placed it,
+  through a reload too.
 - `tests/new_line_native.mjs` (`native-colors`, `native-webkit-new-line`):
   "the room after the Notebook keeps the card being read in place as the New
   line fades or moves up, and goes as the person scrolls up", at a phone's

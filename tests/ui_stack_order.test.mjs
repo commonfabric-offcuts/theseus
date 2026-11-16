@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT, reheaded } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -417,6 +417,61 @@ test('the branches of one dossier whose fork sits above the loaded page are one 
   assert.deepEqual(split.map(stack => [stack.head.id, ids(stack.replies), headOf(stack).name]),
     [['m40', ['m41'], 'Its own'], ['m10', ['m11', 'm12', 'm13', 'm14', 'm15'], 'Lantern repair plan']], 'a split not yet answered stays out, under its own name');
   assert.equal(positionOf(split[0]), null);
+});
+
+// Item 550: one dossier's stack is the dossier's whatever of it is loaded. Earlier messages can load a reply older than
+// its head, made straight under its first message, or the first message itself, and either heads the stack from then
+// on; the reader's place is the dossier's, on its first message, and what the page keeps for this visit goes with it.
+test('a dossier whose first message is above the page keeps the reader\'s place and what the page keeps of it when an older reply, or its first message, loads and heads its stack', () => {
+  const at = (root, place = {}) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, join_revision: 0, placed: null, place_revision: 0, at: { acts: 3, messages: 0 }, ...place });
+  // The reader placed the sailcloth dossier (first message m1, above the page) at 2.5, below every other stack.
+  const placed = at('m1', { placed: 2.5, place_revision: 1 });
+  const page = [message(10, { reply_to: 'm1', stack_position: placed }), message(11, { reply_to: 'm1', stack_position: placed }), message(12, { reply_to: 'm10', stack_position: placed }),
+    message(20, { stack_position: at('m20') }), message(21, { reply_to: 'm20', stack_position: at('m20') })];
+  const old = message(5, { reply_to: 'm1', stack_position: placed }), root = message(1, { acts: { placed: 2.5, place_revision: 1 }, stack_position: placed });
+  const shown = stacks => stacks.map(stack => [stack.id, stack.dossier, stack.placed]);
+  const first = stacksOf(page);
+  assert.deepEqual(shown(first), [['m20', 'm20', null], ['m10', 'm1', 2.5]], 'the dossier\'s place is its first message\'s, as its position carries it');
+  const older = stacksOf([old, ...page]);
+  assert.deepEqual(shown(older), [['m20', 'm20', null], ['m5', 'm1', 2.5]], 'an older reply under the first message heads the stack, and the place holds');
+  const whole = stacksOf([root, old, ...page]);
+  assert.deepEqual(shown(whole), [['m20', 'm20', null], ['m1', 'm1', 2.5]], 'the first message loaded heads it, its own acts holding the same place');
+  // What the page keeps for a stack by its head goes to the dossier's new head, each time.
+  assert.deepEqual([...reheaded(first, older)], [['m10', 'm5']], 'm10\'s stack is m5\'s now');
+  assert.deepEqual([...reheaded(older, whole)], [['m5', 'm1']], 'and m1\'s once it loads');
+  // The negatives. A place the reader set on a branch's head is not the dossier's: the first message's is.
+  const branch = stacksOf(page.map(item => item.id === 'm10' ? { ...item, acts: { placed: 99, place_revision: 1 } } : item));
+  assert.deepEqual(shown(branch), shown(first), 'a place on a reply heading the stack moves nothing');
+  // A dossier the reader never placed sorts by its newest reply, whatever loads.
+  const free = page.map(item => item.stack_position.root_id === 'm1' ? { ...item, stack_position: at('m1') } : item);
+  assert.deepEqual([shown(stacksOf(free)), shown(stacksOf([{ ...old, stack_position: at('m1') }, ...free]))], [[['m20', 'm20', null], ['m10', 'm1', null]], [['m20', 'm20', null], ['m5', 'm1', null]]]);
+  // A page whose Core sends no place with its positions keeps the head's own place.
+  const before550 = page.map(item => ({ ...item, stack_position: (({ placed: _, place_revision: __, ...rest }) => rest)(item.stack_position), ...(item.id === 'm10' ? { acts: { placed: 1.5, place_revision: 1 } } : {}) }));
+  assert.equal(stacksOf(before550).find(stack => stack.id === 'm10').placed, 1.5);
+  // A stack whose head still heads one carries nothing; nor does a join, which puts one dossier into another.
+  assert.deepEqual([...reheaded(first, stacksOf([...page, message(30)]))], [], 'a new stack beside them carries nothing');
+  const joined = page.map(item => item.id === 'm20' ? { ...item, acts: { joined: { into: 'm12', by: 'owner', at_ms: 1 } } } : item.id === 'm21' ? { ...item, stack_position: placed } : item);
+  assert.deepEqual([...reheaded(first, stacksOf(joined.map(item => item.id === 'm20' ? { ...item, stack_position: placed } : item)))], [], 'm20 joined into the dossier gives its state to no one');
+  // Two dossiers above the page stay two: one's older reply loading gives nothing to the other.
+  const ferry = [message(13, { reply_to: 'm2', stack_position: at('m2') }), message(14, { reply_to: 'm13', stack_position: at('m2') })];
+  assert.deepEqual([...reheaded(stacksOf([...page, ...ferry]), stacksOf([old, ...page, ...ferry]))], [['m10', 'm5']], 'the ferry dossier keeps its own');
+});
+
+// Item 550: a stack someone joined into one branch of a dossier whose first message is above the page keeps its join
+// line, with Split back out, once that branch is gathered into the dossier's one stack under another branch's head.
+test('a stack joined into a branch that is not the head\'s, in a dossier whose first message is above the page, keeps its join line in the one stack', () => {
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 3, messages: 0 } });
+  const join = { into: 'm11', by: 'owner', at_ms: 5 };
+  // m10 and m11 answer m1, above the page; m12, a stack of its own, was joined into m11, and m13 answers m12.
+  const items = [message(10, { reply_to: 'm1', stack_position: at('m1') }), message(11, { reply_to: 'm1', stack_position: at('m1') }),
+    message(12, { acts: { joined: join }, stack_position: at('m1') }), message(13, { reply_to: 'm12', stack_position: at('m1') }), message(14, { reply_to: 'm10', stack_position: at('m1') })];
+  const [one, ...rest] = stacksOf(items);
+  assert.deepEqual([one.id, ids(one.replies), rest.length], ['m10', ['m11', 'm12', 'm13', 'm14'], 0], 'one stack under m10');
+  assert.deepEqual([...one.joins], [['m12', join]], 'm12\'s join is the one stack\'s');
+  assert.deepEqual(words(rowsOf(one, { level: 'open' })), ['m11', 'join m12', 'm12', 'm13', 'm14'], 'its join line just before it, where Split back out is');
+  // The negative: the branch gathered into the stack (m11) is no join, and split back out m12 heads its own stack again.
+  const split = stacksOf(items.map(item => item.id === 'm12' ? { ...item, acts: { joined: null }, stack_position: at('m12') } : item.id === 'm13' ? { ...item, stack_position: at('m12') } : item));
+  assert.deepEqual(split.map(stack => [stack.id, ids(stack.replies), [...stack.joins.keys()]]), [['m10', ['m11', 'm14'], []], ['m12', ['m13'], []]]);
 });
 
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {

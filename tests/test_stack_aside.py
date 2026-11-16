@@ -85,6 +85,27 @@ class AsideCase(StackCase):
         self.assertEqual(self.position(answer)['root_id'], ferry, 'the whole dossier joined')
         self.assertEqual(self.position(answer).get('join_revision'), 0, 'its position is now the ferry dossier\'s')
 
+    def test_a_position_carries_the_readers_own_place_on_its_first_message_so_a_page_of_replies_keeps_it(self):
+        # Item 550: a reader's place for a dossier is on its first message, as its name is; a page holding only replies
+        # sorts the dossier by it and places it fenced on the revision the position carries. Theirs alone.
+        sailcloth, ferry = self.post('Sailcloth dossier'), self.post('Ferry dossier')
+        answer = self.post('An answer under the sailcloth dossier', reply_to=sailcloth)
+        later = self.post('A later answer to that answer', reply_to=answer)
+        place = lambda key, revision, mid=sailcloth, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': mid},
+                                                                               expected={'place_revision': revision}, actor=actor)
+        self.assertEqual([self.position(answer)[key] for key in ('placed', 'place_revision')], [None, 0])
+        self.committed(place(2.5, 0))
+        self.assertEqual([(self.position(mid)['placed'], self.position(mid)['place_revision']) for mid in (answer, later)], [(2.5, 1)] * 2)
+        self.rejected(place(4.5, 0), 'REVISION_CONFLICT')
+        # The negatives: another reader's position holds no place of the owner's; a place on a reply is not the
+        # dossier's; another dossier's position holds its own.
+        self.assertEqual([self.position(answer, 'agent-a')[key] for key in ('placed', 'place_revision')], [None, 0])
+        self.committed(place(9.5, 0, mid=answer))
+        self.assertEqual((self.position(later)['placed'], self.position(later)['place_revision']), (2.5, 1))
+        self.assertEqual((self.position(ferry)['placed'], self.position(ferry)['place_revision']), (None, 0))
+        self.committed(place(None, 1))
+        self.assertEqual((self.position(answer)['placed'], self.position(answer)['place_revision']), (None, 2), 'let new replies move it')
+
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
         first = self.aside(root, self.latest(), op='put-aside-once')

@@ -50,7 +50,12 @@ function parentOf(item, has) {
 // Map of the id of each joined stack's first message to its join ({ into, by,
 // at_ms }), newest: the newest seq in it, lifted: the newest seq that lifts it,
 // any but a reply of the viewer's own (a stack joined to it lifts it however
-// it began), placed: the reader's own place for it or null }.
+// it began), placed: the reader's own place for it or null, dossier: the id
+// of the dossier's first message as Core's position names it, else its head's }.
+// A place is the dossier's, as its name is (item 550): where the stack's head
+// is not its first message, the place is the one Core's position carries for
+// that first message, so loading more of the dossier, which can give its stack
+// another head, keeps it.
 export function gather(items, { has = null, viewer = null } = {}) {
   const byId = new Map(items.map(item => [item.id, item]));
   const on = has ?? (id => byId.has(id));
@@ -88,10 +93,11 @@ export function gather(items, { has = null, viewer = null } = {}) {
     // stack joined to it and the replies to those, however deep. A join
     // changes no message, so splitting it out puts both stacks back as they were.
     const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
-    const placed = typeof actsOf(head).placed === 'number' ? actsOf(head).placed : null;
+    const position = positionOf({ head, replies }), byRoot = position && position.root_id !== head.id && 'place_revision' in position;
+    const place = byRoot ? position.placed : actsOf(head).placed, placed = typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
-    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed };
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: position?.root_id ?? head.id };
   });
 }
 
@@ -127,6 +133,20 @@ function dossiers(branches, headOf) {
     const joins = new Map(found.flatMap(branch => [...branch.joins]));
     return { head: first.head, members: found.flatMap(branch => branch.members), joins };
   });
+}
+
+// Item 550: what the page keeps of a stack for this visit (how far it is
+// open, its earlier-messages row, the first of the seven it shows) is the
+// dossier's. Loading more of a dossier gives its stack
+// another head when an older branch, or its first message, loads. Answers a
+// Map of each stack's head before (before: the stacks as last gathered) to the
+// head of its dossier's stack now (after), for each stack whose head no
+// longer heads one; a head that still heads a stack keeps its own, so a join,
+// which puts one dossier into another, carries nothing.
+export function reheaded(before, after) {
+  const now = new Map(), heads = new Set(after.map(stack => stack.id));
+  for (const stack of after) if (!now.has(stack.dossier)) now.set(stack.dossier, stack.id);
+  return new Map(before.filter(stack => !heads.has(stack.id) && now.has(stack.dossier)).map(stack => [stack.id, now.get(stack.dossier)]));
 }
 
 // Where a stack sorts: its own place, else its newest message that lifts it.

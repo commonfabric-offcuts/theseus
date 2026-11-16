@@ -17,7 +17,8 @@ change:
   once, loaded on the reader's page or not (item 472).
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
-  new replies move it again. Theirs alone.
+  new replies move it again. Theirs alone. The page places a dossier on its first
+  message, which its position carries to every message in it (item 550).
 - `name` (stack.name): the short name of the dossier this message is the first
   message of; a name typed anywhere in a dossier lands there. The topic's:
   anyone who reads it may rename it, everyone sees it, and it says who typed
@@ -331,7 +332,10 @@ def stack_positions(db, actor, items):
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
     the dossier, so a page of earlier messages reads the same however the topic grows. `name_revision` and
-    `join_revision` are its first message's, the fences a page holding only replies names and joins it on."""
+    `join_revision` are its first message's, the fences a page holding only replies names and joins it on, and
+    `placed` and `place_revision` the reader's own place for the dossier, on its first message, and its fence: a page
+    that has not loaded that message, whatever of the dossier it has loaded, keeps the dossier where the reader put
+    it (item 550)."""
     roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
     for item in items:
         topic = item["topic_id"]
@@ -344,6 +348,7 @@ def stack_positions(db, actor, items):
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
+                               "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
