@@ -23,6 +23,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
+import { ROWS, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -265,6 +266,69 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  // Items 602 and 601 (tests/menu_glyphs.mjs): each item of the Reader's ⋯ shows its glyph before its words, in each
+  // state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each width and theme
+  // reads in a topic of its own, so what its acts change (a mark, a fold) is no other case's.
+  for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) await check(`menus ${shape}: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit${shape === 'stacked' ? ', Wide layout and Stacked layout' : ''}, light and dark`, async () => {
+    const seen = [], aligned = [], kept = [];
+    for (const scheme of ['light', 'dark']) {
+      const topic = `compose-menus-${engine}-${shape}-${scheme}`;
+      await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Menus ' + shape }] });
+      const say = async (n, more) => (await control({ method: 'agent_message', operation_id: `${topic}-${n}`, topic_id: topic, join: true, source: 'topic', ...more })).result.message_id;
+      const theirs = await say('theirs', { body: Array.from({ length: 30 }, (_, i) => `Fence passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' ') });
+      const mine = await say('mine', { sender: 'person', body: 'Mine to edit: the gate goes on the left.' });
+      const p = await page(shape, scheme, `/?topic=${topic}`);
+      // The ⋯ opened by a press, its rows read and pictured, then put away by Escape; what it held, by its words.
+      const menu = async name => {
+        await press(p, '#reader-menu');
+        await until(p, () => Boolean(document.querySelector('[role=menu]')), "the Reader's ⋯ opens");
+        const rows = await p.evaluate(ROWS);
+        await picture(p, `menus-${name}`);
+        seen.push(...rows.map(row => ({ ...row, at: `${scheme} ${name}` })));
+        const lefts = rows.map(row => row.words?.left ?? NaN);
+        aligned.push([`${scheme} ${name}`, Math.max(...lefts) - Math.min(...lefts)]);
+        await p.keyboard.press('Escape');
+        await until(p, () => !document.querySelector('[role=menu]'), 'the menu put away');
+        return rows.map(row => row.label);
+      };
+      const choose = async label => {
+        await press(p, '#reader-menu');
+        await until(p, () => Boolean(document.querySelector('[role=menu]')), "the Reader's ⋯ opens");
+        await press(p, `[role=menu] [role=menuitem]:text-is("${label}")`);
+        await until(p, () => !document.querySelector('[role=menu]'), `${label} chosen`);
+      };
+      await open(p, theirs, 'Fence passage 1');
+      await menu('message');
+      await choose('Mark unread');
+      await until(p, () => document.querySelector('#mark-unread').getAttribute('aria-pressed') === 'true', 'the message marked unread');
+      await choose('Fold message');
+      if (shape === 'stacked') { await choose('Wide layout'); await until(p, () => document.querySelector('#reader').dataset.layout === 'wide', 'the Reader wide'); }
+      // Words chosen in the message, as a person chooses them: a press that lights a passage, or a selection on a phone.
+      const span = p.locator('#source-body > span').nth(3);
+      if (p.touch) {
+        await p.evaluate(() => { const text = document.querySelector('#source-body > span:nth-child(4)').firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 14); getSelection().removeAllRanges(); getSelection().addRange(range); });
+        await until(p, () => !document.querySelector('#quote-selection').hidden, 'the quote pill');
+      } else { const box = await span.boundingBox(); await p.mouse.click(box.x + 5, box.y + 5); }
+      const changed = await menu('changed');
+      for (const label of ['Mark read', 'Unfold message', 'Quote selection', ...(shape === 'stacked' ? ['Stacked layout'] : [])]) assert.ok(changed.includes(label), `${scheme}: ${label} in ${changed.join(', ')}`);
+      await press(p, '#reader-close');
+      await until(p, () => !document.querySelector('#reader').open, 'the Reader closed');
+      await open(p, mine, 'Mine to edit');
+      assert.ok((await menu('own')).includes('Edit'), `${scheme}: Edit on the person's own message`);
+      // The pencil Edit shows is the New message button's own drawing, cloned: the button keeps it.
+      kept.push([scheme, await p.evaluate(() => [document.querySelectorAll('#new-message svg').length, document.querySelectorAll('#reader .reader-header [data-glyph], .message-bar [data-glyph]').length])]);
+      await close(p);
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+    const labels = new Set(seen.map(row => row.label));
+    for (const label of ['Copy Link', 'Mark unread', 'Mark read', 'Fold message', 'Unfold message', 'Start a topic from this', 'Add to pipeline', 'Quote selection', 'Edit',
+      ...(shape === 'stacked' ? ['Wide layout', 'Stacked layout'] : [])]) assert.ok(labels.has(label), `${label} was seen: ${[...labels].join(', ')}`);
+    assert.deepEqual(kept, [['light', [1, 0]], ['dark', [1, 0]]], 'the New message button keeps its pencil; the Reader\'s title row and the message bar carry no menu glyph');
+  });
+
   for (const scheme of ['light', 'dark']) {
     await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {
       const p = await page('phone', scheme);

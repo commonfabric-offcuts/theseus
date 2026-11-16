@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { ROWS, misglyphed, misplaced } from './menu_glyphs.mjs';
 
 // The pipeline (item 84; docs/pipeline.md) in the real browser against the
 // real server. The outcome page offers Turn on while it is off, and turning it
@@ -637,5 +638,60 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     // Every width and theme is drawn and shot before any is judged, so one run keeps each screenshot.
     for (const [at, drawnNow] of seen) assert.deepEqual(drawnNow, want, `${at}: Now nearest to live first, each stage by start, then what is not started; Next as placed`);
     for (const [at, topics] of railSeen) assert.deepEqual(topics, ['po-2', 'po-3', 'po-4', 'po-1'], `${at}: the right rail's Now group in the same order`);
+  });
+  await check('pipeline menus every item of an item\'s ⋯ carries its glyph before its words, 18px and on their middle: in Next, Move up, Move down, Move to each section, Open its record and Drop…; being built, Set aside to Later…; at 320, 375, 390 and a laptop, light and dark, with nothing past the screen', async () => {
+    // Items 602 and 601 (tests/menu_glyphs.mjs), in an outcome of its own.
+    const outcome = 'pl-glyphs-o';
+    const own = (kind, target, args) => pipeline(kind, target, args, { workspace_id: outcome });
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: outcome, title: 'Menu glyphs', team: [] }] });
+    await control({ method: 'navigation_topics', topics: [{ id: 'pg-1', title: 'Building the gate', workspace_id: outcome }] });
+    await own('pipeline.configure', { workspace_id: outcome }, { enabled: true });
+    await own('pipeline.stages_set', { workspace_id: outcome }, { stages: [{ stage_id: 'build', name: 'Build' }] });
+    const add = async (title, section) => (await own('pipeline.item_add', { workspace_id: outcome }, { title, section, size: 'small', sources: [{ note: 'the check' }] })).result.number;
+    const next = [await add('Paint the fence', 'next'), await add('Oil the gate', 'next'), await add('Sweep the path', 'next')];
+    const built = await add('Hang the gate', 'now');
+    const piece = (await own('pipeline.piece_start', { workspace_id: outcome }, { numbers: [built], topic_id: 'pg-1', stage_id: 'build' })).result.piece_id;
+    const WIDTHS = [['320', { width: 320, height: 720, deviceScaleFactor: 2, mobile: true }], ['375', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true }],
+      ['390', SIZES.phone], ['laptop', SIZES.laptop]];
+    const seen = [], aligned = [], wide = [];
+    for (const [width, metrics] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const p = await page(`pipeline-menus-${width}-${theme}`, null, true, { url: `${facts.origin}/?pipeline=${outcome}`, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await ready(p);
+      // ⋯ pressed as the width presses it, a finger's tap on a phone; its rows read and pictured, then put away by Escape.
+      const menuOf = async (steer, name) => {
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(steer)}))`), `${width} ${theme}: ${steer} is drawn`);
+        await p.evaluate(`document.querySelector(${JSON.stringify(steer)}).scrollIntoView({block:'center'})`);
+        if (metrics.mobile) {
+          const b = await p.box(steer);
+          await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+          await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        } else await p.point(steer);
+        await until(() => p.evaluate(`Boolean(document.querySelector('.pl-menu [role=menuitem]'))`), `${width} ${theme} ${name}: the menu is open`);
+        await p.evaluate(`document.querySelector('.pl-menu').scrollIntoView({block:'nearest'})`);
+        const rows = await p.evaluate(ROWS);
+        await shot(p, `pipeline-menus-${width}-${theme}-${name}`);
+        seen.push(...rows.map(row => ({ ...row, at: `${width} ${theme} ${name}` })));
+        const lefts = rows.map(row => row.words?.left ?? NaN);
+        aligned.push([`${width} ${theme} ${name}`, Math.max(...lefts) - Math.min(...lefts)]);
+        wide.push([`${width} ${theme} ${name}`, await p.evaluate(`(()=>{const m=document.querySelector('.pl-menu').getBoundingClientRect();return {past:m.right>innerWidth+0.5||m.left<-0.5,scroll:document.documentElement.scrollWidth>innerWidth}})()`)]);
+        await p.key('Escape');
+        await until(() => p.evaluate(`!document.querySelector('.pl-menu')`), 'the menu is put away');
+        return rows.map(row => row.label);
+      };
+      assert.deepEqual(await menuOf(`[data-key="item:${next[1]}"] [data-role=steer]`, 'next'), ['Move up', 'Move down', 'Move to Now', 'Move to Later', 'Move to Candidates', 'Open its record', 'Drop…'],
+        `${width} ${theme}: the same items, in the same order`);
+      assert.deepEqual(await menuOf(`[data-key="piece:${piece}"] [data-key="item:${built}"] [data-role=steer]`, 'built'), ['Open its record', 'Set aside to Later…', 'Drop…'],
+        `${width} ${theme}: an item being built`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+    assert.deepEqual(wide.filter(([, at]) => at.past || at.scroll), [], 'no menu reaches past the screen, and nothing scrolls sideways');
   });
 }

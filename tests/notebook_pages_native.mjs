@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { ROWS, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
 
@@ -1521,6 +1522,43 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   });
   // A page in the composer over the feed (item 396), in a module of its own.
   await notebookSheetChecks({ check, page, until, control, view, facts, shot });
+  // Items 602 and 601 (tests/menu_glyphs.mjs): the Reader's ⋯ on a Notebook page, as on a message, shows each item's
+  // glyph before its words, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark.
+  await check('notebook menus the Reader\'s ⋯ on a Notebook page carries a glyph before each item\'s words, 18px and on their middle: Copy Link, Copy Link to Revision 1 and Edit page, at 320, 375, 390 and a laptop, light and dark', async () => {
+    const own = await control({ method: 'own_topic', operation_id: 'nb-glyphs', title: 'Fence notes' });
+    assert.equal((await control({ method: 'agent_page', operation_id: 'nb-glyphs-page', item_id: 'nb-glyphs-page', topic_id: own.topic_id, title: 'Fence plan', body: '## Posts\n\nSix posts, set in gravel.\n' })).status, 'committed');
+    const WIDTHS = [['320', { width: 320, height: 720, deviceScaleFactor: 1, mobile: true }], ['375', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true }],
+      ['390', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }], ['laptop', null]];
+    const seen = [], aligned = [];
+    for (const [width, metrics] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const p = await page(`nb-glyphs-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=${own.topic_id}&page=nb-glyphs-page&revision=1`, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        if (!metrics) return;
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Fence plan'`), `${width} ${theme}: the Reader shows the page`);
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      if (metrics) {
+        const b = await p.box('#reader-menu');
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else await p.point('#reader-menu');
+      await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].some(b=>b.textContent==='Edit page')`), `${width} ${theme}: the ⋯ opens`);
+      const rows = await p.evaluate(ROWS);
+      await shot(p, `nb-glyphs-${width}-${theme}`);
+      seen.push(...rows.map(row => ({ ...row, at: `${width} ${theme}` })));
+      const lefts = rows.map(row => row.words?.left ?? NaN);
+      aligned.push([`${width} ${theme}`, Math.max(...lefts) - Math.min(...lefts)]);
+      assert.deepEqual(rows.map(row => row.label).filter(label => label !== 'Wide layout'), ['Copy Link', 'Copy Link to Revision 1', 'Edit page'], `${width} ${theme}: the same items, in the same order (and Wide layout where the window can choose)`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+  });
+
   // Images in a card (item 321), in a module of its own.
   await cardImageChecks({ check, page, until, control, view, facts, shot });
 }
