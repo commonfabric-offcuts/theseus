@@ -433,6 +433,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       }
       assert.deepEqual(problems, [], `${device}: every button of the bar in the window, in one row`);
       assert.equal(await readerOn(p), null, `${device}: nothing opened`);
+      // Both asks are answered, so no topic is left waiting on the reader: the rail's waiting light it would leave lit
+      // widens the rail's first row for every check after this one.
+      for (const id of [ids.short, ids.long]) {
+        if (!(await lit(p)).includes(id)) await light(p, device, id);
+        await press(p, device, `${BAR} [data-act=yes]`);
+        await until(async () => (await reactions(id)).answers.some(a => a.actor_id === facts.actor && a.answer === 'yes'), `${device}: Core holds ✅ on the ${id === ids.long ? 'long' : 'short'} ask`);
+      }
       assert.deepEqual(p.errors, []);
       await p.close();
     }
