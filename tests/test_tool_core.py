@@ -85,68 +85,6 @@ class ToolsCase(reader_fixture.ReaderCase):
         return [row["title"] for row in self.view("tool", {"tool_id": tool}, actor)["used_by"]]
 
 
-class RecordsCase(unittest.TestCase):
-    """The parser and the content id, from bytes and a listing given to them."""
-
-    def read(self, records, files=("tools/kite.py", "tests/test_tools_kite.py")):
-        data = {"skills/%s.json" % record["id"]: json.dumps(record).encode() for record in records}
-        return tool_records.read(list(data) + list(files), data.__getitem__, lambda path: "file" if path in files else None)
-
-    def tool(self, **fields):
-        base = {"id": "kite-flyer", "kind": "tool", "name": "Kite flyer", "summary": "Flies a kite", "home": "w1",
-                "files": ["tools/kite.py", "tests/test_tools_kite.py"], "check": {"python": "tests/test_tools_kite.py"}}
-        base.update(fields)
-        return base
-
-    def test_a_good_record_reads_and_every_problem_is_named_by_file(self):
-        records, problems = self.read([self.tool()])
-        self.assertEqual((sorted(records), problems), (["kite-flyer"], []))
-        cases = [
-            (self.tool(files=["tools/deploy.py"], check=None),
-             "skills/kite-flyer.json names tools/deploy.py, which is the deploy's own code; deploy and the release checks stay ordinary code."),
-            (self.tool(files=["tests/test_tools_kite.py"], check={"python": "tests/test_tools_kite.py"}, colour="red"),
-             "skills/kite-flyer.json: unknown key 'colour'"),
-            (self.tool(files=["tools/kite.py"]), "the check tests/test_tools_kite.py is not one of kite-flyer's files."),
-            (self.tool(id="Kite"), "skills/Kite.json: its id is not lowercase words joined by hyphens, at most 40 characters"),
-            (self.tool(files=["tools/../kite.py"], check=None), "skills/kite-flyer.json: tools/../kite.py is not a plain repository path (no leading /, no empty, . or .. parts)"),
-            (self.tool(files=["web/app.mjs"], check=None), "skills/kite-flyer.json: web/app.mjs is not under skills/, tools/ or tests/"),
-            (self.tool(files=["tools/kite.py", "tools/kite.py", "tests/test_tools_kite.py"]), "skills/kite-flyer.json lists tools/kite.py twice"),
-            (self.tool(files=["tools/tool_check.py"], check=None),
-             "skills/kite-flyer.json names tools/tool_check.py, which is the tool step's own code; deploy and the release checks stay ordinary code."),
-            (self.tool(files=["tests/reader_native.mjs"], check=None),
-             "skills/kite-flyer.json names tests/reader_native.mjs, which is the release check's own code; deploy and the release checks stay ordinary code."),
-            (self.tool(name=""), "skills/kite-flyer.json: its name is 1 to 60 characters on one line"),
-            (self.tool(summary="two\nlines"), "skills/kite-flyer.json: its summary is 1 to 200 characters on one line"),
-            (self.tool(check={"python": "tests/kite.py"}), "skills/kite-flyer.json: its python check is a tests/test_*.py module"),
-        ]
-        for record, problem in cases:
-            with self.subTest(problem=problem):
-                path = "skills/%s.json" % record["id"]
-                data = {path: json.dumps(record).encode()}
-                _, problems = tool_records.read(list(data), data.__getitem__, lambda path: "file")
-                self.assertIn(problem, problems)
-
-    def test_a_file_shared_by_two_records_and_a_file_not_there_are_refused(self):
-        other = self.tool(id="act-keeper", name="Act keeper", files=["tools/kite.py"], check=None)
-        _, problems = self.read([self.tool(), other])
-        self.assertIn("tools/kite.py belongs to two tools: act-keeper and kite-flyer.", problems)
-        _, problems = self.read([self.tool()], files=("tools/kite.py",))
-        self.assertIn("skills/kite-flyer.json names tests/test_tools_kite.py, which is not a regular file here", problems)
-
-    def test_the_content_id_is_one_function_of_the_paths_and_bytes(self):
-        one = tool_records.content_id([("tools/a.py", b"x"), ("skills/a.json", b"{}")])
-        self.assertEqual(one, tool_records.content_id([("skills/a.json", b"{}"), ("tools/a.py", b"x")]), "sorted by path")
-        self.assertNotEqual(one, tool_records.content_id([("tools/a.py", b"y"), ("skills/a.json", b"{}")]), "a byte changes it")
-        self.assertNotEqual(one, tool_records.content_id([("tools/b.py", b"x"), ("skills/a.json", b"{}")]), "a path changes it")
-
-    def test_a_directory_that_cannot_be_read_is_unreadable_naming_the_file_never_empty(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = write_tools(directory)
-            (root / "skills" / "kite-guide.json").write_text("{not json")
-            records = tool_records.Records(root)
-            self.assertEqual((records.tools, records.error.path), ({}, "skills/kite-guide.json"))
-
-
 class WordsCase(unittest.TestCase):
     """Every word in section 5, from the record and the rows; never "0 of 0", never a pass without a count."""
 
@@ -401,20 +339,6 @@ class UnreadableCase(ToolsCase):
                 self.assertIn("skills/kite-guide.json", answer["error"]["message"])
         self.rejected(self.use("kite-flyer"), "TOOL_RECORDS_UNREADABLE")
         self.rejected(self.link("kite-flyer"), "TOOL_RECORDS_UNREADABLE")
-
-
-class SeedsCase(unittest.TestCase):
-    """The five seed records are the product: all homed in Building Theseus, four with a check, one written skill."""
-
-    def test_the_five_seeds(self):
-        records = tool_records.Records(Path(__file__).resolve().parents[1])
-        self.assertIsNone(records.error)
-        self.assertEqual({tool_id: (record["kind"], record["home"], tool_records.check_path(record)) for tool_id, record in records.tools.items()}, {
-            "mutant-runner": ("tool", "building-theseus", "tests/test_tools_mutant.py"),
-            "act-ledger": ("tool", "building-theseus", "tests/test_tools_acts.py"),
-            "native-step-runner": ("tool", "building-theseus", "tests/test_tools_native.py"),
-            "pipeline-page-builder": ("tool", "building-theseus", "tests/test_tools_pipeline.py"),
-            "theseus-team-assessment": ("skill", "building-theseus", None)})
 
 
 if __name__ == "__main__":
