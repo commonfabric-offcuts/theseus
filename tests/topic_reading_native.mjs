@@ -21,9 +21,10 @@ import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 
-// A pointer at a phone's widths (w390, w375, w320): a narrow laptop window, or a tablet with a trackpad.
-const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true },
-  w390: { width: 390, height: 844, deviceScaleFactor: 1, mobile: false }, w375: { width: 375, height: 812, deviceScaleFactor: 1, mobile: false },
+const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
+// A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
+// kept out of DEVICES, which the checks that run on every device go through.
+const POINTER_WIDTHS = { w390: { width: 390, height: 844, deviceScaleFactor: 1, mobile: false }, w375: { width: 375, height: 812, deviceScaleFactor: 1, mobile: false },
   w320: { width: 320, height: 640, deviceScaleFactor: 1, mobile: false } };
 const entry = id => `#messages [data-id="${id}"]`;
 // A message's card: the entry itself, or the card a folded line holds; either carries its id.
@@ -75,7 +76,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
   // query: the page's address after the origin, the topic's page unless given.
   const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic) => {
-    const metrics = DEVICES[device];
+    const metrics = DEVICES[device] ?? POINTER_WIDTHS[device];
     const p = await page(name, null, true, { url: facts.origin + query, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
