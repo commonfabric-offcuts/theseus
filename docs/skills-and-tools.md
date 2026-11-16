@@ -120,7 +120,7 @@ test_a, test_b, test_c) and went back to its live version"; a first version
   or a click links it, Escape closes it leaving things as they were); Files,
   folded. Its rail is the home's when the reader can read the home; otherwise
   the page has no rail and the logo block and ← Outcomes head it.
-- **The outcome page**'s Skills and tools: the tools it homes, then those it
+- **The outcome page**'s Skills and tools, after its Notebook: the tools it homes, then those it
   uses under Used here, each with the same word and opening its page. For a
   reader on the outcome, + Uses a tool finds a tool homed elsewhere as it is
   typed, and a × under Used here says the outcome no longer uses it. The
@@ -132,7 +132,8 @@ test_a, test_b, test_c) and went back to its live version"; a first version
 - **Topic settings**: Tools this topic improves, the home's tools as chips; a
   tap links, a second unlinks, saved at once. A tool linked from elsewhere
   shows as a chip so it can be taken off. The line shows only when there is a
-  chip to show.
+  chip to show. It is read with the topic and again each time Topic settings
+  opens; a topic reached in place reads its own.
 
 The code: `web/skills.mjs` (the page, the outcome section, the rail list and
 the chips), `web/things-rail.mjs` (the right rail), `aim_next/tools_core.py`
