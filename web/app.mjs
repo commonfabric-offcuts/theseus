@@ -67,7 +67,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -975,12 +975,19 @@ function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
-    authority: () => registry.runtime.current, send: envelope => api.command(envelope),
+    authority: () => registry.runtime.current,
+    // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
+    send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet') });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
+    // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
+    // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
+    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...first, ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
+    // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
+    colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
 }
 // The topic's feed, its Notebook and its Team, drawn or not, with any other
@@ -1045,6 +1052,8 @@ function paintAgentColors() {
     const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) paintCardColor(card, item, bootstrap.actor, agentShown);
   }
+  // A dossier's folder wears its first poster's colour (item 477).
+  paintFolderColors($('messages'));
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
   participantsPanel?.paint();
 }
@@ -2045,7 +2054,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds, reading });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2240,7 +2249,11 @@ async function initialize() {
     thumb: (item, on) => act(thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
     answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
-    expand: (card, item) => cardScroll.expand(card, item) });
+    expand: (card, item) => cardScroll.expand(card, item),
+    // The bar's Show full message and Fold (item 473), as ⋯ offers them.
+    clipped: (card, item) => Boolean(cardScroll?.clipped(card, item)), showFull: (card, item) => run(() => cardScroll.showFull(card, item)),
+    foldState: item => (stackFeed && !topicUnavailable ? stackFeed.foldState(item) : null),
+    fold: item => { stackFeed?.toggleFold(item); if (menu?.lit) menu.paintBar(); } });
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
   // line or being written: once Core holds it the Reader closes, as after
   // Send, keeping what the reply holds. Refused, or taken back, it stays.

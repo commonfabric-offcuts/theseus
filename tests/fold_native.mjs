@@ -87,8 +87,9 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await p.evaluate(`document.querySelector('#messages > [data-id="${newer}"]').focus()`);
       await until(() => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return Boolean(b)&&!b.hidden})()`), width + ': the newer card lights, with its bar');
       const acts = [];
-      for (let i = 0; i < 4; i++) { await p.key('Tab'); acts.push(await p.evaluate(`document.activeElement.closest('.message-bar') ? document.activeElement.dataset.act : document.activeElement.classList.contains('card-star') ? 'star' : ''`)); }
-      assert.deepEqual(acts, ['star', 'thumb', 'reply', 'more'], width + ': Tab reaches the newer card\'s star, then its ⋯, on its bar');
+      for (let i = 0; i < 5; i++) { await p.key('Tab'); acts.push(await p.evaluate(`document.activeElement.closest('.message-bar') ? document.activeElement.dataset.act : document.activeElement.classList.contains('card-star') ? 'star' : ''`)); }
+      // Fold is on the bar since item 473.
+      assert.deepEqual(acts, ['star', 'thumb', 'reply', 'fold', 'more'], width + ': Tab reaches the newer card\'s star, then its ⋯, on its bar');
       await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(line)})`), true, width + ': Tab reaches the line');
       await p.key('Enter');

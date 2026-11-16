@@ -319,8 +319,10 @@ async function run() {
       await press(p, '#next-message');
       await until(p, () => document.querySelector('#source-body').textContent.startsWith('Mine to edit'), 'the Reader on the person\'s own message');
       assert.ok((await menu('own')).includes('Edit'), `${scheme}: Edit on the person's own message`);
-      // The pencil Edit shows is the New message button's own drawing, cloned: the button keeps it.
-      kept.push([scheme, await p.evaluate(() => [document.querySelectorAll('#new-message svg').length, document.querySelectorAll('#reader .reader-header [data-glyph], .message-bar [data-glyph]').length])]);
+      // The pencil Edit shows is the New message button's own drawing, cloned: the button keeps it. The message bar's
+      // own buttons show glyphs of their own (item 473); a glyph anywhere else on the bar or in the title row is counted.
+      kept.push([scheme, await p.evaluate(() => [document.querySelectorAll('#new-message svg').length,
+        [...document.querySelectorAll('#reader .reader-header [data-glyph], .message-bar [data-glyph]')].filter(g => !g.parentElement.matches('.message-bar > button')).length])]);
       await close(p);
     }
     // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
@@ -331,7 +333,7 @@ async function run() {
     const labels = new Set(seen.map(row => row.label));
     for (const label of ['Copy Link', 'Mark unread', 'Mark read', 'Fold message', 'Unfold message', 'Start a topic from this', 'Add to pipeline', 'Quote selection', 'Edit',
       ...(shape === 'stacked' ? ['Wide layout', 'Stacked layout'] : [])]) assert.ok(labels.has(label), `${label} was seen: ${[...labels].join(', ')}`);
-    assert.deepEqual(kept, [['light', [1, 0]], ['dark', [1, 0]]], 'the New message button keeps its pencil; the Reader\'s title row and the message bar carry no menu glyph');
+    assert.deepEqual(kept, [['light', [1, 0]], ['dark', [1, 0]]], 'the New message button keeps its pencil; the Reader\'s title row and the message bar carry no menu glyph, the bar\'s own buttons\' glyphs aside');
   });
 
   for (const scheme of ['light', 'dark']) {
