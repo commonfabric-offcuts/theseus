@@ -11,7 +11,7 @@ from . import whispers
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups
-from .stacks import act_fields, awaiting_fields, record_wait_start
+from .stacks import act_fields
 from .message_edit import current_words, edited, is_held, mark, plain, quoted_revision, reading, revision, words, withheld
 
 
@@ -410,8 +410,6 @@ class Conversation:
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"),
                     1 if snapshot.get("go_ahead") else 0)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
-        # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
-        record_wait_start(db, sequence)
         # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
         if counts and not record_only:
             db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
@@ -639,8 +637,6 @@ class Conversation:
         reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
         # What the reader and the topic recorded about each message in its stack (stacks.py).
         act_fields(db, actor, items)
-        # Whether each of the reader's own messages still waits for a reply (item 475), until the first reply from anyone else.
-        awaiting_fields(db, actor, topic, items)
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 

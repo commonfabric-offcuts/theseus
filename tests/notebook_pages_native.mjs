@@ -483,7 +483,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // The Reader's ⋯ at a revision copies its links and offers no Edit page.
       p = await opened('nb-reader-menu-' + label, `${facts.origin}/?topic=${read.topic_id}&page=${theirs}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Their page'`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Copy Link to Revision 1'), 'the ⋯ opens');
       assert.equal((await menuItems(p)).includes('Edit page'), false, 'no Edit page for a reader Core does not let write');
@@ -515,7 +515,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // And the Reader's ⋯ offers its owner Edit page.
       p = await opened('nb-owner-menu-' + label, `${facts.origin}/?topic=${own.topic_id}&page=${made.id}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(name)}`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Edit page'), 'Edit page for the topic\'s owner');
       assert.deepEqual(p.errors, []); await p.close();

@@ -968,11 +968,9 @@ MESSAGE_READS = {
                            "folds for them, checked by visible() before the fold is recorded; the acts and stars views, under the whisper rule; "
                            "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
                            "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
-                           "someone is outside never moves a position or a sequence they read; whether a message of the reader's own still waits for a "
-                           "reply (item 475): replies to it under VISIBLE, the newest message on the record by anyone else from the "
-                           "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
+                           "someone is outside never moves a position or a sequence they read; a dossier's namer (item 479), from "
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
-                           "whisper never makes its author a namer", 22),
+                           "whisper never makes its author a namer", 18),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
