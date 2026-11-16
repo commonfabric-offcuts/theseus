@@ -1,0 +1,9 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the New message composer popped up",
+  "reading stacks the Reader's archive button shows for no Notebook page"
+ ],
+ "label": "redbefore-csshold-header-fc52f6e7-1",
+ "snapshot": "6dc0e7d40cec728f71248f5f577dea2fd1ff6354"
+}
