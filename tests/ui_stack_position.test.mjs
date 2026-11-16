@@ -95,6 +95,22 @@ test('an acts read reaching a later act asks for the Reader\'s neighbours afresh
   assert.equal(await views.readActs(9, async () => { current = false; return { ...acts, version: 9 }; }, () => current), false);
   assert.equal(asked.length, 2, 'a read overtaken asks for nothing');
 });
+// The first acts read after the page loads: each loaded message's position carries the act Core had reached when it
+// read the page (at.acts), and the Reader's neighbours are read after the page. An acts read reaching only that act
+// moves no dossier since, so it asks for nothing; one reaching a later act asks for the neighbours afresh.
+test('the first acts read, reaching only the act the loaded page was read at, asks for no neighbours; a later act does', async () => {
+  const asked = [];
+  const views = new TopicViews({ instanceId:'i', topicId:'t', invalidate: (...args) => asked.push(args) });
+  const item = (id, seq) => ({ id, seq, topic_id:'t', body:'Words', author_id:'agent-1', acts:{}, stack_position: position(4, 2, { root_id:id }) });
+  views.messagesPage({ instance_id:'i', items:[item('a', 1), item('b', 2)], next_cursor:null, relevant_versions:{ topic:1 } }, { initial:true });
+  const acts = version => ({ instance_id:'i', topic_id:'t', version, next_cursor:null, items:[] });
+  const read = version => async (name, args) => name === 'message_acts' ? acts(version)
+    : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4, version, { root_id:message_id }) })) };
+  await views.readActs(2, read(2), () => true);
+  assert.deepEqual(asked, [], 'an acts read at the act the page was read at asks for nothing: the neighbours read since stand');
+  await views.readActs(3, read(3), () => true);
+  assert.deepEqual(asked, [['neighbors', 3, true]], 'a later act asks for the neighbours afresh');
+});
 test('acts read again are drawn though reading the places after them fails, and places learned before a failing page are drawn too', async () => {
   // A freshness read can fail after the acts are learned (superseded, or deferred behind the page's own reads); the
   // next read then finds nothing new, so what the failed one learned must be drawn by it.

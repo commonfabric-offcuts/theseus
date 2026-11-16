@@ -14472,6 +14472,20 @@
   },
   {
    "item": 426,
+   "act": "The first acts read after the page loads, reaching only the act Core had when it read the page, leaves the Reader's neighbours standing",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "      if (seen > -Infinity) this.neighborsAt = seen;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 426,
    "act": "A New line waiting at the bottom for an older message sits above More, never after a dossier below it",
    "break": [
     [

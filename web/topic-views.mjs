@@ -178,6 +178,13 @@ export class TopicViews {
       this.messages.set(item.id, item); this.runs.set(item.id, run);
     }
     this.learnPositions(answer.items.map(item => ({ message_id: item.id, stack_position: item.stack_position })));
+    // Each position Core answers carries the act it had reached when it read the page (at.acts). The Reader's
+    // neighbours are read after the page, so an acts read reaching no later act than the first page's has moved no
+    // dossier since either: it asks for them nothing (readActs, item 426).
+    if (initial && this.neighborsAt === undefined) {
+      const seen = answer.items.reduce((most, item) => integer(item.stack_position?.at?.acts) ? Math.max(most, item.stack_position.at.acts) : most, -Infinity);
+      if (seen > -Infinity) this.neighborsAt = seen;
+    }
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
