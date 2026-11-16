@@ -197,25 +197,28 @@ whether it acts; a pane that is a tree (`web/key-tree.mjs`) keeps one Tab
 stop, a ring on the row the keys are on, and the words a screen reader needs
 (tree, treeitem, level, place in its set, open or folded).
 
-- **The outline.** ↑ and ↓ move between the rows shown: outcomes, their
-  topics, Done (N) and Archived (N) and the topics of one open, More and
-  + New topic; past an open outcome's last row comes the next outcome, since
-  the outline lists no Notebook (its pages are the right rail's). Home and End
-  go to the first and last.
-  Return opens the row in place: a topic, or an outcome's Conversation with
-  its topics, folding every other outcome. A click or a tap on a row opens it
-  too, and leaves the keys on it with their ring, so ↑ ↓ and → go on from there. ⌘→ opens the focused outcome (or
-  a focused topic's outcome) and ⌘← folds it, with the keys on its row; →
-  opens a folded outcome, and on an open one goes on into the messages, as
-  on a topic (↓ reaches its topics); on Done (N) or Archived (N) → opens the
-  group or goes to its first row; ← goes to the row it is under or folds an
-  open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
+- **The outline.** ↑ and ↓ move between the rows shown: the Outcomes
+  heading's pencil (New outcome), outcomes, and under an open one its pencil
+  (New topic), its topics, Done (N) and Archived (N) and the topics of one
+  open, and More; past an open outcome's last row comes the next outcome,
+  since the outline lists no Notebook (its pages are the right rail's). Home
+  and End go to the first and last; ↑ from the first outcome lands on the
+  heading's pencil. Return opens the row in place: a topic, or an outcome's
+  Conversation with its topics, folding every other outcome; on a pencil it
+  opens its title line (docs/rails.md, "The outline"). A click or a tap on a
+  row opens it too, and leaves the keys on it with their ring, so ↑ ↓ and →
+  go on from there. ⌘→ opens the focused
+  outcome (or a focused topic's outcome) and ⌘← folds it, with the keys on its
+  row; → opens a folded outcome and shows its topics, the next → lands on its
+  pencil, and the next goes on into the messages; on Done (N) or Archived (N)
+  → opens the group or goes to its first row; ← goes to the row it is under or
+  folds an open one. ⇧⌘→ opens every outcome and ⇧⌘← folds every
   one, from anywhere in the outline; the next place reached tidies back to
   one open. ⌘↑ and ⌘↓ move an outcome, or a topic within its outcome, one
   place, the reader's own order kept wherever they sign in
   (docs/outline-order.md); ⌘Z right after puts the last move back. "Keys"
   under the outline lists them.
-- **Between the panes.** → on a topic, on an open outcome, or on a row that
+- **Between the panes.** → on a topic, on a pencil, or on a row that
   opens nothing moves into the messages, onto the message last lit there, else the oldest one not read (just above the New
   line), else the first in view; ↑ and ↓ then move the light, and Return
   opens the Reader. On a stack, → opens it to every message and ← folds it
@@ -266,7 +269,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   and ↓ go on from it and → goes into the messages. A press on such a row
   whose move goes nowhere (the place already being read, or a move the guard
   refuses) keeps the keys on it too. A press on a control inside a row keeps
-  its own way, and what a row opens itself (+ New topic's title line, the
+  its own way, and what a row opens itself (a pencil's title line, the
   Reader on a waiting question) has the focus as after Return on the row. On
   a phone the drawer closes as the page moves, so the focus is on the page's
   heading, and the drawer opens again on the row tapped, ringed; after a move

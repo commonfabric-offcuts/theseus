@@ -234,7 +234,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await run(p), original, 'current topic is a no-op');
     // Tab/↓/Return activation from ordinary document focus, never click().
     // A press on the logo block's workspace name starts Tab there; Tab passes
-    // the notices and New outcome before the outline, which is one Tab stop on
+    // the notices before the outline (its New outcome pencil is one of its rows), which is one Tab stop on
     // the topic being read, and ↓ moves on to the next (docs/interaction.md,
     // "Keys across the panes").
     await p.evaluate('document.querySelector("#instance-label").scrollIntoView({block:"center"})'); await p.point('#instance-label');

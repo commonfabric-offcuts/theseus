@@ -41,7 +41,7 @@ export function keyAction(event) {
 // The keys, in plain words, as the outline's legend and the guide list them.
 export const KEY_WORDS = [
   ['↑ ↓', 'move through the outcomes and topics; Home and End go to the first and last'],
-  ['Return', 'opens the topic, or the outcome\'s Conversation with its topics, folding every other outcome'],
+  ['Return', 'opens the topic, or the outcome\'s Conversation with its topics, folding every other outcome; on a pencil, a new topic\'s or outcome\'s title line'],
   ['⌘→ ⌘←', 'open and fold an outcome'],
   ['⇧⌘→ ⇧⌘←', 'open every outcome, or fold every one'],
   ['→ ←', 'open or fold, then move between the outline, the messages and the right rail'],
