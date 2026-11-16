@@ -70,7 +70,7 @@ const DESTROYED = /Execution context was destroyed/;
 const documents = new WeakMap();
 const nextDocument = (opened, seen) => new Promise(resolve => {
   const known = documents.get(opened);
-  if (!known || known.count > seen || opened.isClosed()) resolve(); else known.waiting.push(resolve);
+  if (!known || known.count >= seen || opened.isClosed()) resolve(); else known.waiting.push(resolve);
 });
 const read = async (opened, expression) => {
   const seen = documents.get(opened)?.count ?? 0;
