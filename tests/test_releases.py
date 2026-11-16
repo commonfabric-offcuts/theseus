@@ -380,6 +380,8 @@ for _name in list(ReleaseCase.__dict__):
     if _name.startswith("test_"):
         for _case in (Backfill, HostedJudgment, AttachJudgmentTool):
             setattr(_case, _name, None)
+# Unbound, or the loader collects the last case twice: once by its name and once as _case.
+del _case, _name
 
 
 if __name__ == "__main__":

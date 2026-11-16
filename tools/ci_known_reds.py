@@ -324,6 +324,13 @@ def unit_evidence(step, out, expected):
             name + ': reviewed check inventory omitted or duplicated')
 
 
+def frame_at(data, frame):
+    """Whether an admission's source frame is in the file data: its stripped statement, as many times, its occurrence
+    among them."""
+    matches = [line.strip() for line in data.decode().splitlines()].count(frame['text'])
+    return matches == frame['count'] and 0 <= frame['index'] < matches
+
+
 def own_steps(commit):
     """This tool's release check's (required step names, {native step: its harness}), whatever commit is asked: the event
     base's, when the base's tools run the classifier, as here."""
@@ -376,9 +383,13 @@ def load_policy(policy, base_root, steps=own_steps):
         require(isinstance(fp, dict) and set(fp) == {'chain', 'values'} and bool(fp['chain'])
                 and isinstance(fp['values'], str) and bool(fp['values']), 'invalid admission fingerprint')
         for frame in fp['chain']:
-            text = source(base_root, red['source_commit'], frame['path']).decode().splitlines()
-            matches = [line.strip() for line in text].count(frame['text'])
-            require(matches == frame['count'] and 0 <= frame['index'] < matches, 'unverified admission source frame')
+            require(frame_at(source(base_root, red['source_commit'], frame['path']), frame), 'unverified admission source frame')
+            # The plan carries the admission still failing with exactly this chain, and a heal is compared with the
+            # plan's source (classify), so each frame must also be there, as a file the plan reviewed.
+            require(frame['path'] in policy['source_hashes']
+                    and frame_at(source(base_root, policy['source_commit'], frame['path']), frame),
+                    'admission %s %r: source frame %s %r does not resolve at plan %s; review first'
+                    % (red['step'], red['case']['name'], frame['path'], frame['text'], policy['source_commit']))
         if native[red['step']] == release_check.COMPOSE:
             require(compose_completed(red['completion']), 'baseline Compose completion unattested')
         else:
@@ -414,14 +425,18 @@ def classify(policy, observed, root, commit):
             if row['passed'] or (row.get('expectedFailure') and row.get('mutationCaught') is True):
                 if red:
                     # Passing a materially edited test is not proof the original
-                    # failed case healed. Its reviewed harness must still apply.
+                    # failed case healed. Its reviewed harness, helpers and
+                    # assertions must still apply: those of the policy's own
+                    # source, where its review carried the admission (still
+                    # failing with exactly its fingerprint), not of the
+                    # admission's earlier source_commit, which dates its evidence.
                     harness = NATIVE[step].harness
                     require(definition_bytes(source(root, commit, harness), harness) ==
                             definition_bytes(source(root, policy['source_commit'], harness), harness),
                             'healed case has changed harness; review inventory first')
                     for path in {frame['path'] for frame in red['fingerprint']['chain']}:
                         require(definition_bytes(source(root, commit, path), path) ==
-                                definition_bytes(source(root, red['source_commit'], path), path),
+                                definition_bytes(source(root, policy['source_commit'], path), path),
                                 'healed case has changed helper/assertion source; review first')
                     result['healed'].append(item)
                 continue

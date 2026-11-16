@@ -128,6 +128,30 @@ old admission. All referenced source commits must be available in the checked
 out Git history. Required-step protocol changes need a coordinated verifier
 update; source transitions do not add support for an unknown harness mode.
 
+A release check that adds a required step leaves every policy reviewed before
+it short: at a base that runs the step, the classifier refuses the policy
+outright ('incomplete reviewed steps'), and each deploy names the step in its
+record's steps_beyond_policy. The next policy takes as its source_commit a
+release-branch commit that runs the step. Its required steps and harnesses are
+that commit's tools/release_check.py, its source_hashes the blobs there of every
+frozen definition, and its inventory each step's checks in that commit's
+complete hosted push run (the native results files, and the verbose
+python-units, node-units and deploy-refusals logs, each identity once). An
+earlier admission is kept, unchanged, only where that run shows its case still
+failing on its target profile with exactly its fingerprint; every other is
+retired, and so is every transition, since each plan is checked against the one
+step list. A new or changed admission is still a separate reviewed baseline PR.
+Item 575's policy was made so at 932e5c3 (train 22, release/live73), from push
+run 43814035864, when train 21 added native-card-marks and native-webkit-invite.
+
+Two properties of the checkout keep any policy loadable and its inventory
+satisfiable, and `tests/test_tools_ci_known_reds.py` checks both: every file read
+a test makes is declared in `tools/ci-input-reads.json` (an undeclared read
+refuses every plan that holds it, the policy's own source commit included), and
+python-units runs each check once (a test module that leaves a TestCase bound to
+a second module name, such as a loop variable, runs its checks twice, and a
+reviewed inventory names each check once).
+
 For a legitimate feature test edit: keep the feature pending, independently
 review its exact new test definition/inventory, then merge a separate base-policy
 PR containing that complete snapshot and review reference alongside the old
@@ -179,7 +203,18 @@ A different observed profile requires a
 runner_evidence_sha256 receipt reviewed for that exact target profile. A Mac
 seed is provenance, not permission for an unrelated runner failure.
 
-An admitted case passing is reported healed. A missing, duplicate, renamed or
+An admitted case passing is reported healed. Its harness and the files of its
+fingerprint's chain are compared with the plan's source_commit, where the policy's
+review carried the admission still failing with exactly its fingerprint, not with
+the admission's own earlier source_commit, which dates its evidence: a helper that
+changed between the two does not refuse the pass the policy was made to expect,
+and one the candidate changed still asks for review first. Loading the policy
+checks each admission's frames (stripped text, multiplicity and occurrence
+index) at the admission's own source_commit and again at the plan's, for the
+base plan and for each transition plan, in a file the plan reviewed: a plan
+whose source no longer holds an admitted failing line, or holds it a different
+number of times, is refused naming the admission and the plan, so a pass is
+never reported healed against it. A missing, duplicate, renamed or
 materially changed case refuses validation. New failures, different assertion
 values or helper/call-site chains, setup/cleanup failures, escaped mutants and
 non-browser failures are unexpected. Units, deploy refusals and wake replay

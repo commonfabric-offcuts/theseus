@@ -91,6 +91,26 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/native_calls.test.mjs": {
+    "1fcb1d763209312ccbfc1a710a79ef259ae599d8611cff000537ae2cf9a4556a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/notebook_card_images_native.mjs": {
+    "8c4e1d107651a100be45f13be69c7135bcec09cbc63276730a2392152b634d20": {
+      "inputs": [
+        "tests/fixtures/media/one.jpg"
+      ],
+      "scope": "repository"
+    },
+    "b52bd06f475bd4b52aeb5d3684224307817ad9b8e7109f4817922d27baf2b18e": {
+      "inputs": [
+        "tests/fixtures/media/one.png"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/notebook_pages_native.mjs": {
     "9ea3bd7f74b575915787369fd9e2451041acda1db82dbf67433ea553a1be6b7a": {
       "inputs": [],
@@ -352,6 +372,64 @@
       "scope": "repository"
     }
   },
+  "tests/test_agent_invite.py": {
+    "26c42fde6c76bf60bde9f3ee049be2a8e0b22a6a0afa7541286a8a012aefb45f": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "26c42fde6c76bf60bde9f3ee049be2a8e0b22a6a0afa7541286a8a012aefb45f:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "65373234c9e5dc5419cfdcdd32394512dc3eb726dfe8c231caef4fe4496ddc58": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "69f1b4e2b8c7cba98901dc51aec9848d4362fd86851a99b284973d298a22f527": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6fbb8e11c7689ab01976dfac10bd4558ea10c6c09bb4b13417d1b74e4eabc4de": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6fbb8e11c7689ab01976dfac10bd4558ea10c6c09bb4b13417d1b74e4eabc4de:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "9409e6feb17be6902e51e3c71638e2e9e576e264b8b5b2cfc233ee3d00c74491": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_agent_notes.py": {
     "d99a26a08b79ade0947aea973de291ba995c6e857dc9abd3edb84f47c058fcb1": {
       "inputs": [],
@@ -551,6 +629,14 @@
     }
   },
   "tests/test_assessment_dispatch.py": {
+    "1fff9731f7b586c59b3386d7df51da8752b2f665dca674e8022a6964088291db": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "1fff9731f7b586c59b3386d7df51da8752b2f665dca674e8022a6964088291db:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "4df3952e1042e7da6819d11720799bc085e22755ea7ad9be0fdd87fd470027e0": {
       "inputs": [
         "docs/team-assessments.md"
@@ -592,6 +678,14 @@
         "docs/team-assessments.md"
       ],
       "scope": "repository"
+    },
+    "bd82a3fbe2ad7cd97b9d60a0ff7ecda54b0e6395899d23de811cfb7c80e1aeb9:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "bd82a3fbe2ad7cd97b9d60a0ff7ecda54b0e6395899d23de811cfb7c80e1aeb9:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
     },
     "c1072381d3f28e3687ccc917a5627195e855626b8eea76d5f3272c686e4993bd": {
       "inputs": [
@@ -896,6 +990,30 @@
       "scope": "generated/system/product"
     },
     "fd161592043249623c37e6eb5b7b4f1c962c6c429d86cc27266d094be475f9e0:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_checks_base_at_run.py": {
+    "5da89697934f916e43f1b6d9d277bcf5b2def8c061bd8677bcd965679954e2ed": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "7dfbc77b94f2474fc41324dfd0f794427ce1aee9e5e88cd811a31e8f81d8acf6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7dfbc77b94f2474fc41324dfd0f794427ce1aee9e5e88cd811a31e8f81d8acf6:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7dfbc77b94f2474fc41324dfd0f794427ce1aee9e5e88cd811a31e8f81d8acf6:2": {
       "inputs": [],
       "scope": "generated/system/product"
     }
@@ -1704,6 +1822,14 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/test_memory_card_images.py": {
+    "bb1e636f165e626c6e35e31122c6459c97b3a17649cbdd8f7f14e91513383e1d": {
+      "inputs": [
+        "tests/fixtures/media/one.png"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/test_memory_reads.py": {
     "168925ce3b193e16b14b947e24f863cbc0085146efa72df36aad23c5afaca10f": {
       "inputs": [],
@@ -1767,6 +1893,14 @@
     }
   },
   "tests/test_message_edit.py": {
+    "6c9dedd4106808bba60aefac64da1a3462c26ad5fd9484f9bf40dac6574b8ac5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6c9dedd4106808bba60aefac64da1a3462c26ad5fd9484f9bf40dac6574b8ac5:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a": {
       "inputs": [],
       "scope": "generated/system/product"
@@ -1774,10 +1908,186 @@
     "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:1": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_message_exposure.py": {
+    "5d6be2fe3909aac92cac556cd64329f7a923f976df8df67be39af105aaddf067": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5d6be2fe3909aac92cac556cd64329f7a923f976df8df67be39af105aaddf067:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_message_hold.py": {
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "18bd22ae54791198a43c31e977bb90f3153cc42cb4944bef207fd20ccc50c896:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5e9bf6b4b36c540ce64eb042ae371f72c2336c63ba59a9351e3fc02c6eac8a59": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:10": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:11": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:12": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:13": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:14": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:15": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:16": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:17": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:18": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:19": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:20": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:21": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:22": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:23": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:24": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:25": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:7": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:8": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7d3e5a2fda4fbfac54f29c01e96142e1eead8e4b2de448ccdf6cbcae6cc72185:9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b1165b30bd052e1f1db023107b0a351d182e19b8b34c0d3b57d1e3789914d2f8": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/test_message_words.py": {
     "676aeac0a248df6af461191f2c5a4ae21ab4d9c90a2f004bab26887bb5164652": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7433460ce20e325adbed13ac5838695807f701434c1fbd44f0e554f2af88e151": {
       "inputs": [],
       "scope": "generated/system/product"
     }
@@ -1851,6 +2161,12 @@
       "inputs": [],
       "scope": "generated/system/product"
     },
+    "8ada77bbe613d28adc1c31c33614732cedde99bbb74ff5c6f3d438d85eb3e9a7": {
+      "inputs": [
+        "tests/fixtures/schema_41.sql"
+      ],
+      "scope": "repository"
+    },
     "91f82d17393aedb60ce4ebedfee747f7e9811b2262f48db80e812f03eb2803cc": {
       "inputs": [],
       "scope": "generated/system/product"
@@ -1863,6 +2179,12 @@
       "inputs": [],
       "scope": "generated/system/product"
     },
+    "a751fde4dacc16eb83c9131edbe912bc2ac5d37b52e48fcf3fac5ea38564d1fd": {
+      "inputs": [
+        "tests/fixtures/schema_40.sql"
+      ],
+      "scope": "repository"
+    },
     "a7ee15b1b2b66111b13e0a06577691ac966dad942baa9b1bba4843c373583aa7": {
       "inputs": [],
       "scope": "generated/system/product"
@@ -1872,6 +2194,14 @@
       "scope": "generated/system/product"
     },
     "b5d895c386004a4cbf8c33f6be277713d29ecb3a4fe140a0b89cf5c765444872": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "bdcaf48df2217b86b1b0f778fd2013fd3fb48a97053fd544b02ba9a025658591": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "bdcaf48df2217b86b1b0f778fd2013fd3fb48a97053fd544b02ba9a025658591:1": {
       "inputs": [],
       "scope": "generated/system/product"
     },
@@ -1934,6 +2264,12 @@
     "f306f9ef008a85bb5956da1b8dd0d61969678a64f5ecda4e0e84d2dcad70891c": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "f3e9ed42eb3d75b211c747f254a59ce37cfa90a71e5e9a35df6ccfd420bb5d0d": {
+      "inputs": [
+        "tests/fixtures/schema_42.sql"
+      ],
+      "scope": "repository"
     },
     "f96937370a706fde93816d0ffb36cbf50116dec3e1de5c0721d4095d5ac01356": {
       "inputs": [],
@@ -2485,6 +2821,10 @@
       ],
       "scope": "repository"
     },
+    "412d6660f2f71da46d66a161d6c2e61d53f49f436c371be62cdc55fa2357d15b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "694401378fb07c70c395cf2d166c9cee600079d2d553f41a9c5d25f01a655390": {
       "inputs": [
         "docs/tools.md"
@@ -2599,6 +2939,18 @@
       ],
       "scope": "repository"
     },
+    "061aa0740dc5d46c6ba54a5457388b6cf2f03461a8297dcd06105052eeb1b07f:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "061aa0740dc5d46c6ba54a5457388b6cf2f03461a8297dcd06105052eeb1b07f:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "061aa0740dc5d46c6ba54a5457388b6cf2f03461a8297dcd06105052eeb1b07f:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "0edc3b6acf98fbb32326f6c8375cc3a2cbef733f7d9c1a95aa550d32904e7d70": {
       "inputs": [
         "bin/aim-next",
@@ -2618,6 +2970,10 @@
         "docs/tools.md"
       ],
       "scope": "repository"
+    },
+    "23cafcce2f1a494e287905a1c56ddd23aeaaefdf00a374dcf47f9a8f04f6ec88:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
     },
     "25302b465a8b89780f59d9ee35cf3432700ebf7a023c5cf103b2540483103112": {
       "inputs": [
@@ -2679,6 +3035,10 @@
       ],
       "scope": "repository"
     },
+    "45857b4f60f0577c2d79afd5115a13acf930d9389f2eef331e772dabdcb92a79": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "50b5cabac7000904d3c8032f96270e9613b099ebc74c4862620a6438714424ff": {
       "inputs": [
         "bin/aim-next",
@@ -2706,6 +3066,18 @@
         "bin/aim-next-runner",
         "bin/aim-next-server",
         "docs/tools.md"
+      ],
+      "scope": "repository"
+    },
+    "694401378fb07c70c395cf2d166c9cee600079d2d553f41a9c5d25f01a655390": {
+      "inputs": [
+        "tests/fixtures/at_names.json",
+        "tests/fixtures/replay/wake-2026-11-05.json",
+        "tools/ci-input-reads.json",
+        "tools/ci_input_reads.py",
+        "tools/ci_known_reds.py",
+        "tools/known_reds.py",
+        "tools/release_check.py"
       ],
       "scope": "repository"
     },
@@ -2788,6 +3160,18 @@
         "docs/tools.md"
       ],
       "scope": "repository"
+    },
+    "9b23a7e9ff29e51b95a9e0a20640ce1a96a130d0369b585aa7d68361ac4c79ca": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "9b23a7e9ff29e51b95a9e0a20640ce1a96a130d0369b585aa7d68361ac4c79ca:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "9b23a7e9ff29e51b95a9e0a20640ce1a96a130d0369b585aa7d68361ac4c79ca:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
     },
     "c79f4a0315f0636fe0d7237b08f4ac1a12308d36e5da0c42776f8cecdaf935f8": {
       "inputs": [
@@ -3229,6 +3613,35 @@
       "scope": "repository"
     }
   },
+  "tests/test_tools_train.py": {
+    "0145d1e96b57de8ab95910318f1af19ab8b4a9c9615ac96ef116cacdbb4a3c5b": {
+      "inputs": [
+        "tools/ci_known_reds.py"
+      ],
+      "scope": "repository"
+    },
+    "061aa0740dc5d46c6ba54a5457388b6cf2f03461a8297dcd06105052eeb1b07f": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "550ef4a6ca86cb81556ef60c6cacf48865fe24b2f85e702aa74ea46611e3667d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e9df5b579334c08a4eb11047d5359f49cfecb72068edf8e2d3719ed09d37a2b6": {
+      "inputs": [
+        "tools/checks.py",
+        "tools/ci_input_reads.py",
+        "tools/ci_known_reds.py",
+        "tools/deploy.py",
+        "tools/known_reds.py",
+        "tools/release_check.py",
+        "tools/releases.py",
+        "tools/train.py"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/test_tools_wake_replay.py": {
     "3352a2d4b6bd3de3aaf8ec3d248e99582fa1db53b1edbc5cb144bf8d2cd9784c": {
       "inputs": [],
@@ -3383,6 +3796,28 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/test_web_build.py": {
+    "41d91d619caa3105826a9628fdff5329cd19d92747ce5f22e657980d2554c999": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8d12e9ec83314f0009f316032076a2c9ebe739b70b53c3f75c22a93b92cc25a9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8e249fa77c8e29370f1ab8da8c2af406b876391c70d5fcab4efed9de120a8ed1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "dfd39cdb4c0ce15b4cf97fe92b10507f1142d6489742e2a72636eb32db1e9983": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "dfd39cdb4c0ce15b4cf97fe92b10507f1142d6489742e2a72636eb32db1e9983:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_whispers.py": {
     "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
       "inputs": [],
@@ -3409,6 +3844,12 @@
   },
   "tests/ui_author_colors.test.mjs": {
     "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/ui_boot.test.mjs": {
+    "be5e87bbc6dfbf350984fa786f62cb6733519f619df21605104f9dff0333ad2c": {
       "inputs": [],
       "scope": "generated/system/product"
     }
@@ -3467,6 +3908,10 @@
       "scope": "generated/system/product"
     },
     "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b41e773fc35c11172536b1427aed4c1e25e59ad5471b7e39f8814efe3579d924": {
       "inputs": [],
       "scope": "generated/system/product"
     }
