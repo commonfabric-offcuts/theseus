@@ -18,7 +18,7 @@ from aim_next.authority import Authority, AuthorityError
 from aim_next.contract import StoreError, _json
 from aim_next.invite import invite
 from aim_next.migrations import MigrationError, migrate
-from aim_next.profile import load_profile
+from aim_next.profile import load_profile, write_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
 from aim_next.validation import _command_envelope
 import test_store as fixtures
@@ -3912,6 +3912,53 @@ class InviteStepCase(MigrationCase):
         given = invite(self.store, "agent-a", self.envelope("Night watch", "coordinator-retypes"), folder)
         self.assertEqual((given["status"], given["result"]["agent"]["id"], given["sign_in"]["written"]), ("committed", "night-watch", True), given)
         self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
+
+    def test_a_name_invited_under_324s_id_rule_is_given_back_under_its_id_not_checked_at_the_new_rules_place(self):
+        # 324 cut IDs as [a-z0-9] without taking accents off, so Søren was registered s-ren; 525's rule makes soren. The
+        # server finds the agent through its invitation, so what is at soren.profile.json (here the coordinator's own
+        # sign-in file) is not looked at, retyped as a new request or the same request sent again after a lost answer.
+        sent = self.invited_at_42("Søren", "s-ren")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        theirs = folder / "soren.profile.json"
+        write_profile(theirs, self.path, "test-instance", "agent-a", binding=self.binding)
+        held, actors = theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")
+        for envelope in (self.envelope("Søren", "retyped"), sent):
+            receipt = invite(self.store, "owner", envelope, folder)
+            self.assertEqual(receipt["status"], "committed", receipt)
+            self.assertEqual((receipt["result"]["agent"], receipt["sign_in"]["written"], receipt["sign_in"]["path"]),
+                             ({"id": "s-ren", "name": "Søren", "kind": "agent"}, True, str(folder / "s-ren.profile.json")))
+        self.assertEqual(load_profile(folder / "s-ren.profile.json").actor_id, "s-ren")
+        self.assertEqual((theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")), (held, actors), "kept, and no one registered")
+        # Someone else typing Søren is refused, and gets nothing at either place.
+        refused = invite(self.store, "agent-a", self.envelope("Søren", "coordinator-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        self.assertEqual(sorted(os.listdir(folder)), ["s-ren.profile.json", "soren.profile.json"])
+        # A new name is given an ID by 525's rule, and the old ID stands.
+        self.assertEqual(invite(self.store, "owner", self.envelope("Bjørn", "fresh"), folder)["result"]["agent"]["id"], "bjorn")
+        self.assertEqual(self.sql("SELECT id,name FROM actors WHERE id IN ('s-ren','soren','bjorn') ORDER BY id"), [("bjorn", "Bjørn"), ("s-ren", "Søren")])
+
+    def test_someone_elses_file_at_the_invited_agents_own_place_is_refused_before_core_is_asked(self):
+        # The place checked before Core is asked is the invited agent's own, s-ren.profile.json, under 324's ID.
+        self.invited_at_42("Søren", "s-ren")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        write_profile(folder / "s-ren.profile.json", self.path, "test-instance", "agent-a", binding=self.binding)
+        operations = self.sql("SELECT count(*) FROM operations")
+        receipt = invite(self.store, "owner", self.envelope("Søren", "retyped"), folder)
+        self.assertEqual((receipt["status"], receipt["recorded"], (receipt.get("error") or {}).get("code")), ("rejected", False, "SIGN_IN_TAKEN"), receipt)
+        self.assertIn("s-ren.profile.json", receipt["error"]["message"])
+        self.assertEqual(self.sql("SELECT count(*) FROM operations"), operations, "Core was not asked")
+
+    def test_a_fresh_soren_invited_after_the_upgrade_gets_525s_id(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder = self.folder()
+        receipt = invite(self.store, "owner", self.envelope("Søren", "fresh"), folder)
+        self.assertEqual((receipt["result"]["agent"]["id"], receipt["sign_in"]["path"]), ("soren", str(folder / "soren.profile.json")), receipt)
+        self.assertEqual(load_profile(folder / "soren.profile.json").actor_id, "soren")
 
     def test_a_receipt_that_never_committed_fills_no_invitation_and_the_step_keeps_every_row(self):
         self.refused_at_42("agent-b", "Sneaky helper", "refused-forbidden", "FORBIDDEN")
