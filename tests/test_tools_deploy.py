@@ -1269,11 +1269,11 @@ class DeployRefusesJudgedTree(KnownRedsFiles, DeployCase):
         self.planned(host, sha=self.merged)
         written = self.evidence_of("00-release-check")
         self.assertEqual((written["commit"], written["passed"], written["reasons"]), (self.merged, True, []))
-        self.assertEqual(written["judged"], {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree})
+        self.assertEqual(written.get("judged"), {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree})
         record = self.evidence_of("02-release")["record"]
         self.assertEqual((record["commit"], record["items"]), (self.merged, [88]))
         self.assertEqual(record["measurements"]["release_check"]["commit"], self.judged, "the counts are the judged run's")
-        self.assertEqual(record["measurements"]["judged_tree"],
+        self.assertEqual(record["measurements"].get("judged_tree"),
                          {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree, "judgment": "pending"})
         self.assertEqual([call[-1] for call in host.calls if call[-1].endswith("^{tree}")],
                          [self.judged + "^{tree}", self.merged + "^{tree}"], "both trees are read from the live checkout's git")
@@ -1331,7 +1331,7 @@ class DeployRefusesJudgedTree(KnownRedsFiles, DeployCase):
         measured = self.evidence_of("02-release")["record"]["measurements"]
         self.assertEqual([red["case"] for red in measured["known_reds"]], [RED_CASE, "a whisper keeps its colour"])
         self.assertEqual(measured["native"]["steps"]["colors"], {"pass": 1, "total": 3}, "still counted as failed")
-        self.assertEqual(measured["judged_tree"]["judged_commit"], self.judged)
+        self.assertEqual((measured.get("judged_tree") or {}).get("judged_commit"), self.judged)
 
     def test_a_red_the_known_reds_do_not_list_is_refused_for_the_judged_summary_as_for_any(self):
         self.candidate_fails((RED_STEP, dict(failed=(RED_CASE, "a whisper keeps its colour"))), commit=self.judged)

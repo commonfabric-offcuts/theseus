@@ -687,9 +687,9 @@ def judge_summary(path, commit, basis=None, tree=None):
 
     basis: only for a summary that skipped steps, (the live commit, seen() of the paths changed since it at commit), read
     by the caller itself, or Refused; without it a skip is never taken.
-    tree: only for a summary of another full commit (item 588), tree(that commit): the tree it shares with commit, read
-    by the caller itself (same_tree), or Refused; such a summary describes commit's tree, and is judged as one of
-    commit is. Without it a summary of another commit is never taken."""
+    tree: only for a summary of another full commit (item 588), tree(that commit) reads, by the caller itself, the tree
+    it shares with commit (same_tree), or raises Refused; such a summary describes commit's tree, and is judged as one
+    of commit is. Without it a summary of another commit is never taken."""
     try:
         summary = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:

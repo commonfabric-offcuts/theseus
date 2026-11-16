@@ -19,7 +19,7 @@ Usage: tools/releases.py attach-judgment RELEASE --config CONFIG.json --runs ID[
 attaches the hosted judgment of an ordinary merged train's release, or of one
 deployed on the run of another commit with its tree (item 588), once it has
 landed, to that release's record in the live instance (docs/tools.md, "A merged
-train" and "A merged head judged before its merge"): each run and check, read
+train" and "A merged head its pull request's run judged"): each run and check, read
 from GitHub, completed and naming that release's commit as its head. Nothing
 else in the record changes.
 """
