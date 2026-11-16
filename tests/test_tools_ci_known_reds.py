@@ -536,7 +536,10 @@ class Evidence(unittest.TestCase):
 
     def test_the_release_checks_quarantine_rides_in_the_policy_and_no_other_field_does(self):
         # Item 549: the quarantine list shares the policy file, read at the event base, and is never an admission.
-        ci.load_policy(dict(copy.deepcopy(self.policy), quarantine=[]), self.repo)
+        try:
+            ci.load_policy(dict(copy.deepcopy(self.policy), quarantine=[]), self.repo)
+        except ci.Refused as refusal:
+            self.fail('the policy with a quarantine list is refused: %s' % refusal)
         with self.assertRaisesRegex(ci.Refused, 'invalid baseline fields'):
             ci.load_policy(dict(copy.deepcopy(self.policy), quarantined=[]), self.repo)
 

@@ -171,7 +171,7 @@ class AStepWithAQuarantinedRed(Fixture):
     def test_a_run_that_did_not_reach_its_end_holds_nothing(self):
         summary, step = self.check("a:2", unended=True)
         self.assertEqual(step["quarantine"]["held"], [])
-        self.assertIn("did not reach its end", step["quarantine"]["refused"])
+        self.assertIn("did not reach its end", step["quarantine"].get("refused", ""))
         self.assertFalse(summary["quarantine"]["green"])
 
     def test_a_quarantined_case_that_passes_records_its_pass(self):
@@ -204,7 +204,7 @@ class PolicyFromTheBase(Fixture):
 
     def test_the_checked_commit_itself_or_a_commit_after_it_is_never_the_base(self):
         summary, step = self.check("a:2", at=self.head)
-        self.assertIn("is the commit checked", summary["quarantine"]["refused"])
+        self.assertIn("is the commit checked", summary["quarantine"].get("refused", ""))
         self.assertNotIn("quarantine", step)
         self.assertFalse(summary["quarantine"]["green"])
         self.assertEqual(self.main("a:2", at=self.head)[0], 1)
@@ -213,11 +213,11 @@ class PolicyFromTheBase(Fixture):
         later = self.commit_file("elsewhere.txt", "x\n", "elsewhere")
         self.git("checkout", "-q", "--detach", self.head)
         summary, _ = self.check("a:2", at=later)
-        self.assertIn("not an earlier commit", summary["quarantine"]["refused"])
+        self.assertIn("not an earlier commit", summary["quarantine"].get("refused", ""))
 
     def test_a_base_that_cannot_be_read_quarantines_nothing_and_says_why(self):
         summary, step = self.check("a:2", at="f" * 40)
-        self.assertIn("cannot be read", summary["quarantine"]["refused"])
+        self.assertIn("cannot be read", summary["quarantine"].get("refused", ""))
         self.assertFalse(summary["quarantine"]["green"])
         self.assertFalse(step["passed"])
 
@@ -226,7 +226,7 @@ class PolicyFromTheBase(Fixture):
         self.base = self.commit_policy({"version": 1, "quarantine": [entry(stages=(STAGE,))]}, "one run only")
         self.head = self.commit_file("application.txt", "again\n", "candidate")
         summary, _ = self.check("a:2")
-        self.assertIn("needs two live runs", summary["quarantine"]["refused"])
+        self.assertIn("needs two live runs", summary["quarantine"].get("refused", ""))
         self.assertFalse(summary["quarantine"]["green"])
 
     def test_the_event_base_is_the_pull_requests_base_or_the_commit_a_push_moved_from(self):
@@ -255,7 +255,7 @@ class PolicyFromTheBase(Fixture):
         with mock.patch.dict(os.environ, {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_EVENT_PATH": str(event)}):
             summary, _ = self.check("a:2", at="event")
         self.assertIsNone(summary["quarantine"]["at"])
-        self.assertIn("has no event base", summary["quarantine"]["refused"])
+        self.assertIn("has no event base", summary["quarantine"].get("refused", ""))
         self.assertFalse(summary["quarantine"]["green"])
 
 
@@ -343,6 +343,7 @@ class Workflow(unittest.TestCase):
         command = section.split("run: |\n", 1)[1].replace("\\\n", " ")
         argv = [words for words in (shlex.split(line, comments=True) for line in command.splitlines()) if words and words[0] != "set"][0]
         self.assertEqual(argv[:3], ["/usr/bin/python3", "-I", "tools/release_check.py"])
+        self.assertIn("--quarantine-at", argv)
         self.assertEqual(argv[argv.index("--quarantine-at") + 1], "event")
 
 
