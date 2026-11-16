@@ -25977,6 +25977,304 @@
    "check": {
     "python": "test_outcome_ends.py"
    }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover write that names Done beside its fields: Done is the owner's",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if \"done\" in args:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "    if False:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover's payload that names its own Done",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if \"done\" in value:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "    if False:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover written takes Done from the outcome owner's record, never the writer's",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "done=done_of(db, owner, payload[\"message_id\"])",
+     "done=done_of(db, actor, payload[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Only the outcome owner's own thumbs-up or reply settles a payload's Done",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            if self._cover_owner(db, row[\"topic_id\"]) != actor:\n                continue",
+     "            if False:\n                continue"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner's thumbs-up on the payload's message makes it Done in the same act",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "covered = self._cover_settle(db, actor, message[\"id\"])",
+     "covered = []"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner's reply to the payload's message makes it Done in the same act",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "covered = self._cover_settle(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
+     "covered = []"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A thumbs-up taken back proposes the payload again",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "thumb[\"revision\"] % 2 == 1",
+     "thumb[\"revision\"] > 0"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner asking back about the payload is not their word",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "AND (m.intent IS NULL OR m.intent<>'ask') AND ",
+     "AND "
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover write fenced on a revision someone moved past",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if envelope[\"expected\"][\"cover_revision\"] != current:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a whisper as the payload of a dossier on the record",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if message[\"private_to\"] is not None and (",
+     "        if False and ("
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A reader outside the owner's whispered word reads the payload done with no message to open",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "        if seen is None:\n            payload = dict(payload, done=",
+     "        if False:\n            payload = dict(payload, done="
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover goes on its dossier's first message only",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A payload names a message of its dossier",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if not member:\n            raise Refusal(\"INVALID_ARGUMENT\", \"A payload names",
+     "        if False:\n            raise Refusal(\"INVALID_ARGUMENT\", \"A payload names"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The covers' step steps back only while no cover was ever written",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "COVER_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover')\"",
+     "COVER_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "aim-next cover fences its write on --expected when given",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected",
+     "expected = found[\"cover_revision\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The page never puts back a cover Core has moved past",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "joined: 'join_revision', cover: 'cover_revision' }",
+     "joined: 'join_revision' }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A payload's pill names who gave Done in the reader's words",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "const who = done.by === context.viewer ? 'your' : `${context.nameOf(done.by)}'s`;",
+     "const who = 'your';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover is the folder's first sheet, after its first message's entry, under its tab",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "reconcile(section, [head, ...(p.cover ? [p.cover] : []), ",
+     "reconcile(section, [...(p.cover ? [p.cover] : []), head, "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers an agent's cover is the dossier's first sheet"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A message on its own shows its cover as pills, and a dossier's first message never does",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "lone.has(id) ? coverOf(messages.get(id)) : null",
+     "coverOf(messages.get(id))"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers an agent's cover is the dossier's first sheet"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The payload's pill shows Done as Core holds it",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "  const done = payload.done ?? null;\n",
+     "  const done = null;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the person's 👍 on the payload's message makes it done"
+   }
+  },
+  {
+   "item": 624,
+   "act": "On a phone the Reader's cover line gives way while the reply is written",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}",
+     "#reader:has(#reader-composer[data-compose=nothing]) #reader-cover{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader shows a dossier's cover as one line"
+   }
   }
  ]
 }

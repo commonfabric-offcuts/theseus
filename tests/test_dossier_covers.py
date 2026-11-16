@@ -180,6 +180,9 @@ class DoneCase(CoverCase):
         self.post("Looks right to me.", actor="other-reader", reply_to=answer)
         self.assertIsNone(self.shown(root)["payload"]["done"])
         self.assertEqual(len(self.rows()), 1, "no other act settles anything")
+        # Nor does a writer's own 👍 or word count when it writes the cover again: Done is the owner's record alone.
+        rewritten = self.committed(self.cover(root, {"payload": self.payload(answer, kind="answer")}, revision=1, actor="agent-b"))
+        self.assertIsNone(rewritten["cover"]["payload"]["done"])
         # The owner's 👍 on another message of the dossier settles nothing either.
         self.committed(self.thumb(note))
         self.assertIsNone(self.shown(root)["payload"]["done"])

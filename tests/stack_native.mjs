@@ -7191,6 +7191,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(await coverOn(p, ids.bare), { covered: 'false', sheet: null }, `${device}: a dossier with no cover shows none`);
       assert.equal(await pillsOn(p, ids.bare), null, `${device}: nor any pill on its first message`);
       for (const id of [ids.note, ids.answer, ids.bareReply]) assert.equal(await pillsOn(p, id), null, `${device}: a reply carries no pill`);
+      assert.equal(await pillsOn(p, ids.root), null, `${device}: a dossier's first message carries its cover as the sheet, never as pills`);
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, card(ids.lone)); await shot(p, `cover-lone-${device}-${theme}`); }
       assert.deepEqual(p.errors, []); await p.close();
     }
