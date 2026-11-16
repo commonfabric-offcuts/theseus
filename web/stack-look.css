@@ -18,7 +18,7 @@
      > [data-id]             its head's entry (a card, or a fold's card), the
                              card marked .stack-head-card and holding
        .stack-head           the head row: .stack-name (.stack-act), .stack-pen,
-                             .stack-who, .stack-new, .stack-star, .stack-meta
+                             .stack-who, .stack-named, .stack-new, .stack-star, .stack-meta
                              (.stack-repliers, .stack-fresh), .stack-hide
      > .stack-rename         the rename field: .stack-rename-input, .stack-rename-hint
      > .stack-replies        the replies, oldest first, each an entry; between them
@@ -209,8 +209,11 @@
 @media(hover:none){.stack-pen{display:none}}
 /* The second line, one quiet run joined by "·": who started it, New, the star, then the count, who replied and what is new. */
 .stack-who{flex:none;color:var(--stack-meta-ink)}
-.stack-head>:is(.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
-.stack-head>:is(.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400}
+/* A minted name (item 479) says who named it, after who started the dossier. Short of room the count gives way
+   first; only a name too long for the tab is shortened by its ellipsis. */
+.stack-named{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink);font-style:italic}
+.stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
+.stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
 .stack-star{flex:none;color:var(--stack-star)}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}

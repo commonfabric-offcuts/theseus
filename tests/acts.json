@@ -1829,21 +1829,6 @@
    }
   },
   {
-   "item": 272,
-   "act": "+ New topic under another outcome starts the topic in that outcome",
-   "break": [
-    [
-     "web/outline-rail.mjs",
-     "bootstrap: this.handles.bootstrap, workspace: outcome.id });",
-     "bootstrap: this.handles.bootstrap, workspace: this.here });"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "chips show only"
-   }
-  },
-  {
    "item": 131,
    "act": "A right-rail section the person folds stays folded across moves and reloads",
    "break": [
@@ -2209,21 +2194,6 @@
    "check": {
     "native": "rail",
     "case": "rail a press on a row whose move the page refuses keeps the keys on the row pressed"
-   }
-  },
-  {
-   "item": 289,
-   "act": "→ on an open outcome in the outline moves the keys into the messages; on a folded one it opens it",
-   "break": [
-    [
-     "web/outline-rail.mjs",
-     "if ((row.level === 1 && row.expanded) || !this.tree.stepIn(row, rows, open))",
-     "if (!this.tree.stepIn(row, rows, open))"
-    ]
-   ],
-   "check": {
-    "native": "rail",
-    "case": "rail → on an open outcome goes into the messages"
    }
   },
   {
@@ -3086,8 +3056,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "        return {\"name\": {\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}",
-     "        return {\"name\": {\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]} if value[\"name\"] else None}"
+     "dict({\"text\": value[\"name\"], \"by\": row[\"actor_id\"], \"at_ms\": row[\"at_ms\"]}",
+     "dict({\"text\": value[\"name\"], \"by\": None, \"at_ms\": row[\"at_ms\"]}"
     ]
    ],
    "check": {
@@ -4986,8 +4956,8 @@
    "break": [
     [
      "aim_next/store.py",
-     "        items = [redact_topic(db, actor, row) for row in rows[:limit]]",
-     "        items = [dict(row) for row in rows[:limit]]"
+     "        items = [redact_topic(db, actor, row) for row in rows]",
+     "        items = [dict(row) for row in rows]"
     ]
    ],
    "check": {
@@ -16501,6 +16471,1930 @@
    "check": {
     "native": "compose",
     "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320, with its count and light showing on \"☰ Outcomes\", \"Pipeline & pages\" goes under it inside the screen, and nothing scrolls sideways",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "[data-rails] #main .eyebrow-row{display:flex;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 \"Pipeline & pages\" goes under \"☰ Outcomes\" whole, never squeezed onto its line with its words folded",
+   "break": [
+    [
+     "web/rails.css",
+     "align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;",
+     "align-items:center;flex:0 1 0;white-space:normal;margin-left:auto;padding:.3rem .8rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 375 and 390 the outcome's name gives up its room first, so \"☰ Outcomes\" and \"Pipeline & pages\" share the header's line",
+   "break": [
+    [
+     "web/rails.css",
+     ".eyebrow-row .eyebrow{flex:1 1 0;margin:0;",
+     ".eyebrow-row .eyebrow{margin:0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320, with a two-digit count and nothing waiting, the outcome's name costs no second gap, so \"Pipeline & pages\" shares the line of \"☰ Outcomes\" because the two pills fit with one gap",
+   "break": [
+    [
+     "web/rails.css",
+     "#rail-open+.eyebrow{margin-left:-.6rem;text-indent:.6rem}",
+     "#rail-open+.eyebrow{text-indent:.6rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "The outcome's name gives up its room before \"Pipeline & pages\" goes under: at 320 it never holds a width that pushes the pill under while the two pills fit with one gap",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(min-width:761px) and (max-width:1180px){",
+     "@media(max-width:340px){[data-rails] #main .eyebrow-row .eyebrow{min-width:7rem}}\n@media(min-width:761px) and (max-width:1180px){"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "The outcome's name, reaching back over the gap after \"☰ Outcomes\", still starts its words a gap after the pill",
+   "break": [
+    [
+     "web/rails.css",
+     "#rail-open+.eyebrow{margin-left:-.6rem;text-indent:.6rem}",
+     "#rail-open+.eyebrow{margin-left:-.6rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At every width and in every state of \"☰ Outcomes\", no part of the page ends past the right edge of the screen it was opened at",
+   "break": [
+    [
+     "web/aim.css",
+     ".title-row{display:flex;align-items:flex-start;gap:.75rem}",
+     ".title-row{display:flex;align-items:flex-start;gap:.75rem;min-width:105vw}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 with the light alone on \"☰ Outcomes\" (its count hidden), the two pills and one gap fit, so \"Pipeline & pages\" shares the line",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 2.2rem}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 516,
+   "act": "At 320 with a one-digit count and the light, the two pills and one gap do not fit in either engine, so \"Pipeline & pages\" goes under",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}",
+     "[data-rails] #rail-open .outcome-light{margin:0}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the header at 320"
+   }
+  },
+  {
+   "item": 272,
+   "act": "The pencil beside another outcome starts the topic in that outcome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "bootstrap: this.handles.bootstrap, workspace: outcome.id });",
+     "bootstrap: this.handles.bootstrap, workspace: this.here });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "chips show only"
+   }
+  },
+  {
+   "item": 289,
+   "act": "→ on a folded outcome in the outline opens it and keeps the keys on it",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const open = each => (each.level === 1 ? this.setOpen(each.outcome, true) : each.el.parentElement.open = true);",
+     "const open = each => (each.level === 1 ? null : each.el.parentElement.open = true);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pencil beside an outcome's name is quiet on a laptop until the pointer or the keys are on its row",
+   "break": [
+    [
+     "web/rails.css",
+     "border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:0}",
+     "border:0;border-radius:.5rem;background:transparent;color:var(--muted);opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pointer on an outcome's row shows its pencil",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}",
+     "@media(hover:hover){.ol-heading:hover .ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pointer on the Outcomes heading shows its New outcome pencil",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil,.ol-heading:hover .ol-pencil{opacity:1}",
+     "@media(hover:hover){.ol-row:hover>.ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The keys on an outcome's name show its pencil",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true]{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil whose title line is open stays shown with the pointer gone",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil:focus-visible,.ol-pencil[aria-expanded=true],.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}",
+     ".ol-pencil:focus-visible,.ol-row:has(>.ol-name:focus-visible)>.ol-pencil{opacity:1}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "On a phone every pencil always shows",
+   "break": [
+    [
+     "web/rails.css",
+     "@media(hover:none),(max-width:760px){.ol-pencil{opacity:1}}",
+     "@media(hover:none),(max-width:760px){.ol-pencil{opacity:0}}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is 44px to press",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-pencil{display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;min-height:2.75rem;",
+     ".ol-pencil{display:inline-grid;place-items:center;width:2rem;height:2rem;min-height:2rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is named for what it starts",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  button.setAttribute('aria-label', label);\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "Each pencil is New message's glyph",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "  button.append(glyph);\n",
+     "  button.append(glyph); glyph.querySelector('path').setAttribute('d', 'M4 4h16');\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A press on an outcome's pencil opens its title line and neither opens nor folds the outcome",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const row = element(doc, 'div', { className: 'ol-row' }, name, newTopic, waiting);",
+     "const row = element(doc, 'div', { className: 'ol-row' }, name, waiting); name.append(newTopic);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The pencil's title line opens under the outcome's row",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "lineFromButton({ button: outcome.newTopic, after: outcome.row, line });",
+     "lineFromButton({ button: outcome.newTopic, after: outcome.topics, line });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 320, 375 and 390 the pencil beside the outcome in the open drawer always shows"
+   }
+  },
+  {
+   "item": 305,
+   "act": "No + New topic row: the page's own New topic stays out of sight under the outcome being read",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-adopted>.rail-heading,.ol-adopted #topics-key{display:none!important}",
+     ".ol-adopted #topics-key{display:none!important}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The next → on an open outcome lands on its pencil",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (open || pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push(",
+     "if (pen === this.doc.activeElement || pen.getAttribute('aria-expanded') === 'true') rows.push("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "→ on an outcome's pencil goes on into the messages",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "key: 'pencil:' + id, parent: outcome.name, outcome });",
+     "key: 'pencil:' + id, parent: outcome.name, outcome, expanded: false });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "↑ from the first outcome lands on the Outcomes heading's pencil",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const rows = [{ el: this.newOutcome, level: 1, set: this.list, key: 'new-outcome', parent: null, outcome: null, aside: true }];",
+     "const rows = [];"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The keys move on from the Outcomes pencil as from any row of the outline",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "also: [this.newOutcome] });",
+     "also: [] });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A folded outcome's pencil is no row of the tree and says it is none",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (!now.has(el) && shown(el)) for",
+     "if (false) for"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail → on a folded outcome opens it, the next → lands on its pencil"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A folded outcome's pencil is no Tab stop: the outline stays one Tab stop",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "title: tip, tabIndex: -1 });",
+     "title: tip });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a laptop each pencil is quiet until the pointer"
+   }
+  },
+  {
+   "item": 305,
+   "act": "With the place being read folded away, Tab into the outline lands on an outcome, never on the heading's pencil",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "|| reading || rows.find(row => !row.aside) || rows[0] || null;",
+     "|| reading || rows[0] || null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the pencil beside another outcome starts a topic there"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The New outcome title line opens clear of the heading and its pencil, at a phone's width as on a laptop",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0}",
+     ".ol-heading-tools{display:flex;gap:.1rem;margin:-.5rem 0 -1.25rem}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A second Return while a pencil's title line is starting sends nothing more",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "if (this.busy) return;",
+     "void 0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line says it is busy while its command is on its way",
+   "break": [
+    [
+     "web/quick-create.mjs",
+     "this.busy = true; this.input.setAttribute('aria-busy', 'true');",
+     "this.busy = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new topic keeps the title typed in the outcome's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await starter.start(title);",
+     "line.input.value = ''; const id = await starter.start(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The server's refusal of a new outcome keeps the title typed in the heading's line",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "const id = await start.create(title);",
+     "line.input.value = ''; const id = await start.create(title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "A pencil's title line fits the open drawer at 320",
+   "break": [
+    [
+     "web/aim.css",
+     ".one-line input{width:100%;max-width:32rem;min-width:0;",
+     ".one-line input{width:100%;max-width:32rem;min-width:19rem;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail each pencil's title line"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the logo block keeps the guide's ? through the move, so the rail never grows shorter",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }",
+     "    if (selector === BRAND) { const brand = live.cloneNode(true); for (const added of brand.querySelectorAll('.guide-open')) added.remove(); children.push(brand); continue; }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 305,
+   "act": "The guide's ? a move in place kept in the logo block gives its place to the new page's own, which opens the guide",
+   "break": [
+    [
+     "web/interaction-guide.mjs",
+     "    if (!label || (there && there === this.button)) return;",
+     "    if (!label || there) return;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Core lists an outcome's Build topics apart: build true gives only them among the open topics, build false the rest, in pages that skip them",
+   "break": [
+    [
+     "aim_next/store.py",
+     "apart = \"\" if build is None else \" AND t.id %sIN (SELECT value FROM json_each(?))\" % (\"\" if build else \"NOT \")",
+     "apart = \"\""
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic a piece is built in is a Build topic only while the outcome's pipeline is on",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "\"SELECT 1 FROM pipelines WHERE workspace_id=? AND enabled=1\", (workspace_id,)",
+     "\"SELECT 1 FROM pipelines WHERE workspace_id=?\", (workspace_id,)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The topic view says whether the topic is a Build topic",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "build=topic[\"id\"] in self._build_topics(db, topic[\"workspace_id\"]))",
+     "build=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Build topics are listed apart only among the open topics; asked with done or archived, the list is refused",
+   "break": [
+    [
+     "aim_next/store.py",
+     "        if build is not None and (archived or done):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The outline's open list asks Core for an outcome's topics without its Build topics",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "export const listArgs = (list, apart = false) => list === 'active' && apart ? { build: false } : TOPIC_LISTS[list];",
+     "export const listArgs = (list, apart = false) => TOPIC_LISTS[list];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic being read is not put back among the outline's topics",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "here = current && listOf(current, this.apart) === this.list;",
+     "here = current && listOf(current) === this.list;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic marked Done is in the outline's Done group as any topic is",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "const listOf = (item, apart = false) => item.archived === true ? 'archived' : item.state === 'done' ? 'done' : apart && item.build === true ? 'build' : 'active';",
+     "const listOf = (item, apart = false) => apart && item.build === true ? 'build' : item.archived === true ? 'archived' : item.state === 'done' ? 'done' : 'active';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail groups the Build topics Ready for review apart from the rest, each once",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return { now, review: rest.filter(row => row.item.state === 'review'), other: rest.filter(row => row.item.state !== 'review') };",
+     "return { now, review: [], other: rest };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic's row in the right rail carries its unread count, the sent-by-name badge, Waiting on you and its state mark",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (row.item) paintMarks(link, row.item, reader);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The outline beside a topic of an outcome with a pipeline lists none of its Build topics",
+   "break": [
+    [
+     "web/app.mjs",
+     "pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic, 'active', true),",
+     "pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Another outcome's topics opened in the outline for a look list none of its Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,",
+     "this.currentTopicIn(outcome.id)), ...outcome.parts,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone each Build topic's row in the right rail is at least 44px to touch",
+   "break": [
+    [
+     "web/rails.css",
+     "{.pipe-builds .things-list a.row{min-height:2.75rem;padding-block:.6rem}}",
+     "{.pipe-builds .things-list a.row{min-height:0;padding-block:.1rem}}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic shows once, in the right rail, carrying"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail marks the Build topic being read, and Return on its row keeps the keys there",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (row.topic === here) link.setAttribute('aria-current', 'page');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the keys reach a Build topic from the right rail"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The outcomes list counts what is new in an outcome's open Build topics apart, for its row in the outline",
+   "break": [
+    [
+     "aim_next/store.py",
+     "build = self._build_counts(counts, self._open_build_topics(db, row[\"id\"]))",
+     "build = {\"unread\": 0, \"addressed\": 0}"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic marked Done adds nothing to the Build topics' count",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "AND state!='done'",
+     "AND 1"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build topics list counts what is new in all of them, not only its page",
+   "break": [
+    [
+     "aim_next/store.py",
+     "answer[\"builds\"] = self._build_counts(self._unread(db, actor, topics=sorted(open_builds)), open_builds)",
+     "answer[\"builds\"] = self._build_counts(self._unread(db, actor, topics=[item[\"id\"] for item in items]), open_builds)"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "An open outcome's row counts its Build topics with its Conversation",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };",
+     "return { unread: count(conversation?.unread), addressed: count(conversation?.addressed) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "\"N new\" pressed from another outcome shows a Build topic's new messages on its outcome's row, and the row leads to them",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "return { unread: count(conversation?.unread) + count(item?.build?.unread), addressed: count(conversation?.addressed) + count(item?.build?.addressed) };",
+     "return { unread: count(conversation?.unread), addressed: count(conversation?.addressed) };"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic's new messages on its outcome's row"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A screen reader hears that an open outcome's count is in its Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "count(item?.build?.unread) ? 'its Build topics' : ''",
+     "''"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone, \"Pipeline & pages\" carries what is new in the outcome's Build topics",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "badge.textContent = String(fresh); badge.hidden = !fresh;",
+     "badge.textContent = String(fresh); badge.hidden = true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "on a phone, on a Build topic's outcome, the drawer"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Pipeline heading says what is new in the Build topics, folded or not",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "items.fresh ? `${items.fresh} new` : ''",
+     "''"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic's new messages on its outcome's row"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail reads the Build topics a page at a time, as many as the person asked for",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "build: true, limit: Math.max(1, Math.min(most, want - items.length)), cursor });",
+     "build: true, limit: most, cursor });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "More topics in the right rail brings 20 more Build topics",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (items.more) {\n",
+     "      if (false) {\n"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "More topics in the right rail brings 20 more"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Return on More topics hands the keys to the first Build topic it brought",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "More topics in the right rail brings 20 more"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic waiting on the reader opens at the question from its right-rail row",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "...(row.item && questionOf(row.item, reader) ? { message: questionOf(row.item, reader) } : {}) }, row.title);",
+     "}, row.title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "a Build topic waiting on the reader opens at the question"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone too narrow for both header buttons with their counts, \"Pipeline & pages\" goes to its own line, inside the screen",
+   "break": [
+    [
+     "web/rails.css",
+     "#main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "#main .eyebrow-row{display:flex;flex-wrap:nowrap;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "on a phone, on a Build topic's outcome, the drawer"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Turning an outcome's pipeline off or on moves the version of each topic a piece was built in, so a page reading one reads it again",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if bool(current and current[\"enabled\"]) != settings[\"enabled\"]:\n            # On or off",
+     "        if False:\n            # On or off"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic's first piece moves its version, so a page reading it reads it again",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\"",
+     "            pass\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\""
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A release that is its topic's first piece moves that topic's version",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        # No number is stored",
+     "            pass\n        # No number is stored"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Turned off while a Build topic is read, the topic moves live from the right rail to the outline, and back when turned on",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        if bool(current and current[\"enabled\"]) != settings[\"enabled\"]:\n            # On or off",
+     "        if False:\n            # On or off"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail turned off while a Build topic is read"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A piece started in the topic being read moves it live from the outline to the right rail's Now",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "            self._build_moved(db, [topic[\"id\"]])\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\"",
+     "            pass\n        db.execute(\"INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)\""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a piece started in the topic being read"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Core's list of Build topics names those a piece is being built in on every page, with their marks",
+   "break": [
+    [
+     "aim_next/store.py",
+     "building = sorted(self._building_topics(db, workspace[\"id\"]))",
+     "building = []"
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A Build topic Done or archived, its piece under way or not, is not among those being built",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "        builds = self._open_build_topics(db, workspace_id)\n        if not builds:\n            return set()\n        return builds & ",
+     "        builds = self._build_topics(db, workspace_id)\n        if not builds:\n            return set()\n        return builds & "
+    ]
+   ],
+   "check": {
+    "python": "test_build_topics.py"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A row of the right rail's Now carries its topic's marks from Core's list of those being built, whatever page of Build topics it falls on",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "const rows = new Map([...(builds ?? []), ...(building ?? [])].map(item => [item.id, item]));",
+     "const rows = new Map((builds ?? []).map(item => [item.id, item]));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "With more than 20 Build topics, the piece in Now whose topic is past the first 20 carries its unread count and Waiting on you",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "building = Array.isArray(answer.building) ? answer.building : null;",
+     "building = null;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail with more than 20 Build topics"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic Done with its piece under way has no row in the right rail's Now",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (shown.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "A topic marked Done while its piece is under way leaves the right rail's Now and folds into the outline's Done group",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (shown.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail a Build topic marked Done while its piece is still under way"
+   }
+  },
+  {
+   "item": 297,
+   "act": "Two pieces in one topic make one row of the right rail's Now",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "if (shown.has(topic) || (building && !rows.has(topic))) return false;",
+     "if (building && !rows.has(topic)) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build rows follow the reader's own order within each group, and Core's otherwise",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "return placeIn([...byKey.keys()], saved).map(key => byKey.get(key));",
+     "return [...byKey.keys()].map(key => byKey.get(key));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail learns the reader's own order of the outcome's topics from its read of the Build topics",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      book.learn(scopeOf(workspace), orderOf(answer));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 297,
+   "act": "The right rail's Build topics are drawn in the reader's own order of the outcome's topics, as the outline's are",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "this.pipelineRows(found.pipeline, book.ids(scopeOf(this.handles.workspaceId)))",
+     "this.pipelineRows(found.pipeline, [])"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail the right rail's Build topics follow the reader's own order"
+   }
+  },
+  {
+   "item": 297,
+   "act": "On a phone at 320, 375 and 390, with two-digit counts on ☰ Outcomes and \"Pipeline & pages\", nothing in the header runs past the edge",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;",
+     "[data-rails] #main .eyebrow-row{display:flex;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail on a phone at 320 375 390, with two-digit counts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The reader's message waits for a reply only when an agent received it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "if item[\"id\"] not in received or item[\"id\"] in answered",
+     "if item[\"id\"] in answered"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "An edit's correction to an agent is no receipt: only a delivery of the first revision is",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND d.revision=1 AND a.kind='agent'",
+     " AND a.kind='agent'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply by anyone else after it in its dossier ends the wait",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "others[root] is None or others[root] < item[\"seq\"]",
+     "others[root] is None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper never waits for a reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "item[\"author_id\"] == actor and not item.get(\"whisper\")\n",
+     "item[\"author_id\"] == actor\n"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "In an outcome's conversation the item's own dots stand alone",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "if own and topic[\"kind\"] != \"conversation\":",
+     "if own:"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The page draws the Conversation's three dots on a message Core says waits, and none on any other",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.awaiting_reply !== true) { row?.remove(); return; }",
+     "if (item.awaiting_reply === undefined) { row?.remove(); return; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving ends the dots only when someone else wrote it",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (!Number.isSafeInteger(item.seq)) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no dossier root ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (typeof root === 'string') latest.set(root,",
+     "latest.set(root,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message arriving with no sequence ends no wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.author_id === viewer || !Number.isSafeInteger(item.seq)) continue;",
+     "if (item.author_id === viewer) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply arriving ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page the dots show on the reader's message after they post",
+   "break": [
+    [
+     "web/app.mjs",
+     "    paintAwaiting(card, item);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots after the person posts"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A reply to the reader's message ends its wait wherever it is stacked, a reply joined to another stack too",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "answered = {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to",
+     "answered = set() and {row[0] for row in db.execute(\n            \"SELECT DISTINCT m.reply_to"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The reader's own reply to their message is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"AND m.author_id<>:actor AND %s\" % (",
+     "\"AND %s\" % ("
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message on the record by someone else naming the reader ends the waits of their messages before it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " or named is not None and named > item[\"seq\"]:",
+     ":"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message naming the reader before theirs is no reply to it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "named is not None and named > item[\"seq\"]",
+     "named is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A whisper naming the reader is no reply to their message on the record",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND m.author_id<>? AND m.private_to IS NULL\",",
+     " AND m.author_id<>?\","
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "An agent's thumbs-up on the reader's message ends its wait",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb' AND a.kind='nobody'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A person's thumbs-up on the reader's message is no reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "r.kind='thumb' AND a.kind='agent'",
+     "r.kind='thumb'"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "A message from before where the rule begins never waits",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "and item[\"seq\"] >= int(start[0])]",
+     "]"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The first post records where the rule begins",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "        record_wait_start(db, sequence)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Where the rule begins is recorded once and no later post moves it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "INSERT OR IGNORE INTO metadata(key,value)",
+     "INSERT OR REPLACE INTO metadata(key,value)"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a reply to the waiting message arriving from another dossier ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (typeof item.reply_to === 'string') replied.add(item.reply_to);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a message naming the reader arriving after the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "named = Math.max(named, item.seq);",
+     "named = named;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a whisper naming the reader is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "if (item.whisper !== true && (item.addressees ?? []).includes(viewer))",
+     "if ((item.addressees ?? []).includes(viewer))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up on the waiting message ends its wait",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "kindOf(thumb.actor_id) === 'agent'",
+     "kindOf(thumb.actor_id) === 'nobody'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page a person's thumbs-up is no reply",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     " && kindOf(thumb.actor_id) === 'agent'",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page ending a wait needs to know who reads it and who is an agent",
+   "break": [
+    [
+     "web/card-reading.mjs",
+     "!viewer || typeof kindOf !== 'function') throw Error('Whether a message is answered",
+     "!viewer) throw Error('Whether a message is answered"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_reading.test.mjs"
+   }
+  },
+  {
+   "item": 475,
+   "act": "On the page an agent's thumbs-up ends the dots at once, without a reload",
+   "break": [
+    [
+     "web/app.mjs",
+     "  learnAnswered(views.messages, bootstrap.actor, kindOf);\n",
+     "  learnAnswered(views.messages, bootstrap.actor, () => undefined);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dots end on a reply joined"
+   }
+  },
+  {
+   "item": 475,
+   "act": "The newest message by someone else bounds the messages naming the reader, the topic's newest one included",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "CASE WHEN l.author_id<>:actor THEN l.seq ELSE o.seq END",
+     "o.seq"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 475,
+   "act": "Whether a message waits for a reply reads no more as the topic grows after it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "newest[0] > lowest:",
+     "newest[0] > -1:"
+    ],
+    [
+     "aim_next/stacks.py",
+     "AND n.seq>? AND n.seq<=? AND m.author_id<>?",
+     "AND n.seq>? AND ? IS NOT NULL AND m.author_id<>?"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Core takes a minted name only from the dossier's namer: the outcome's coordinator, or else the first agent that replied",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if namer != actor:",
+     "            if namer is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A dossier anyone ever named, a mint included, is never minted: a typed name wins and a second reply mints nothing more",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        return None, \"named\"",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "With no coordinator the first agent to reply names the dossier, after any person's reply",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ORDER BY a.kind<>'agent',m.seq LIMIT 1",
+     "ORDER BY m.seq LIMIT 1"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A whisper counts as no reply for a minted name: Core walks the dossier as no one, not as the agent minting",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "def dossier_namer(db, root, replied=False):",
+     "def dossier_namer(db, root, replied=False, actor=\"\"):"
+    ],
+    [
+     "aim_next/stacks.py",
+     "{\"root\": root, \"actor\": \"\"}).fetchone()",
+     "{\"root\": root, \"actor\": actor}).fetchone()"
+    ],
+    [
+     "aim_next/stacks.py",
+     "            namer, why = dossier_namer(db, message[\"id\"])",
+     "            namer, why = dossier_namer(db, message[\"id\"], actor=actor)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "An agent coordinator Core sends the dossier's replies to names the dossier, and then it alone",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "    if first is None:\n        return None, \"unreplied\"\n    if coordinator is not None:\n        return coordinator, \"coordinator\"",
+     "    if first is None:\n        return None, \"unreplied\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A person who coordinates the outcome never names a dossier: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WHERE m.id=:root AND a.kind='agent' AND a.enabled",
+     "WHERE m.id=:root AND a.enabled"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "In a topic the coordinator does not take part in, Core sends it nothing, so the first agent to reply names the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "AND EXISTS(SELECT 1 FROM topic_participants p WHERE p.topic_id=m.topic_id AND p.actor_id=w.coordinator_id AND p.active=1))",
+     ")"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A coordinator that left the topic does not name its dossiers: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     " AND p.active=1))",
+     "))"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A disabled coordinator does not name a dossier: the first agent to reply does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "a.kind='agent' AND a.enabled ",
+     "a.kind='agent' "
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A minted name is two to five words",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if not MINT_WORDS[0] <= len(name.split()) <= MINT_WORDS[1]:",
+     "        if not name:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A minted name reads with minted true; a typed name and one an older Core kept read as before",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "**({\"minted\": True} if value.get(\"minted\") is True else {})",
+     "**{}"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A delivery tells an agent to mint only when it names the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] != recipient:",
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The hosted notice says the mint to run once per dossier, on the namer's delivery",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "        if name_it and name_it[\"root_id\"] in to_name:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "inbox says the mint to run once per dossier",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "                if item[\"name_it\"][\"root_id\"] in to_name:",
+     "                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A reply that makes its agent the namer says the mint to run",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        elif found[\"namer\"] == self.actor:",
+     "        elif False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "mint is fenced on the name revision the agent was told, so a person's rename meanwhile refuses it",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "        expected = found[\"name_revision\"] if options.expected is None else options.expected",
+     "        expected = found[\"name_revision\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The head knows who minted its name, from the first message's acts or the position",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "mintedBy: typed?.text && typed.minted === true ? typed.by : null",
+     "mintedBy: null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The dossier's tab says Named by the agent that minted its name",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;",
+     "  const minted = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "minted name"
+   }
+  },
+  {
+   "item": 479,
+   "act": "The tab's Named by shows whole at phone widths: the count gives way first",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".stack-named{flex:0 1 auto;min-width:0;",
+     ".stack-named{flex:1 1 0;min-width:0;max-width:max-content;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "minted name"
+   }
+  },
+  {
+   "item": 479,
+   "act": "A delivered reply in a dossier an agent coordinates tells only the coordinator to mint, without walking the dossier",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "    if replied and coordinator is not None:\n        return coordinator, \"coordinator\"",
+     "    if replied and coordinator is not None:\n        return None, \"coordinator\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Finding a dossier's namer walks only its members, so a delivery read does not grow with the messages around it",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "members p CROSS JOIN messages m ON m.id=p.id JOIN actors a",
+     "members p JOIN messages m ON m.id=p.id JOIN actors a"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
+   }
+  },
+  {
+   "item": 479,
+   "act": "Only a delivered reply carries name_it, not the dossier's first message, so the mint is said once",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        if root == message_id or dossier_namer(db, root, replied=True)[0] != recipient:",
+     "        if dossier_namer(db, root, replied=True)[0] != recipient:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_names.py"
    }
   }
  ]

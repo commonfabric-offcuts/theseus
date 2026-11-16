@@ -97,8 +97,9 @@ const itemLink = (doc, host, words, kind, id) => {
 
 // Three dots pulsing in turn, in the card's own ink, for an item that waits for
 // an answer (item 389): still under reduced motion (aim.css), and named for a
-// screen reader and the pointer by words.
-function waitingDots(doc, words) {
+// screen reader and the pointer by words. A topic page draws the same dots on
+// the reader's own message until someone replies (item 475, card-reading.mjs).
+export function waitingDots(doc, words) {
   const dots = element(doc, 'span', { className: 'item-waiting', title: words }, element(doc, 'span'), element(doc, 'span'), element(doc, 'span'));
   dots.setAttribute('role', 'img'); dots.setAttribute('aria-label', words);
   return dots;

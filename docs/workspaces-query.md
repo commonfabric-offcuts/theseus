@@ -16,7 +16,7 @@ places them in (docs/outline-order.md).
   "instance_id": "I",
   "items": [
     {"id": "W", "owner_id": "A", "title": "Outcome", "title_truncated": false, "version": 1,
-     "conversation_id": "T"}
+     "conversation_id": "T", "unread": 4, "addressed": 1, "build": {"unread": 3, "addressed": 1}}
   ],
   "next_cursor": null
 }
@@ -29,6 +29,14 @@ unchanged. SQL retrieves at most 1025 bytes of each title, and the complete comp
 UTF-8 JSON response fits the existing 131072-byte summary limit, including escapes
 and the continuation cursor.
 
+Each item counts what is new to the reader inside the outcome: `unread`, and
+`addressed`, the part sent to them by name, neither counting an archived topic.
+`build: {unread, addressed}` is the part of those in the outcome's open Build
+topics (item 297, docs/topic-list.md): the topics a piece of its pipeline is
+built in, while it is on, that are neither Done nor archived. The outline lists
+no row for them, so an open outcome's row counts them (docs/rails.md, "Counts");
+they are zero for an outcome with no pipeline on.
+
 `conversation_id` names the topic that holds the outcome's Conversation, or is
 `null` while it has none (an outcome made before the Conversation existed), so the
 Outcomes home can open an outcome's Conversation with one press and its page when
@@ -40,7 +48,8 @@ visible ID, so retrying from it does not skip the next item. Each request reads
 current membership; this is not a snapshot across requests. A new item sorting
 before the current cursor appears when the reader starts again at the first page.
 An actor with no memberships receives an empty terminal page. Reads create no
-operations or work, and the list carries no global revision or aggregate counts.
+operations or work, and the list carries no global revision or aggregate counts
+beyond each item's own.
 
 Creation remains a separate existing command. Retain the original workspace ID,
 operation, authority and payload until `workspace.create` is reconciled. The first

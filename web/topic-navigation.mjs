@@ -100,8 +100,12 @@ export class WorkspacePages {
 // An outcome's topics come in three lists (docs/topic-list.md): the ones that
 // are neither done nor archived, the done ones and the archived ones, each
 // latest activity first. A topic's place is its position, DONE:ACTIVITY_MS:ID.
+// Where the right rail shows an outcome's Build topics (item 297, docs/rails.md),
+// the open list leaves them out (apart): a Build topic not done or archived is in none of the three.
 export const TOPIC_LISTS = { active: {}, done: { done: true }, archived: { archived: true } };
-const listOf = item => item.archived === true ? 'archived' : item.state === 'done' ? 'done' : 'active';
+const listOf = (item, apart = false) => item.archived === true ? 'archived' : item.state === 'done' ? 'done' : apart && item.build === true ? 'build' : 'active';
+// What a list asks Core for: an open list kept apart from the Build topics leaves them out.
+export const listArgs = (list, apart = false) => list === 'active' && apart ? { build: false } : TOPIC_LISTS[list];
 const doneFlag = item => item.state === 'done' ? 1 : 0;
 export const topicPosition = item => `${doneFlag(item)}:${item.activity_ms}:${item.id}`;
 function position(cursor) {
@@ -118,16 +122,18 @@ const key = item => [doneFlag(item), Number.isSafeInteger(item.activity_ms) ? it
 
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
-  constructor(instanceId, workspaceId, current, list = 'active') {
+  // apart: the open topics are listed apart from the outcome's Build topics,
+  // which the right rail shows (item 297); a Build topic is in neither list here.
+  constructor(instanceId, workspaceId, current, list = 'active', apart = false) {
     if (!Object.hasOwn(TOPIC_LISTS, list)) throw Error('Unknown topic list.');
-    Object.assign(this, { instanceId, workspaceId, current, list });
+    Object.assign(this, { instanceId, workspaceId, current, list, apart });
     this.loaded = new Map(); this.next = null; this.started = false; this.groups = null;
   }
   // The open topic's row shows what the page knows of it, with the counts the
   // list read for it: the topic view itself carries no unread count. It is in
   // the list where what the page knows of it puts it, in its place there.
   get items() {
-    const current = this.current, here = current && listOf(current) === this.list;
+    const current = this.current, here = current && listOf(current, this.apart) === this.list;
     const items = [...this.loaded.values()].filter(item => item.id !== current?.id || here)
       .map(item => item.id === current?.id ? { ...item, ...current } : item);
     if (here && !this.loaded.has(current.id)) items.push(current);
@@ -143,7 +149,7 @@ export class TopicPages {
     let previous = cursor === null ? null : position(cursor); const ids = new Set();
     for (const item of answer.items) {
       if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id) || item.workspace_id !== this.workspaceId ||
-          typeof item.title !== 'string' || !Number.isSafeInteger(item.activity_ms) || item.activity_ms < 0 || listOf(item) !== this.list ||
+          typeof item.title !== 'string' || !Number.isSafeInteger(item.activity_ms) || item.activity_ms < 0 || listOf(item, this.apart) !== this.list ||
           previous !== null && compare(previous, key(item)) >= 0) fail();
       previous = key(item); ids.add(item.id);
     }
@@ -157,7 +163,7 @@ export class TopicPages {
     if (groups !== undefined) this.groups = { done: groups.done, archived: groups.archived };
     return true;
   }
-  empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list); }
+  empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list, this.apart); }
   last() { const item = [...this.loaded.values()].pop(); return item ? topicPosition(item) : null; }
   precedes(a, b) { return compare(position(a), position(b)) < 0; }
 }
@@ -272,7 +278,7 @@ export class TopicRail {
     const kept = this.kept();
     for (const [name, parts] of [['done', done], ['archived', archived]]) {
       if (!parts) continue;
-      const list = { name, pages: new TopicPages(pages.instanceId, pages.workspaceId, pages.current, name), ...parts };
+      const list = { name, pages: new TopicPages(pages.instanceId, pages.workspaceId, pages.current, name, pages.apart), ...parts };
       this.lists.push(list);
       list.details.open = kept[name] === true;
       list.more.onclick = () => this.load(list);
@@ -330,7 +336,7 @@ export class TopicRail {
   question(id) {
     for (const list of this.lists) {
       const item = list.pages.items.find(item => item.id === id);
-      if (item) return (Array.isArray(item.asks) ? item.asks : []).find(ask => ask?.actor_id === this.reader && typeof ask.message_id === 'string')?.message_id ?? null;
+      if (item) return questionOf(item, this.reader);
     }
     return null;
   }
@@ -352,9 +358,7 @@ export class TopicRail {
     if (drawn.get(link) !== shows) {
       drawn.set(link, shows);
       link.textContent = item.title;
-      paintUnread(link, item);
-      paintState(link, item, this.reader);
-      paintWork(link, item, this.reader);
+      paintMarks(link, item, this.reader);
     }
     link.href = routeHref(topicTarget(item.id, this.question(item.id)));
     if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
@@ -428,7 +432,7 @@ export class TopicRail {
     const previousIds = new Set(this.lists.flatMap(list => list.pages.items.map(item => item.id)));
     // Keep busy controls focusable; repeated activation shares this read.
     for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
-    const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...TOPIC_LISTS[list.name], ...args });
+    const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...listArgs(list.name, this.pages.apart), ...args });
     const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(answer => { list.pages.accept(answer, cursor); })
       : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
     const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
@@ -482,6 +486,18 @@ export function arrange(host, nodes, fixed = null) {
 // the row holds no earlier count; a row without unread messages gets none.
 const drawn = new WeakMap();
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+// The message of the question a topic waits on the reader for, or null: its
+// row opens the topic there, so the Reader shows the question (item 148).
+export const questionOf = (item, reader) => (Array.isArray(item?.asks) ? item.asks : []).find(ask => ask?.actor_id === reader && typeof ask.message_id === 'string')?.message_id ?? null;
+// What a topic's row carries after its title, in the outline and in the right
+// rail alike (item 297): its unread count (marked when part of it was sent to
+// the reader by name), where it stands (Waiting on you, Ready for review…) and
+// the work ring. The caller has just set the row's title, so it holds no earlier mark.
+export function paintMarks(host, item, reader) {
+  paintUnread(host, item);
+  paintState(host, item, reader);
+  paintWork(host, item, reader);
+}
 export function paintUnread(host, item) {
   if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
   const addressed = Number.isSafeInteger(item.addressed) && item.addressed > 0 ? item.addressed : 0;
