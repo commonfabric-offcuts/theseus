@@ -790,6 +790,7 @@ export function formatWords(host, text, options = {}) {
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
   host.classList.add('formatted');
   DRAWN.set(host, String(text ?? ''));
+  if (options.revision === undefined) REVISIONS.delete(host); else REVISIONS.set(host, options.revision);
   return host;
 }
 
@@ -797,6 +798,10 @@ export function formatWords(host, text, options = {}) {
 // the positions its nodes know are positions in; undefined for a host neither drew.
 const DRAWN = new WeakMap();
 export const drawnText = host => DRAWN.get(host);
+// The revision of a message those words are (formatWords' revision), when the
+// one who drew them said: a quote of them names it (docs/message-edit.md).
+const REVISIONS = new WeakMap();
+export const drawnRevision = host => REVISIONS.get(host);
 
 // The Reader's source as passages (reader.mjs): every child of host is one
 // passage with the span of the text it shows (data-start, data-end), and the

@@ -54,7 +54,9 @@ const wordsBox = range => {
   const whole = range.getBoundingClientRect();
   return { top: whole.top, bottom: whole.bottom };
 };
-const quoteSource = source => (source.source_ref.kind === 'message' ? { ...structuredClone(source.source_ref), revision: revisionOf(source) } : structuredClone(source.source_ref));
+// revision: the revision the words quoted come from, when they were taken
+// elsewhere than the Reader (a card on the topic page); else the one it shows.
+const quoteSource = (source, revision = revisionOf(source)) => (source.source_ref.kind === 'message' ? { ...structuredClone(source.source_ref), revision } : structuredClone(source.source_ref));
 
 // The Reader steps as the eye goes down the topic page (docs/reply-stacks.md):
 // ↑ is the message above the one open, Previous, and ↓ the one below, Next,
@@ -603,8 +605,9 @@ export class Reader {
     return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
   }
 
-  // given: words chosen on the message's card (quoteFrom), quoted as they are.
-  quote(given = '') {
+  // given: words chosen on the message's card (quoteFrom), quoted as they are,
+  // and named as of revision, the revision of the message the card shows.
+  quote(given = '', revision = undefined) {
     if (this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed) { this.notice('Source availability needs to be checked before quoting.'); return; }
     const held = this.held; this.held = null;
     const excerpt = given || this.selectedPassage() || held?.excerpt;
@@ -615,10 +618,10 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, place); } finally { this.quoting = false; }
+    try { this.quoteInto(excerpt, place, given ? revision : undefined); } finally { this.quoting = false; }
   }
 
-  quoteInto(excerpt, place) {
+  quoteInto(excerpt, place, revision = undefined) {
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
@@ -627,7 +630,7 @@ export class Reader {
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
-    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source), excerpt }] });
+    editor.edit({ quotes: [...editor.draft.quotes, { source: quoteSource(this.source, revision), excerpt }] });
     // The message's selection is let go before the field takes focus: once
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
@@ -648,16 +651,20 @@ export class Reader {
   }
 
   // Words chosen on the message's card in the topic (message-menu.mjs): a
-  // passage lit there, or words selected, {start, end, text}. Return there
-  // quotes them as Return here would, the same words, kept in sight as any
-  // quote is; false when the Reader shows another message.
-  quoteFrom(ref, { start, end, text }) {
+  // passage lit there, or words selected, {start, end, text, revision}. Return
+  // there quotes them as Return here would, the same words, kept in sight as
+  // any quote is; false when the Reader shows another message. The quote names
+  // the revision the card shows, whose words they are, though the Reader may
+  // have read a newer one; there, the words at those places are others, and
+  // nothing is selected for them.
+  quoteFrom(ref, { start, end, text, revision }) {
     const at = this.source?.source_ref;
     if (!this.sessions || at?.kind !== ref.kind || at.id !== ref.id || !text) return false;
-    const range = rangeOf(this.sourceBody, start, end), selection = window.getSelection();
+    const same = this.source.body?.slice(start, end) === text;
+    const range = same ? rangeOf(this.sourceBody, start, end) : null, selection = window.getSelection();
     selection?.removeAllRanges();
     if (range) selection?.addRange(range);
-    this.quote(text);
+    this.quote(text, revision);
     return true;
   }
 

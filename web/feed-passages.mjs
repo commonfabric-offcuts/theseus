@@ -14,7 +14,7 @@
 // A highlight paints only its words' own height, so the rest of the dark field,
 // as tall line by line as the Reader's (lit-field.mjs), is painted behind the
 // words on the card's own background, which moves nothing on the card.
-import { drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
+import { drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
 
@@ -185,14 +185,17 @@ export class FeedPassages {
   }
   // What Return quotes on the lit entry: the words selected in it, else its
   // lit passages; null when neither, and Return replies with nothing quoted.
+  // revision: the revision of the message the card's words are, which the
+  // quote names, since its words come from the card (docs/message-edit.md).
   chosen(entry) {
     if (!entry) return null;
+    const words = cardIn(entry)?.querySelector(WORDS), revision = words ? drawnRevision(words) : undefined;
     const selected = this.selected(entry);
-    if (selected) return selected;
+    if (selected) return { ...selected, revision };
     const lit = this.lit;
     if (!lit || lit.entry !== entry || !lit.words.isConnected) return null;
     const text = drawnText(lit.words);
-    return text === undefined ? null : { start: lit.start, end: lit.end, text: text.slice(lit.start, lit.end) };
+    return text === undefined ? null : { start: lit.start, end: lit.end, text: text.slice(lit.start, lit.end), revision };
   }
   // What ⌘C copies with no words selected: the lit passages' words, without
   // the whitespace at their end, which is no words (docs/topic-reading.md).

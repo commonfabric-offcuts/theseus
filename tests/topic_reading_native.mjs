@@ -2297,12 +2297,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.key('Escape');
     await until(async () => await menu() === null, 'Escape closes the menu');
     assert.equal(await shiningOn(p), null, 'and lights nothing again');
-    // Back on the words, a passage lights; a right-click on them opens the menu where the pointer is.
+    // Back on the words, a passage lights; a right-click on the card opens the menu where the pointer is. It is pressed
+    // in the card's corner, off its words, where the light stays as it was: Safari's engine selects the word a
+    // right-click lands on, and words selected keep the browser's own menu.
     await moveTo(p, ids.alone, 'Words after');
     await becomes(() => shiningOn(p), said[2], 'the pointer on the words lights a passage again');
-    const at = await wordsAt(p, ids.alone, 'Words after');
-    for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'right', clickCount: 1 });
-    await until(async () => (await menu())?.focused, 'a right-click on the words opens the message\'s menu, the focus on its first item');
+    const corner = await p.evaluate(`(b=>({x:b.left+6,y:b.top+6}))(document.querySelector(${JSON.stringify(card(ids.alone))}).getBoundingClientRect())`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: corner.x, y: corner.y });
+    assert.equal(await shiningOn(p), said[2], 'off the words, in the card\'s corner, the passage lit stays lit');
+    for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: corner.x, y: corner.y, button: 'right', clickCount: 1 });
+    await until(async () => (await menu())?.focused, 'a right-click on the card opens the message\'s menu, the focus on its first item');
     assert.equal(await shiningOn(p), null, 'with the focus in the menu a right-click opened, no passage is lit');
     await shot(p, 'reading-passage-menu-right');
     await p.key('Escape');
