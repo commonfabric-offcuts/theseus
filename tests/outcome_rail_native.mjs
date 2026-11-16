@@ -66,6 +66,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  // The outline at rest, as a person sees the page before pressing in it: its first read of the outcomes has landed
+  // and it has taken in the page's own topic list (outline-rail.mjs, place), on the page as it now is. Earlier cases
+  // leave many outcomes to read, and something new or waiting in them, so that read can land late: until it does, a
+  // topic's row in the outline can move under a press, and on a phone the line under the header saying what is new
+  // elsewhere comes in and pushes the messages down under a finger.
+  const outlineAtRest = (p, at) => until(() => p.evaluate(`Boolean(document.querySelector('#outline .ol-adopted:not([inert])'))`), `${at}: the outline has read the outcomes and taken in the page's topic list`);
   const drawer = p => p.evaluate(`(()=>{const control=document.getElementById('rail-open');return {open:document.getElementById('rail').classList.contains('open'),
     backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
     focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
@@ -3608,6 +3614,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const topic = 'rail-notices-t';
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
     const faults = [];
+    let sent = 0;
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
       const at = `${size} ${theme}`, laptop = size === 'laptop';
       // A card of its own each time, not starred yet.
@@ -3619,6 +3626,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       const card = `#messages .message-card[data-id="${message}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body'))`), at + ': the card and the writing box are up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
       net.hold(payload => stars(payload) || sends(payload));
       // A star Theseus is too busy to take, as in item 547 (its command lane full while the reader's own reply
@@ -3679,6 +3687,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       net.hold(null);
       for (const entry of [...net.held()]) await net.pass(entry);
       await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes').catch(error => faults.push(error.message));
+      // The send let through has landed in Core before the page closes: on its way still, it would write the topic while
+      // the next size's card joins its agent there, and that join would meet a topic changed under it (REVISION_CONFLICT).
+      sent += 1;
+      await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.filter(item => item.body === 'Sent while the page is asked to move').length === sent, at + ': the send let through is in Core');
       assert.deepEqual(p.errors, []); await p.close();
     }
     assert.deepEqual(faults, [], 'every size and theme');
@@ -3698,6 +3710,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       const card = `#messages .message-card[data-id="${message}"]`, words = card + ' > .message-preview', thumb = '.message-bar [data-act=thumb]';
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), at + ': the card is up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), thumbs = payload => payload?.kind === 'message.thumb';
       const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === message;
       net.hold(payload => thumbs(payload) || reactions(payload));
@@ -3750,6 +3763,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
     const row = `#outline a[data-topic-id="${other}"]`;
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the outline is up again');
+    await outlineAtRest(p, 'after the reload');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page');
@@ -3768,6 +3782,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await said(), 1, 'Core holds it');
     await net.drop(lost); net.hold(null);
     await until(async () => (await review()).includes('Review 2 replies'), 'both are in doubt now');
+    await outlineAtRest(p, 'back on the topic');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page again');
