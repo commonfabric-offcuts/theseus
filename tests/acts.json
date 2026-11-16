@@ -1651,7 +1651,7 @@
    "break": [
     [
      "web/app.mjs",
-     "if (!shell.go(target)) shell.leave(routeHref(target));",
+     "if (!shell.go(target, still)) shell.leave(routeHref(target));",
      "location.assign(routeHref(target));"
     ]
    ],
@@ -1909,8 +1909,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
-     "    this.landing = !popped && this.keptByPress(at) ? 'keys' : 'page';"
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: !popped && this.keptByPress(at) ? 'keys' : 'page',"
     ]
    ],
    "check": {
@@ -1924,8 +1924,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
-     "    this.landing = ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';"
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',"
     ]
    ],
    "check": {
@@ -1954,13 +1954,12 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    if (this.landing === 'page' && inRails(at)) at.blur();\n",
+     "    if (way.landing === 'page' && inRails(at)) at.blur();\n",
      ""
     ]
    ],
    "check": {
-    "native": "rail",
-    "case": "rail a press on an outline row opens its place in place with the keys kept on the row"
+    "node": "tests/ui_rails.test.mjs"
    }
   },
   {
@@ -2291,8 +2290,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.writing = !popped && this.writeTo === routeKey(target);",
-     "    this.writing = false;"
+     "writing: !popped && this.writeTo === routeKey(target) }",
+     "writing: false }"
     ]
    ],
    "check": {
@@ -3122,36 +3121,6 @@
    "check": {
     "native": "reading",
     "case": "stacks the bar stays in the window while any of its card is"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
    }
   },
   {
@@ -11728,8 +11697,8 @@
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';",
-     "    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';"
+     "landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page',",
+     "landing: !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page',"
     ]
    ],
    "check": {
@@ -13569,6 +13538,36 @@
    }
   },
   {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -14138,6 +14137,366 @@
    "check": {
     "native": "compose",
     "case": "chromium size narrow window 480×300, a refused image"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A module asked for under another build than the one the server serves is refused, never served from this build",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "if stamp != self.stamp or not name or name == \"index.html\":",
+     "if not name or name == \"index.html\":"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page opened before builds were stamped (release 76) loads afresh on its next move rather than run this build's app.mjs beside its own modules, and Edit opens",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "        if query and Path(name).suffix in MODULES:\n            return None\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page opened on release 76"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page names its entry under its build, with an import map sending an absolute module address to the same build",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "index = index.replace(ENTRY, entry).replace(BOOT_TAG,",
+     "index = index.replace(BOOT_TAG,"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move that finds the server serving another build loads the place afresh on it, asking for no run of the old build, and on one build moves in place by one run of its own build, saying nothing",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "if (build !== null && build !== this.build) { this.updated(way, why); return; }",
+     "if (false) { this.updated(way, why); return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a move on one build stays in place"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move that finds another build while writing is not yet safe stays where it is and says Theseus updated with Reload, the words kept",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "if (!why && !this.guards.some(holds => holds())) {",
+     "if (!why) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "Theseus updated carries a Reload that reloads, said by the topic line and in the Reader or New message sheet that is open",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move reads the build the server serves before it moves, and a failed read lets the move go on",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (!response.ok) return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "On a phone the drawer closes as a move begins, before the build is read, so the page and any Theseus updated notice show",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    this.moving = true;\n    this.drawer?.close();\n",
+     "    this.moving = true;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "While a move reads the build the page is not ready, since a back has already changed the address, and it is ready again where it stays",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (body) delete body.dataset.ready;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A back that finds another build while writing in the open Reader or New message sheet is not yet safe puts the address back, and the Reader or sheet says Theseus updated with Reload",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (popped) this.refuse(popped);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a back that finds another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's guard hands the move its last look (still), which refuses new typing, a replaced owner, unprotected work, a send or an unready image that come after it, and gives way to a newer choice",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(still); return true;\n",
+     "      navigate(); return true;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "On the document's own build, a move whose writing changed while it read the build stays where it is and says why, the words in their box, after a row and after a back, whether the device has kept the words or not",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    if (!why) { this.proceed(way); return; }\n",
+     "    { this.proceed(way); return; }\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build on one build, words typed while a move reads"
+   }
+  },
+  {
+   "item": 523,
+   "act": "On another build, words typed while the move read the build keep the page where it is with Theseus updated, even once the device has kept them and no guard holds",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "if (!why && !this.guards.some(holds => holds())) {",
+     "if (!this.guards.some(holds => holds())) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build words typed while a move reads the build and kept"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move a newer choice has taken the place of stays without a word once the build is read",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "    try { if (!way.still()) { this.stay(way); return; } } catch (error) { why = error; }\n",
+     "    try { way.still(); } catch (error) { why = error; }\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move asked before the run is up carries the guard's last look, asked once the build is read",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "this.go(owed.go, owed.still)",
+     "this.go(owed.go)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A move refused once the build is read says why by the topic line and in the open Reader or New message sheet, as a refused move does",
+   "break": [
+    [
+     "web/app.mjs",
+     "refused: why => { shell.stayed(); stayedWhy(why); }",
+     "refused: () => {}"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page whose modules are asked for once the next server serves another build loads afresh on it by itself, once, and comes up with every module of that build, on a laptop and at 390 by touch",
+   "break": [
+    [
+     "web/boot.js",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) location.reload(); else say(); })",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) say(); else say(); })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules are asked for once the server has started on another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "In Safari's engine, a page whose modules are asked for once the next server serves another build loads afresh on it by itself, once, and comes up with every module of that build",
+   "break": [
+    [
+     "web/boot.js",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) location.reload(); else say(); })",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) say(); else say(); })"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading edit build a page whose modules are asked for once the server has started on another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page whose modules the server could not give, one lost on its own build or the server away mid-restart, says Theseus could not open this page with Reload where the person sees it, and Reload brings it up",
+   "break": [
+    [
+     "web/boot.js",
+     "    status.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "In Safari's engine, a page whose modules the server could not give says Theseus could not open this page with Reload where the person sees it, and Reload brings it up",
+   "break": [
+    [
+     "web/boot.js",
+     "    status.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A module lost on the page's own build never loads the page again by itself: the boot reloads only onto another build, so never in a loop",
+   "break": [
+    [
+     "web/boot.js",
+     "served.build && served.build !== own) location.reload();",
+     "served.build) location.reload();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "Only the failure of a module under a build reads the build: an image's, a classic script's or an unbuilt module's error reads nothing and loads nothing",
+   "break": [
+    [
+     "web/boot.js",
+     "  if (!own) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_boot.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's boot is written whole and inline before the import map and the entry, and the page's policy allows it by its hash",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "for script in (boot, text))",
+     "for script in (text,))"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's boot sits before its stylesheets, where index.html names it, so the page's parsing never waits on a stylesheet for it",
+   "break": [
+    [
+     "web/index.html",
+     "  <script src=\"/boot.js\"></script>\n  <link rel=\"stylesheet\" href=\"/aim.css\">\n",
+     "  <link rel=\"stylesheet\" href=\"/aim.css\">\n  <script src=\"/boot.js\"></script>\n"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page whose index.html names its entry with no boot.js beside it, or an empty one, is refused as the server reads it, rather than served with no boot",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "        if not boot.strip():\n            raise ValueError(",
+     "        if False:\n            raise ValueError("
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
    }
   },
   {

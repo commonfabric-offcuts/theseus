@@ -68,12 +68,14 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     window.departureDiagnostics=[];
     window.departureAct=0;window.departureClick=null;
     window.departureTrace=entry=>{departureDiagnostics.push(entry);console.log('departure-diagnostic',JSON.stringify(entry));};
-    import('/app-session.mjs').then(({EditorRegistry})=>{
+    // The page's own modules, once its import map and entry are parsed (aim_next/web_build.py): an import before them would load copies outside the page's build.
+    const pageModule=name=>new Promise(go=>{const up=()=>document.querySelector('script[type=module]');if(up())return go();new MutationObserver((_,o)=>{if(up()){o.disconnect();go()}}).observe(document,{childList:true,subtree:true})}).then(()=>import(name));
+    pageModule('/app-session.mjs').then(({EditorRegistry})=>{
       const original=EditorRegistry.prototype.initializeInline;
       EditorRegistry.prototype.initializeInline=function(...args){window.departureRegistry=this;return original.apply(this,args);};
       departureTrace({event:'registry trace installed'});
     });
-    import('/topic-navigation.mjs').then(({TopicNavigation})=>{const original=TopicNavigation.prototype.openTarget;TopicNavigation.prototype.openTarget=function(...args){
+    pageModule('/topic-navigation.mjs').then(({TopicNavigation})=>{const original=TopicNavigation.prototype.openTarget;TopicNavigation.prototype.openTarget=function(...args){
       const act=departureClick;departureTrace({event:'openTarget entered',act,destination:args[0],state:departureState()});
       const result=original.apply(this,args);result.then(value=>departureTrace({event:'openTarget settled',act,value,state:departureState()}),error=>departureTrace({event:'openTarget refused',act,error:error.message,state:departureState()}));return result;
     };departureTrace({event:'navigation trace installed'});});

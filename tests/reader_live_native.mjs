@@ -858,10 +858,11 @@ export async function liveChecks({ check, page, until, control, observations, or
         setTimeout(() => leavingOpenEnded(JSON.stringify({ search: location.search, readerOpen: document.querySelector('#reader').open,
           pendingOpen: Boolean(observedRegistry.pendingOpen), error: record.error ?? null })), 0); } });
       return Array.prototype.push.call(this, record); }; })()`);
-    await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/app.mjs', requestStage: 'Response' },
-      { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }, { urlPattern: origin + '/app.mjs?*', requestStage: 'Response' }] });
-    // The next page is a move in place (in-place-navigation.mjs): its run of the page's module is what comes next, not a document.
-    const nextPage = url => url === away.url || url.startsWith(origin + '/app.mjs?place=');
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/b/*/app.mjs', requestStage: 'Response' },
+      { urlPattern: origin + '/b/*/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }, { urlPattern: origin + '/b/*/app.mjs?*', requestStage: 'Response' }] });
+    // The next page is a move in place (in-place-navigation.mjs): its run of the page's module, under the page's build
+    // (aim_next/web_build.py), is what comes next, not a document.
+    const nextPage = url => url === away.url || (url.startsWith(origin + '/b/') && new URL(url).pathname.endsWith('/app.mjs') && new URL(url).searchParams.has('place'));
     p.intercept((payload, event) => payload?.name === 'source' || nextPage(event.request.url));
     await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
     await p.point(card(topic.message));

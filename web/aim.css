@@ -1119,3 +1119,7 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .card-image>img.image-thumb[hidden]{display:none}
 .card-image-name{display:none}
 .card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;padding:.3rem;font-size:.66rem;line-height:1.25;color:var(--muted);overflow-wrap:anywhere;overflow:hidden}
+
+/* "Theseus updated" (a move that found a new build while writing was not yet safe, in-place-navigation.mjs): one line, with Reload in it, a finger's size on a phone. */
+.updated-reload{margin-left:.35rem;padding:.15rem .6rem}
+@media(pointer:coarse),(max-width:760px){.updated-reload{min-height:2.75rem;min-width:2.75rem}}
