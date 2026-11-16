@@ -283,9 +283,11 @@ move to another build is a load.
   names its entry that way, so each relative import, the run's
   `./app.mjs?place=N` included, carries the build. An import map before the
   entry sends an absolute address (`/api.mjs`, as a check imports it) to the
-  same build. Before both comes the page's boot (`web/boot.js`), written in
-  whole, below. The page's Content-Security-Policy allows those two inline
-  scripts by their hashes.
+  same build. Before them, and before the page's stylesheets, where
+  `index.html` names it, comes the page's boot (`web/boot.js`), written in
+  whole, below: an inline script after a stylesheet would hold the page's
+  parsing until the stylesheet came. The page's Content-Security-Policy allows
+  those two inline scripts by their hashes.
 - An address under another build is refused (404), and so is a module asked
   for with a query outside a build: the run of a page opened before builds
   were stamped. A module asked for plainly outside a build is still the file

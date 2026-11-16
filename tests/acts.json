@@ -14204,8 +14204,8 @@
    "break": [
     [
      "aim_next/web_build.py",
-     "        index = index.replace(ENTRY, entry)\n",
-     ""
+     "index = index.replace(ENTRY, entry).replace(BOOT_TAG,",
+     "index = index.replace(BOOT_TAG,"
     ]
    ],
    "check": {
@@ -14495,6 +14495,20 @@
      "aim_next/web_build.py",
      "for script in (boot, text))",
      "for script in (text,))"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's boot sits before its stylesheets, where index.html names it, so the page's parsing never waits on a stylesheet for it",
+   "break": [
+    [
+     "web/index.html",
+     "  <script src=\"/boot.js\"></script>\n  <link rel=\"stylesheet\" href=\"/aim.css\">\n",
+     "  <link rel=\"stylesheet\" href=\"/aim.css\">\n  <script src=\"/boot.js\"></script>\n"
     ]
    ],
    "check": {

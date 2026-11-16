@@ -16,7 +16,8 @@ import('/api.mjs'), goes through the import map written beside the entry, to the
 same build's address. An address under another build is refused, so no
 document can assemble its modules from two builds.
 
-The page's boot (web/boot.js) is written inline before them all, so it needs no
+The page's boot (web/boot.js) is written inline where index.html names it, before
+its stylesheets and every module, so it holds up no parsing and needs no
 request of its own: a page whose index.html came from one server and whose
 modules are asked for of the next one (a deploy between the two), or of none
 (the server restarting), loads afresh on the build served, or says so, rather
@@ -36,8 +37,10 @@ MODULES = frozenset((".js", ".mjs"))
 # The entry script as index.html writes it, and the prefix every module of a build is served under.
 ENTRY = b'<script type="module" src="/app.mjs"></script>'
 PREFIX = "/b/"
-# The page's boot, written into index.html as an inline script ahead of the entry.
+# The page's boot, which index.html names as a script before its stylesheets, and which is written there inline: an
+# inline script after a stylesheet would hold the page's parsing until that stylesheet came.
 BOOT = "boot.js"
+BOOT_TAG = b'<script src="/boot.js"></script>'
 
 
 def public(name: str) -> bool:
@@ -103,13 +106,16 @@ def load(web_root) -> Build:
         boot = files.get(BOOT, b"").decode("utf-8")
         if not boot.strip():
             raise ValueError("index.html names its entry script and web/ has no %s to load the page afresh when its build is gone" % BOOT)
+        links = index.find(b"<link")
+        if index.count(BOOT_TAG) != 1 or 0 <= links < index.index(BOOT_TAG) or index.index(ENTRY) < index.index(BOOT_TAG):
+            raise ValueError("index.html names its entry script, and must name %s once, before any stylesheet" % BOOT)
         if "</script" in boot.lower():
             raise ValueError("%s cannot be written inline: it holds </script" % BOOT)
         # An absolute address outside a build ("/api.mjs") is this build's ("/b/<stamp>/api.mjs"); one that
         # names a build already (a module's relative import, "/b/<stamp>/lines.mjs") stays as it is.
         text = json.dumps({"imports": {"/": PREFIX + stamp + "/", PREFIX: PREFIX}}, separators=(",", ":"), sort_keys=True)
         script_hashes = tuple("sha256-" + base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii") for script in (boot, text))
-        entry = ('<script>%s</script><script type="importmap">%s</script><script type="module" src="%s%s/app.mjs"></script>'
-                 % (boot, text, PREFIX, stamp)).encode("utf-8")
-        index = index.replace(ENTRY, entry)
+        entry = ('<script type="importmap">%s</script><script type="module" src="%s%s/app.mjs"></script>'
+                 % (text, PREFIX, stamp)).encode("utf-8")
+        index = index.replace(ENTRY, entry).replace(BOOT_TAG, ("<script>%s</script>" % boot).encode("utf-8"))
     return Build(stamp=stamp, files=files, index=index, script_hashes=script_hashes)

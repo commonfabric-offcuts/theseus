@@ -21,6 +21,7 @@ from aim_next.server import create_server  # noqa: E402
 
 REPO_WEB = Path(__file__).resolve().parents[1] / "web"
 INDEX = ('<meta name="aim-next-session" content="__AIM_SESSION_TOKEN__">\n'
+         '<script src="/boot.js"></script>\n<link rel="stylesheet" href="/aim.css">\n'
          '<script type="module" src="/app.mjs"></script>\n')
 BOOT = "addEventListener('error', () => {}, true);\n"
 hash_of = lambda text: "sha256-" + base64.b64encode(hashlib.sha256(text.encode()).digest()).decode()
@@ -79,8 +80,10 @@ class WebBuildTests(unittest.TestCase):
         self.assertIsNotNone(found)
         self.assertLess(index.index("importmap"), index.index('type="module"'), "the import map comes before any module")
         self.assertEqual(json.loads(found.group(1)), {"imports": {"/": "/b/%s/" % build.stamp, "/b/": "/b/"}})
-        # The boot is written inline, word for word, before the import map and the entry: it needs no request of its own.
-        self.assertIn("<script>%s</script>" % BOOT, index)
+        # The boot is written inline, word for word, where index.html names it, before the stylesheets (an inline script
+        # after one would hold the parsing until it came), the import map and the entry: it needs no request of its own.
+        self.assertIn("<script>%s</script>\n<link" % BOOT, index)
+        self.assertNotIn('src="/boot.js"', index)
         self.assertLess(index.index("<script>" + BOOT), index.index("importmap"))
         self.assertEqual(build.script_hashes, (hash_of(BOOT), hash_of(found.group(1))))
         # A page with no entry script (a fixture's) has no inline scripts and needs no hash.
@@ -101,6 +104,18 @@ class WebBuildTests(unittest.TestCase):
         (self.web / "boot.js").write_text("document.write('</SCRIPT>');\n")
         with self.assertRaisesRegex(ValueError, "</script"):
             web_build.load(self.web)
+        (self.web / "boot.js").write_text(BOOT)
+        # Named once, before any stylesheet and the entry, or the page is refused.
+        for index in (INDEX.replace('<script src="/boot.js"></script>\n', ''),
+                      INDEX.replace('<link rel="stylesheet" href="/aim.css">\n', '<link rel="stylesheet" href="/aim.css">\n<script src="/boot.js"></script>\n'),
+                      INDEX.replace('<link rel="stylesheet" href="/aim.css">\n', '<script src="/boot.js"></script>\n'),
+                      '<script type="module" src="/app.mjs"></script>\n<script src="/boot.js"></script>\n'):
+            with self.subTest(index=index):
+                (self.web / "index.html").write_text(index)
+                with self.assertRaisesRegex(ValueError, "once, before any stylesheet"):
+                    web_build.load(self.web)
+        (self.web / "index.html").write_text('<script src="/boot.js"></script>\n<script type="module" src="/app.mjs"></script>\n')
+        self.assertIn(b"<script>" + BOOT.encode() + b"</script>", web_build.load(self.web).index, "a page with no stylesheet")
 
     def test_the_real_page_is_served_under_its_build(self):
         # web/index.html names its entry exactly as the build rewrites it, once: were it written otherwise, its
@@ -108,7 +123,9 @@ class WebBuildTests(unittest.TestCase):
         self.assertEqual((REPO_WEB / "index.html").read_bytes().count(web_build.ENTRY), 1)
         build = web_build.load(REPO_WEB)
         self.assertIn(("/b/%s/app.mjs" % build.stamp).encode(), build.index)
-        self.assertIn(b"<script>" + (REPO_WEB / "boot.js").read_bytes() + b"</script>", build.index, "the real boot, inline")
+        boot = b"<script>" + (REPO_WEB / "boot.js").read_bytes() + b"</script>"
+        self.assertIn(boot, build.index, "the real boot, inline")
+        self.assertLess(build.index.index(boot), build.index.index(b'<link rel="stylesheet"'), "before every stylesheet, so the page's parsing never waits on it")
         self.assertEqual(len(build.script_hashes), 2)
         # Every module's own imports are relative, so each resolves under the build its importer came from.
         for name, data in build.files.items():
