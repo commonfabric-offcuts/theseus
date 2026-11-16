@@ -705,9 +705,9 @@ function keepListAnchor(paint) {
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
-  const edge = control?.getBoundingClientRect().top, last = cards.at(-1);
+  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
-  const landed = control && last ? loadedAfter(list, new Set(cards), last) : null;
+  const landed = control && last ? loadedAfter(list, present, last) : null;
   if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
@@ -716,7 +716,7 @@ function inView(node) { const box = node.getBoundingClientRect(); return box.bot
 // The first card in view. With More, or the New line that loads older
 // messages, first in view at the top edge, what they load comes in where
 // they were, and the Notebook below moves down, rather than holding still
-// while the page jumps past all of it: the first card drawn after the last
+// while the page jumps past all of it: the first card loaded after the last
 // one drawn before goes where the control was. Since item 465 the New
 // message composer rests between the last card and More, so the list's top
 // no longer holds that place. When the repaint draws nothing after the last
@@ -728,7 +728,8 @@ const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data
 function firstInView() {
   return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
 }
-// The first card drawn now, after last, that was not drawn before.
+// The first card drawn now, after last, that the list did not hold before:
+// one loaded, not one a fold or a join only draws again.
 function loadedAfter(list, before, last) {
   return entries(list).find(entry => !before.has(entry) && drawn(list, entry.dataset.id) && Boolean(last.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
