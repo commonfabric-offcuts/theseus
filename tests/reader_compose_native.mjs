@@ -276,7 +276,7 @@ async function run() {
       await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Menus ' + shape }] });
       const say = async (n, more) => (await control({ method: 'agent_message', operation_id: `${topic}-${n}`, topic_id: topic, join: true, source: 'topic', ...more })).result.message_id;
       const theirs = await say('theirs', { body: Array.from({ length: 30 }, (_, i) => `Fence passage ${i + 1}, a sentence long enough to wrap on a phone.`).join(' ') });
-      const mine = await say('mine', { sender: 'person', body: 'Mine to edit: the gate goes on the left.' });
+      await say('mine', { sender: 'person', body: 'Mine to edit: the gate goes on the left.' });
       const p = await page(shape, scheme, `/?topic=${topic}`);
       // The ⋯ opened by a press, its rows read and pictured, then put away by Escape; what it held, by its words.
       const menu = async name => {
@@ -311,9 +311,10 @@ async function run() {
       } else { const box = await span.boundingBox(); await p.mouse.click(box.x + 5, box.y + 5); }
       const changed = await menu('changed');
       for (const label of ['Mark read', 'Unfold message', 'Quote selection', ...(shape === 'stacked' ? ['Stacked layout'] : [])]) assert.ok(changed.includes(label), `${scheme}: ${label} in ${changed.join(', ')}`);
-      await press(p, '#reader-close');
-      await until(p, () => !document.querySelector('#reader').open, 'the Reader closed');
-      await open(p, mine, 'Mine to edit');
+      // The words chosen let go, the Reader steps up to the person's own message, just above.
+      await p.evaluate(() => getSelection().removeAllRanges());
+      await press(p, '#next-message');
+      await until(p, () => document.querySelector('#source-body').textContent.startsWith('Mine to edit'), 'the Reader on the person\'s own message');
       assert.ok((await menu('own')).includes('Edit'), `${scheme}: Edit on the person's own message`);
       // The pencil Edit shows is the New message button's own drawing, cloned: the button keeps it.
       kept.push([scheme, await p.evaluate(() => [document.querySelectorAll('#new-message svg').length, document.querySelectorAll('#reader .reader-header [data-glyph], .message-bar [data-glyph]').length])]);

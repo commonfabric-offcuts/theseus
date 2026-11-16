@@ -7091,7 +7091,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await of(ids.plain, 'move', device === 'phone');
       await choose(p, device, 'Move its stack down');
       await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the move chosen');
-      has(await of(ids.plain, 'undo', true), ['Undo'], 'after a move'); await away();
+      // Undo is in every message's ⋯ once a move is made; asked of a message not lit since, as a press lights it afresh.
+      has(await of(ids.host, 'undo', true), ['Undo'], 'after a move'); await away();
       await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more');
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.asideReply))})?.getClientRects().length)`), 'More shows the dossier below it');
       has(await of(ids.asideReply, 'below-more', true), ['Bring back above More'], 'a dossier below More'); await away();
