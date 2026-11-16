@@ -1427,6 +1427,27 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 550: before a dossier was placed on its first message, a stack headed by a reply was placed on that reply, and
+  // such places are in the store. The first message carrying none, that reply's place still places the stack, with its
+  // place line; Let new replies move it takes the place away for good.
+  await check('reading stacks a dossier placed on the reply heading its stack, as places were set before item 550, keeps its place and place line until Let new replies move it, which takes that place away (item 550)', async () => {
+    const topic = 'stack-dossier-place-on-reply', ids = await shipyardSeed(topic);
+    const placed = await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.a1, operation_id: `${topic}-place`, args: { key: 1000000 } });
+    assert.equal(placed.status, 'committed', 'the place is set on a1, the reply heading the stack as loaded');
+    const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
+    let p = await open(topic, 'laptop', topic, ids.near1);
+    await becomes(async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await top(p)]; }, ['a1', 'Placed here by you', true],
+      'the dossier is on top, above newer stacks, with its place line, by the place on a1');
+    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids)).placed], [['near', 's1', 'a1'], null], 'Let new replies move it: it goes where its newest reply puts it, its place line gone');
+    await until(async () => (await actsOf(topic, ids.a1))?.placed === null && ((await actsOf(topic, ids.root))?.placed ?? null) === null, 'Core holds no place on a1 or on the first message');
+    assert.deepEqual(p.errors, []); await p.close();
+    p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids))?.placed], [['near', 's1', 'a1'], null], 'after a reload it stays where its newest reply puts it');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 550: a stack someone joined into one branch of a dossier whose first message is above the page, a branch that
   // does not head the dossier's one stack, keeps its join line and Split back out there, on a laptop and by a finger
   // at 320, 375 and 390; Split back out shows it apart and Core holds it split.

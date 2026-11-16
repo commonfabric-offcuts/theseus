@@ -24002,7 +24002,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "const place = byRoot ? position.placed : actsOf(head).placed",
+     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
      "const place = actsOf(head).placed"
     ]
    ],
@@ -24155,6 +24155,65 @@
    "check": {
     "native": "webkit-reading",
     "case": "a stack joined into a branch of a dossier above the page"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A place the reader set on the reply heading a stack, before places went on the first message, still places it while the first message carries none; the first message's wins where both exist",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
+     "const place = byRoot ? position.placed : actsOf(head).placed"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier placed on the reply heading its stack shows its place line on top, by that reply's place",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
+     "const place = byRoot ? position.placed : actsOf(head).placed"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on the reply heading its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away a place on the reply heading the stack, set before places went on the first message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];",
+     "const items = [place];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on the reply heading its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away a place on the reply heading the stack, set before places went on the first message, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];",
+     "const items = [place];"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on the reply heading its stack"
    }
   }
  ]

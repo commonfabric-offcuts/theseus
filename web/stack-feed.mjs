@@ -543,10 +543,15 @@ export class StackFeed {
     const root = this.rootOf(stack);
     return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);
   }
+  // Let new replies move it takes away every place the stack sorts by
+  // (stack-order.mjs, gather): the dossier's, and one on the reply heading
+  // the stack, set before places went on the first message.
   unplace(stack) {
-    const item = this.placeOn(stack), before = this.actsOf(item.id, item).placed ?? null;
-    this.act('stack.place', item, { key: null });
-    this.remember(() => { this.act('stack.place', item, { key: before }); this.arrange(); });
+    const place = this.placeOn(stack), head = this.messages().get(stack.id);
+    const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];
+    const before = items.map(item => this.actsOf(item.id, item).placed ?? null);
+    items.forEach(item => this.act('stack.place', item, { key: null }));
+    this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });
     this.arrange(); this.say('New replies move it again');
   }
   // A join from the keys, ⋯ or the phone's sheet shows where it went
