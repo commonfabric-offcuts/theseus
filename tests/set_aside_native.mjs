@@ -89,7 +89,9 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   // or the composer moves when a reply is set aside.
   await check('rail set aside looks right: Set aside, Undo and Copy are short named words, 44px to touch on a phone, at 1280, 320, 375 and 390, light and dark, and setting aside one reply leaves the other in doubt and the composer as it was', async () => {
     const acts = p => p.evaluate(`[...document.querySelectorAll('#review-content .aside-act')].map(b=>{const r=b.getBoundingClientRect();return {text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title,width:r.width,height:r.height,shown:r.width>0&&r.height>0};})`);
-    const wide = p => p.evaluate('({scroll:document.documentElement.scrollWidth,width:innerWidth,dialog:Math.ceil(document.querySelector("#version-review").getBoundingClientRect().right)})');
+    // The Review list, which is what this item draws: the dialog within the window and nothing in it wider than it.
+    const wide = p => p.evaluate('(d=>({scroll:d.scrollWidth,inner:d.clientWidth,list:document.querySelector("#review-content").scrollWidth,listInner:document.querySelector("#review-content").clientWidth,width:innerWidth,dialog:Math.ceil(d.getBoundingClientRect().right)}))(document.querySelector("#version-review"))');
+    const fits = w => w.dialog <= w.width && w.scroll <= w.inner && w.list <= w.listInner;
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['w320', 'light'], ['w320', 'dark'], ['w375', 'light'], ['w375', 'dark'], ['w390', 'light'], ['w390', 'dark']]) {
       const s = await seed('composer');
       // A second reply in doubt in the same writing, which must stay in doubt.
@@ -110,7 +112,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
         assert.deepEqual([act.text, act.name, Boolean(act.tip), act.shown], ['Set aside', 'Set this reply aside', true, true], `${size} ${theme}`);
         if (phone) assert.ok(act.height >= 44 && act.width >= 44, `${size}: Set aside is 44px to touch: ${JSON.stringify(act)}`);
       }
-      let w = await wide(p); assert.ok(w.scroll <= w.width && w.dialog <= w.width, `${size}: nothing wider than the window ${JSON.stringify(w)}`);
+      let w = await wide(p); assert.ok(fits(w), `${size}: the Review list fits the window ${JSON.stringify(w)}`);
       if (shot) await shot(p, `set-aside-${size}-${theme}-offered`);
       await p.point(`${card(s)} .aside-act`);
       await until(async () => (await cardState(p, s))?.state === 'aside', 'set aside');
@@ -121,7 +123,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       for (const act of (await acts(p)).filter(act => act.text !== 'Set aside')) if (phone) assert.ok(act.height >= 44 && act.width >= 44, `${size}: ${act.text} is 44px to touch`);
       assert.deepEqual(await cardState(p, { submission: other.submission_id }).then(c => [c.state, c.acts.map(a => a.text)]), ['doubt', ['Set aside']], 'the other reply is still in doubt');
       assert.deepEqual(await unsent(s), [other.submission_id], 'Core still lists the other reply');
-      w = await wide(p); assert.ok(w.scroll <= w.width && w.dialog <= w.width, `${size}: nothing wider than the window ${JSON.stringify(w)}`);
+      w = await wide(p); assert.ok(fits(w), `${size}: the Review list fits the window ${JSON.stringify(w)}`);
       if (shot) await shot(p, `set-aside-${size}-${theme}-aside`);
       await p.point('#review-close');
       await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'the Review list closes');
