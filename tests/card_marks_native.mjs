@@ -335,7 +335,8 @@ async function run() {
       const starred = await inTab('starred', 'new and starred');
       assert.ok(starred.seen.parts.some(part => part.part === 'stack-new') && starred.seen.parts.some(part => part.part === 'stack-star'), 'the starred head is new and starred');
       const folded = await inTab('folded', 'new and folded');
-      assert.ok(folded.seen.parts.some(part => part.part === 'stack-folded'), 'the folded head says Folded');
+      // The head row is the dossier's title and says nothing of the fold (item 471): the folded first message is its own row under it.
+      assert.ok(!folded.seen.parts.some(part => part.part === 'stack-folded'), 'the folded head\'s title row says nothing of the fold');
       // Where there is room, a phone's tab shows the marks too: at 390 an image alone beside the whole name, New and the
       // count. At 375 the count leaves less room than a glyph, and the mark gives way before it; at 320 the 22
       // characters of the name give way to the count too, cut short (its whole name in its tooltip).

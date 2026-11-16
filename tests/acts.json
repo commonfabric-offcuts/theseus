@@ -3051,6 +3051,21 @@
   },
   {
    "item": 283,
+   "act": "A head shown as one row has no bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false'",
+     "    return false && section.dataset.headOpen === 'false'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a head shown as one row has no bar"
+   }
+  },
+  {
+   "item": 283,
    "act": "A short name is everyone's and says who typed it",
    "break": [
     [
@@ -3061,21 +3076,6 @@
    ],
    "check": {
     "python": "test_stacks.py"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A head shown as one row has no bar",
-   "break": [
-    [
-     "web/message-menu.mjs",
-     "    return Boolean(card?.classList.contains('stack-head-card') &&",
-     "    return false && Boolean(card?.classList.contains('stack-head-card') &&"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a head shown as one row has no bar"
    }
   },
   {
@@ -5293,13 +5293,13 @@
    }
   },
   {
-   "item": 356,
-   "act": "A stack's folded first message is its head row alone, and a press on that row unfolds it",
+   "item": 471,
+   "act": "A dossier's folded first message is its own row under the title row, as any folded message is, the dossier staying fully open; a press on that row unfolds it",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "    state.on?.unfold?.(stack.id);\n",
-     ""
+     "paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc })",
+     "paintFolded(entry, messages.get(id), state.folded.has(id) && !heads.has(id), { nameOf, doc })"
     ]
    ],
    "check": {
@@ -5328,8 +5328,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.swipeAct(start.target, across > 0);",
-     "    this.swipeAct(start.target, true);"
+     "    this.swipeAct(start.target, across > 0, event.altKey);",
+     "    this.swipeAct(start.target, true, event.altKey);"
     ]
    ],
    "check": {
@@ -5734,13 +5734,13 @@
    }
   },
   {
-   "item": 355,
-   "act": "A swipe on the last visible message moves its whole dossier",
+   "item": 472,
+   "act": "A swipe right on a dossier's last visible message folds it in place, as on any message; only the title bar moves the dossier below More",
    "break": [
     [
      "web/stack-feed.mjs",
-     "chrome || displayed.at(-1) === entry",
-     "chrome"
+     "whole: Boolean(found.section && chrome)",
+     "whole: Boolean(found.section && (chrome || !entry.nextElementSibling))"
     ]
    ],
    "check": {
@@ -8120,8 +8120,8 @@
     ],
     [
      "web/stack-feed.mjs",
-     "    if (tab && !acts.folded) return;",
-     "    if (false) return;"
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;\n",
+     ""
     ]
    ],
    "check": {
@@ -8130,13 +8130,13 @@
    }
   },
   {
-   "item": 388,
-   "act": "x on a dossier's folded first message, its head row, unfolds it, whether x or the person's reply folded it",
+   "item": 471,
+   "act": "x on a dossier's first message folds it to its own row and x again unfolds it, as on any message, whether x or the person's reply folded it",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (tab && !acts.folded) return;",
-     "    if (tab) return;"
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;",
+     "    if (found?.head && found.stack.replies.length) return;"
     ]
    ],
    "check": {
@@ -8145,12 +8145,12 @@
    }
   },
   {
-   "item": 388,
-   "act": "x unfolding a first message at latest and unread opens its dossier, so x again folds it",
+   "item": 471,
+   "act": "x on a dossier's title row at latest and unread neither folds nor unfolds its first message",
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (tab && levelOf(this.state, found.stack.id) !== 'open') setLevel(this.state, found.stack, 'open');\n",
+     "    if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;\n",
      ""
     ]
    ],
@@ -14500,6 +14500,470 @@
    }
   },
   {
+   "item": 471,
+   "act": "In a dossier a message shown whole keeps its agent name's pill as before, the same corner, fill and padding as a message on its own",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}",
+     ".reply-stack[data-single=true]:not(.only-new *) .agent-card .author-name{padding-inline:var(--stack-name-inset)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a message shown whole keeps its agent name's fill (no plain-name rule over it)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}",
+     ".reply-stack:not(.only-new *) .agent-card .author-name-start{padding-right:0}\n.reply-stack[data-single=false]:not(.only-new *) .agent-card .author-name{padding:0;border-radius:0;background:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row's name is plain words; its badge only in a placed message's folder",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=true]:not(.only-new *) .agent-card .folded-author{",
+     ".reply-stack:not(.only-new *) .agent-card .folded-author{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row shows no Folded pill; a screen reader still hears Folded",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;",
+     ".reply-stack[data-single=none]:not(.only-new *) .folded-cue{position:absolute;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "In a dossier a folded row shows its 👍 only once someone has given one",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".folded-thumb[data-count=\"0\"]{display:none}",
+     ".folded-thumb[data-count=\"none\"]{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "The row's 👍 says how many have given one, which the dossier's look reads",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    button.dataset.count = String(count);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A folded message on its own keeps its Folded pill",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;",
+     ".folded-cue{position:absolute;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a message shown whole keeps its agent name"
+   }
+  },
+  {
+   "item": 471,
+   "act": "The hover bar does not attach to a dossier's folded row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "\n      || card.dataset.folded === 'true' && section.dataset.single === 'false';",
+     ";"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A press on the header of a message a dossier shows whole folds it for the reader alone, and opens neither the Reader nor the color picker",
+   "break": [
+    [
+     "web/app.mjs",
+     "        if (headerClick($('messages'), messageEntries.get(item.id), event)) return;",
+     "        if (false) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A press on the header of a message on its own still opens it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section?.dataset.single !== 'false' || section.closest('.only-new')) return false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a press on a shown message"
+   }
+  },
+  {
+   "item": 471,
+   "act": "A header press on a starred message says it stays open",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (this.actsOf(item.id, item).starred) { this.say('Starred messages stay open'); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks inside a dossier a press on a shown message"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option held with two fingers right folds the message and every message before it in its dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return through && folds ? this.foldThrough(",
+     "return false && folds ? this.foldThrough("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "The trackpad's swipe hears whether Option is held",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.swipeAct(swipe.target, swipeFolds(swipe.x), event.altKey);",
+     "    this.swipeAct(swipe.target, swipeFolds(swipe.x));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Without Option a swipe folds only the message under it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return through && folds ? this.foldThrough(",
+     "return folds ? this.foldThrough("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option's fold leaves the messages after the swiped one whole",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\" WHERE m.id=:root OR m.seq<=:seq ORDER BY",
+     "\" WHERE m.id=:root OR m.seq<=:seq OR 1 ORDER BY"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option's fold leaves a starred message whole",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if now[\"starred\"] or now[\"folded\"]:",
+     "            if now[\"folded\"]:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "⌘Z right after Option's fold unfolds every message it folded",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.remember(() => folded.then(each => { for (const one of each) this.setFold(one, false, { focus: false, undoable: false }); }, () => {}));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Option held with two fingers right on the trackpad"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Option's fold folds the earlier messages of a dossier that the page has not loaded, in Core, by one request, so loading them shows them folded",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "        run = _dossier_through(db, actor, StackRoots(db, actor).root(message[\"id\"]), message)",
+     "        run = [message]"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "folds every message before it in a dossier longer than the loaded page"
+   }
+  },
+  {
+   "item": 472,
+   "act": "⌘Z right after Option's fold unfolds the messages it folded that the page has not loaded too",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".then(result => result.folds.map(({ message_id }) => this.messages().get(message_id) ?? this.standIns.get(message_id)));",
+     ".then(result => result.folds.map(({ message_id }) => this.messages().get(message_id)).filter(Boolean));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "folds every message before it in a dossier longer than the loaded page"
+   }
+  },
+  {
+   "item": 472,
+   "act": "Core's fold through tells the reader alone, once, and leaves everyone else's folds as they were",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "{\"folded\": True}, now[\"fold_revision\"] + 1, tell=False)",
+     "{\"folded\": True}, now[\"fold_revision\"] + 1)"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 472,
+   "act": "In Safari's engine a swipe left on the same page, a real gesture after a swipe right, unfolds a message placed on its own",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {",
+     "if (!swipe) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks a message placed on its own folds in place"
+   }
+  },
+  {
+   "item": 472,
+   "act": "A swipe right on a message placed on its own folds it in place and moves nothing below More",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "whole: Boolean(found.section && chrome) };",
+     "whole: Boolean(found.section && (chrome || found.section.dataset.single === 'true')) };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a message placed on its own folds in place"
+   }
+  },
+  {
+   "item": 430,
+   "act": "The lit message's ring has its bottom side under the card in front, its top and sides shown",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}",
+     ".reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring);z-index:1}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A lit message read in place keeps one ring, on its own box, as it scrolls inside, the page scrolls, the window resizes and it grows",
+   "break": [
+    [
+     "web/stack-look.css",
+     "/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n",
+     ".reply-stack:not(.only-new *) .stack-replies :is(.message-card.lit,.message-fold.lit>.fold-line){anchor-name:--stack-lit}\n.reply-stack:not(.only-new *) .stack-replies:has(:is(.message-card.lit,.message-fold.lit>.fold-line))::after{content:'';position:absolute;z-index:1;\n  position-anchor:--stack-lit;position-visibility:anchors-valid;top:anchor(top);right:anchor(right);bottom:anchor(bottom);left:anchor(left);\n  border-radius:var(--stack-r-sheet);box-shadow:0 0 0 2px var(--stack-ring);pointer-events:none}\n/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a lit message read in place keeps one ring on its own box"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A lit fold line shows its ring's top side over the card before it: later faces stack above earlier ones, a fold as a card",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .stack-replies>[data-id]{position:relative}",
+     ".reply-stack:not(.only-new *) .stack-replies>[data-id]:not(.message-fold){position:relative}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A fold line over a lit card keeps its words below that card's edge",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .stack-replies>.message-fold[data-stack-overlap=true]>.fold-line{padding-top:calc(.3rem + var(--stack-overlap))}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
+   }
+  },
+  {
+   "item": 430,
+   "act": "The lit first message's ring has its bottom side under the first reply",
+   "break": [
+    [
+     "web/stack-look.css",
+     "/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n",
+     ".reply-stack:not(.only-new *)>.lit[data-stack-covered=true]~.stack-replies::before{content:'';position:absolute;z-index:1;left:-2px;right:-2px;top:calc(-1 * var(--stack-overlap));\n  height:calc(var(--stack-overlap) + 2px);box-sizing:border-box;border:2px solid var(--stack-ring);border-top:0;\n  border-radius:0 0 calc(var(--stack-r-sheet) + 2px) calc(var(--stack-r-sheet) + 2px);pointer-events:none}\n/* Under Only new the stacks draw nothing (aim.css): each new card reads whole. */\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the lit message's ring has its bottom side under the card in front"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A fold line in a dossier answers the pointer with the soft fill and full ink",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-fold>.fold-line:hover{background:var(--soft);color:var(--ink)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a fold line in a dossier answers the pointer"
+   }
+  },
+  {
+   "item": 430,
+   "act": "An open fold line in a dossier shows it in full ink",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *) .message-fold>.fold-line[aria-expanded=true]{color:var(--ink)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a fold line in a dossier answers the pointer"
+   }
+  },
+  {
+   "item": 430,
+   "act": "A saved fold in a dossier of a card that is no agent's uses read material too",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":not(.agent-card){--muted:var(--stack-read-ink);background:var(--read-card)}",
+     ":not(.agent-card)[data-talk=agents]{--muted:var(--stack-read-ink);background:var(--read-card)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look gives a saved fold"
+   }
+  },
+  {
+   "item": 430,
+   "act": "The first mouse move after a finger's tap only places the pointer, so a tapped card keeps its light and bar",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "pointer.y === event.screenY : this.touch;",
+     "pointer.y === event.screenY : false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a tap's light stays through the first mouse move after it"
+   }
+  },
+  {
    "item": 324,
    "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
    "break": [
@@ -16303,6 +16767,21 @@
    "check": {
     "native": "compose",
     "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 430,
+   "act": "On a lit dossier card a passage lit under the pointer keeps its fill over the words while the card keeps its own ring, its bottom under the card in front",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: #000; color: #fff; }",
+     ".message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { color: inherit; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks a passage lit under the pointer on a lit dossier card"
    }
   },
   {
@@ -19801,8 +20280,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".message-card[data-folded=true]>:not(.message-folded){display:none!important}",
-     ".message-card[data-folded=true]>:not(.message-folded){display:none}"
+     ".message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none!important}",
+     ".message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none}"
     ]
    ],
    "check": {
@@ -19816,8 +20295,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".message-card[data-folded=true]>:not(.message-folded){display:none!important}",
-     ".message-card[data-folded=true]>:not(.message-folded){display:none}"
+     ".message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none!important}",
+     ".message-card[data-folded=true]>:not(.message-folded,.stack-head){display:none}"
     ]
    ],
    "check": {
