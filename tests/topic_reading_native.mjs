@@ -42,7 +42,8 @@ const BAR = '.message-bar';
 // window.waitView = name: the page's reads of the view so named wait unsent, as a slow connection holds them, until
 // window.letViews() sends them; what Core commits meanwhile reaches the page in one answer. window.waitingViews: those waiting.
 // window.fetchesOut: how many of the page's requests are out and not yet answered (held reports aside).
-const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.waitingViews=[];window.letViews=()=>{window.waitView=null;for(const go of window.waitingViews.splice(0))go()};
+// window.sendReceipts: Core's answers to the page's message.send commands, in the order they came.
+const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.fetchesOut=0;window.waitingViews=[];window.letViews=()=>{window.waitView=null;for(const go of window.waitingViews.splice(0))go()};
   const f=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
   if(b&&b.name&&b.name===window.waitView)return new Promise(go=>window.waitingViews.push(go)).then(()=>window.fetch.call(this,input,init));
@@ -50,6 +51,7 @@ const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.wai
   if(b&&b.kind==='message.thumb'&&window.staleThumb){window.staleThumb=false;b.expected.thumb_revision+=99;init={...init,body:JSON.stringify(b)}}
   const answer=f.call(this,input,init),watch=window.watchFor,back=()=>{window.fetchesOut--};window.fetchesOut++;answer.then(back,back);
   if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
+  if(b&&b.kind==='message.send')answer.then(r=>r.clone().json()).then(j=>window.sendReceipts.push(j),()=>{});
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
@@ -2271,7 +2273,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await until(async () => (await readerOn(p)) !== null && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader, the cursor in the reply');
     assert.equal(await readerOn(p), edited, 'the Reader shows revision 2, the newer one');
     assert.equal(await replyOf(p), `> ${said[1]} \n\n`, 'the reply quotes the words lit on the card');
+    // Core's answer to the send, which refuses a quote naming a revision whose words do not hold it (INVALID_QUOTE).
     await p.key('Enter', 4);
+    const receipt = await until(() => p.evaluate('window.sendReceipts[0] ?? null'), 'Core answers the reply\'s send');
+    assert.equal(receipt.status, 'committed', 'Core takes the reply with its quote: ' + JSON.stringify(receipt.error ?? null));
     let sent = null;
     await until(async () => {
       const page = await view('topic_messages', { topic_id: topic, direction: 'before', limit: 5 });
