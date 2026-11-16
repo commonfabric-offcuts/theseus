@@ -1,0 +1,8 @@
+{
+ "step": "freshness",
+ "cases": [
+  "freshness scale scoped consumer cost and real hidden polling"
+ ],
+ "label": "x8-base-native-freshness-8e352290-7",
+ "snapshot": "8dd6a40f5767f76a8992917db0643440c0169f3b"
+}
