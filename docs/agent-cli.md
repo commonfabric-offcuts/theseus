@@ -535,5 +535,36 @@ checks.
 
 The rules behind every word these verbs print are in [targets.md](targets.md).
 
+## Skills and tools
+
+A skill or tool is a record in `skills/<id>.json` and its files, homed in one
+outcome ([skills-and-tools.md](skills-and-tools.md)). These verbs read and say
+what Core keeps about them; the records themselves change only in a release.
+
+- `tools OUTCOME` prints the outcome's own skills and tools, then those it says
+  it uses, each with its id, name, kind and the word its check reads ("Its
+  check passed: 42 of 42 · TIME", "Its check has not run on this version yet",
+  "Not evaluated yet: it has no check").
+- `tool ID [--went-back N]` prints one: its kind and summary, its home, its
+  check's word, the outcomes that said they use it (and how many you cannot
+  open), the versions that went back, newest first, N of them (5 by default,
+  1 to 100), each with its topic, the topics about it, and its files, its check
+  marked.
+- `tool-use ID OUTCOME [--off]` says the outcome uses the tool, or with `--off`
+  that it no longer does. Anyone on the outcome may; a reached outcome refuses.
+  Nothing else makes an outcome a user: running the tool, linking a topic or
+  being its home does not.
+- `tool-link ID TOPIC [--off]` says a topic is about the tool, or with `--off`
+  that it is not. A link needs a topic in the tool's home, not its
+  Conversation; taking one off works wherever the topic now is.
+- `tool-record FILE` records one run of a tool's check from JSON: the run's
+  fields and its `home_workspace_id`, as `tools/tool_check.py` writes them in
+  `--out/records`. Only an agent on the home records; the same run again is
+  recorded once, and a version that went back opens its topic in the home.
+
+The same answer twice prints `(no change)` or `was already recorded`. These
+verbs are checked in `tests/test_agent_verbs_tools.py`, run as a deployed CLI
+runs them, over invented records.
+
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

@@ -352,10 +352,14 @@ def main():
         binding = initialize(path, instance, actors,
                              authority_path=root / "control" / "authority.json")["binding"]
 
+        # The skills and tools this instance knows (docs/skills-and-tools.md): none, until tools_seed
+        # writes invented records here; never the checkout's own.
+        tool_records = root / "tool-records"
+
         def store():
             # The runner's own load would put "The Mac is overloaded" above everything the
             # Health page is checked for, so the page reads a calm Mac.
-            return Store(path, instance, expected_binding=dict(binding), machine=lambda: {"load": [0.5, 0.5, 0.5], "cpus": 8})
+            return Store(path, instance, expected_binding=dict(binding), machine=lambda: {"load": [0.5, 0.5, 0.5], "cpus": 8}, tools=tool_records)
 
         def command(kind, operation, args, target=None, expected=None, sender=None, refusable=False):
             envelope = {"v": 1, "instance_id": instance, "kind": kind,
@@ -437,6 +441,51 @@ def main():
         # Where an invited agent's sign-in file is written, as beside the server's own profile (docs/agents.md).
         sign_in = root / "sign-in"
         sign_in.mkdir(mode=0o700)
+
+        def tools_seed(request):
+            """Invented skills and tools (docs/skills-and-tools.md): "Kite club" (kites), with the fixture agent on
+            its team and two open topics, homes Spool winder (a tool whose check passed, and one version that went
+            back) and Knot guide (a skill with no check); w1 homes Wind meter, whose check has not run; and "Glider
+            bench" (gliders), the agent's alone, homes Glide timer, whose page the person reads from outside. Once."""
+            agent = "fixture-notebook-agent"
+            if store().view(actor, "tools", {"workspace_id": "w1"})["own"]:
+                return {"seeded": False}
+            command("workspace.create", "tools-workspace", {"id": "kites", "title": "Kite club", "purpose": "Kites that fly in any wind", "team": [agent]})
+            command("workspace.create", "tools-workspace-outside", {"id": "gliders", "title": "Glider bench", "purpose": "Gliders", "team": []}, sender=agent)
+            for topic_id, title in (("kite-spools", "Faster spools"), ("kite-lines", "Tangled lines")):
+                prefix = "tools-" + topic_id
+                command("draft.save", prefix + "-save", {
+                    "source_ref": {"kind": "new_topic", "id": prefix, "workspace_id": "kites"}, "topic_id": topic_id,
+                    "generation": prefix + "-generation", "body": "Opening " + title,
+                    "opening": {"workspace_id": "kites", "title": title, "participants": []}}, {"draft_id": prefix + "-draft"}, {"draft_revision": 0})
+                command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                   "send_operation_id": prefix + "-send"}, {"topic_id": topic_id}, {"draft_revision": 1})
+                command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id})
+            records = {
+                "spool-winder": {"id": "spool-winder", "kind": "tool", "name": "Spool winder", "summary": "Winds a kite line back without a tangle",
+                                 "home": "kites", "files": ["tools/spool.py", "tests/test_spool.py"], "check": {"python": "tests/test_spool.py"}},
+                "knot-guide": {"id": "knot-guide", "kind": "skill", "name": "Knot guide", "summary": "How to tie a line to a kite's bridle",
+                               "home": "kites", "files": ["skills/knot-guide/SKILL.md"], "check": None},
+                "wind-meter": {"id": "wind-meter", "kind": "tool", "name": "Wind meter", "summary": "Reads the wind before a launch",
+                               "home": "w1", "files": ["tools/wind.py", "tests/test_wind.py"], "check": {"python": "tests/test_wind.py"}},
+                "glide-timer": {"id": "glide-timer", "kind": "tool", "name": "Glide timer", "summary": "Times a glide from launch to landing",
+                                "home": "gliders", "files": ["tools/glide.py", "tests/glide.test.mjs"], "check": {"node": "tests/glide.test.mjs"}},
+            }
+            for record in records.values():
+                for name in record["files"]:
+                    (tool_records / name).parent.mkdir(parents=True, exist_ok=True)
+                    (tool_records / name).write_text("# %s\n" % name, encoding="utf-8")
+                (tool_records / "skills").mkdir(parents=True, exist_ok=True)
+                (tool_records / "skills" / (record["id"] + ".json")).write_text(json.dumps(record), encoding="utf-8")
+            live = store().view(actor, "tool", {"tool_id": "spool-winder"})["tool"]["content_id"]
+            run = {"tool_id": "spool-winder", "name": "Spool winder", "check_path": "tests/test_spool.py", "failing_more": 0, "why": None,
+                   "first_version": 0, "items_back": [], "failing": []}
+            command("tool.record", "tools-run-back", {"run": dict(run, content_id="b" * 64, commit_sha="1" * 40, tree_sha="2" * 40, live_commit="3" * 40,
+                    result="failed", passed=9, total=12, failing=["test_winds_back", "test_no_tangle", "test_line_end"], fate="back", items_back=[17])},
+                    {"workspace_id": "kites"}, sender=agent)
+            command("tool.record", "tools-run-live", {"run": dict(run, content_id=live, commit_sha="4" * 40, tree_sha="5" * 40, live_commit="3" * 40,
+                    result="passed", passed=12, total=12, fate="live")}, {"workspace_id": "kites"}, sender=agent)
+            return {"seeded": True}
 
         def serve(port=0, web=None):
             """The real server, with a session of its own: a restart (server_stop,
@@ -707,6 +756,8 @@ def main():
                                     {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
                             answer = command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"},
                                              {"topic_id": topic_id}, sender=agent)
+                    elif freshness and request["method"] == "tools_seed":
+                        answer = tools_seed(request)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
                     elif freshness and request["method"] == "agent_thumb":

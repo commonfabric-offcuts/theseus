@@ -1,0 +1,14 @@
+{
+  "id": "mutant-runner",
+  "kind": "tool",
+  "name": "Mutant runner",
+  "summary": "Breaks one line on purpose to show a check catches it",
+  "home": "building-theseus",
+  "files": [
+    "tools/mutant.py",
+    "tests/test_tools_mutant.py"
+  ],
+  "check": {
+    "python": "tests/test_tools_mutant.py"
+  }
+}

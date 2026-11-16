@@ -2167,6 +2167,12 @@
       ],
       "scope": "repository"
     },
+    "8db7b2af16eef48ea20e20f15ceb277ff902c8e5b1c394dcd72c0f1b19a4e00e": {
+      "inputs": [
+        "tests/fixtures/schema_43.sql"
+      ],
+      "scope": "repository"
+    },
     "91f82d17393aedb60ce4ebedfee747f7e9811b2262f48db80e812f03eb2803cc": {
       "inputs": [],
       "scope": "generated/system/product"
@@ -2778,6 +2784,28 @@
         "bin/aim-next-runner"
       ],
       "scope": "repository"
+    }
+  },
+  "tests/test_tool_records.py": {
+    "41480a444c8392becbc951bc514c1ab664ec1109f29db8a747223a4f416744b9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "52ffeb3516d95c69639fbdd04f89469b1d5e471fdf4dff4eb97607bdb55d529a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5d5ee292ea1a3f42a73e5d4466fa19e9d43402742dc46199c9a4459f1088bf1b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cdd90cea4c4b0e12582f569069ee1d5b1f35003e74ae5865990b154369f66375": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ec28fe8490f4716544eb171a6f4fd8112ddf06d503eb0d445eba3cb9407be13a": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/test_tools_acts.py": {
@@ -3657,6 +3685,16 @@
         "docs/tools.md"
       ],
       "scope": "repository"
+    }
+  },
+  "tests/test_tools_tool_check.py": {
+    "0a77164d8414220455858a9d5bb6f545af16bf7f7bf859727898d348a563934b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e9d6f339b5683b93297da8b93cf4020f418c086727e6c36cbe1fee303962563e": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/test_tools_train.py": {

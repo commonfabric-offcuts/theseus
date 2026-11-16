@@ -910,6 +910,9 @@ VIEW_PATHS = {
                    "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
                    "so a whisper never names one",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
+    "tools": "no message words: the records, what each check found and which outcomes said they use each",
+    "tool": "no message words; a went-back line names its topic's title only when READABLE to the reader",
+    "topic_tools": "no message words: the tools a topic _topic lets the reader open is about",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
     "health_light": "the keys of what is red, counted on the record only",

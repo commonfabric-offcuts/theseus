@@ -149,6 +149,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       you_own: false, you_steer: false, target: null, kind: { kind: 'keep', started_by: 'owner', started_ms: null, you_change: false }, word: null, failing_check: null,
       reached: null, reach: null, rounds: 'runs', counts: { passing: 0, failing: 0, measured: 0, holding: 0, not_run: 0, waiting: 0, total: 0 }, groups: [], loop: null,
       problems: null, releases: [], relevant_versions: { checks: 0, workspace: 1 } };
+    // An outcome that homes and uses no skill or tool, as Core answers for one (docs/skills-and-tools.md).
+    if (name === 'tools') return { instance_id: 'fixture', workspace_id: args.workspace_id, own: [], used: [], offer: [], reader_may_use: false };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };

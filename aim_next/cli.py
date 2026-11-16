@@ -35,6 +35,7 @@ class UsageError(ValueError):
 
 from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
+from .cli_tools import ToolVerbs, register as register_tools
 
 
 class Parser(argparse.ArgumentParser):
@@ -200,7 +201,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
          "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
          "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
-         "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|-}")
+         "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|- "
+         "| tools OUTCOME | tool ID [--went-back N] | tool-use ID OUTCOME [--off] | tool-link ID TOPIC [--off] | tool-record FILE}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -384,6 +386,7 @@ def _parser():
     link.add_argument("--origin")
     register_pipeline(verb)
     register_targets(verb)
+    register_tools(verb)
     return parser
 
 
@@ -512,7 +515,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs):
+class Agent(PipelineVerbs, TargetVerbs, ToolVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):

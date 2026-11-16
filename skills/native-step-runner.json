@@ -1,0 +1,14 @@
+{
+  "id": "native-step-runner",
+  "kind": "tool",
+  "name": "Native step runner",
+  "summary": "Runs one browser step of the release check and lists each case that failed",
+  "home": "building-theseus",
+  "files": [
+    "tools/native.py",
+    "tests/test_tools_native.py"
+  ],
+  "check": {
+    "python": "tests/test_tools_native.py"
+  }
+}

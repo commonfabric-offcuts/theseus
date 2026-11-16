@@ -140,6 +140,78 @@ The Checks workflow passes `--quarantine-at event` to every shard, and its combi
 
 For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, `webkit-device`, ...) and lists each failed case with its most common failure kinds. It takes `--playwright` as the release check does.
 
+## Tool check: `tools/tool_check.py`
+
+A release candidate's changed skills and tools run their own checks before the
+candidate is judged ([skills-and-tools.md](skills-and-tools.md)). In the train
+flow it runs in the train's worktree after the squash and before the train's
+pull request opens; for a local release, before `release_check.py`. It speaks
+for HEAD of the checkout it lives in:
+
+```sh
+tools/tool_check.py --cli LIVE/bin/aim-next --profile /abs/agent.json --out /abs/new-dir \
+  [--items /abs/items.json] [--python P] [--node N]
+```
+
+`--cli` and `--profile` are the live release's agent CLI and an agent profile
+on the tools' home outcomes; `--items` is the train's items,
+`[{"item": N, "approved_head": SHA}]`.
+
+- **Refused (exit 2)** before anything runs or is written, with one line naming
+  the first problem: a checkout with tracked or untracked changes; an `--out`
+  that is not absolute, not new and empty, or inside the checkout and not
+  ignored; a live commit the live CLI cannot read or that is not an ancestor of
+  HEAD; records git cannot read at either commit, or any record at HEAD (or
+  the live commit) the parser refuses, each problem listed; a changed tool's
+  home the actor cannot record in; a tool that would go back with no
+  `--items`, or while the live code has no `tool.record`.
+- **What changed**: the ids whose content id differs between the live commit
+  and HEAD, a record on one side only included.
+- **Each round** runs every changed tool's check once, in a fresh detached
+  worktree of the round's exact commit outside the checkout, with its own
+  `PYTHONPYCACHEPREFIX` and a log in `--out/logs`:
+  `python -m unittest discover -s tests -p test_x.py -v` (the form the act
+  ledger and the release check use, so `tests/` is on the path) or
+  `node --test --test-reporter=tap tests/x.test.mjs`. It passes only by
+  `release_check`'s counters, with exit 0 and at least one test; a run that
+  counted nothing, or could not run, is `counted_nothing`, never a pass. No
+  timeout and no retry.
+- **Going back**: each tool that did not pass has every path its record names,
+  at either commit, set to its live content (or removed when the live commit
+  has none), in a tree built through a private index without touching the
+  checkout. Act rows in `tests/acts.json` new since the live commit whose break
+  or check names a restored path leave the ledger as text, and rows the
+  candidate lost on those paths come back. The items whose change (from their
+  merge base with the live commit to their approved head) touches a restored
+  path are taken back. The commit carries HEAD's author, committer and dates,
+  so the same input makes the same commit, and its message names the tools,
+  what each check found, and `Train-Item: Revert N` for each item taken back,
+  with no `Pipeline` trailer.
+- **The next round** runs, on that commit, each still-new tool's check and,
+  once no still-new tool fails, each tool that went back's live check. A
+  still-new tool that fails there goes back too; a tool whose live check fails
+  there stops the release.
+- **Stopped (exit 1)**: "Act ledger's check fails with it at its live version
+  too: something else in this release breaks it". Nothing is recorded and no
+  commit is made.
+- **Recorded**: every `back` run, then each tool that went back's `live` run
+  at the final commit, then the passing runs of tools that stayed new, through
+  `tool-record`; each `back` row opens its topic. A refusal stops the step
+  (exit 2) before the checkout moves, and running it again records nothing
+  twice and makes the same commit.
+- **Goes on (exit 0)**: only after every record, the checkout is
+  fast-forwarded to the final commit. `summary.json` in `--out` names
+  `head_in`, `head_out`, the rounds, each run, the tools that went back
+  (`back`), `items_back`, `restored_paths` and what was recorded. The train
+  opens at `head_out` and lists only the items not taken back.
+
+The step never runs a check for a tool that did not change, nor any other
+outcome's checks. Its checks are in `tests/test_tools_tool_check.py`, on real
+git repositories in a temporary directory with the live CLI as a typed
+stand-in; its bridge to the real live CLI (`LiveCli`: the views it reads and
+`tool-record`) is checked in `tests/test_agent_verbs_tools.py`, against the
+real `bin/aim-next` of a copy of the code.
+
 ## Deploy: `tools/deploy.py`
 
 ```sh

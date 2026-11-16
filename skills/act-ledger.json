@@ -1,0 +1,14 @@
+{
+  "id": "act-ledger",
+  "kind": "tool",
+  "name": "Act ledger",
+  "summary": "Runs each act's break against the check that must catch it",
+  "home": "building-theseus",
+  "files": [
+    "tools/acts.py",
+    "tests/test_tools_acts.py"
+  ],
+  "check": {
+    "python": "tests/test_tools_acts.py"
+  }
+}

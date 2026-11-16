@@ -13,9 +13,9 @@ from the readings and the outcome's kind (outcome_kind.py); nobody sets it.
 An agent's whisper is never where a problem was found (private_source_refused),
 and no whisper is the account of a worse check, which the whole outcome reads (private_to).
 
-Seams until the rest of release 21 lands:
-- skills (17) is absent: readings carry no skill versions, so tools_words is
-  empty, and no tool rows are drawn under the measures.
+Skills and tools (17, first slice; docs/skills-and-tools.md) keep their own runs
+(tools_core.py), not readings: readings carry no tool versions, so tools_words is
+empty, and no tool rows are drawn under the measures.
 """
 
 import hashlib

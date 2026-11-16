@@ -1,0 +1,11 @@
+{
+  "id": "theseus-team-assessment",
+  "kind": "skill",
+  "name": "Team assessment",
+  "summary": "Assesses an agent's or a team's progress and fitness for its assignment, and recommends what to do",
+  "home": "building-theseus",
+  "files": [
+    "skills/theseus-team-assessment/SKILL.md"
+  ],
+  "check": null
+}

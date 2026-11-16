@@ -347,6 +347,11 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const item = `nb-rail-page-${String(n).padStart(2, '0')}`;
       assert.equal((await control({ method: 'outcome_reference', operation_id: item, item_id: item, workspace_id: many, title: `Rail page ${n}`, body: `Page ${n}.` })).status, 'committed');
     }
+    // A preview posted in its Conversation, so a section follows the Notebook for ↓ to reach (Skills and tools, which
+    // once always followed it, now hides when the place has none: docs/skills-and-tools.md).
+    const talk = (await view('conversation', { workspace_id: many })).conversation.topic_id;
+    assert.equal((await control({ method: 'agent_message', operation_id: 'nb-rail-many-preview', topic_id: talk, sender: 'person',
+      body: 'The pages as they stand: http://bench.example.ts.net:5192/preview/pages.' })).status, 'committed');
     const SIZE = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, 320: { width: 320, height: 700, deviceScaleFactor: 2, mobile: true },
       375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true }, 390: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
     const ROWS = RAIL_NOTEBOOK + ' .things-list a.row', MORE = RAIL_NOTEBOOK + ' .things-more';
@@ -390,7 +395,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         await until(async () => (await section(p)).rows === all, 'Return on More brings the rest');
         await until(() => p.evaluate(`document.activeElement?.textContent==='Rail page 21'`), 'the focus lands on the first page More brought');
         const walk = [];
-        for (let n = 0; n < 4; n++) { await p.key('ArrowDown'); walk.push(await p.evaluate(`(e=>e.closest('.things-sec')?.dataset.key+':'+(e.matches('summary')?'section':e.textContent.trim()))(document.activeElement)`)); }
+        for (let n = 0; n < 3; n++) { await p.key('ArrowDown'); walk.push(await p.evaluate(`(e=>e.closest('.things-sec')?.dataset.key+':'+(e.matches('summary')?'section':e.textContent.trim()))(document.activeElement)`)); }
         assert.deepEqual(walk.slice(0, 2), ['notebook:Rail page 22', 'notebook:Rail page 23'], '↓ goes on through the pages More brought');
         assert.notEqual(walk[2], 'notebook:More pages', 'and never to the More that went');
         assert.match(walk[2], /:section$/, 'past the last page, the next section');

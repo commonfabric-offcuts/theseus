@@ -69,13 +69,13 @@ class SweepCase(test_message_exposure.HeldOutcomeCase):
                  ("attention", {"workspace_id": "w1"}), ("actors", {}), ("colors", {}), ("wakes", {}), ("health", {}), ("health_light", {}),
                  ("releases", {}), ("conversation", {"workspace_id": "w1"}), ("pipeline_row", {"workspace_id": "w1"}),
                  ("outcome_checks", {"workspace_id": "w1"}), ("check_readings", {"workspace_id": "w1"}), ("outcome_live", {"workspace_id": "w1"}),
-                 ("stars", {})]
+                 ("stars", {}), ("tools", {"workspace_id": "w1"}), ("tool", {"tool_id": "act-ledger"})]
         calls += [("pipeline", {"workspace_id": "w1", "section": section}) for section in ("now", "next", "later", "candidates")]
         calls += [("pipeline_item", {"workspace_id": "w1", "number": number}) for number in (1, 2, 3)]
         for topic in topics:
             calls += [("topic", {"topic_id": topic}), ("topic_messages", {"topic_id": topic}), ("topic_messages", {"topic_id": topic, "direction": "before"}),
                       ("topic_messages", {"topic_id": topic, "audience": "reader"}), ("marks", {"topic_id": topic}), ("topic_unread", {"topic_id": topic}),
-                      ("message_acts", {"topic_id": topic}), ("assessments", {"topic_id": topic})]
+                      ("message_acts", {"topic_id": topic}), ("assessments", {"topic_id": topic}), ("topic_tools", {"topic_id": topic})]
         calls.append(("topic_messages", {"topic_id": self.conversation, "items": "open"}))
         for message in messages:
             calls += [("source", {"source_ref": {"kind": "message", "id": message}}), ("reactions", {"message_id": message}),

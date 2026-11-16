@@ -58,6 +58,7 @@ import { NotebookSheet, returning as notebookReturning } from './notebook-sheet.
 import { HealthLight } from './health-light.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
+import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
@@ -101,7 +102,7 @@ let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicTools = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, readerShowings = 0, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
 // An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
@@ -2053,7 +2054,13 @@ async function initialize() {
     $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
   }
   paintHeader(topic);
-  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
+  // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
+  // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
+  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
+    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+  $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
+  topicTools = here.page ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
+  if (topicTools) { const tools = topicTools; run(() => tools.load()); }
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
@@ -2726,6 +2733,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(route.kind==='health')return initializeHealthPage();
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
+  if(route.kind==='tool')return initializeToolPage(route);
   if(route.kind==='cards')return initializeDeckPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   // A Notebook page's link opens the page in place once the outcome's lists are
@@ -2759,8 +2767,10 @@ async function initializeOutcomePage(route) {
     // and checks, the pipeline line, the improvement loop and the problems found
     // (D11), then its conversation's one row (outcome-conversation.mjs), then its topics;
     // its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'),$('outcome-tools'));
     const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend});
+    // Its skills and tools, and the ones it says it uses (docs/skills-and-tools.md).
+    const outcomeTools=new OutcomeTools({host:$('outcome-tools'),workspace:route.id,instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
@@ -2796,7 +2806,7 @@ async function initializeOutcomePage(route) {
           permitted=false;$('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
-          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;
+          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;$('outcome-tools').hidden=true;
         }
         throw error;
       }
@@ -2816,7 +2826,7 @@ async function initializeOutcomePage(route) {
         open:(id,title,message)=>openDestination(topicTarget(id,message),title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeReferences.load(),loadConversation(),
+      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeTools.load(),outcomeReferences.load(),loadConversation(),
         paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
@@ -2851,6 +2861,12 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
   const row=new PipelineRow({section:$('pipeline-navigation'),host:$('pipeline-links'),workspace,current,read:pipelineView,reader:bootstrap.actor});
   return {name:'pipeline',node:$('pipeline-navigation'),row,load:()=>row.load().then(read=>{loaded(read);return read;})};
 }
+// The rail's Skills and tools (docs/skills-and-tools.md): the outcome's own and
+// those it says it uses, names only; hidden when there are none.
+function skillsSection(workspace,current=null) {
+  const rail=new ToolsRail({section:$('skills-navigation'),host:$('skills-links'),workspace,current,instanceId:bootstrap.instance_id,read:pipelineView,open:openDestination});
+  return {name:'skills',node:$('skills-navigation'),load:()=>rail.load()};
+}
 // An outcome's pipeline, or one item's record in it: the rail shows this
 // outcome as a topic page's does (its conversation, Pipeline row, topics and
 // Notebook pages); the page and the rail read again on every commit.
@@ -2871,7 +2887,7 @@ async function initializePipelinePage(route) {
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
   try { const workspace=(await pipelineView('workspace',{workspace_id:route.id})).workspace;here.title=workspace.title;here.has=hasConversation(workspace); } catch {}
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'pipeline',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
@@ -2932,8 +2948,37 @@ async function initializeMeasurementsPage(route) {
     open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
   pagesInPlace(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
   placeBrand(document.querySelector('.rail'));
+  await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
+  document.body.dataset.ready='true';
+}
+// A skill's or tool's page (docs/skills-and-tools.md): in its home outcome, whose
+// rail it shows when the reader can read the home; with no rail otherwise, the
+// logo block and "← Outcomes" head it. The page and the rail read again on every commit.
+async function initializeToolPage(route) {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
+  const page=new ToolPage({host:$('tool-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},toolId:route.tool,
+    instanceId:bootstrap.instance_id,read:pipelineView,send:pipelineSend,open:openDestination});
+  await page.load();
+  const homeReadable=page.answer?.tool.home.readable===true&&page.answer.tool.home.workspace_id===route.id;
+  if(homeReadable) {
+    enableNewTopic(route.id);
+    topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+      retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+      read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+      open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    pagesInPlace(route.id,()=>{});
+    // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
+    here={workspaceId:route.id,title:page.answer.tool.home.title,view:null,page:false,has:false,onlyNew:false,items:new Map()};
+    try { here.has=hasConversation((await pipelineView('workspace',{workspace_id:route.id})).workspace); } catch {}
+  }
+  outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'skill',homeReadable,rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
+    sections:homeReadable?[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id,route.tool)]:[]});
+  if(homeReadable)placeBrand(document.querySelector('.rail'));
+  else { document.querySelector('.rail').hidden=true;$('main').prepend($('outcomes-home'));placeBrand($('main')); }
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
@@ -3059,7 +3104,7 @@ async function initializeOpeningPage(route) {
   pagesInPlace(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.workspace)]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),draft.follow().catch(()=>false)])).every(read=>read!==false))();
   document.body.dataset.ready='true';

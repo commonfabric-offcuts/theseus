@@ -9,10 +9,12 @@
 // quiet line; nothing is made up to fill it.
 //
 // Everything comes from what Core already serves: pipeline, conversation,
-// workspace_topics, topic_messages, topic_images and memory_items. Previews
-// and pull requests are the links people posted in messages; Core keeps no
-// record of a pull request's state, or of an outcome's skills and tools, so
-// the rail says what it cannot know rather than guess.
+// workspace_topics, topic_messages, topic_images, memory_items, and tools and
+// topic_tools for Skills and tools (docs/skills-and-tools.md): on a topic the
+// tools linked to it, on the Conversation the outcome's own and those it says it
+// uses. Previews and pull requests are the links people posted in messages; Core
+// keeps no record of a pull request's state, so the rail says what it cannot
+// know rather than guess.
 //
 // Like the outline it is the shell's (in-place-navigation.mjs): one element
 // across moves, which reads through the page that is up. On a phone it is a
@@ -369,20 +371,24 @@ export class ThingsRail {
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
     const pipeline = settle(this.readPipeline(view, workspace));
     const stars = settle(view('stars', { limit: 50 }));
+    const tools = byTopic && !readable(topicId) ? settle(Promise.resolve(null))
+      : settle(byTopic ? view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id })))
+        : view('tools', { workspace_id: workspace }).then(answer => [...answer.own, ...answer.used].map(tool => ({ ...tool, home: tool.home.workspace_id, live: true }))));
     const notebook = byTopic && !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, byTopic ? { kind: 'topic', id: topicId } : { kind: 'workspace', id: workspace }));
     const places = (byTopic ? [this.topicPlace(handles)] : await this.outcomePlaces(view, workspace)).filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, byTopic ? 24 : 12)));
-    const [pipe, notes, starred, ...found] = await Promise.all([pipeline, notebook, stars, ...reads]);
+    const [pipe, notes, starred, toolsRead, ...found] = await Promise.all([pipeline, notebook, stars, tools, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
-    const failed = [pipe, notes, starred, ...found].filter(read => read.error && !denied(read.error));
+    const failed = [pipe, notes, starred, toolsRead, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();
     for (const read of found) for (const image of read.value?.images ?? []) if (!images.has(image.attachment.id)) images.set(image.attachment.id, { ...image, place: read.value.place });
     const conversation = found.find(read => read.value?.place.conversation)?.value.messages ?? [];
     this.paint({ byTopic, topicId, pipeline: pipe.value ?? (pipe.error ? undefined : null), notebook: notes.value === null ? null : notes.value?.items ?? (notes.error ? undefined : []),
       notebookMayWrite: notes.value?.reader_may_write === true, notebookNext: notes.value?.next ?? null,
-      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []) });
+      messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)), conversation, stars: starred.value?.items ?? (starred.error ? undefined : []),
+      tools: toolsRead.value === null ? [] : toolsRead.value ?? (toolsRead.error ? undefined : []) });
     this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
     this.message.hidden = this.retry.hidden = !failed.length;
     if (failed.length) this.message.textContent = 'Some of this could not be read just now; what shows is what was read last.';
@@ -474,7 +480,7 @@ export class ThingsRail {
       previews: this.linkSection(previews, nowMs, reader, preview => preview.url),
       prs: this.linkSection(prs, nowMs, reader, pr => pr.href, 'Whether each is open or merged is not recorded here.'),
       images: this.imageSection(found.images, reader),
-      tools: { sum: '', key: 'tools', node: () => element(this.doc, 'p', { className: 'things-quiet', textContent: 'Skills and tools are not recorded yet.' }) },
+      tools: found.tools === undefined ? undefined : this.toolSection(found.tools),
     };
     let any = false;
     for (const [key] of SECTIONS) {
@@ -483,8 +489,8 @@ export class ThingsRail {
       const appears = part.details.hidden && Boolean(section);
       part.details.hidden = !section;
       if (!section) { part.drawn = null; part.body.replaceChildren(); continue; }
-      // Skills and tools, and an empty Notebook kept for its pencil, are not something the place refers to.
-      if (key !== 'tools' && section.key !== 'note-none') any = true;
+      // An empty Notebook kept for its pencil is not something the place refers to.
+      if (section.key !== 'note-none') any = true;
       part.sum.textContent = section.sum;
       if (part.drawn !== section.key) {
         part.drawn = section.key;
@@ -627,6 +633,25 @@ export class ThingsRail {
       }));
       return note ? element(doc, 'div', {}, list, element(doc, 'p', { className: 'things-quiet', textContent: note })) : list;
     } };
+  }
+  // Skills and tools: each opens its page; one with no live record (a first
+  // version that did not ship) is named, with no page to open.
+  toolSection(tools) {
+    if (!tools.length) return null;
+    const doc = this.doc;
+    return { sum: String(tools.length), key: JSON.stringify(['tools', tools.map(tool => [tool.tool_id, tool.name, tool.home, tool.live])]), node: () =>
+      element(doc, 'ul', { className: 'things-list' }, ...tools.map(tool => element(doc, 'li', {}, tool.live && tool.home ? this.toolLink(tool) : element(doc, 'span', { className: 'row', textContent: tool.name })))) };
+  }
+  toolLink(tool) {
+    const target = { kind: 'tool', id: tool.home, tool: tool.tool_id };
+    const link = element(this.doc, 'a', { className: 'row', href: '?' + new URLSearchParams({ workspace: tool.home, tool: tool.tool_id }) }, tool.name);
+    link.onclick = event => {
+      if (!plainClick(event) || !this.handles) return;
+      event.preventDefault();
+      if (!this.wide?.matches) this.close(false);
+      this.handles.open(target, tool.name, link);
+    };
+    return link;
   }
   imageSection(images, reader) {
     if (!images.length) return null;
