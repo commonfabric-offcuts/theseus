@@ -40,8 +40,11 @@ export function followEdits(items, edits) {
 // older-message/Notebook paging frontiers are deliberately independent.
 export class TopicViews {
   // holds(id): whether something else on the page shows message id or a reply's line to it (followEdits).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds });
+  // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
+  // begins; the function it returns is called once that read has landed, so
+  // what was said of an act on a card goes (stack-feed.mjs answered).
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {} }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading });
     this.scope = { kind: 'topic', id: topicId };
     this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
     // Loaded messages form runs, each holding every topic message between its
@@ -294,7 +297,7 @@ export class TopicViews {
     if (!this.messages.size && !alone) return true;
     let oldest = alone?.seq ?? Infinity;
     for (const item of this.messages.values()) oldest = Math.min(oldest, item.seq);
-    const found = new Map();
+    const found = new Map(), landed = this.reading('acts');
     let cursor = null, reached = null;
     do {
       const answer = checkedView(await read('message_acts', { topic_id: this.topicId, limit: 100, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
@@ -322,6 +325,7 @@ export class TopicViews {
     // learns nothing new, so it would draw nothing.
     try { await this.readPositions(read, current); }
     finally { if (changed) this.paint('acts'); }
+    if (current()) landed();
     return true;
   }
   // Keeps the later of each read position, for every loaded message of its
@@ -460,11 +464,13 @@ export class TopicViews {
       // Reactions on a message this page has not loaded come with it when it loads.
       const id = key.slice(9);
       if (!this.messages.has(id)) return true;
+      const landed = this.reading(key);
       const answer = checkedView(await read('reactions', { message_id: id }), this.instanceId);
       if (!current()) return false;
       if (answer.message_id !== id) throw invalid('The reactions answer is for another message.');
       if (reactionsOf(answer).version < version) throw behind();
       if (learnReactions(this.messages, answer)) this.paint('reactions');
+      landed();
       return true;
     }
     if (key.startsWith('edit:')) {

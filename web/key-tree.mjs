@@ -20,14 +20,10 @@
 // from it; the row's own act then runs as it always did.
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
-import { reach } from './arrow-reach.mjs';
 
 // What a press lands on that has an act of its own: a row is one, and so is a control inside a row.
 const CONTROLS = 'a[href], button, summary, input, select, textarea, [contenteditable], [role=treeitem]';
 const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
-// A control set in a row (the right rail's Notebook pencil in its section's row).
-const OWN = 'button:not([disabled]), a[href], input:not([type=hidden])';
-const setIn = el => [...el.querySelectorAll(OWN)].find(shown) ?? null;
 
 export class KeyTree {
   // root: the element that is the tree. rows(): the rows on show, in order,
@@ -39,11 +35,8 @@ export class KeyTree {
   // tree speaks through a polite status of its own (say). also: rows drawn
   // outside root (the outline's heading pencil), which the tree owns
   // (aria-owns) and hears as its own.
-  // column: where ↑ above the first row and ↓ below the last go on to, in the
-  // page's column the tree stands in (the side rail's logo block, its Keys;
-  // arrow-reach.mjs), else the tree's own root, where nothing lies beyond.
-  constructor({ root, rows, act = () => false, label = null, also = [], column = root, doc = root.ownerDocument, selectOnPress = false }) {
-    Object.assign(this, { root, rows, act, column, doc, also });
+  constructor({ root, rows, act = () => false, label = null, also = [], doc = root.ownerDocument, selectOnPress = false }) {
+    Object.assign(this, { root, rows, act, doc, also });
     this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false; this.marked = new Set();
     // ringed: whether the focus in the pane wears a ring. standing: whether
     // the row chosen is still the person's last choice (away, show).
@@ -67,9 +60,6 @@ export class KeyTree {
   hear(part) {
     part.addEventListener('keydown', event => this.key(event));
     part.addEventListener('focusin', event => {
-      // Rows that came to show since the last draw (the phone's drawer opening
-      // shows a rail the tree could not see) get their tree words first.
-      if (!this.placing && !(this.current && shown(this.current))) this.refresh();
       const at = event.target, row = this.rowOf(at);
       this.wanted = true;
       // A row the person moved to; not one the tree put the focus on while the row it keeps is away.
@@ -186,30 +176,14 @@ export class KeyTree {
     // ⇧⌘↑ ⇧⌘↓ join reply stacks, and x folds a message (stack-feed.mjs); they mean nothing in a tree.
     if (!action || action.startsWith('join-') || action === 'fold-message') return;
     const rows = this.list(), row = this.rowOf(event.target, rows);
-    if (!row) return this.ownKey(event, action, rows);
-    // A control set in a row that is not folded is the row's own, as a card's
-    // speech bubble is (docs/decks.md): → gives it the focus before the rows
-    // under it, and from it → goes on to them and ← comes back to the row.
-    if (action === 'right' && row.expanded !== false && setIn(row.el)) { event.preventDefault(); setIn(row.el).focus({ preventScroll: true }); return; }
+    if (!row) return;
     const at = rows.indexOf(row);
-    // Past the first row or the last, on to what lies that way in its column;
-    // while that is out of sight, the column scrolls toward it (arrow-reach.mjs).
-    const beyond = (action === 'up' && at === 0) || (action === 'down' && at === rows.length - 1);
-    if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }
     event.preventDefault();
     if (action === 'up') return this.go(rows[at - 1]);
     if (action === 'down') return this.go(rows[at + 1]);
     if (action === 'first') return this.go(rows[0]);
     if (action === 'last') return this.go(rows.at(-1));
     this.act(action, row, rows);
-  }
-  // ← and → on a control set in a row; ↑ and ↓ there are the page's (arrow-reach.mjs).
-  ownKey(event, action, rows) {
-    const holder = rows.find(each => each.el !== event.target && each.el.contains(event.target));
-    if (!holder || (action !== 'left' && action !== 'right')) return;
-    const under = rows[rows.indexOf(holder) + 1], to = action === 'left' ? holder : under?.parent === holder.el ? under : null;
-    if (!to) return;
-    event.preventDefault(); this.go(to);
   }
   // The tree's own steps for → and ←: open a folded row or go to its first
   // row; fold an open row or go to the row it is under. Answers whether a step was taken.

@@ -439,10 +439,7 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.deepEqual([held.count, held.kind, held.after, held.faded], [1, 'new', ids[0], false], theme + ': read during the visit, the line holds where it was placed, still showing what is unread above it');
       // Opening the topic again places it afresh, under the oldest still unread.
       const again = await open(topic, 'new-line-again-' + theme, theme);
-      // Under the oldest still unread as the server has it then: the first page, still open, may read past next meanwhile.
-      await until(() => agreed(again, topic), theme + ': opened again, the line is under the oldest still unread')
-        .catch(async error => { throw Error(error.message + ' ' + JSON.stringify({ next: next?.id, now: (await unread(topic))?.id, drawn: await drawn(again) })); });
-      assert.notEqual((await drawn(again)).after, ids[0], theme + ': placed afresh, not where the visit before held it');
+      await until(async () => (await drawn(again)).after === next?.id, theme + ': opened again, the line is under the oldest still unread');
       await again.close();
       await p.send('Page.bringToFront');
       // Read to the end on screen: nothing at or above the line is unread, yet
@@ -666,12 +663,11 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const p = await open(topic, 'new-line-older-' + theme, theme);
       await until(() => p.evaluate("Boolean(document.querySelector('#messages .new-line'))"), theme + ': a line drawn');
       const marker = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),line=list.querySelector('.new-line');
-        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:![...list.children].slice([...list.children].indexOf(line)+1).some(e=>e.dataset.id||e.classList.contains('reply-stack')),tag:line.tagName,kind:line.dataset.line,text:line.textContent,
+        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,kind:line.dataset.line,text:line.textContent,
           label:line.querySelector('.new-line-label')?.textContent??null,
           color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${ids[0]}"]')),
           fill:c.backgroundColor,border:[c.borderTopWidth,c.borderBottomWidth,c.borderLeftWidth,c.borderRightWidth],more:document.querySelector('#more-messages').hidden,
           button:(b=>({fill:getComputedStyle(b).backgroundColor,border:getComputedStyle(b).borderTopColor}))(document.querySelector('#more-messages')),borderColor:c.borderTopColor}})()`);
-      // Last of the messages loaded; the New message composer resting under them (item 465) comes after it.
       assert.deepEqual([marker.count, marker.last, marker.tag, marker.kind, marker.label, marker.loaded], [1, true, 'BUTTON', 'older', 'More new below', false], theme + ': at the bottom of what is loaded, saying more new messages are below');
       assert.match(marker.text, new RegExp('^More new below · ' + SHOWN + '$'), theme + ': and when that message was sent');
       assert.ok(contrast(marker.color, marker.fill) >= 4.5, theme + ': readable');

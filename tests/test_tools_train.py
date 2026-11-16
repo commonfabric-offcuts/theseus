@@ -15,7 +15,7 @@ import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from unittest import mock
 
-from tools import deploy
+from tools import deploy, release_check
 import test_tools_deploy as deploys
 
 BRANCH, REPOSITORY, PR = "release/live73", "offcuts/theseus", 31
@@ -522,6 +522,32 @@ class DeployRefusesJudgedFirst(TrainCase):
     def again(self):
         for path in self.evidence.glob("*.json"):
             path.unlink()
+
+
+class TrainRecordsStepsBeyondPolicy(TrainCase):
+    """Item 553: a merged train never reaches the known reds' judge (it refuses --known-reds), and still its record names
+    the required steps this release check runs that the live commit's policy does not review, for the next policy."""
+
+    ADDED = "native-card-marks"
+
+    def setUp(self):
+        super().setUp()
+        self.write(deploys.POLICY, json.dumps({"version": 1, "required": [name for name in release_check.REQUIRED
+                                                                          if name != self.ADDED]}))
+        self.L = self.commit("The live commit keeps a policy of one step fewer")
+        self.git(self.work, "push", "-q", "origin", "HEAD:refs/heads/" + BRANCH)
+        self.git(self.live, "fetch", "-q", "origin")
+        self.git(self.live, "checkout", "-q", "-B", "live", self.L)
+        self.head = self.branch("item-481", self.L, [("aim_next/work.py", "# item 481\n")])
+        self.merged = self.merge(self.head)
+
+    def test_a_merged_trains_record_names_the_steps_beyond_the_live_policy(self):
+        out = self.trained(self.host(), self.train(self.merged, [self.head]), self.merged, self.hub())
+        measured = self.evidence_of("02-release")["record"]["measurements"]
+        self.assertEqual(measured.get("steps_beyond_policy"), [self.ADDED])
+        self.assertEqual(set(measured), {"train", "steps_beyond_policy"}, "still no count claims a local release check ran")
+        self.assertIn("the release check runs %s, which %s at %s did not review; the next policy covers it"
+                      % (self.ADDED, deploys.POLICY, self.L[:12]), out)
 
 
 class GuardedPaths(unittest.TestCase):

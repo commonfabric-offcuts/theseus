@@ -588,10 +588,7 @@ When the reader is at the top of a topic, with the newest card showing from
 its top edge, a message that arrives comes into view above it; the page does
 not scroll to keep the old card in place. Further down the topic, the card the
 reader is looking at stays where it was, a card in an opened reply stack too,
-when a reply arrives above it in its stack. With More messages, or the line's
-"More new below", first on the screen, the older messages it loads come in
-where it was, under the last card shown before, and the New message composer
-resting above More goes down with More to the list's new end.
+when a reply arrives above it in its stack.
 
 ## In the browser
 

@@ -558,4 +558,84 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.equal(again.status, 'committed');
     assert.equal((await pipeline('pipeline.piece_finish', { piece_id: piece }, {})).status, 'committed');
   });
+
+  await check('pipeline Now lists its pieces nearest to live first: Waits to combine, then Review by when each started, then Build, then what is not started, and the right rail’s Now group reads the same; Next keeps its order, at 320, 375, 390 and a laptop, light and dark', async () => {
+    // Item 567, in an outcome of its own. Four pieces started in the order Build, Waits to combine, Review, Review;
+    // the later-started of the two in Review enters it first, and the oldest piece is sent back to Build after every
+    // other moved, so neither when a piece entered its stage nor when it started alone gives the order asked for.
+    const outcome = 'pl-order-o';
+    const order = (kind, target, args) => pipeline(kind, target, args, { workspace_id: outcome });
+    await control({ method: 'navigation_workspaces', workspaces: [{ id: outcome, title: 'Order of Now', team: [] }] });
+    await control({ method: 'navigation_topics', topics: ['po-1', 'po-2', 'po-3', 'po-4'].map(id => ({ id, title: 'Topic ' + id, workspace_id: outcome })) });
+    await order('pipeline.configure', { workspace_id: outcome }, { enabled: true });
+    await order('pipeline.stages_set', { workspace_id: outcome }, { stages: [{ stage_id: 'build', name: 'Build', rounds: 'split' },
+      { stage_id: 'review', name: 'Review' }, { stage_id: 'wait', name: 'Waits to combine' }] });
+    const add = async (title, section) => (await order('pipeline.item_add', { workspace_id: outcome }, { title, section, size: 'small', sources: [{ note: 'the check' }] })).result.number;
+    const built = await add('Built first, sent back last', 'now'), unstarted = await add('Planned, not started', 'now'), waits = await add('Approved, waits to combine', 'now');
+    const third = await add('In review, started third', 'now'), fourth = await add('In review, started fourth', 'now');
+    const next = [await add('Next one', 'next'), await add('Next two', 'next')];
+    assert.equal((await order('pipeline.item_move', { workspace_id: outcome, number: next[1] }, { above: next[0] })).status, 'committed');
+    const start = async (number, topic) => (await order('pipeline.piece_start', { workspace_id: outcome }, { numbers: [number], topic_id: topic, stage_id: 'build' })).result.piece_id;
+    const enter = async (piece, stage, more = {}) => assert.equal((await order('pipeline.stage_enter', { piece_id: piece }, { stage_id: stage, left_outcome: 'approved', ...more })).status, 'committed');
+    const pieces = { built: await start(built, 'po-1'), waits: await start(waits, 'po-2'), third: await start(third, 'po-3'), fourth: await start(fourth, 'po-4') };
+    await enter(pieces.waits, 'review'); await enter(pieces.waits, 'wait');
+    await enter(pieces.fourth, 'review'); await enter(pieces.third, 'review');
+    await enter(pieces.built, 'build', { round: 2, left_outcome: 'sent back' });
+    const keptNext = (await view('pipeline', { workspace_id: outcome, section: 'next', limit: 100 })).items.map(item => item.number);
+    assert.deepEqual(keptNext, [next[1], next[0]], 'Core keeps Next as placed');
+    const want = { cards: [pieces.waits, pieces.third, pieces.fourth, pieces.built].map(id => `piece:${id}`), numbers: [waits, third, fourth, built, unstarted],
+      stages: ['Waits to combine', 'Review', 'Review', 'Build, round 2'], next: keptNext, sideways: false };
+    const WIDTHS = [['320', { width: 320, height: 720, deviceScaleFactor: 2, mobile: true }], ['375', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true }],
+      ['390', SIZES.phone], ['laptop', SIZES.laptop]];
+    const seen = [];
+    for (const [width, metrics] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const p = await page(`pipeline-now-order-${width}-${theme}`, null, true, { url: `${facts.origin}/?pipeline=${outcome}`, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await ready(p);
+      await until(() => p.evaluate(`document.querySelectorAll('section[aria-label=Now] article.pl-item').length===4 && document.querySelectorAll('section[aria-label=Next] .pl-row').length===2`),
+        `${width} ${theme}: Now's four pieces and Next's two rows are drawn`);
+      // What a person reads down the page: the piece cards, every item number in Now in the order it shows, each card's stage.
+      const drawnNow = await p.evaluate(`(()=>{const now=document.querySelector('section[aria-label=Now]');return {
+        cards:[...now.querySelectorAll('article.pl-item')].map(a=>a.dataset.key),
+        numbers:[...now.querySelectorAll('[data-number]')].map(e=>Number(e.dataset.number)),
+        stages:[...now.querySelectorAll('article.pl-item .pl-chip[aria-current=step]')].map(c=>c.textContent),
+        next:[...document.querySelectorAll('section[aria-label=Next] .pl-row')].map(r=>Number(r.dataset.number)),
+        sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      seen.push([`${width} ${theme}`, drawnNow]);
+      await p.evaluate(`document.querySelector('section[aria-label=Now]').scrollIntoView({block:'start'})`);
+      await shot(p, `pipeline-now-order-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // The right rail's Now group, on a topic of the outcome, reads the same order while the reader has placed none of
+    // its topics: beside the page on a laptop, opened from "Pipeline & pages" on a phone, by touch.
+    const railSeen = [];
+    for (const [width, metrics] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const p = await page(`rail-now-order-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=po-1`, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await until(() => p.evaluate(`document.body?.dataset.ready==='true' && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), `${width} ${theme}: the topic page is up`);
+      if (!await p.evaluate("matchMedia('(min-width: 1181px)').matches")) {
+        const b = await p.box('#things-open');
+        assert.ok(b && b.width > 0 && b.height > 0, `${width} ${theme}: "Pipeline & pages" is shown to tap`);
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open')"), `${width} ${theme}: "Pipeline & pages" opens the right rail`);
+        await p.evaluate('Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().endTime !== Infinity).map(a => a.finished.catch(() => null))).then(() => true)');
+      }
+      const nowRows = `[...document.querySelectorAll('#things .things-sec[data-key=pipeline] .pipe-builds a.row')].filter(a=>a.checkVisibility()&&a.closest('ul').previousElementSibling?.textContent==='Now')`;
+      await until(() => p.evaluate(`${nowRows}.length===4`), `${width} ${theme}: the right rail's Now group lists the four pieces' topics`);
+      railSeen.push([`${width} ${theme}`, await p.evaluate(`${nowRows}.map(a=>new URLSearchParams(a.getAttribute('href')).get('topic'))`)]);
+      await p.evaluate(`${nowRows}[0].scrollIntoView({block:'center'})`);
+      await shot(p, `rail-now-order-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and shot before any is judged, so one run keeps each screenshot.
+    for (const [at, drawnNow] of seen) assert.deepEqual(drawnNow, want, `${at}: Now nearest to live first, each stage by start, then what is not started; Next as placed`);
+    for (const [at, topics] of railSeen) assert.deepEqual(topics, ['po-2', 'po-3', 'po-4', 'po-1'], `${at}: the right rail's Now group in the same order`);
+  });
 }

@@ -589,9 +589,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const p = await open(topic, device, topic, ids.plain);
       const filter = '#agent-coordination-show button', dossier = `#messages .reply-stack[data-stack="${ids.root}"]`;
       const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
-      // Where the keys are: the chip, a dossier's chevron, a message by its seeded name, the Team's "+ Add" (the
-      // header's last button, item 465), or another control by its id.
-      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';if(e?.matches?.('#participants .add-chip'))return 'add';
+      // Where the keys are: the chip, a dossier's chevron, a message by its seeded name, or another control by its id.
+      const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
         if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
         const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
       const shownDossier = () => p.evaluate(`(s=>Boolean(s?.getClientRects().length))(document.querySelector(${JSON.stringify(dossier)}))`);
@@ -600,35 +599,29 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         `${device}: the agents' dossier shows, and Show agent coordination over the feed`);
       const inHeader = () => p.evaluate(`Boolean(document.querySelector('#main > .topic-header')?.contains(document.activeElement))`);
       // The keys reach the chip as a person's do: up from the top of the feed to the header's buttons, along them to
-      // the last, the Team's "+ Add", and Tab on.
+      // New message, and Tab on.
       await keyTo(p, ids.root);
       assert.equal(await keyed(), 'root', `${device}: the agents' dossier is at the top of the feed`);
-      for (let n = 0; n < 16 && await keyed() !== 'add'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
-      assert.equal(await keyed(), 'add', `${device}: the keys are on "+ Add", the header's last button`);
-      // ↑ on the header's top row goes on to what lies above it, if anything (item 301): where the header wraps a
-      // control of it may stand above "+ Add"; where none does, the keys stay.
-      const above = await p.evaluate(`(e=>{const b=e.getBoundingClientRect();return [...document.querySelectorAll('#main > .topic-header button, #main > .topic-header a[href]')].some(x=>x!==e&&x.checkVisibility()&&(c=>c.bottom<=b.top+1&&c.left<b.right&&c.right>b.left)(x.getBoundingClientRect()))})(document.activeElement)`);
+      for (let n = 0; n < 8 && await keyed() !== 'new-message'; n++) await p.key(await inHeader() ? 'ArrowRight' : 'ArrowUp');
+      assert.equal(await keyed(), 'new-message', `${device}: the keys are on New message, among the header's buttons`);
       await p.key('ArrowUp');
-      if (above) {
-        assert.equal(await p.evaluate(`(e=>Boolean(e.closest('#main > .topic-header'))&&e.getBoundingClientRect().bottom<=document.querySelector('#participants .add-chip').getBoundingClientRect().top+1)(document.activeElement)`), true, `${device}: ↑ on "+ Add" goes on to the header's control above it, not ${await keyed()}`);
-        await p.evaluate("document.querySelector('#participants .add-chip').focus()");
-      } else assert.equal(await keyed(), 'add', `${device}: ↑ on the header's buttons, the top row, with nothing above, moves nothing`);
+      assert.equal(await keyed(), 'new-message', `${device}: ↑ on the header's buttons, the top row, moves nothing`);
       await p.key('Tab');
-      assert.equal(await keyed(), 'chip', `${device}: Tab from "+ Add" reaches Show agent coordination`);
+      assert.equal(await keyed(), 'chip', `${device}: Tab from New message reaches Show agent coordination`);
       await shot(p, 'coordination-keys-' + device);
-      // Up from the chip: the header's buttons, at "+ Add", the one the keys were last on there; never the chip again.
+      // Up from the chip: the header's buttons, at New message, the one the keys were last on there; never the chip again.
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'add', `${device}: ↑ from Show agent coordination goes up to "+ Add", the header's button the keys were last on`);
+      assert.equal(await keyed(), 'new-message', `${device}: ↑ from Show agent coordination goes up to New message, the header's button the keys were last on`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'chip', `${device}: ↓ from "+ Add" comes down to the row of filters, onto the chip`);
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes down to the row of filters, onto the chip`);
       await p.key('ArrowDown');
       assert.equal(await keyed(), 'root', `${device}: and ↓ from it into the feed`);
       await p.key('ArrowUp');
       assert.equal(await keyed(), 'chip', `${device}: ↑ from the top of the feed reaches the row of filters just above it`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'add', `${device}: and ↑ again the header's buttons, at "+ Add"`);
+      assert.equal(await keyed(), 'new-message', `${device}: and ↑ again the header's buttons, at New message`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'chip', `${device}: ↓ from "+ Add" comes back down to the chip`);
+      assert.equal(await keyed(), 'chip', `${device}: ↓ from New message comes back down to the chip`);
       // On: ↓ goes on to the top of the feed, and ↑ comes back; the keys never stay on the chip.
       await p.key('ArrowDown');
       assert.equal(await keyed(), 'root', `${device}: ↓ from Show agent coordination moves the keys on to the dossier at the top of the feed`);
@@ -673,15 +666,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await p.key('ArrowUp');
       assert.equal(await keyed(), 'chip', `${device}: and on to Show agent coordination`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'add', `${device}: and on up past it to "+ Add", the header's button the keys were last on, never staying on the chip`);
+      assert.equal(await keyed(), 'new-message', `${device}: and on up past it to New message, never staying on the chip`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
 
   // Item 403: the row of filters over the feed is a row of its own under the header's buttons. ← and → move along it,
   // "Read it" among them, and past either end go on to the outline and the right rail as from the messages, where those
-  // are on screen; the header's buttons end at their own row, so → from its last, the Team's "+ Add", goes to the right
-  // rail, not on to a filter. No arrow presses a filter.
+  // are on screen; the header's buttons end at their own row, so → from New message goes to the right rail, not on to a
+  // filter. No arrow presses a filter.
   await check('reading coordination ← and → move along the filters\' row, Read it among them, and past either end to the outline and the right rail; ↑ and ↓ go between it and the header\'s buttons, and no arrow presses one', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-coordination-row-' + device, laptop = device === 'laptop';
@@ -699,7 +692,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // seeded name, or another control by its id.
       const keyed = () => p.evaluate(`(()=>{const e=document.activeElement,n=${JSON.stringify(names)};if(e?.matches?.(${JSON.stringify(filter)}))return 'chip';
         if(e?.id==='read-mark')return 'read-it';if(e?.closest?.('#outline'))return 'outline';if(e?.closest?.('#things'))return 'things';
-        if(e?.matches?.('#participants .add-chip'))return 'header:add';if(e?.closest?.('#main > .topic-header'))return 'header:'+(e.id||e.textContent.trim());
+        if(e?.closest?.('#main > .topic-header'))return 'header:'+(e.id||e.textContent.trim());
         if(e?.matches?.('.stack-toggle'))return 'chevron:'+(n[e.closest('.reply-stack').dataset.stack]??'?');
         const m=e?.closest?.('#messages [data-id]');if(m)return n[m.dataset.id]??'another message';return e?.id||e?.tagName||'none'})()`);
       const marked = () => p.evaluate(`!document.getElementById('topic-marks').hidden`);
@@ -730,12 +723,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate(`document.getElementById('messages').contains(document.activeElement)`), true, 'laptop: → from the outline comes back into the feed');
         await keyTo(p, ids.root); await p.key('ArrowUp');
         assert.equal(await keyed(), 'read-it', 'laptop: ↑ from there finds Read it again, the filter the keys were last on');
-      } else {
-        // The outline is behind ☰: the keys never open it; ← goes on to the nearest control that way in the feed (item 301).
-        const at = await keyed();
-        assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#main'))&&!document.getElementById('rail').classList.contains('open')&&document.getElementById('rail-open')?.getAttribute('aria-expanded')!=='true'`), true, `phone: ← past Read it stays in the feed, never opening the outline, on ${at}`);
-        await p.evaluate("document.getElementById('read-mark').focus()");
-      }
+      } else assert.equal(await keyed(), 'read-it', 'phone: ← past Read it moves nothing, the outline being behind ☰');
       await p.key('ArrowRight'); await p.key('ArrowRight');
       if (rail) {
         assert.equal(await keyed(), 'things', `${device}: → past the chip, the row's last, goes to the right rail`);
@@ -750,17 +738,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await keyed(), 'read-it', `${device}: ← to Read it`);
       await p.key('ArrowUp');
       assert.match(await keyed(), /^header:/, `${device}: ↑ from Read it goes up to the header's buttons`);
-      // The header's buttons end with the Team's "+ Add" (item 465).
-      for (let n = 0; n < 16 && await keyed() !== 'header:add'; n++) await p.key('ArrowRight');
-      assert.equal(await keyed(), 'header:add', `${device}: → along the header's buttons reaches the Team's "+ Add"`);
+      for (let n = 0; n < 6 && await keyed() !== 'header:new-message'; n++) await p.key('ArrowRight');
+      assert.equal(await keyed(), 'header:new-message', `${device}: → along the header's buttons reaches New message`);
       await p.key('ArrowDown');
-      assert.equal(await keyed(), 'read-it', `${device}: ↓ from "+ Add" comes down to Read it, the filter the keys were last on`);
+      assert.equal(await keyed(), 'read-it', `${device}: ↓ from New message comes down to Read it, the filter the keys were last on`);
       await p.key('ArrowUp');
-      assert.equal(await keyed(), 'header:add', `${device}: ↑ goes back up to "+ Add"`);
-      // The header's buttons end at their own row: → from "+ Add" goes on to the right rail, never to a filter.
+      assert.equal(await keyed(), 'header:new-message', `${device}: ↑ goes back up to New message`);
+      // The header's buttons end at their own row: → from New message goes on to the right rail, never to a filter.
       await p.key('ArrowRight');
-      assert.equal(await keyed(), rail ? 'things' : 'header:add',
-        `${device}: → from "+ Add", the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
+      assert.equal(await keyed(), rail ? 'things' : 'header:new-message',
+        `${device}: → from New message, the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
       // No arrow pressed a filter: no Reader opened, the mark is still there, and the agents' dossier still shows.
       assert.equal(await readerOn(p), null, `${device}: no arrow on Read it opened the Reader`);
       assert.equal(await marked(), true, `${device}: and the mark is still there`);
@@ -1011,422 +998,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(()=>q.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r34))})?.getClientRects().length)`),false,'a new visit still has the dossier below More');
     assert.equal(await below(),true); assert.deepEqual(p.errors,[]); assert.deepEqual(q.errors,[]);
     await q.close(); await p.close();
-  });
-
-  // Item 378: the Reader's archive button beside the star is ⋯'s Move below More for the message's whole dossier,
-  // labelled with how many of the stack's messages go with it, and Bring back once they are there, pressed. Pressed
-  // as a person presses it, on a laptop and by a finger at 320, 375 and 390, in light and dark; what Core holds is
-  // read for the person and for another reader, and a message of another stack stays where it is.
-  await check('reading stacks the Reader\'s archive button moves the message\'s whole dossier below More, says how many messages go, and brings it back pressed', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-archive-' + device;
-      const ids = await seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A message of its own stays where it is.' }],
-        ['root', { sender: other, addressees: [facts.actor], body: 'File this dossier out of sight.' }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An earlier reply in the dossier.' }],
-        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply in the dossier.' }]]);
-      const p = await open('stack-archive-' + device, device, topic, ids.root);
-      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
-      const position = async id => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
-      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
-      // The button as it shows: its name, tooltip, count and whether it is pressed; where it sits; its size; and
-      // whether any control of the Reader's header covers another (a phone's header has the least room).
-      const button = () => p.evaluate(`(()=>{const b=document.querySelector('#reader-aside'),r=b.getBoundingClientRect(),star=document.querySelector('#reader-star');
-        const els=[...document.querySelectorAll('#reader .reader-header button, #reader .reader-header h2')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().width>=1);
-        // What shows of each: a title's button is clipped by its heading, which cuts it off with an ellipsis.
-        const seen=e=>{const r=e.getBoundingClientRect(),h=e.parentElement.closest('#reader .reader-header h2');if(!h)return r;const c=h.getBoundingClientRect();return {left:Math.max(r.left,c.left),right:Math.min(r.right,c.right),top:Math.max(r.top,c.top),bottom:Math.min(r.bottom,c.bottom)}};
-        const over=[];for(const e of els)for(const f of els){const x=seen(e),y=seen(f);if(els.indexOf(e)<els.indexOf(f)&&!e.contains(f)&&!f.contains(e)&&!(x.right<=y.left+0.5||y.right<=x.left+0.5||x.bottom<=y.top+0.5||y.bottom<=x.top+0.5))over.push((e.id||e.className||e.tagName)+'/'+(f.id||f.className||f.tagName));}
-        const header=document.querySelector('#reader .reader-header').getBoundingClientRect();
-        return {header:Math.round(header.height),shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed'),
-          glyph:Boolean(b.querySelector('svg')),besideStar:b.previousElementSibling===star,size:[Math.round(r.width),Math.round(r.height)],over,inside:r.left>=header.left-0.5&&r.right<=header.right+0.5,
-          sideways:document.documentElement.scrollWidth>innerWidth}})()`);
-      await openReader(p, device, ids.two, 'The newest reply');
-      const widths = device === 'phone' ? [320, 375, 390] : [1280];
-      const sized = async width => { if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width }); };
-      for (const width of widths) {
-        await sized(width);
-        await until(async () => (await button()).shown, `${device} ${width}: the archive button shows beside the star`);
-        const at = await button();
-        assert.deepEqual([at.name, at.title, at.count, at.pressed, at.glyph, at.besideStar], ['Move below More: 3 messages', 'Move below More: 3 messages', '3', 'false', true, true],
-          `${device} ${width}: an archive glyph named Move below More, with the stack's 3 messages: ${JSON.stringify(at)}`);
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-${width}-${theme}`); }
-        await dossierTheme(p, 'light');
-        if (device === 'phone') assert.ok(at.size[0] >= 44 && at.size[1] >= 44, `${width}: 44px under a finger: ${at.size}`);
-        assert.deepEqual([at.over, at.inside, at.sideways], [[], true, false], `${device} ${width}: no control of the header covers another, and nothing scrolls sideways: ${JSON.stringify(at)}`);
-        assert.ok(at.header < 100, `${device} ${width}: the Reader's header is not stretched: ${at.header}px`);
-      }
-      await press(p, device, '#reader-aside');
-      await until(async () => (await position(ids.root)).below, `${device}: Core holds the dossier below More`);
-      await becomes(shown, false, `${device}: the whole dossier goes below a closed More`);
-      assert.equal((await actsOf(topic, ids.root, other))?.aside ?? null, null, `${device}: the other reader has no move`);
-      assert.equal((await position(ids.lone)).below, false, `${device}: a message of another stack stays above More`);
-      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.lone}"]')?.getClientRects().length)`), true, `${device}: and stays on the page`);
-      await until(async () => (await button()).pressed === 'true', `${device}: the button is pressed once the dossier is below More`);
-      const moved = await button();
-      assert.deepEqual([moved.name, moved.title, moved.count, await readerOn(p).then(text => text?.startsWith('The newest reply'))],
-        ['Bring back above More: 3 messages', 'Bring back above More: 3 messages', '3', true], `${device}: it offers Bring back, and the Reader stays on the message: ${JSON.stringify(moved)}`);
-      // The focus stays in the Reader (on the button where a press focuses it, as Chrome's does), never on More.
-      assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#reader')) && !document.activeElement.closest('#messages')`), true, `${device}: the focus stays in the Reader`);
-      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-${device}-pressed-${theme}`); }
-      await dossierTheme(p, 'light');
-      await press(p, device, '#reader-aside');
-      await until(async () => !(await position(ids.root)).below, `${device}: Bring back clears the move in Core`);
-      await until(async () => (await button()).pressed === 'false', `${device}: the button is no longer pressed`);
-      await closeReader(p, device);
-      await becomes(shown, true, `${device}: the dossier is back above More`);
-      // A message of its own is a stack of one: one message moves.
-      await openReader(p, device, ids.lone, 'A message of its own');
-      await until(async () => (await button()).name === 'Move below More: 1 message', `${device}: a message of its own moves alone`);
-      assert.equal((await button()).count, '1');
-      await closeReader(p, device);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // Item 378, the count where Core's dossier is drawn as more than one stack: its first message is older than the page
-  // loaded, and two of its replies on the page are two stacks. The button moves the whole dossier, both stacks, so its
-  // count names both stacks' messages; a message of another dossier stays where it is.
-  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, where the page draws it as two stacks, its first message not loaded', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-archive-split-' + device;
-      const said = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'An old question everyone answers.', read: true }]];
-      for (let n = 0; n < 30; n++) said.push(['f' + n, { sender: other, addressees: [facts.actor], body: `Filler ${n}, a message of its own.`, read: true }]);
-      said.push(['a', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First answer to the old question.' }]);
-      said.push(['b', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second answer to the old question.' }]);
-      const ids = await seed(topic, said);
-      const p = await open(topic, device, topic, ids.b);
-      const shownId = id => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${id}"]')?.getClientRects().length)`);
-      const drawn = () => p.evaluate(`[${JSON.stringify(ids.a)},${JSON.stringify(ids.b)},${JSON.stringify(ids.f29)}].map(id=>Boolean(document.querySelector('#messages [data-id="'+id+'"]')?.getClientRects().length))`);
-      await becomes(drawn, [true, true, true], `${device}: both answers and the newest filler are drawn`);
-      // The page as this case needs it: the dossier's first message not loaded, and its two answers in two stacks.
-      assert.deepEqual(await p.evaluate(`(()=>{const own=id=>document.querySelector('#messages [data-id="'+id+'"]'),stackOf=id=>own(id).closest('.reply-stack')?.dataset.stack??id;
-        return {root:Boolean(own(${JSON.stringify(ids.root)})),apart:stackOf(${JSON.stringify(ids.a)})!==stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, apart: true },
-        `${device}: the old question is not loaded, and its two answers are two stacks`);
-      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed')}))(document.querySelector('#reader-aside'))`);
-      await openReader(p, device, ids.b, 'Second answer');
-      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
-        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-        await becomes(button, { shown: true, name: 'Move below More: 2 messages', title: 'Move below More: 2 messages', count: '2', pressed: 'false' },
-          `${device} ${width}: the button names both answers, the two messages that move`);
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-split-${device}-${width}-${theme}`); }
-        await dossierTheme(p, 'light');
-      }
-      await press(p, device, '#reader-aside');
-      await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.b] })).items[0].stack_position.below, `${device}: Core holds the dossier below More`);
-      await becomes(button, { shown: true, name: 'Bring back above More: 2 messages', title: 'Bring back above More: 2 messages', count: '2', pressed: 'true' }, `${device}: pressed, it brings back the same 2`);
-      await closeReader(p, device);
-      await becomes(drawn, [false, false, true], `${device}: both answers went below More, as the count said, and the filler stays`);
-      assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.f29] })).items[0].stack_position.below, false, `${device}: Core moved no other dossier`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
-  // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
-  // With the button hidden, a phone's header keeps one row: the title row beside ✕, not on a row of its own under it.
-  const asideButton = p => p.evaluate(`(b=>{const t=document.querySelector('#reader .reader-title-row').getBoundingClientRect(),x=document.querySelector('#reader-close').getBoundingClientRect();
-    return {hidden:b.hidden,shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),oneRow:t.top<x.bottom-4}})(document.querySelector('#reader-aside'))`);
-  const noAsideAtEachWidth = async (p, device, said) => {
-    for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
-      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-      await becomes(async () => { const b = await asideButton(p); return [b.hidden, b.shown, b.oneRow]; }, [true, false, true], `${device} ${width}: no archive button for ${said}, and the header keeps one row`);
-      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-none-${said.replace(/\W+/g, '-')}-${device}-${width}-${theme}`); }
-      await dossierTheme(p, 'light');
-    }
-    if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
-  };
-  await check('reading stacks the Reader\'s archive button shows for no message of the topic opened alone from its link, and shows for one the page\'s stacks hold', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-archive-alone-' + device;
-      const ids = await seed(topic, Array.from({ length: 36 }, (_, n) => ['m' + n, { sender: other, ...(n ? {} : { join: true }), addressees: [facts.actor], body: `Message ${n}, of a long topic.`, read: true }]));
-      const p = await open(topic, device, `${topic}&message=${ids.m0}`, ids.m35);
-      await until(async () => (await readerOn(p))?.startsWith('Message 0,'), `${device}: the link opens the oldest message in the Reader`);
-      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.m0))}))`), false, `${device}: the page has not loaded its card: it opened alone`);
-      await until(() => p.evaluate(`Boolean(document.querySelector('#reader-star').getClientRects().length)`), `${device}: its star shows, its acts read`);
-      await noAsideAtEachWidth(p, device, 'a message opened alone');
-      await closeReader(p, device);
-      await openReader(p, device, ids.m35, 'Message 35,');
-      await becomes(async () => { const b = await asideButton(p); return [b.shown, b.name]; }, [true, 'Move below More: 1 message'], `${device}: a message the stacks hold has the button`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-  await check('reading stacks the Reader\'s archive button goes when the Reader moves from a message the stacks hold to another topic\'s message, from its About link', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const name = 'stack-archive-about-' + device;
-      const ids = await seed(name, [['other', { sender: 'aim-ux', join: true, body: 'Here to read the message.' }],
-        ['elsewhere', { sender: 'aim-core', join: true, body: 'A message in another topic, read by another reader.' }]]);
-      await control({ method: 'navigation_workspaces', workspaces: [{ id: name, title: name, team: ['fable'], coordinator: 'fable' }] });
-      const topic = (await view('conversation', { workspace_id: name })).conversation.topic_id;
-      const reply = (await control({ method: 'agent_message', operation_id: name + '-about', topic_id: topic, sender: 'person', reply_to: ids.elsewhere, body: 'About the message elsewhere.' })).result.message_id;
-      const p = await open(name, device, topic, reply, '', '/?conversation=' + name);
-      await openReader(p, device, reply, 'About the message elsewhere');
-      await becomes(async () => (await asideButton(p)).shown, true, `${device}: the reply the stacks hold has the button`);
-      await closeReader(p, device);
-      const about = card(reply) + ' .about-line .item-link';
-      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(about)}))`), `${device}: the reply's About line links to the message`);
-      await centre(p, about);
-      if (device === 'laptop') await p.point(about);
-      else {
-        // As on any card, a phone's first tap lights the reply (the Reader closing lit it already); the next follows the link.
-        if (!(await lit(p)).includes(reply)) { await tap(p, about, 'first'); await until(async () => (await lit(p)).includes(reply), `${device}: the first tap lights the reply`); }
-        await tap(p, about, 'first');
-      }
-      await until(async () => (await readerOn(p))?.startsWith('A message in another topic'), `${device}: the About link opens the Reader on the message`);
-      await noAsideAtEachWidth(p, device, 'another topic\'s message');
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-  await check('reading stacks the Reader\'s archive button shows for no Notebook page in the Reader, and shows for a message of the topic', async () => {
-    const page = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
-    for (const device of Object.keys(DEVICES)) {
-      const message = (await control({ method: 'agent_message', operation_id: 'stack-archive-page-' + device, topic_id: 't1', addressees: [facts.actor], body: `A message beside the Notebook page, on a ${device}.` })).result.message_id;
-      const p = await open('stack-archive-page-' + device, device, 't1', message, '', `/?topic=t1&page=${page}&revision=1`);
-      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent !== 'Message' && document.querySelector('#source-body').textContent.length > 0`), `${device}: the Reader shows the Notebook page`);
-      await noAsideAtEachWidth(p, device, 'a Notebook page');
-      await closeReader(p, device);
-      await openReader(p, device, message, 'A message beside the Notebook page');
-      // t1's own messages may join a stack of the fixture's: how many go is the counting cases' business.
-      await becomes(async () => { const b = await asideButton(p); return [b.shown, /^Move below More: \d+ messages?$/.test(b.name)]; }, [true, true], `${device}: a message the stacks hold has the button`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // A message whose dossier Core has not placed: every position taken out of what the page reads, as Core would send
-  // a message with none. ⋯ offers no move for it, and the button does not show.
-  const UNPLACED = `(()=>{const own=window.fetch;window.fetch=async function(input,init){const answer=await own.call(this,input,init);
-    if(!String(input?.url??input).endsWith('/api/view'))return answer;
-    const text=await answer.text(),drop=v=>{if(Array.isArray(v))v.forEach(drop);else if(v&&typeof v==='object'){delete v.stack_position;Object.values(v).forEach(drop);}return v;};
-    let body=text;try{body=JSON.stringify(drop(JSON.parse(text)));}catch{}
-    return new Response(body,{status:answer.status,statusText:answer.statusText,headers:answer.headers});};})()`;
-  await check('reading stacks the Reader\'s archive button shows for no message whose dossier Core has not placed', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-archive-unplaced-' + device;
-      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A dossier Core has not placed.' }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Its only reply.' }]]);
-      const p = await open(topic, device, topic, ids.root, UNPLACED);
-      await openReader(p, device, ids.one, 'Its only reply');
-      await until(() => p.evaluate(`Boolean(document.querySelector('#reader-star').getClientRects().length)`), `${device}: its star shows, its acts read`);
-      await noAsideAtEachWidth(p, device, 'a message Core has not placed');
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // Item 378, the button's busy and refused states: pressed, it shows the move at once while Core has it (busy), and
-  // a refusal puts it back unpressed, saying so, with the dossier above More again and nothing moved in Core. On a
-  // laptop and at 320, 375 and 390 by a finger. Chrome holds Core's answer; Safari's harness cannot.
-  if (engine === 'chrome') await check('reading stacks the Reader\'s archive button shows the move at once while Core has it, and a refusal puts it back unpressed, the dossier above More', async () => {
-    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
-      const topic = `stack-archive-refused-${device}-${width}`;
-      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A dossier whose move is refused.' }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Its only reply.' }]]);
-      const p = await open(topic, device, topic, ids.root);
-      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
-      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
-      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),pressed:b.getAttribute('aria-pressed'),count:b.querySelector('.aside-count').textContent}))(document.querySelector('#reader-aside'))`);
-      await openReader(p, device, ids.one, 'Its only reply');
-      await until(async () => (await button()).shown, `${device} ${width}: the archive button shows`);
-      await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }] });
-      const asideSent = payload => payload?.kind === 'stack.aside';
-      p.intercept(asideSent);
-      await press(p, device, '#reader-aside');
-      const held = await until(() => p.held.find(entry => asideSent(entry.payload)), `${device} ${width}: the move is on its way to Core`);
-      // Busy: Core has not answered, and the button and the page already show the move.
-      assert.deepEqual(await button(), { shown: true, name: 'Bring back above More: 2 messages', pressed: 'true', count: '2' }, `${device} ${width}: while Core has it, the button shows the move, pressed`);
-      assert.equal(await shown(), false, `${device} ${width}: and the dossier is below More`);
-      await shot(p, `stack-archive-busy-${device}-${width}`);
-      p.held.splice(p.held.indexOf(held), 1);
-      p.intercept(null);
-      await p.send('Fetch.fulfillRequest', { requestId: held.event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
-        body: Buffer.from(JSON.stringify({ instance_id: facts.instance_id, status: 'rejected', error: { code: 'FORBIDDEN', message: 'Refused for this check.' } })).toString('base64') });
-      // Refused: back as it was, unpressed, and the page says why.
-      await until(async () => (await button()).pressed === 'false', `${device} ${width}: refused, the button is no longer pressed`);
-      assert.deepEqual(await button(), { shown: true, name: 'Move below More: 2 messages', pressed: 'false', count: '2' }, `${device} ${width}: it offers the move again`);
-      await until(() => p.evaluate(`document.getElementById('app-status').textContent.includes('Refused for this check.')`), `${device} ${width}: the refusal is said`);
-      assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, false, `${device} ${width}: Core moved nothing`);
-      assert.equal(await p.evaluate(`document.documentElement.scrollWidth > innerWidth`), false, `${device} ${width}: nothing scrolls sideways`);
-      await shot(p, `stack-archive-refused-${device}-${width}`);
-      await closeReader(p, device);
-      await becomes(shown, true, `${device} ${width}: the dossier is above More`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-  else observations.push({ name: 'the Reader\'s archive button refused', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
-
-  // Item 465: the page's New message composer at rest sits between the last dossier above More and the More line,
-  // drawn in the feed, never among the dossiers put aside nor after the Notebook. Up over the page (✎) it is not
-  // moved while another device moves a dossier across More, so the writing keeps its cursor; put back, it takes
-  // its place again. On a laptop and at 320, 375 and 390 by a finger, light and dark.
-  await check('reading stacks the New message composer rests between the last dossier above More and the More line, and is not moved while it is up', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-composer-' + device;
-      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The oldest dossier.' }],
-        ['b', { sender: other, addressees: [facts.actor], body: 'The dossier put aside.' }],
-        ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply in the dossier put aside.' }],
-        ['c', { sender: other, addressees: [facts.actor], body: 'The newest dossier.' }]]);
-      const p = await open(topic, device, topic, ids.c);
-      const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
-      const aside = async (through, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: `${topic}-aside-${n}`, args: { through } });
-      // What the feed shows, in its order: each dossier or message by its seed name, More, and the composer; and
-      // whether each sits wholly below the one before it, the composer included.
-      const names = Object.fromEntries(Object.entries(ids).map(([name, id]) => [id, name]));
-      const shown = () => p.evaluate(`(()=>{const names=${JSON.stringify(names)},list=document.querySelector('#messages'),sheet=document.querySelector('#new-message-sheet');
-        // The seeded dossiers and messages, More and the composer; a line, or the fixture's notice of who joined, is not one.
-        const rows=[...list.children].filter(e=>e===sheet||e.getClientRects().length&&(e.classList.contains('stack-more')||names[e.dataset.id??e.dataset.stack]));
-        const order=rows.map(e=>e===sheet?'composer':e.classList.contains('stack-more')?'More':names[e.dataset.id??e.dataset.stack]);
-        const boxes=rows.map(e=>e.getBoundingClientRect()),stacked=boxes.every((b,i)=>!i||b.top>=boxes[i-1].bottom-0.5);
-        const notebook=document.querySelector('#notebook').getBoundingClientRect();
-        return {order,stacked,inFeed:sheet.parentElement===list,beforeNotebook:sheet.getBoundingClientRect().bottom<=notebook.top+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
-      await becomes(async () => (await shown()).order, ['c', 'b', 'a', 'composer'], `${device}: with nothing below More, the composer rests under the last dossier`);
-      assert.deepEqual(await shown().then(s => [s.stacked, s.inFeed, s.beforeNotebook]), [true, true, true], `${device}: drawn in the feed, below the last dossier and above the Notebook`);
-      await aside(await newest(), 1);
-      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More'], `${device}: with a dossier below More, the composer sits between the last dossier above More and the More line`);
-      assert.equal((await shown()).stacked, true, `${device}: each wholly below the one before it`);
-      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
-        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-        await centre(p, '#new-message-sheet');
-        assert.equal((await shown()).sideways, false, `${device} ${width}: nothing scrolls sideways`);
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-${device}-${width}-${theme}`); }
-        await dossierTheme(p, 'light');
-      }
-      await press(p, device, '#messages .stack-more');
-      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More', 'b'], `${device}: with More open, the composer stays above the More line, not among the dossiers put aside`);
-      await press(p, device, '#messages .stack-more');
-      // Another device brings the dossier back: More goes, and the composer is under the last dossier again.
-      await aside(null, 2);
-      await becomes(async () => (await shown()).order, ['c', 'b', 'a', 'composer'], `${device}: brought back, the composer rests under the last dossier, More gone`);
-      // ✎ puts the composer up over the page. Another device puts the dossier aside again while it is up, which would
-      // carry the composer's place past it.
-      await p.evaluate('scrollTo(0, 0)');
-      await press(p, device, '#new-message');
-      await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device}: ✎ puts the composer up, ready to type`);
-      await p.send('Input.insertText', { text: 'Writing while the feed changes.' });
-      await aside(await newest(), 3);
-      await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.b}"]')?.getClientRects().length && Boolean(document.querySelector('#messages .stack-more'))`), `${device}: the dossier goes below More behind the sheet`);
-      assert.deepEqual(await p.evaluate(`[document.querySelector('#new-message-sheet').matches(':modal'), document.activeElement?.id, document.querySelector('#inline-writing-body').value, document.querySelector('#inline-writing-body').selectionStart]`),
-        [true, 'inline-writing-body', 'Writing while the feed changes.', 'Writing while the feed changes.'.length], `${device}: the sheet stays up and the writing keeps its cursor`);
-      await p.key('Escape');
-      await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open`), `${device}: Escape puts the composer back`);
-      await becomes(async () => (await shown()).order, ['c', 'a', 'composer', 'More'], `${device}: put back, it takes its place between the last dossier above More and the More line`);
-      assert.equal(await p.evaluate(`document.querySelector('#inline-writing-body').value`), 'Writing while the feed changes.', `${device}: with the writing kept`);
-      if (device === 'laptop') {
-        // Among the messages, the composer keeps its own keys as it did at the page's end (the feed's keys pass over
-        // what is in a dialog, pane-keys.mjs): ← and → on its + do not take the focus out of it.
-        await p.evaluate(`document.querySelector('#inline-plus-button').focus()`);
-        assert.equal(await p.evaluate(`document.activeElement?.id === 'inline-plus-button' && Boolean(document.activeElement.getClientRects().length)`), true, 'the resting composer\'s + has the focus');
-        for (const key of ['ArrowRight', 'ArrowLeft']) {
-          await p.key(key);
-          assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('.composer-home'))`), true, `${key} on the resting composer's + leaves the focus in the composer`);
-        }
-      }
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // Item 465, the composer popped up: at rest it sits among the dossiers, and up over the page it leaves that place,
-  // which a holder of its height keeps (sheet-holder.mjs), so nothing behind the backdrop moves, whichever engine draws
-  // it (Chrome's scroll anchoring would hide a moved feed where Safari's engine shows it). By ✎ with the page at its top
-  // and by ⌘Return with a dossier below the composer near the window's top, on a laptop, and by a finger's ✎ at 390:
-  // every dossier and More stay where they were while it is up, and put back each is where it was, with the list no
-  // taller than before, nothing left holding a place. What gives the place back is the sheet's own open state, read by
-  // one rule (aim.css, .sheet-holder): so the composer is where it rested in the very task its close() runs in, before
-  // the close event is heard, read in that task, with no listener between.
-  await check('reading stacks the New message composer popped up by ✎ or ⌘Return leaves every dossier behind it where it was, and put back each is where it was', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-composer-still-' + device;
-      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The oldest dossier.', read: true }],
-        ['b', { sender: other, addressees: [facts.actor], body: 'The dossier put aside.', read: true }],
-        ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply in the dossier put aside.', read: true }],
-        ['c', { sender: other, addressees: [facts.actor], body: 'The newest dossier.', read: true }]]);
-      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
-      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: `${topic}-aside`, args: { through: newest } });
-      const p = await open(topic, device, topic, ids.c);
-      await until(() => p.evaluate(`Boolean(document.querySelector('#messages .stack-more'))`), `${device}: More drawn`);
-      await press(p, device, '#messages .stack-more');
-      const below = `#messages .reply-stack[data-stack="${ids.b}"]`;
-      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(below)})?.getClientRects().length)`), `${device}: the dossier below More shows, below the composer`);
-      // Room under the feed, so the dossier below the composer can be scrolled near the window's top.
-      await p.evaluate(`document.querySelector('#notebook').style.minHeight='2000px'`);
-      // Where each dossier, message and More of the feed is in the window, the page's scroll, and the list's height.
-      const where = () => p.evaluate(`(()=>{const list=document.querySelector('#messages');
-        const rows=[...list.children].filter(e=>e.getClientRects().length&&(e.matches('.reply-stack,.stack-more')||e.dataset.id));
-        const sheet=document.querySelector('#new-message-sheet');
-        return {scroll:scrollY,list:list.getBoundingClientRect().height,tops:Object.fromEntries(rows.map(e=>[e.dataset.stack??e.dataset.id??'More',e.getBoundingClientRect().top])),
-          composer:{top:sheet.getBoundingClientRect().top,height:sheet.getBoundingClientRect().height,words:document.querySelector('#inline-writing-body').value,compose:document.querySelector('#inline-composer').dataset.compose??null}}})()`);
-      const moved = (from, to) => [['scroll', from.scroll, to.scroll], ['list', from.list, to.list],
-        ...Object.keys({ ...from.tops, ...to.tops }).map(key => [key, from.tops[key], to.tops[key]])].filter(([, x, y]) => !(Math.abs(x - y) <= 1));
-      const ways = device === 'phone' ? [['✎', 'top']] : [['✎', 'top'], ['⌘Return', 'scrolled']];
-      for (const [way, at] of ways) {
-        if (at === 'top') await p.evaluate('scrollTo(0, 0)');
-        else await p.evaluate(`(e=>scrollBy(0,e.getBoundingClientRect().top-150))(document.querySelector(${JSON.stringify(below)}))`);
-        const before = await where();
-        assert.deepEqual([ids.c, ids.a, 'More', ids.b].filter(key => !(key in before.tops)), [], `${device} ${way}: the feed shows c, a, More and b: ${JSON.stringify(before)}`);
-        if (way === '✎') await press(p, device, '#new-message');
-        else { await p.evaluate(`(()=>{document.activeElement?.blur();document.querySelector('#main').focus({preventScroll:true})})()`); await p.key('Enter', 4); }
-        await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up, ready to type`);
-        const up = await where();
-        assert.deepEqual(moved(before, up), [], `${device} ${way}: with the composer up, nothing behind the backdrop moved: ${JSON.stringify({ before, up })}`);
-        if (way === '✎') for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-still-${device}-${theme}`); }
-        await dossierTheme(p, 'light');
-        await p.key('Escape');
-        // Put back: the sheet's close, heard, folds the composer to its line and gives New message the focus.
-        await until(() => p.evaluate(`!document.querySelector('#new-message-sheet').open && document.querySelector('#inline-composer').dataset.compose === 'line' && document.activeElement?.id === 'new-message'
-          && document.querySelector('#new-message-sheet').nextElementSibling?.classList.contains('stack-more')`), `${device} ${way}: put back in its place, above More, folded to its line`);
-        const after = await where();
-        assert.deepEqual(moved(before, after), [], `${device} ${way}: put back, each is where it was, the list no taller: ${JSON.stringify({ before, after })}`);
-        observations.push({ name: 'composer popped, the feed still', engine, device, way, before, up, after });
-        if (way !== '✎') continue;
-        // Up once more, then closed and read in one task: the place is back before any close event is heard.
-        await press(p, device, '#new-message');
-        await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up again`);
-        const closing = await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),holder=d.previousElementSibling;let heard=false;d.addEventListener('close',()=>{heard=true},{once:true});
-          d.close();return {open:d.open,heard,top:d.getBoundingClientRect().top,scroll:scrollY,holder:holder?.classList.contains('sheet-holder')?holder.getClientRects().length:null}})()`);
-        assert.deepEqual([closing.open, closing.heard, Math.abs(closing.top - before.composer.top) <= 1, Math.abs(closing.scroll - before.scroll) <= 1, closing.holder],
-          [false, false, true, true, 0], `${device} ${way}: closed, before its close event is heard, the composer is where it rested and its holder draws nothing: ${JSON.stringify({ before: before.composer, closing })}`);
-        await until(() => p.evaluate(`document.querySelector('#inline-composer').dataset.compose === 'line' && document.activeElement?.id === 'new-message'`), `${device} ${way}: the close heard, folded to its line`);
-      }
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // Item 465, where the feed is not drawn: a topic the reader can no longer read hides its messages, and the composer
-  // that rests among them would go with them, and come up unseen. It rests at the page's end instead, where it shows,
-  // its writing kept, put back first if it was up; ✎ brings it up where it shows. On a laptop and at 320, 375 and 390.
-  await check('reading stacks the New message composer, the topic no longer readable, rests at the page\'s end where it shows, and ✎ brings it up where it shows', async () => {
-    for (const device of Object.keys(DEVICES)) {
-      const topic = 'stack-composer-denied-' + device;
-      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'A message before the topic closes to the reader.' }]]);
-      const p = await open(topic, device, topic, ids.a);
-      // The sheet as it shows: open, modal, where it is, whether it is drawn, and whether a press on its middle reaches it.
-      const sheet = () => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),r=d.getBoundingClientRect(),at=r.width&&r.height?document.elementFromPoint(r.left+r.width/2,r.top+Math.min(r.height/2,40)):null;
-        return {open:d.open,modal:d.matches(':modal'),parent:d.parentElement.id,drawn:d.getClientRects().length>0&&r.width>0&&r.height>0,takes:Boolean(at&&d.contains(at)),
-          words:document.querySelector('#inline-writing-body').value,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
-      await p.evaluate('scrollTo(0, 0)');
-      await press(p, device, '#new-message');
-      await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device}: ✎ puts the composer up, ready to type`);
-      await p.send('Input.insertText', { text: 'Writing kept as the topic closes.' });
-      // The topic closes to the reader while the composer is up: the next read of what changed is refused.
-      await control({ method: 'read_fault', name: 'changes', status: 200, body: { instance_id: facts.instance_id, error: { code: 'FORBIDDEN', message: 'Fixture FORBIDDEN', retryable: false } }, count: 1 });
-      await control({ method: 'agent_message', operation_id: topic + '-news', topic_id: topic, source: 'topic', sender: other, body: 'News the reader may no longer read.' });
-      await until(() => p.evaluate("document.getElementById('topic-title').textContent==='Topic unavailable'"), `${device}: the page says the topic is unavailable`);
-      assert.equal(await p.evaluate(`document.querySelector('#messages').hidden`), true, `${device}: the messages are not drawn`);
-      await becomes(async () => { const s = await sheet(); return [s.open, s.parent, s.drawn, s.words]; }, [false, 'main', true, 'Writing kept as the topic closes.'],
-        `${device}: the composer is put back and rests at the page's end, drawn, its writing kept`);
-      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
-        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-        await p.evaluate('scrollTo(0, 0)');
-        await press(p, device, '#new-message');
-        await until(async () => (await sheet()).modal, `${device} ${width}: ✎ puts the composer up`);
-        const up = await sheet();
-        assert.deepEqual([up.drawn, up.takes, up.sideways], [true, true, false], `${device} ${width}: up where it shows, and a press reaches it: ${JSON.stringify(up)}`);
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-composer-denied-${device}-${width}-${theme}`); }
-        await dossierTheme(p, 'light');
-        await press(p, device, '#new-message-close');
-        await until(async () => !(await sheet()).open, `${device} ${width}: ✕ puts it back`);
-        const back = await sheet();
-        assert.deepEqual([back.parent, back.drawn, back.words], ['main', true, 'Writing kept as the topic closes.'], `${device} ${width}: back at the page's end, drawn, the writing kept: ${JSON.stringify(back)}`);
-      }
-      assert.deepEqual(p.errors, []); await p.close();
-    }
   });
 
   // Item 472: a swipe right on any message of a dossier, its last visible one included, folds that message in place;
@@ -2120,6 +1691,290 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
   else observations.push({ name: 'stacks quick acts', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
+  // Item 547: Core's answers to the page's requests, held at the network for a check to drop, let through or
+  // answer itself, in Chrome with the harness's interception and in Safari's engine with Playwright's routing.
+  // before: what the check picks is held before Core sees it; else once Core has answered it.
+  const network = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    if (engine === 'chrome') {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
+    }
+    const held = []; let test = null;
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, held: () => held,
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
+  };
+  // The page's status line, as shown.
+  const statusLine = p => p.evaluate(`(()=>{const n=document.getElementById('app-status');return {shown:!n.hidden&&n.getClientRects().length>0,text:n.textContent}})()`);
+  const foldedCard = (p, id) => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded === 'true'`);
+
+  await check('reading stacks an act whose answer is lost says which act on which card until Core answers that same request again: then the line goes, the card shows what Core holds, Core holds it once, and the page\'s own act as a reply arrives says nothing', async () => {
+    const topic = 'stack-lost';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card whose fold is lost.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card the reader answers.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p), folds = payload => payload?.kind === 'message.fold' && payload.target.message_id === ids.a;
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const lost = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold reached Core; its answer is held');
+    assert.equal((await actsOf(topic, ids.a))?.folded, true, 'Core recorded the fold');
+    await net.drop(lost);
+    // The line is read while nothing has settled the fold: the page's next ask of Core is held too.
+    await becomes(() => statusLine(p), { shown: true, text: 'Not known yet whether folding “The card whose fold is lost.” was saved: the connection was interrupted. The page asks Theseus again.' },
+      'the line names the act and its card, and says what is not known');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'the page asks Core about the same fold again');
+    assert.equal((await statusLine(p)).shown, true, 'nothing has settled it while that ask is out');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core\'s answer settles it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    const sent = p.calls.filter(call => folds(call.payload)).map(call => call.payload.operation_id);
+    assert.deepEqual([sent.length, sent[1]], [2, sent[0]], 'asked again as the same request');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the fold once');
+    // The page's own act, a stack dealt with as the reader's reply arrives, settles the same way, without a word.
+    const deals = payload => payload?.kind === 'message.deal';
+    net.hold(deals);
+    const mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor, reply_to: ids.b, addressees: [other], body: 'The reader answers from another device.' })).result.message_id;
+    await net.drop(await until(() => net.held().find(entry => deals(entry.payload)), 'the reply arriving deals with its stack; that answer is held'));
+    const dealtAgain = await until(() => net.held().find(entry => deals(entry.payload)), 'the page asks Core about the deal again');
+    assert.equal((await statusLine(p)).shown, false, 'the page\'s own act says nothing while it is not settled');
+    net.hold(null); await net.pass(dealtAgain);
+    await until(async () => (await actsOf(topic, mine))?.dealt === true, 'Core holds the deal');
+    assert.equal((await statusLine(p)).shown, false, 'nor once it is');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act Theseus was too busy to take is said as busy, never as a lost connection, with its card, after the acts are read again; it goes again, and the line goes once Core takes it', async () => {
+    const topic = 'stack-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not take.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const first = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    const reads = () => p.calls.filter(call => call.payload?.name === 'message_acts').length, before = reads();
+    // The server's own answer when its command lane is full (aim_next/server.py).
+    await net.answer(first, 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    await until(() => reads() > before, 'the acts are read again from Core');
+    await until(async () => !(await foldedCard(p, ids.a)), 'the card shows what Core holds: not folded');
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card a busy Theseus did not take.” is not saved yet: Theseus was busy. The page sends it again.' },
+      'the line says busy, names the act and its card, and stays true after the acts are read again');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted/, 'a busy answer is no lost connection');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'the same fold goes again');
+    assert.equal(again.payload.operation_id, first.payload.operation_id, 'as the same request');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core takes it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds it once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act refused for a session Theseus no longer holds, as after a deploy restarts it, says so with its card, goes again once the page holds a session, and Core holds it once', async () => {
+    const topic = 'stack-restart';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded across a restart.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const first = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    // The server's answer to a session it does not hold (aim_next/server.py), as a restarted server gives it.
+    await net.answer(first, 401, { error: { code: 'SESSION_REQUIRED', message: 'Session required.' } });
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card folded across a restart.” is not saved yet: Theseus restarted. The page sends it again.' },
+      'the line says the server restarted, names the act and its card');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'once Theseus answers again, the same fold goes again');
+    assert.equal(again.payload.operation_id, first.payload.operation_id, 'as the same request');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core takes it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds it once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act Core refuses is said as not saved, in words of its act and card, never as unknown or a lost connection, until a read of the acts begun after it lands and the card shows what Core holds; a read begun before it, or one that fails, ends nothing', async () => {
+    const topic = 'stack-refused';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded on another device.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold', acts = payload => payload?.name === 'message_acts';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const REFUSED = 'Folding “The card folded on another device.” was not saved: it changed on another tab or device. The card shows what Theseus holds.';
+    net.hold(payload => folds(payload) || acts(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const held = await until(() => heldOf(folds), 'the fold is on its way, before Core');
+    // Meanwhile the reader folds it on another device: this page's fold is fenced on a revision gone by, and the
+    // page begins reading the acts for that commit before Core refuses its own.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.a, operation_id: topic + '-elsewhere', args: { folded: true } });
+    const early = await until(() => heldOf(acts), 'the page reads the acts for the other device\'s fold; that read is held');
+    await net.pass(held);
+    await becomes(() => statusLine(p), { shown: true, text: REFUSED }, 'the line says the fold was not saved, and why, in words of its act and card');
+    assert.doesNotMatch((await statusLine(p)).text, /Not known|Connection interrupted/, 'a refusal is an answer: neither unknown nor a lost connection');
+    // The read begun before the refusal lands: the card shows the other device's fold, and the line stays.
+    await net.pass(early);
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds, made on the other device');
+    const late = await until(() => net.held().find(entry => entry !== early && acts(entry.payload)), 'the acts are read again after the refusal; that read is held');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read begun before the refusal ends nothing');
+    // That read fails: nothing is ended by it, and the page reads the acts again, as it does after a failed read.
+    await net.drop(late);
+    const again = await until(() => net.held().find(entry => entry !== early && entry !== late && acts(entry.payload)), 'the acts are read once more');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read that failed ends nothing');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'a read of the acts begun after the refusal lands: the line goes');
+    assert.equal(await foldedCard(p, ids.a), true, 'and the card shows what Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the other device\'s fold alone');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said as busy, with its card, never as a lost connection, until its reactions read again after it land; a read that fails ends nothing, and a press Core takes ends it', async () => {
+    const topic = 'stack-thumb-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'The thumbs-up on “The card a busy Theseus did not thumb.” was not saved: Theseus was busy. Press again: Core keeps one of each.';
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    const first = await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core');
+    // The server's own answer when its command lane is full (aim_next/server.py), as when the reader's own reply holds it.
+    await net.answer(first, 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    await net.drop(read);
+    await until(() => p.evaluate('window.fetchesOut===0'), 'the failed read has ended at the page');
+    assert.deepEqual(await statusLine(p), { shown: true, text: BUSY }, 'a read that failed ends nothing');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'the card shows no thumbs-up of the reader\'s');
+    // Pressed again, Core takes it; its reactions read after it end the line.
+    net.hold(null);
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await until(async () => (await view('reactions', { message_id: ids.a })).reactions.thumbs.some(thumb => thumb.actor_id === facts.actor), 'Core takes the thumbs-up');
+    await until(async () => !(await statusLine(p)).shown, 'its reactions read again: the line goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said only until its reactions read again after it land: then the line goes, with the card as Core holds it', async () => {
+    const topic = 'stack-thumb-busy-read';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await net.answer(await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await until(async () => /^The thumbs-up on .* was not saved: Theseus was busy\./.test((await statusLine(p)).text), 'what became of the thumbs-up is said while that read is out');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the read lands: the line goes');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'and the card shows what Core holds: no thumbs-up of the reader\'s');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks Mark unread from a card\'s menu that Theseus was too busy to take is said as busy, with its card, never as a lost connection, until the marks read again after it land', async () => {
+    const topic = 'stack-mark-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not mark.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), marking = payload => payload?.kind === 'message.mark', marksRead = payload => payload?.name === 'marks';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'Marking unread “The card a busy Theseus did not mark.” was not saved: Theseus was busy. Choose it again to send the same request.';
+    net.hold(payload => marking(payload) || marksRead(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Mark unread');
+    await net.answer(await until(() => heldOf(marking), 'the mark is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(marksRead), 'the marks are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the marks read lands: the line goes');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.a))}+' .unread-mark'))`), false, 'the card shows what Core holds: not marked unread');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act asked again that Core takes is no longer said as not known when the positions read after it fails: what the page says of a later act holds nothing of it', async () => {
+    const topic = 'stack-aside-positions';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root moved aside.' }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An older unread reply.' }],
+      ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card folded after.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    const net = await network(p), asides = payload => payload?.kind === 'stack.aside', positions = payload => payload?.name === 'stack_positions';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => asides(payload) || positions(payload));
+    await menuOf(p, 'laptop', ids.two); await choose(p, 'laptop', 'Move below More');
+    await net.drop(await until(() => heldOf(asides), 'the move reached Core; its answer is held, then lost'));
+    await until(async () => /^Not known yet whether moving below More/.test((await statusLine(p)).text), 'the move is said as not known');
+    for (let entry; (entry = heldOf(positions));) await net.drop(entry);
+    const again = await until(() => heldOf(asides), 'the page asks Core about the same move again');
+    await net.pass(again);
+    await net.drop(await until(() => heldOf(positions), 'Core took the move; the positions read after it is held, and its answer lost'));
+    net.hold(null);
+    for (const entry of [...net.held()]) await net.pass(entry);
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the move');
+    // Another card's fold, its answer lost too: the line says that fold alone, and goes once Core answers it.
+    const foldsB = payload => payload?.kind === 'message.fold' && payload.target.message_id === ids.b;
+    net.hold(foldsB);
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Fold');
+    await net.drop(await until(() => heldOf(foldsB), 'the other card\'s fold reached Core; its answer is held, then lost'));
+    await becomes(() => statusLine(p), { shown: true, text: 'Not known yet whether folding “The card folded after.” was saved: the connection was interrupted. The page asks Theseus again.' },
+      'the line says the fold alone: the move Core took is not said as not known');
+    const againB = await until(() => heldOf(foldsB), 'the page asks Core about the fold again');
+    net.hold(null); await net.pass(againB);
+    await until(async () => !(await statusLine(p)).shown, 'Core answers the fold: the line goes, with nothing of the move left on it');
+    assert.equal((await actsOf(topic, ids.b))?.fold_revision, 1, 'Core holds the fold once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks two acts not settled each say their own card; a read or an ask that fails clears neither, and Core\'s answer to one leaves the other said until its own answer', async () => {
+    const topic = 'stack-two-lost';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'First card lost.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Second card lost.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p), fold = id => payload => payload?.kind === 'message.fold' && payload.target.message_id === id;
+    const acts = payload => payload?.name === 'message_acts', heldOf = test => net.held().find(entry => test(entry.payload));
+    const A = 'Not known yet whether folding “First card lost.” was saved: the connection was interrupted. The page asks Theseus again.';
+    const B = 'Not known yet whether folding “Second card lost.” was saved: the connection was interrupted. The page asks Theseus again.';
+    net.hold(payload => fold(ids.a)(payload) || fold(ids.b)(payload) || acts(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Fold');
+    await net.drop(await until(() => heldOf(fold(ids.a)), 'the first fold reached Core; its answer is held'));
+    await net.drop(await until(() => heldOf(fold(ids.b)), 'the second fold goes after it; its answer is held'));
+    await becomes(() => statusLine(p), { shown: true, text: A + ' ' + B }, 'each act not settled is said, with its own card');
+    // The acts read again fails: nothing is settled by it.
+    await net.drop(await until(() => heldOf(acts), 'the acts are read again; that answer is lost too'));
+    const againA = await until(() => heldOf(fold(ids.a)), 'once Theseus answers anything, the first fold is asked again');
+    assert.deepEqual(await statusLine(p), { shown: true, text: A + ' ' + B }, 'a read that failed clears neither');
+    await net.pass(againA);
+    const againB = await until(() => heldOf(fold(ids.b)), 'then the second');
+    await becomes(() => statusLine(p), { shown: true, text: B }, 'Core\'s answer to the first leaves the second said');
+    const out = await p.evaluate('window.fetchesOut');
+    await net.drop(againB);
+    await until(() => p.evaluate(`window.fetchesOut < ${out}`), 'the second fold\'s ask fails at the page');
+    assert.deepEqual(await statusLine(p), { shown: true, text: B }, 'an ask that failed does not clear it');
+    net.hold(null);
+    for (const entry of [...net.held()]) await net.pass(entry);
+    await until(async () => !(await statusLine(p)).shown, 'the second fold is settled at the next answer: the line goes');
+    assert.deepEqual([await foldedCard(p, ids.a), await foldedCard(p, ids.b)], [true, true], 'both cards show the folds Core holds');
+    assert.deepEqual([(await actsOf(topic, ids.a))?.fold_revision, (await actsOf(topic, ids.b))?.fold_revision], [1, 1], 'each held once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 
   await check('reading stacks ⇧⌘↑ joins a stack to the one above for everyone, its first message in view with a join line, and Split back out takes it out again', async () => {
     const topic = 'stack-join';
@@ -5122,6 +4977,31 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       }
       assert.deepEqual(await storedActRows(topic), before, `${device}: Core holds every act on the dossier as it did: names, folds and places unchanged`);
     }
+  });
+
+  // Item 558: an earlier message the reader folded (as their reply folds what it answers, item 377) opens in the
+  // Reader by presses alone, as a person reaches it: the earlier-messages row, then the message as it shows, each
+  // press showing more of it until one opens it. On a laptop, by the mouse, in Chrome and Safari's engine.
+  await check('reading stacks an earlier message the reader folded opens in the Reader from a press on the earlier-messages row and then presses on the message, each showing more of it until one opens it', async () => {
+    const topic = 'stack-earlier-reader', ids = await earlierSeed(topic);
+    await dossierFold(topic, ids.r5);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await dossierOpen(p, 'laptop', ids.root);
+    await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, 'open, the newest seven are cards and one row stands for the eight before them');
+    await centre(p, earlierButton(ids.root)); await p.point(earlierButton(ids.root));
+    await becomes(async () => (await earlierLook(p, ids)).messages, openedLook, 'pressed, the earlier messages are rows, the reader\'s fold its own row');
+    const face = async () => (await earlierLook(p, ids)).messages.find(m => m.startsWith('r5:')).slice(3);
+    const faces = [await face()];
+    while (await readerOn(p) === null) {
+      assert.ok(faces.length <= 3, `the message opens in the Reader within three presses on it: it showed ${faces.join(', then ')}`);
+      await centre(p, card(ids.r5)); await p.point(card(ids.r5));
+      await until(async () => await readerOn(p) !== null || await face() !== faces.at(-1), `a press on the message as ${faces.at(-1)} shows more of it or opens it`);
+      if (await readerOn(p) === null) faces.push(await face());
+    }
+    assert.ok((await readerOn(p)).startsWith('Reply 5 about the cabin.'), `the Reader opens on the message pressed: ${await readerOn(p)}`);
+    observations.push({ name: 'reading stacks an earlier message the reader folded opens in the Reader', engine, faces });
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []); await p.close();
   });
 
   await check('reading stacks the earlier-messages row is reached by Tab and opened by Return, the keys going on to the first earlier message; a link to an earlier message opens the row and shows it whole; a dossier of seven or fewer shows none', async () => {

@@ -75,10 +75,7 @@ and the writing. Focus stays visible and follows what the person did.
   and Shift-Tab comes back", "rail the arrows move through the outline as a
   tree" and "rail → and ← move between the outline, the messages and the right
   rail"; "rail → on a folded outcome opens it, the next → lands on its pencil
-  with a ring, …" reaches each pencil by the keys and presses it with Return;
-  from anywhere outside writing an arrow lands on the nearest control that
-  way and the arrows reach every control a click reaches, the "rail arrows
-  …" cases (docs/interaction.md, "The arrows everywhere").
+  with a ring, …" reaches each pencil by the keys and presses it with Return.
   `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
@@ -220,7 +217,7 @@ content needs: a title line is about a sentence wide, and a few sentences about
   (the audit's own negative control), then the rule on each surface: "forms the
   Outcomes page and its New outcome line keep to the rule", "forms an outcome
   page, its New topic line, its purpose and its team keep to the rule", "forms
-  a topic page, its Team and its composer keep to the rule", "forms the
+  a topic page, its People row and its composer keep to the rule", "forms the
   Reader on a message, on a Notebook page, its note and its Start a topic line
   keep to the rule", "forms a resumed opening and a resumed outcome form keep to
   the rule".

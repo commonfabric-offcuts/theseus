@@ -21,6 +21,7 @@ import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
+import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 
 const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
@@ -60,6 +61,68 @@ function learned(kind, result, viewer, now) {
   if (kind === 'stack.name') return { name: result.name ? { text: result.name, by: viewer, at_ms: now } : null, ...revision };
   return { joined: result.into ? { into: result.into, by: viewer, at_ms: now } : null, ...revision };
 }
+// An act's words in a notice, with the card it names: "folding “The latest
+// reply…”". The card is named by its one line (messagePreview), cut short to fit
+// the rail.
+const CARD_WORDS = 40;
+const DOING = {
+  'stack.aside': args => args.through === null ? 'bringing back' : 'moving below More',
+  'message.star': args => args.starred ? 'starring' : 'unstarring',
+  'message.deal': () => 'marking as dealt with',
+  'message.fold': args => args.folded ? 'folding' : 'unfolding',
+  // Option's fold (item 472): the message and every one before it in its dossier.
+  'message.fold_through': () => 'folding every message up to',
+  'stack.place': args => args.key === null ? 'letting new replies move' : 'moving',
+  'stack.name': args => args.name ? 'renaming' : 'naming by its first line',
+  'stack.join': args => args.into ? 'joining' : 'splitting out',
+  'message.thumb': args => args.thumbed ? 'the thumbs-up on' : 'taking back the thumbs-up on',
+  'message.answer': args => args.answer === 'yes' ? 'answering Go ahead to' : 'answering Don’t to',
+  'message.mark': args => args.marked ? 'marking unread' : 'marking read',
+};
+function doing(kind, item, args) {
+  const line = messagePreview(item), short = line.length > CARD_WORDS ? `${line.slice(0, CARD_WORDS - 1).trimEnd()}…` : line;
+  return `${DOING[kind](args)} ${!short ? 'a message' : short.startsWith('“') ? short : `“${short}”`}`;
+}
+const upper = words => words[0].toUpperCase() + words.slice(1);
+// The page's own acts, made for the person rather than by them (a stack dealt
+// with as their reply arrives): settled as every act is, without a word.
+const QUIET = new Set(['message.deal']);
+// An act that did not commit: the attempt's own failure (error) when Core sent
+// no receipt, else Core's receipt.
+class ActFailure extends Error {
+  constructor(envelope, { error = null, receipt = null }) {
+    super('An act did not commit.', { cause: error ?? receipt });
+    Object.assign(this, { envelope, error, receipt });
+  }
+}
+// Why an act is not settled, so it is kept and sent again as it was made, under
+// its own operation, once Theseus has answered since: no word on whether Core
+// recorded it (api.mjs notTaken: unreached or unconfirmed), or an answer that
+// Core took nothing yet (a busy lane, a session the server refused as a
+// restarted one does, a receipt to try again). Core answers the same operation
+// with what it recorded, or records it then (aim_next/store.py, its
+// operations). Null for an answer that settles it: a refusal, said as one.
+function waiting(failure) {
+  const { kind } = notTaken(failure);
+  return kind in WAITING ? kind : null;
+}
+const WAITING = {
+  unreached: what => `Not known yet whether ${what} was saved: the connection was interrupted. The page asks Theseus again.`,
+  unconfirmed: what => `Not known yet whether ${what} was saved: Theseus could not confirm it. The page asks again.`,
+  busy: what => `${upper(what)} is not saved yet: Theseus was busy. The page sends it again.`,
+  restarted: what => `${upper(what)} is not saved yet: Theseus restarted. The page sends it again.`,
+};
+// An answer that settles an act, in words of the act's own (notTaken's kind and
+// why): what Core holds stands, and the card shows it. again: what the person
+// does to make it once more, for an act the page does not send again itself.
+function notSaved(what, { kind, why }, again = '') {
+  if (kind === 'refused') return `${upper(what)} was not saved${why ? `: ${why}` : ''}. The card shows what Theseus holds.`;
+  if (kind === 'conflict') return `${upper(what)} was not saved: ${NOT_TAKEN.conflict}. The card shows what Theseus holds.`;
+  if (kind === 'unconfirmed') return `Not known whether ${what} was saved: ${NOT_TAKEN.unconfirmed}. ${again}`;
+  return `${upper(what)} was not saved: ${NOT_TAKEN[kind]}. ${again}`;
+}
+// What the person does to make once more a card command the page does not send again itself.
+const AGAIN = { 'message.thumb': 'Press again: Core keeps one of each.', 'message.answer': 'Press again: Core keeps one of each.', 'message.mark': 'Choose it again to send the same request.' };
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
   if (kind === 'stack.aside') return { aside: args.through };
@@ -76,17 +139,15 @@ export class StackFeed {
   // list: #messages. messages(): the loaded messages by id. keep, unread,
   // nameOf: as arrangeStacks takes them. send(envelope): Core's command.
   // reread(): reads the acts again from Core, after a refusal. starsChanged():
-  // the reader's stars moved (the right rail's Starred). status(error): says a failure.
+  // the reader's stars moved (the right rail's Starred). status(words): says
+  // what became of an act; line(): the element it says it in.
   // hold(paint): repaints keeping the page where the person is. press: the
   // press held down on the page (press-hold.mjs).
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
-  // home: the page's New message composer at rest, drawn just above More (arrangeStacks); put back after
-  // being up over the page, it goes to that place at once.
-  constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {},
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, clock, doc });
-    home?.addEventListener('close', () => this.arrange());
+  constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, clock, doc });
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
     // dossier's root, a message Option's fold folded), kept so each act on it
@@ -95,6 +156,14 @@ export class StackFeed {
     // The acts shown and not yet answered, by message, in the order made; and
     // the acts each message was last drawn with.
     this.pending = new Map(); this.drawn = new Map();
+    // The acts not settled, by operation, each kept with its exact request
+    // until Core answers it (waiting); and what the page says of each act not
+    // settled or refused, by operation (or, for a card command it does not
+    // send again, by command and message), in the order said.
+    this.doubts = new Map(); this.notices = new Map(); this.noticeShown = ''; this.unheard = null;
+    // How many reads of what shows the cards have begun, and answers said, in the order they were (answered, reading).
+    this.reads = 0;
+    this.listen();
     this.said = doc.createElement('div');
     this.said.className = 'sr-only'; this.said.setAttribute('aria-live', 'polite'); this.said.id = 'stack-said';
     doc.body.append(this.said);
@@ -139,7 +208,7 @@ export class StackFeed {
     } };
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, home: this.home, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
@@ -225,7 +294,8 @@ export class StackFeed {
     last(); this.say('Put back');
   }
   // Shows an act on the message at once and sends it after the acts before it.
-  // Answered or refused, it is no longer drawn over what Core holds. also: what
+  // Answered, refused or not settled, it is no longer drawn over what Core
+  // holds: one not settled shows once Core says it is recorded. also: what
   // else it shows at once, as [message id, acts] (Option's fold, on several).
   act(kind, item, args, also = []) {
     const shown = shownAct(kind, args, this.viewer, this.clock());
@@ -240,9 +310,87 @@ export class StackFeed {
       this.settled(item.id);
     });
     this.chain = sent.catch(() => {});
-    sent.catch(error => { this.status(error); this.reread(); });
+    sent.catch(error => this.failed({ kind, item, args }, error, true));
     return sent;
   }
+  // An act that did not commit (docs/reply-stacks.md, "When an answer is lost").
+  // One not settled is kept and said as such, by its act and its card, until
+  // Core answers it. The acts are read again the first time, so the card shows
+  // what Core holds meanwhile, and again each time no answer came at all: that
+  // read is the answer the act waits for, paced as the page's reads are when
+  // they fail. A busy or unconfirmed answer waits for Theseus to answer
+  // something else. A refusal is said until that read shows the card (answered).
+  // A failure after Core recorded the act (reading positions) says itself.
+  failed(act, error, first) {
+    if (!(error instanceof ActFailure)) { this.paintNotice(); this.status(error); this.reread(); return; }
+    const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args), why = waiting(error);
+    this.notices.delete(op);
+    if (why) {
+      this.doubts.set(op, { ...act, envelope: error.envelope, after: contact.answered, out: false }); this.listen();
+      if (!QUIET.has(act.kind)) this.notices.set(op, { words: WAITING[why](what) });
+      this.paintNotice();
+    } else if (!QUIET.has(act.kind)) this.answered(op, notSaved(what, notTaken(error)), 'acts');
+    if (first || !why || why === 'unreached') this.reread();
+  }
+  // Each act not settled goes again, as it was made, once Theseus has answered
+  // anything since it failed: at the next answer, never on a timer, so an act
+  // that fails again waits for a newer answer. Whatever comes of the ask, what
+  // was said of the act goes with it, and only a failure that leaves it not
+  // settled, or refused, says it again (failed).
+  askAgain() {
+    for (const [op, doubt] of this.doubts) {
+      if (doubt.out || !(contact.answered > doubt.after)) continue;
+      doubt.out = true;
+      const sent = this.chain.then(() => this.send(doubt.kind, doubt.item, doubt.args, doubt.envelope));
+      this.chain = sent.catch(() => {});
+      const over = () => { this.doubts.delete(op); this.notices.delete(op); };
+      sent.then(() => { over(); this.paintNotice(); }, error => { over(); this.failed(doubt, error, false); })
+        .finally(() => { this.settled(doubt.item.id); if (this.gone && !this.doubts.size) this.deafen(); });
+    }
+  }
+  // A card command the person makes again themselves (a 👍, a go-ahead answer,
+  // a mark) that Theseus answered without taking it: said in words of its act
+  // and card, as a refused act is. One that reached no Theseus is a connection
+  // line instead (lines.mjs), which its maker says. shows: what shows the card
+  // (reading).
+  notTaken(kind, item, args, failure, shows) {
+    this.answered(`${kind}:${item.id}`, notSaved(doing(kind, item, args), notTaken(failure), AGAIN[kind]), shows);
+  }
+  // An answer that settles an act, said until a read of what shows its card
+  // (shows: 'acts', 'reaction:<message id>' or 'marks'), begun after it was
+  // said, has landed: the card then shows what Theseus holds, and the words go
+  // (item 547). A read that fails, or one begun before, ends nothing.
+  answered(key, words, shows) {
+    this.notices.set(key, { words, shows, at: ++this.reads });
+    this.paintNotice();
+  }
+  // A read of what shows the cards (what) begins: the function it returns is
+  // called once it has landed (topic-views.mjs, reactions.mjs, app.mjs marks).
+  reading(what) {
+    const began = ++this.reads;
+    return () => {
+      let over = false;
+      for (const [key, notice] of this.notices) if (notice.shows === what && notice.at < began) { this.notices.delete(key); over = true; }
+      if (over) this.paintNotice();
+    };
+  }
+  // The page's status line says every act not settled and every refusal not
+  // over; with none, a line still showing what it last said goes quiet, and one
+  // something else has written since is left as it is.
+  paintNotice() {
+    const words = [...this.notices.values()].map(notice => notice.words).join(' ');
+    if (words) { if (words !== this.noticeShown || this.line()?.textContent !== words) this.status(words); this.noticeShown = words; return; }
+    if (this.noticeShown && this.line()?.textContent === this.noticeShown) this.status('');
+    this.noticeShown = '';
+  }
+  // The page goes (unloaded, or a move in place ended its run): an act not
+  // settled still goes again as Theseus answers, so it is made once whatever
+  // the reader does next, and what it says lands on the page it left
+  // (app.mjs, retired elements). Once none is left, it listens no more.
+  dispose() { this.gone = true; if (!this.doubts.size) this.deafen(); }
+  // Hearing each time Theseus answers anything (api.mjs heard), at most once.
+  listen() { this.unheard ??= heard(() => this.askAgain()); }
+  deafen() { this.unheard?.(); this.unheard = null; }
   // Draws the stacks again when a message's acts as shown are no longer what
   // they were last drawn with, or when an act on a dossier's unloaded root
   // settles, as its loaded replies show where it is; an answer landing under a
@@ -254,18 +402,15 @@ export class StackFeed {
     const changed = this.messages().has(id) ? this.drawn.get(id) !== JSON.stringify(this.actsOf(id)) : this.standIns.has(id);
     if (changed) this.press.after('stacks', () => this.arrange());
   }
-  async send(kind, item, args) {
-    const field = FIELD[kind], { authority_id, authority_epoch } = this.authority();
+  // Sends an act, or sends again the exact request of one not settled (made).
+  async send(kind, item, args, made = null) {
+    const field = FIELD[kind];
     const current = this.messages().get(item.id) ?? item;
+    const envelope = made ?? (({ authority_id, authority_epoch }) => ({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind, target: { message_id: item.id },
+      expected: { [`${field}_revision`]: current.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args }))(this.authority());
     let receipt;
-    try {
-      receipt = await this.commandOf({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind, target: { message_id: item.id },
-        expected: { [`${field}_revision`]: current.acts?.[`${field}_revision`] ?? 0, authority: { authority_id, authority_epoch } }, args });
-    } catch (error) { throw Error('Connection interrupted; whether that was saved is unknown. The page reads it again from Theseus.', { cause: error }); }
-    if (receipt?.status !== 'committed') {
-      if (receipt?.error?.code === 'REVISION_CONFLICT') throw Error('That changed on another tab or device; the page now shows what was saved. Nothing was changed.');
-      throw Error(receipt?.error?.message ?? 'That was not confirmed. The page shows what Theseus holds.');
-    }
+    try { receipt = await this.commandOf(envelope); } catch (error) { throw new ActFailure(envelope, { error }); }
+    if (receipt?.status !== 'committed') throw new ActFailure(envelope, { receipt });
     const answer = learned(kind, receipt.result, this.viewer, this.clock());
     // The answer goes to the message the page holds now as well: a read that landed while the act was out (a
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
@@ -499,24 +644,7 @@ export class StackFeed {
       ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
     return { item, position };
   }
-  // What the Reader's archive button offers for the dossier a message is in
-  // (item 378): Move below More, or Bring back once it is there, the same act
-  // as ⋯'s (setAside), with how many of the page's messages go with it. The
-  // act moves Core's whole dossier, which the page draws as more than one
-  // stack where its first message is not loaded (two replies to it are two
-  // stacks), so the count is of every stack drawn from that dossier. Null
-  // where ⋯ offers neither: no stack drawn holds the message, or Core sent no
-  // position for it.
-  asideOffer(id) {
-    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
-    const position = stack && positionOf(stack);
-    if (!position) return null;
-    const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
-    return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
-  }
-  // focus: false leaves the focus where it is, as on the Reader's archive
-  // button, whose dialog keeps it while the page behind it changes.
-  setAside(stack, below, { undoable = true, restoreThrough, focus = true } = {}) {
+  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
     const { item, position } = found, root = item.id;
@@ -532,10 +660,8 @@ export class StackFeed {
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
-    if (focus) {
-      if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
-      else this.focusOn(stack.id);
-    }
+    if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
+    else this.focusOn(stack.id);
     this.say(below ? 'Moved below More, for you only' : 'Brought back');
     return true;
   }

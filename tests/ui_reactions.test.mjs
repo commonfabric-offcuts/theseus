@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactions, reactionsOf, paintReactions, mayThumb, mayAnswer, learnReactions } from '../web/reactions.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { AttemptError } from '../web/api.mjs';
 
 const reactions = more => ({ version: 3, thumbs: [], answers: [], thumb_revision: 1, answer_revision: 0, ...more });
 
@@ -122,4 +123,39 @@ test('a 👍 or an answer that cleared the person\'s mark tells the page before 
   ({ r, heard } = page({ status: 'rejected', recorded: true, error: { code: 'REVISION_CONFLICT' }, result: { message_id: 'm', mark_revision: 4 } }));
   await assert.rejects(r.thumb(item, true));
   assert.deepEqual(heard, [['learned']], 'a refused act clears nothing');
+});
+
+// Item 547: a 👍 or an answer Theseus answered without taking is said as what
+// it answered, never as a lost connection; with someone to say it on the
+// card, it is told before the reactions are read again, so that read ends it.
+test('a 👍 Theseus answered without taking is said as what it answered, told before its reactions are read again; only no answer at all is a lost connection', async () => {
+  const item = { id: 'm', author_id: 'aim-core', reactions: reactions({ thumb_revision: 0 }) };
+  const page = failure => {
+    const heard = [];
+    const api = { command: async () => { throw failure; },
+      view: async (name, args) => { heard.push(['read', args.message_id]); return { instance_id: 'i', message_id: args.message_id, go_ahead: false, reactions: reactions({ version: 4 }) }; } };
+    const r = new Reactions({ api, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: 1 }), learned: () => heard.push(['learned']),
+      reading: id => { heard.push(['reading', id]); return () => heard.push(['landed', id]); } });
+    return { r, heard };
+  };
+  const busy = new AttemptError('This request lane is busy; retain its operation.', 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+  let { r, heard } = page(busy);
+  await assert.rejects(r.thumb(item, true), error => {
+    assert.equal(error.message, 'That was not saved: Theseus was busy. Press again: Core keeps one of each.');
+    return true;
+  }, 'with no one to say it on the card, it is thrown in words of what Theseus answered');
+  ({ r, heard } = page(busy));
+  assert.equal(await r.thumb(item, true, failure => heard.push(['said', failure.error === busy])), null, 'said on the card, nothing is thrown');
+  assert.deepEqual(heard, [['said', true], ['reading', 'm'], ['read', 'm'], ['landed', 'm'], ['learned']], 'said before the reactions are read again, which then land');
+  const restarted = new AttemptError('Session required.', 401, { error: { code: 'SESSION_REQUIRED', message: 'Session required.' } });
+  ({ r } = page(restarted));
+  await assert.rejects(r.answer({ ...item, go_ahead: true }, 'yes'), /^Error: That was not saved: Theseus restarted\./, 'a restart is no lost connection');
+  const unconfirmedAnswer = new AttemptError('The request could not be confirmed; reconcile its operation.', 500, { error: { code: 'REQUEST_UNCONFIRMED' } });
+  ({ r } = page(unconfirmedAnswer));
+  await assert.rejects(r.thumb(item, true), /^Error: Not known whether that was saved: Theseus could not confirm it\./);
+  // No answer at all is a lost connection, and goes to a connection line even with the card to say it on.
+  const lost = new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+  ({ r, heard } = page(lost));
+  await assert.rejects(r.thumb(item, true, () => heard.push(['said'])), /Connection interrupted; whether that was saved is unknown/);
+  assert.equal(heard.some(([what]) => what === 'said'), false, 'a lost connection is not said on the card');
 });

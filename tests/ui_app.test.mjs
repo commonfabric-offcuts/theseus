@@ -1610,10 +1610,10 @@ for (const composer of ['topic', 'message']) test(`a reply in doubt behind repli
 // Item 118: an open of a message's Reader dropped after its fresh read, by
 // Escape or by choosing another message while the step keeps the writing in
 // front, may still change what is in doubt for that message, whether or not it
-// was opened here before. The Review button under the topic's title is told, so
-// it and the departure guard agree: a reply whose send never landed elsewhere
-// gets its button, and one the read shows went loses it.
-for (const doubtCase of ['never landed', 'never landed, first open here', 'answer lost']) for (const drop of ['Escape', 'another message']) test(`an open dropped after its read leaves the Review button and the departure guard agreeing: ${doubtCase}, ${drop}`, async t => {
+// was opened here before. The Review button under the topic's title is told: a
+// reply whose send never landed elsewhere gets its button, and one the read
+// shows went loses it. Either way leaving goes at once (item 547).
+for (const doubtCase of ['never landed', 'never landed, first open here', 'answer lost']) for (const drop of ['Escape', 'another message']) test(`an open dropped after its read leaves the Review button showing what the read says, and leaving goes at once: ${doubtCase}, ${drop}`, async t => {
   // The page draws every button from the registry whenever it is told.
   const painted = new Map();
   const f = await fixture(t, { changed() { painted.clear(); for (const entry of this.inDoubt) painted.set(entry.editor.key, entry.label); } });
@@ -1651,13 +1651,12 @@ for (const doubtCase of ['never landed', 'never landed, first open here', 'answe
   assert.equal(answer, doubtCase === 'answer lost' ? null : 'Review 1 reply', 'the fresh read answers');
   assert.equal(painted.get(m1().key) ?? null, answer, 'the button under the title shows that answer');
   const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
-  const guard = await nav.open('other').then(() => null, error => error.message);
-  if (answer) assert.match(guard, new RegExp(`“${answer}”`)); else assert.equal(guard, null, 'leaving goes at once');
+  assert.equal(await nav.open('other').then(() => null, error => error.message), null, 'leaving goes at once, the reply in doubt or not');
 });
 
 // An open that fails after the message's writing is registered here leaves
-// that writing in the departure guard's reach, so the button is told too.
-test('an open that fails after registering the message\'s writing leaves the Review button and the departure guard agreeing', async t => {
+// that writing registered, so the button is told too; leaving still goes.
+test('an open that fails after registering the message\'s writing shows its Review button, and leaving goes at once', async t => {
   const painted = new Map();
   const f = await fixture(t, { changed() { painted.clear(); for (const entry of this.inDoubt) painted.set(entry.editor.key, entry.label); } });
   await serverReply(f, f.facts.sources[0], 'From the phone, never landed', { send: false });
@@ -1669,7 +1668,8 @@ test('an open that fails after registering the message\'s writing leaves the Rev
   assert.equal(f.registry.doubt(m1).label, 'Review 1 reply');
   assert.equal(painted.get(m1.key), 'Review 1 reply', 'the button under the title shows it');
   const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
-  assert.match(await nav.open('other').then(() => null, error => error.message), /“Review 1 reply”/);
+  assert.equal(await nav.open('other').then(() => null, error => error.message), null, 'leaving goes at once; the reply stays in doubt');
+  assert.equal(f.registry.doubt(m1).label, 'Review 1 reply', 'and is kept');
 });
 
 test('source access refusal still exposes authorized retained writing without old source text', async t => {

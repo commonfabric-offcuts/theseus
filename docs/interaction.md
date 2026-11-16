@@ -122,22 +122,8 @@ the pointer's way, the keys' and the phone's.
   (`web/card-scroll.mjs`, item 401)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
   composer on its own, with no message above it and the cursor in the field;
-  Escape, ✕ or a press outside puts it back in its place with the writing
-  kept. At rest that composer sits among the messages, just above More: under
-  the last dossier shown above More, and above the More line (or the end of the
-  messages, where nothing is put aside). It is never moved while it is up over
-  the page, a holder of its height keeping its place so the feed behind it does
-  not move, and goes to its place as it is put back. (docs/reader.md,
-  `home` in `web/reply-stacks.mjs`, item 465)
-- **The Team.** The topic's people are its Team, on the title row's right,
-  under the title (under the subtitle on a phone): a pill each and "+ Add" for
-  whoever may change them, as ever. The label sits beside the first pill; the
-  people "+ Add" opens come in under the pills, taking no width of their own, so
-  the label and the subtitle stay where they were. The subtitle keeps at least
-  6rem beside it: a Team that would leave it less wraps its pills, so the
-  topic's state stays words, not a column one letter wide. They are among the header's buttons, so ←
-  and → move along them with Topic settings and New message (below), and Tab
-  reaches them in that order. (item 465)
+  Escape, ✕ or a press outside puts it back at the page's end with the writing
+  kept. (docs/reader.md)
 - **A Notebook page** opens in that sheet, over the feed, from wherever it is
   listed or linked as it stands; ✕, Escape (a second one while a card is
   written) or a press outside closes it, keeping a card half written, and puts
@@ -252,26 +238,21 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   on you, pressed or chosen with the keys in the outline, is ringed again when
   the question it opened is closed, and a message the keys opened once and the
   mouse opens next wears no ring when the mouse closes it.
-- **The buttons at the top of the feed.** These are rows: the
-  header's buttons (Topic settings, New message, the Team's pills and "+ Add",
-  and the others drawn there, such as "Pipeline & pages" below 1181px), on a phone the line under the
-  header saying what is new in the other outcomes, and under them the view filters
+- **The buttons at the top of the feed.** These are two rows: the
+  header's buttons (Topic settings, New message, and the others drawn there,
+  such as "Pipeline & pages" below 1181px), and under them the view filters
   in the row just over the messages ("Read it", Only new, Show agent
   coordination), when any of those shows. ↑ on the message at the top of the
   feed moves the keys onto the row just above it, the filters' when they
   show, else the header's, with the keys' ring on the button they are on.
   ↑ from the filters goes on up to the header's buttons, and ↑ there, the
-  top row, goes on to what lies above it in the column, if anything (on a
-  phone the header wraps, and ↑ from Topic settings or New message reaches
-  "Pipeline & pages" above them); ↓ goes back down a row, and from the filters (or
+  top row, moves nothing; ↓ goes back down a row, and from the filters (or
   the header's buttons, with no filter shown) selects the first visible card
-  or stack in the feed (with a filter on, the first it shows), or with no
-  message yet goes on down the column to the reply. Coming to a
+  or stack in the feed (with a filter on, the first it shows). Coming to a
   row finds the button the keys were last on in it, else its first. ← and →
   move along a row; ← past its first goes to the outline and → past its
-  last to the right rail, as from the messages, so → from the header's last
-  button, the Team's "+ Add", goes to the right rail, not on to a filter; with no rail on screen that way
-  they go on to the nearest control that way, if any. Tab or a click puts the keys on a
+  last to the right rail, as from the messages, so → from New message goes
+  to the right rail, not on to a filter. Tab or a click puts the keys on a
   filter as on any button, Return or Space presses the button, and no arrow
   does. The pointer is unchanged. The button the keys
   reach, and the message → or ↓ bring them back to, comes into view by the
@@ -314,9 +295,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 - **Put a dossier aside.** Swipe its header or last visible message right,
   on a phone or with two fingers on a trackpad, to move it below More messages
   for you on every device. The menu offers Move below More and Bring back
-  above More; ⌘Z undoes it. In the Reader the archive button beside the star
-  is the same act, labelled with how many messages move with it (the whole dossier's, every stack the page draws of it)
-  (item 378). Your own replies leave it there; a new reply from
+  above More; ⌘Z undoes it. Your own replies leave it there; a new reply from
   someone else brings it back. Other messages still swipe to fold individually.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
@@ -325,96 +304,8 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   pages" below 1181px) is passed over: the keys never open a drawer or a
   sheet. While one is open over the dimmed page, the keys never act on what
   it covers: ← on a folded section of the right rail's panel or sheet closes
-  it and goes to the messages, and nothing under it takes the keys; with the
-  keys on nothing, an arrow lands in the rail open over the page. Touch is unchanged; on an
+  it and goes to the messages, and nothing under it takes the keys. Touch is unchanged; on an
   iPad with a keyboard the same keys work.
-
-## The arrows everywhere
-
-From anywhere outside writing, an arrow lands the focus somewhere that makes
-sense, and the arrows reach everything a click reaches (item 301). Where a
-pane's own keys above say what an arrow does, they decide. Everywhere else an
-arrow that nothing used moves the focus to the nearest button, link or field
-that way on screen, as the eye goes: ↓ to what is straight below before what
-is a little nearer off to the side, ← and → along the row where something is
-beside, else to the nearest that way. What it reaches comes into view by the
-rule above. (`web/arrow-reach.mjs`)
-
-- **Past a pane's edge.** ↑ above the outline's first row goes on up the side
-  rail: New outcome, "N new" and "N waiting on you", then the logo block (the
-  wordmark, "? Pointer, keys and taps", Health, Turn on notifications); ↓
-  below its last row reaches Keys. ↑ above the right rail's first section
-  reaches its name, "Just this topic" and "All of this outcome". ↓ past the
-  last message goes on down the page: More messages, the People row, the
-  Notebook and the reply; ↑ from there comes back to the last message. Into a
-  tree from beside it (a pencil in a section's heading, the chips above it)
-  the arrows land on the row nearest that way, which becomes its stop.
-  A control set in a tree's row (the pencil in the right rail's Notebook
-  heading) is the row's own, as a card's speech bubble is: → on the row, open,
-  gives it the focus before the rows under it; from it → goes on to the first
-  of them and ← comes back to the row. A row with no such control keeps the
-  tree's → (open a folded row, else go to its first row).
-  On a Notebook page's cards, ↑ above the first card and ↓ below the last go
-  on to the page's controls (docs/decks.md).
-  On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
-  message above or below, as from the message.
-- **In a pane, off its keys.** On the logo block, the chips, Keys, the right
-  rail's name and chips, People and the Notebook, ↑ and ↓ move within that
-  pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
-  as from the messages.
-- **Every other page.** The Outcomes home, an outcome's own page, its pipeline,
-  an item, Health and the measurements have no panes: the arrows move between
-  their controls. With nothing focused, ↓ goes to the first control in view
-  from the top, ↑ to the last, → to the first from the left and ← to the first
-  from the right. So it is on a topic or a Conversation with no messages yet,
-  where there is no message for ↓ to light. With messages, ↑ and ↓ light one,
-  and ← and → go to the pane that way where it shows, else, as here, to the
-  first control from the right or the left: on a phone both, and on an iPad
-  with a keyboard → (the right rail is behind "Pipeline & pages" below 1181px).
-- **On a phone**, in the side rail's drawer, the arrows move as they do beside
-  the topic: the outline's rows, New outcome, the chips and the logo block,
-  never the page behind the drawer. The drawer opens with the focus on the
-  open topic where it shows and is live, never on a copy of it in a list not
-  drawn or kept inert while the outline draws its own, so the arrows always
-  start there.
-- **In a pop-up** (the Reader, Topic settings, the guide, a sheet) the arrows
-  move only through it, never to the page behind; a menu, a radio group and a
-  picker keep their own arrows.
-- **Reading is kept.** A focused box that can still scroll that way (a long
-  message in the Reader) scrolls first, a third of what it shows at a time, the
-  same in every browser; once at its end the arrows go on (at 390 ↓ through a
-  long message reaches the reply below it). From the message's words, → goes
-  to the first link in them in sight, and ← from a link with nothing more to
-  its left comes back to the words. While the next control that way is out
-  of sight, the arrow scrolls toward it, a third of a window at a time, so the
-  words between are read on the way; once it shows, the next press lands on
-  it. What a box that takes the focus itself has scrolled out of sight lies
-  no way of a focus outside that box, as the eye sees: a link scrolled up out
-  of the Reader's message is not above its header, and ↑ from the header
-  leaves the message where it was read to. The arrows reach such a control
-  from the box: the box scrolls, and → goes to the link once it shows. A box
-  that takes no focus is no such way in, so what it has scrolled out of sight
-  lies where it is drawn, and is scrolled toward: in a reply's review, with
-  versions taller than its box, ↓ from Keep both for now below scrolls the
-  versions toward the acknowledgement and Prepare this reply again, and ↑
-  then reaches them. From a control
-  in a box that scrolls, the box scrolls toward the next one out of sight in
-  it, and the focus scrolled out of the box meanwhile is where it went out, on
-  the box's edge, never over what lies past it.
-- **A control pressed, not typed in.** A checkbox ("Mark it reached anyway"
-  in the reach box, the acknowledgement in a reply's review) holds no arrow,
-  as a button holds none: each goes on to the control that way. A select (the
-  agent a card's ask goes to) keeps ↑ and ↓, which choose among its options;
-  ← and → go on along its line. A radio group and a slider keep their own.
-- **Never in writing.** In a field the arrows are the writing's, as everywhere
-  above, but for ↑ and ↓ in a one-line field (a title, a name, a pipeline's
-  "Add an item…"), which has no line above or below its own, and every arrow
-  in a field with nothing written in it (an empty reply, an outcome's "Write
-  the target"): they go on to the control that way, so a field the arrows land
-  in never holds them, and the + beside an empty reply is a ← away. In words ←
-  and → stay the writing's, and so do ↑ and ↓ in a box with words in it; a
-  field that offers suggestions (a name to pick from a list) keeps its arrows
-  for those.
 
 ## Everywhere
 
@@ -581,31 +472,3 @@ both widths) and "conversation the keys go on from Only new: …"
 (`native-conversation`); ⌘Return:
 "rail ⌘Return starts a new message in the place the keys are on: …". What
 each key means, and that none acts in writing: `tests/ui_outline_order.test.mjs`.
-
-The arrows everywhere are pressed by `tests/outcome_rail_native.mjs`
-(`native-rail`, `native-webkit-rail`), each case marking every control on show
-and pressing every arrow from each, natively, to show the arrows reach them
-all and none loses the focus to the page: past the outline's edges, "rail
-arrows ↑ above the outline's first row goes on up the side rail …"; the right
-rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
-below the messages, "rail arrows ↓ past the last message goes on down the page
-…" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
-→ move along its buttons, …"; the pages with no panes and a one-line field,
-"rail arrows on the Outcomes home, an outcome's page, its pipeline and its
-Conversation, …" (at
-1280, 390, 375 and 320); a Notebook page's cards, "rail arrows on a Notebook
-page's cards ↑ above the first card …"; a control out of sight, "rail arrows
-a control out of sight is scrolled toward …"; the phone's drawer, "rail
-arrows on a phone, in the side rail's drawer, …"; the pop-ups, "rail arrows in Topic settings and the
-Reader move between their controls …"; writing, "rail arrows in writing
-are the writing's: …"; a checkbox, "rail arrows from the reach box's
-checkbox …" (and the review's acknowledgement in "navigation correction
-retry chain …", `native-navigation`); a select, "rail arrows in a card's ask
-form …"; and a topic and a Conversation at every width, the header's top row
-and nothing focused among them, "rail arrows on a topic and a Conversation …"
-(at 320, 375, 390, 820, 1024 and 1280). Each case that marks every control
-also fails on a press that leaves the focus where it was while a control lies
-straight that way (in sight, or out of sight only by the page or a box the
-focus is in), unless the press acted there (opened or folded something,
-switched a stack, or said so in a live region). Where an arrow lands by the geometry, and which arrows a
-form control keeps: `tests/ui_arrow_reach.test.mjs`.

@@ -5,6 +5,7 @@
 // and 🚫 (don't), one tap each. Core keeps every one on the message; this
 // module keeps what the page has read of them, sends the person's own, and
 // paints the small line each card carries.
+import { notTaken, NOT_TAKEN } from './api.mjs';
 
 const EMPTY = Object.freeze({ version: 0, thumbs: [], answers: [], thumb_revision: 0, answer_revision: 0 });
 const integer = n => Number.isSafeInteger(n) && n >= 0;
@@ -110,42 +111,64 @@ export function learnReactions(messages, answer) {
 // answer reads its message in Core, clearing the person's mark on it too
 // (docs/thumbs.md); a result that cleared one carries the mark's new revision,
 // handed to cleared(result) before the card is painted, so it reads at once.
+// reading(id): a read of the message's reactions begins; the function it
+// returns is called once it has landed (stack-feed.mjs reading).
 export class Reactions {
-  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {} }) {
-    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared });
+  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {}, reading = () => () => {} }) {
+    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared, reading });
     this.busy = new Set();
   }
   async read(id) {
+    const landed = this.reading(id);
     const answer = await this.api.view('reactions', { message_id: id });
     if (answer?.error) throw Error(answer.error.message);
     if (answer?.instance_id !== this.instanceId || answer.message_id !== id) throw Error('The reactions answer is for another message.');
     reactionsOf(answer);
+    landed();
     return answer;
   }
-  async send(kind, item, args, expected) {
+  // said(failure): who says an answer of Theseus's that took nothing (a card's
+  // status line), told before the reactions are read again, so that read, begun
+  // after it was said, ends it. Without one, or for a failure that reached no
+  // Theseus, the failure is thrown, in words of the page's own.
+  async send(kind, item, args, expected, said = null) {
     if (this.busy.has(item.id)) return null;
     this.busy.add(item.id);
     try {
       const { authority_id, authority_epoch } = this.authority();
-      let receipt;
+      let receipt = null, failure = null;
       try {
         receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind,
           target: { message_id: item.id }, expected: { ...expected, authority: { authority_id, authority_epoch } }, args });
-      } catch (error) { throw Error('Connection interrupted; whether that was saved is unknown. Press again: Core keeps one of each.', { cause: error }); }
-      const result = receipt?.status === 'committed' ? receipt.result : null;
+      } catch (error) { failure = { error }; }
+      const committed = receipt?.status === 'committed', result = committed ? receipt.result : null;
       if (result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result);
+      if (!failure && !committed) failure = { receipt };
+      const answer = failure && notTaken(failure);
+      const thrown = failure && (!said || answer.kind === 'unreached' ? unsaved(failure, answer) : (said(failure), null));
       // Whatever the answer, the message's reactions as Core holds them now.
       try { this.learned(await this.read(item.id)); } catch { /* the next commit reads them again */ }
-      if (receipt?.status === 'committed') { this.recorded(receipt); return receipt; }
-      if (receipt?.error?.code === 'REVISION_CONFLICT') throw Error('This changed on another tab or device; the message now shows what was saved. Nothing was changed.');
-      throw Error(receipt?.error?.message ?? 'That was not confirmed. Press again.');
+      if (thrown) throw thrown;
+      if (committed) { this.recorded(receipt); return receipt; }
+      return null;
     } finally { this.busy.delete(item.id); }
   }
-  thumb(item, on) {
-    return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision });
+  thumb(item, on, said = null) {
+    return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision }, said);
   }
-  answer(item, answer) {
+  answer(item, answer, said = null) {
     if (!(answer in ANSWER_WORDS)) throw Error('A go-ahead is answered yes or no.');
-    return this.send('message.answer', item, { answer }, { answer_revision: reactionsOf(item).answer_revision });
+    return this.send('message.answer', item, { answer }, { answer_revision: reactionsOf(item).answer_revision }, said);
   }
+}
+// A thumbs-up or an answer that did not commit, in the page's own words (api.mjs
+// notTaken): a lost connection only when no Theseus answered (lines.mjs says
+// that while it lasts), else what Theseus answered.
+function unsaved(failure, { kind, why }) {
+  const cause = failure.error ?? undefined;
+  if (kind === 'unreached') return Error('Connection interrupted; whether that was saved is unknown. Press again: Core keeps one of each.', { cause });
+  if (kind === 'conflict') return Error('This changed on another tab or device; the message now shows what was saved. Nothing was changed.', { cause });
+  if (kind === 'unconfirmed') return Error(`Not known whether that was saved: ${NOT_TAKEN.unconfirmed}. Press again: Core keeps one of each.`, { cause });
+  if (kind === 'refused') return Error(why ? `${why}.` : 'That was not confirmed. Press again.', { cause });
+  return Error(`That was not saved: ${NOT_TAKEN[kind]}. Press again: Core keeps one of each.`, { cause });
 }

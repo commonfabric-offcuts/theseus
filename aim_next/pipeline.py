@@ -1438,7 +1438,7 @@ class Pipeline:
         releases = self._shipped_numbers(db) if pipeline and pipeline["ships_in_releases"] else {}
         asks = self._asks_about(db, actor, workspace["id"]) if pipeline else {}
         open_rows = db.execute("SELECT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
-                               "WHERE e.workspace_id=? AND e.left_ms IS NULL ORDER BY e.entered_ms DESC", (workspace["id"],)).fetchall() if pipeline else []
+                               "WHERE e.workspace_id=? AND e.left_ms IS NULL ORDER BY p.rowid", (workspace["id"],)).fetchall() if pipeline else []
         # The release (3.4) shown with the number it ships as.
         release = self._the_release(db, workspace["id"]) if pipeline else None
         release_id = release["id"] if release else None
@@ -1451,7 +1451,10 @@ class Pipeline:
                                             "ON i.workspace_id=m.workspace_id AND i.number=m.number WHERE m.piece_id=? AND m.left_ms IS NULL", (row["id"],)):
                 titles[number] = title
         cache = {}
-        pieces = [self._piece_view(db, actor, workspace, row, stages, work, cache, titles) for row in open_rows]
+        # Nearest to live first, each stage by when its pieces started (item 567): the one order the page, the right
+        # rail and the CLI read Now's pieces in.
+        pieces = outcome_rules.now_order([self._piece_view(db, actor, workspace, row, stages, work, cache, titles) for row in open_rows],
+                                         [stage["stage_id"] for stage in stages])
         for piece in pieces:
             # The asks that hold it until they are answered (item 259, blocking.py): a release by its number, a piece by its id.
             piece["held"] = self._held(db, workspace["id"], piece["kind"], piece["release_number"] if piece["kind"] == "release" else piece["id"])

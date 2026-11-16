@@ -75,7 +75,14 @@ The producer adapter is available; real hosted controller/status integration
 remains under joint review. This draft is not yet the required GitHub verdict.
 
 The reviewed base policy has version 1, source_commit, required (the complete
-release-check step list), source_hashes (Git blob hashes of inventory sources),
+release-check step list of the commit it reviewed: `load_policy` checks it, the
+inventory's steps, the harness sources and the admissions' steps, for the policy
+and each transition's plan alike, against one step list, by default that of the
+tools it runs from, the event base's here; a local deploy, which runs the
+candidate's tools, passes the step list of the policy's own source_commit, read
+at that commit, since the live commit may have added a step and left the policy
+as it was, and a policy whose steps differ from the candidate's admits nothing
+there), source_hashes (Git blob hashes of inventory sources),
 inventory (native/unit/deploy step to check identity lists), and reds. An identity records
 name, phase, engine and expectedFailure, including null/false defaults. This is
 an explicit inventory reviewed against the harness sources, not a count or an
@@ -198,3 +205,80 @@ Completion is recorded only after the phase and browser close succeed. Cleanup
 on an exceptional path is not completion. Both sides of a Compose admission
 must carry this attestation; the eight historical Compose failures remain
 unexpected until then. Other harnesses retain their existing end-of-run checks.
+
+## The quarantine
+
+Admissions above are matched only by this classifier, only on a pull request's
+event, and only once the candidate's whole test source set is a plan the policy
+reviewed; at every commit since the policy's last reviewed plan (including the
+live release's own) no plan matches, so they admit nothing. The Checks run on a
+push reads no admissions at all: each shard's `release_check.py` exits 1 on any
+failed case, and the combine job exits 1 when any step failed. That is why the
+push run of train 20 (run 43782751036 at 7ef81586) went red although 19 of its
+27 failed cases had also failed in release 82's push run 43771952998. Its Verdict
+check, from the default branch's controller, compares a push with the base's
+last three push runs instead of this policy, and on that push refused before it
+compared anything ("python-units: duplicate executed identity").
+
+The quarantine is the release check's own list, `quarantine`, in this same
+policy file. An admission cannot carry it: an admission is keyed on the whole
+reviewed test source set, the hosted runner's image version and the failure's
+exact values, so every train that edits a test or meets a new runner image
+voids every admission, and none of that holds a case whose cause is live's.
+
+The release check reads the list at the event base (`--quarantine-at event`: a
+pull request's base, or the commit a push moved its branch from), never the
+candidate's copy, so a change can never quarantine its own reds; the base must
+be an earlier commit of the checked one. A quarantined case still runs and
+still records its failure: raw case and step verdicts are never rewritten. A
+step whose only failures are quarantined cases, each failing at the stage it
+was quarantined at in a run that ended as one with failed cases does, has a
+green quarantine record, and its shard and the whole run exit green; the step's
+output names each such case. A quarantined case failing at another stage or
+with no stage to read (a stack that names no test source line, or no error at
+all), a case on the list only under another phase or engine, a case not on the
+list, a run that did not reach its end, and any unit, deploy refusal or wake
+replay failure stay red, and so does a run with a required step missing or a
+checkout a step changed. A list that cannot be read (no event
+base, as on a manual run; a later or unrelated commit; a malformed entry)
+quarantines nothing and the summary says why. With the list in place the push
+run on a merged head is expected green, so any red left is the train's own.
+docs/tools.md ("The quarantine") has the summary's fields.
+
+An entry:
+
+```json
+{"step": "native-inline",
+ "case": {"name": "…", "phase": null, "engine": null, "expectedFailure": false},
+ "owner": "runner lane",
+ "leave": "after ten of ten whole-step passes on live once it is fixed; …",
+ "red_in": [{"run": 43762908423, "commit": "<full sha>", "release": 81,
+             "stage": [{"path": "tests/…", "text": "<stripped source line>", "count": 1, "index": 0}, …]}, …]}
+```
+
+A case enters only when it is among the live release's known reds and was red
+in two of the last three push runs on live, each named by run id with its
+failure's stage: the chain of test-source frames its stack names, each frame by
+file, stripped source text and which occurrence of that text it is
+(`ci_known_reds.fingerprint`), so a line that moved still matches and an edited
+one does not. Every run an entry names must show the same stage; one red at two
+different stages was not red at one stage twice. A mutant's result is never
+quarantined. The runner lane owns the list. A case leaves it when it has passed
+ten of ten whole-step runs on live after its fix: every run's summary records
+each quarantined case's pass or failure (`steps[].quarantine.cases`), and
+`tools/quarantine.py passes SUMMARY…` counts them. `tools/quarantine.py count`
+prints the list's length, one plain number, for the board.
+
+The list is under `.github/`, the controller, so a change to it rides a
+judged-first train, as a change to the admissions does.
+
+The initial list holds the 18 cases among release 82's known reds that failed
+at one stage in all three live push runs of releases 80 (run 43756859856 at
+31cecd33), 81 (43762908423 at e73e6e1e) and 82 (43771952998 at 24a7d9da): two
+of native-colors, eight of native-compose (the phone and laptop-stacked line
+counts, light and dark, in both engines), one of native-conversation, six of
+native-inline and one of native-webkit-colors. The native-webkit-notebook case
+"a page opened from the right rail's whole outcome …" failed in 81 and 82 at
+two different stages and is not on it, nor are the 82-only reds. Read over
+train 20's push run, the list holds exactly those 18 failures and leaves its
+other 9 red.

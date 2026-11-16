@@ -170,9 +170,8 @@ export class ThingsRail {
     // The keys move through the sections and their rows as one tree
     // (key-tree.mjs): ↑ ↓ between them, → ← and ⌘→ ⌘← open and fold a
     // section, Return opens a row, ← from a folded section goes back to the
-    // messages (panes.mjs); ↑ above the first section goes on to the rail's
-    // name and its "Just this topic" and "All of this outcome" (arrow-reach.mjs).
-    this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', column: this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
+    // messages (panes.mjs).
+    this.tree = new KeyTree({ root: this.holder, doc, label: 'The outcome\'s things', rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
     listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
     listen(backdrop, 'click', () => this.close(true));

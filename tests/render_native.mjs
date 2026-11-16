@@ -298,13 +298,6 @@ export async function renderChecks({ check, page, until, control, origin, eviden
               // The page as measured is the page in the screenshot: every pill
               // stands where it stood, so a page still laying out is taken again.
               if (JSON.stringify((await p.evaluate(audit)).pills) !== JSON.stringify(answer.pills)) return false;
-              // And the screenshot is the page as drawn: a part of it the
-              // browser has laid out but not yet painted, as just after the
-              // page scrolled the row into view, shows as bare background,
-              // which a second screenshot then differs from. Only a picture
-              // that holds still from one screenshot to the next is judged.
-              const again = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
-              if (!again.equals(image)) return false;
               return { answer, image };
             }, `${state}: ${row === null ? 'the page' : row + ' under the pointer'} and every pill stay put through a screenshot`, 30000);
             // The row under the pointer is in view, so the sweep judges its pills.

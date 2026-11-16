@@ -36,7 +36,8 @@ test('the page has no header bar and no Refresh button; the logo block tops the 
   assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
     'the wordmark with its presence dot, the workspace name, the Health link and Turn on notifications, first in the rail');
   const after = rail.slice(rail.indexOf('</div>') + 6);
-  assert.match(after, /^\s*<div id="app-status"[^>]*><\/div>\s*<div id="wakes-status"[^>]*><\/div>\s*<div id="updates-status"/, 'the notices directly under it');
+  assert.match(after, /^\s*<div id="page-notices" class="page-notices">\s*<div id="app-status"[^>]*><\/div>\s*<div id="wakes-status"[^>]*><\/div>\s*<div id="updates-status"[^]*?<\/div>\s*<div id="topic-navigation-status"[^>]*><\/div>\s*<\/div>\s*<a id="outcomes-home"/,
+    'the notices directly under it, one group (item 547), then "← Outcomes"');
   assert.equal(html.match(/class="brand"/g).length, 1, 'one logo block');
   const lookups = sources.filter(([, text]) => /\$\(\s*['"]refresh['"]\s*\)|getElementById\(\s*['"]refresh['"]\s*\)/.test(text)).map(([name]) => name);
   assert.deepEqual(lookups, [], 'no module looks for a Refresh button');

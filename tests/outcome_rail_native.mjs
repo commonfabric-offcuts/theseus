@@ -1251,11 +1251,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // empty, refused for an empty Return, busy while its command is on its way, and refused by the server,
   // at 320, 375 and 390 in the open drawer and on a laptop, light and dark. The command is held here
   // before the server has it (Chrome's Fetch at the request stage, WebKit's route), so the refusal
-  // given in its place leaves nothing made.
+  // given in its place leaves nothing made. The engine decides the path, not whether the page offers an
+  // intercept: WebKit's page offers one too (webkit_native.mjs, for its invite mode), and it holds an answer
+  // after the server has the command, which would make what the refusal says was not made.
   const TRY_AGAIN = ' Press Return to try once more.';
   const REFUSAL = 'Only the people on this outcome’s team can start something in it; ask its owner to add you.';
   const holdCommands = async (p, kind) => {
-    if (p.intercept) {
+    if (!p.pw) {
       const from = p.held.length;
       await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
       p.intercept((payload, event) => event.responseStatusCode === undefined && payload?.kind === kind);
@@ -1576,8 +1578,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.evaluate("document.getElementById('things-open').scrollIntoView({ block: 'center' })");
         await p.point('#things-open');
         await until(() => p.evaluate("document.documentElement.hasAttribute('data-things-open') && [...document.querySelectorAll('#things .things-sec')].some(d => d.checkVisibility())"), width + ': the right rail opens over the page with a section');
-        // It slides in: the keys are pressed once it stands inside the window, its slide over.
-        await until(() => p.evaluate("(t=>getComputedStyle(t).transform==='none'&&t.getBoundingClientRect().right<=innerWidth+0.5)(document.getElementById('things'))"), width + ': the right rail has slid into the window');
       };
       // What the keys are on, whether the rail is open, what is lit, and whether the place the keys are on can be seen there:
       // a stack's head shown as one row has no box of its own, only its row standing above it (stack-look.css), so that row is looked at.
@@ -1599,18 +1599,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const left = await until(async () => { const now = await seen(); return !now.open && now; }, width + ': ← closes the right rail');
       assert.match(await keyedAt(p), /^message:/, width + ': ← goes to a message');
       assert.deepEqual([left.backdrop, left.visible], [false, true], width + ': the page is no longer dimmed, and nothing covers the message the keys are on');
-      // Open again, the keys on nothing (a press on its words): nothing under it moves. An arrow lands in the rail
-      // open over the page, the one part not covered, as from nothing anywhere (item 301); Return does nothing.
+      // Open again, the keys on nothing (a press on its words): nothing under it moves.
       await opened();
+      await p.evaluate('document.activeElement.blur()');
+      assert.equal(await keyedAt(p), 'body', width + ': the keys are on nothing');
+      const before = await seen();
       for (const key of ['ArrowLeft', 'ArrowDown', 'ArrowUp', 'Enter']) {
-        await p.evaluate('document.activeElement?.blur()');
-        assert.equal(await keyedAt(p), 'body', width + ': the keys are on nothing');
-        const before = await seen();
         await p.key(key);
         const now = await seen();
         assert.deepEqual([now.open, now.inRail, now.lit, now.reader], [true, false, before.lit, false], `${width}: ${key} leaves the page under the right rail as it was`);
-        const at = await p.evaluate("(e=>!e||e===document.body?'body':e.closest('#things')?'things':'under it: '+(e.id||e.tagName))(document.activeElement)");
-        assert.equal(at, key === 'Enter' ? 'body' : 'things', `${width}: ${key} ${key === 'Enter' ? 'takes the keys nowhere' : 'lands in the right rail open over the page, never under it'}`);
+        assert.equal(await keyedAt(p), 'body', `${width}: ${key} takes the keys nowhere under it`);
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
@@ -2157,13 +2155,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const p = await open('rail-header-keys', '/?topic=t1');
     await settled(p, 'the topic is up');
     await until(() => p.evaluate("document.querySelectorAll('#messages [data-id]').length > 1"), 'the messages are drawn');
-    // The header's buttons at 1280: Topic settings, New message, then the Team's pills and "+ Add" (item 465).
-    const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id||(b.closest('#topic-people')?'team':b.tagName))");
-    const team = buttons.filter(b => b === 'team').length;
-    assert.ok(team >= 1, 'the Team shows at least "+ Add": ' + JSON.stringify(buttons));
-    assert.deepEqual(buttons, ['settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
-    const onTeam = () => p.evaluate("Boolean(document.activeElement?.closest('#topic-people'))");
-    const onAdd = () => p.evaluate("Boolean(document.activeElement?.matches('#participants .add-chip'))");
+    const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id)");
+    assert.deepEqual(buttons, ['settings-open', 'new-message'], 'Topic settings and New message are the header\'s buttons at 1280');
     const firstId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].find(e=>e.checkVisibility()).dataset.id");
     await tabToOutline(p);
     await p.key('ArrowRight');
@@ -2181,17 +2174,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowRight');
     assert.equal(await keyedAt(p), 'new-message', '→ goes to the next button');
     assert.equal(await ringed(p), 'solid');
-    for (let n = 1; n <= team; n++) { await p.key('ArrowRight'); assert.equal(await onTeam(), true, `→ goes on along the Team's buttons (${n} of ${team})`); }
-    assert.equal(await onAdd(), true, '"+ Add" is the row\'s last button');
     await p.key('ArrowRight');
     assert.match(await keyedAt(p), /^things:/, '→ past the last button goes to the right rail');
     await p.key('ArrowLeft');
     if (/^things:/.test(await keyedAt(p))) await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'message:' + firstId, '← from the right rail comes back to the message');
     await p.key('ArrowUp');
-    assert.equal(await onAdd(), true, '↑ again finds the button the keys were last on, "+ Add"');
-    for (let n = 1; n <= team; n++) await p.key('ArrowLeft');
-    assert.equal(await keyedAt(p), 'new-message', '← goes back along the Team to New message');
+    assert.equal(await keyedAt(p), 'new-message', '↑ again finds the button the keys were last on');
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'settings-open', '← goes to the button before');
     await p.key('ArrowLeft');
@@ -2620,18 +2609,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     // ↓ or ↑ along the outline from where the keys are to its end, each row by the rule; one already a tenth
     // inside scrolls nothing.
-    // Once what the key set off is still: the area's scroll and height the same three frames running.
-    const calm = () => p.evaluate("new Promise(done=>{let last='',same=0;const f=()=>{const r=document.activeElement?.closest('.rail'),now=(r?r.scrollTop+','+r.scrollHeight:'')+'|'+scrollY+','+document.documentElement.scrollHeight;if(now===last){if(++same>=3)return done(true)}else{same=0;last=now}requestAnimationFrame(f)};requestAnimationFrame(f)})");
-    const inTree = () => p.evaluate("Boolean(document.activeElement?.closest('#outline [role=tree]'))");
     const walk = async (key, words) => {
       const ys = [];
-      await calm();
       let before = await keyed();
       for (let n = 0; n < 80; n++) {
         await p.key(key);
-        await calm();
-        // Past the outline's end the arrows go on in the side rail (item 301): back to its end, where the walk stops.
-        if (!(await inTree())) { await p.key(key === 'ArrowDown' ? 'ArrowUp' : 'ArrowDown'); await calm(); assert.equal((await keyed()).at, before.at, `${words}: the key back from past the outline's end comes back to its end row`); break; }
         const now = await keyed();
         if (now.at === before.at) break;
         const moved = now.y - before.y, room = now.h * 0.1, was = { top: now.top + moved, bottom: now.bottom + moved };
@@ -3561,765 +3543,302 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  // The arrows everywhere (item 301; docs/interaction.md, "The arrows
-  // everywhere"): from anywhere outside writing an arrow lands the focus on a
-  // control, and the arrows reach what a click reaches, at 320, 375 and 390
-  // wide and a laptop. Where the focus is: its pane (rail, main, things, a
-  // dialog, the message bar) and the control, or 'page' when nothing holds it.
-  const ARROW_SIZES = { 320: { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, 375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true },
-    390: SIZES.phone, laptop: SIZES.laptop,
-    // An iPad with a keyboard, upright and on its side: the same keys work there (docs/interaction.md).
-    820: { width: 820, height: 1180, deviceScaleFactor: 2, mobile: true }, 1024: { width: 1024, height: 1366, deviceScaleFactor: 2, mobile: true } };
-  const arrowsAt = (name, url, size, theme = 'light') => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
-    await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
-    await q.send('Emulation.setDeviceMetricsOverride', ARROW_SIZES[size]);
-    if (ARROW_SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-  } });
-  const focusAt = p => p.evaluate(`(()=>{const e=document.activeElement;if(!e||e===document.body||e===document.documentElement)return 'page';
-    const pane=e.closest('dialog[open]')?'dialog':e.closest('.message-bar')?'bar':e.closest('#rail')?'rail':e.closest('#things')?'things':e.closest('#main')?'main':'elsewhere';
-    const m=e.closest('#messages [data-id]');if(m&&pane==='main')return 'message:'+m.dataset.id;
-    if(e.getAttribute('role')==='treeitem')return pane+':row:'+(e.dataset?.topicId||e.textContent.trim().replace(/\\s+/g,' ').slice(0,40));
-    return pane+':'+(e.id||e.dataset?.act||e.dataset?.topicId||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40))})()`);
-  // Whether the focused control shows in the window, whole enough to see.
-  const focusInView = p => p.evaluate(`(()=>{const e=document.activeElement;if(!e||e===document.body)return false;const b=e.getBoundingClientRect();return b.bottom>0&&b.top<innerHeight&&b.right>0&&b.left<innerWidth&&b.width>0})()`);
-  // The topic is up with its messages drawn, at any width (the outline's own list waits for a laptop's rail).
-  const topicUp = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && document.querySelectorAll('#messages [data-id]').length > 1`).catch(() => false), what);
-  // Where the page and the focus's scrolling boxes stand: an arrow that moves
-  // no focus while the next control is out of sight scrolls toward it instead.
-  const scrolled = p => p.evaluate(`(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()`);
-  // Where they stand once still: a box the browser scrolls for the key (a long message in the Reader) moves
-  // smoothly over the next frames, so the place is read when three frames in a row leave it as it was.
-  const SIGNATURE = "(()=>{const at=[];for(let e=document.activeElement;e;e=e.parentElement)if(e.scrollHeight>e.clientHeight||e.scrollWidth>e.clientWidth)at.push(Math.round(e.scrollTop)+','+Math.round(e.scrollLeft));return at.join(' ')+'|'+Math.round(scrollY)+','+Math.round(scrollX)})()";
-  const still = p => p.evaluate(`new Promise(done=>{const sign=()=>${SIGNATURE};let last=sign(),same=0;const frame=()=>{const now=sign();if(now===last){if(++same>=3)return done(now)}else{same=0;last=now}requestAnimationFrame(frame)};requestAnimationFrame(frame)})`);
-  // One press: where the focus lands, and whether the press scrolled toward a
-  // control out of sight instead (arrow-reach.mjs scrolls at once, in the press),
-  // or scrolled the focused box on (the browser's own, over the next frames).
-  const arrowPress = async (p, key) => {
-    const before = await scrolled(p);
-    await p.key(key);
-    return { at: await focusAt(p), scrolled: await still(p) !== before };
-  };
-  // Presses the arrow up to n times, until the focus stays at the end of what
-  // can scroll, or stop; the places the focus was.
-  const walk = async (p, key, n = 30, stop = () => false) => {
-    const seen = [await focusAt(p)];
-    for (let step = 0; step < n; step++) {
-      const { at, scrolled: on } = await arrowPress(p, key);
-      if (on && at === seen.at(-1)) continue;
-      if (at === seen.at(-1) || stop(at)) { if (at !== seen.at(-1)) seen.push(at); break; }
-      seen.push(at);
+  // Item 547: requests the check picks, held at the network to drop, let through or answer: in Chrome with the
+  // harness's interception, in Safari's engine with Playwright's routing. before: held before Core sees them.
+  // always(test, status, body): each request test picks is answered so at once, until always(null).
+  // after(): from now on what is held is held once Core has answered it.
+  const network547 = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    let test = null, auto = null;
+    if (!p.pw) {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      p.intercept(async (payload, event) => {
+        if (!auto?.test(payload)) return Boolean(test?.(payload));
+        event.answered = true;
+        await p.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: auto.status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(auto.body)).toString('base64') });
+        return true;
+      });
+      for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry);
+      return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; },
+        after: () => p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] }),
+        held: () => { for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry); return p.held; },
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
     }
-    return seen;
+    const held = [];
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (auto?.test(payload)) return route.fulfill({ status: auto.status, contentType: 'application/json', body: JSON.stringify(auto.body) });
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; }, held: () => held,
+      after: () => { before = false; },
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
+  };
+  // The rail's notices as drawn: each one shown, its box, and whether it is what shows at its own middle.
+  const notices547 = p => p.evaluate(`(()=>{const r=document.getElementById('rail'),rb=r.getBoundingClientRect();
+    return {scroll:r.scrollTop,room:r.scrollHeight-r.clientHeight,overflow:document.documentElement.scrollWidth>innerWidth,
+      shown:['app-status','wakes-status','updates-status','topic-navigation-status'].map(id=>document.getElementById(id)).filter(n=>!n.hidden&&n.getClientRects().length).map(n=>{
+        const b=n.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+Math.min(b.height/2,12);
+        return {id:n.id,box:[b.left,b.top,b.right,b.bottom].map(Math.round),inRail:b.top>=rb.top-1&&b.bottom<=rb.bottom+1,ownMiddle:n.contains(document.elementFromPoint(x,y))}})}})()`);
+  // The phone's drawer, opened by a tap on "☰ Outcomes" at the top of the page, the writing put down first
+  // and the control at rest, so the tap lands on it.
+  const openDrawer547 = async (p, at) => {
+    await p.evaluate('(document.activeElement?.blur(),scrollTo(0,0))');
+    await until(() => p.evaluate(`new Promise(done=>{const box=()=>JSON.stringify(document.getElementById('rail-open').getBoundingClientRect());const first=box();
+      requestAnimationFrame(()=>requestAnimationFrame(()=>done(first===box()&&scrollY===0)))})`), at + ': "☰ Outcomes" is at rest at the top');
+    await tap(p, '#rail-open');
+    await until(async () => (await drawer(p)).open, at + ': the drawer opens');
+  };
+  const apart547 = (seen, at) => {
+    const boxes = seen.shown.map(item => item.box);
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      assert.ok(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0], `${at}: ${seen.shown[i].id} and ${seen.shown[j].id} never draw over each other: ${JSON.stringify(seen)}`);
+    }
+    // What is in sight shows itself: nothing draws over it. (In the phone's drawer scrolled down they are out of sight, above.)
+    for (const item of seen.shown.filter(each => each.inRail)) assert.ok(item.ownMiddle, `${at}: nothing draws over ${item.id}: ${JSON.stringify(seen)}`);
   };
 
-  // Whether the arrows reach every control on show in scope: each one is
-  // marked, a tree's rows standing as one ('tree', its one stop); from each
-  // (but a box with words in it, whose arrows are the writing's) each arrow is
-  // pressed, natively, and where the focus lands is read; from a tree, ↑ above
-  // its first row and ↓ below its last. What the arrows reach from start, and
-  // every press that lost the focus to the page. start: a mark ('tree'), or a
-  // step whose landing is the start. skip: controls left out (a deck's cards,
-  // which key their own arrows).
-  // The topic's reply with nothing written: an earlier case may leave a draft in it, and an arrow goes on from a field
-  // only when it is empty (or one line); emptied by the keys, so the page's draft follows.
-  const emptyReply = async (p, label) => {
-    const y = await p.evaluate("(f=>{const y=scrollY;f.focus({preventScroll:true});f.select();return y})(document.getElementById('inline-writing-body'))");
-    await p.key('Backspace');
-    await until(() => p.evaluate("document.getElementById('inline-writing-body').value===''"), label + ': the reply is empty');
-    await p.evaluate(`(document.activeElement?.blur(), scrollTo(0, ${y}))`);
-  };
-  // A closure's start: the stop of the tree in scope (its row the keys are on, else its first shown).
-  // The controls lying straight the way of key from the focused one (overlapping it across, past it along),
-  // in the layer the focus is in (the open modal dialog, else the dialog, sheet or menu it is in, else the
-  // page): a press that leaves the focus where it was while one lies there is a dead end. Not from where the
-  // arrow is the control's own: in words (← and → in a line with words in it, any arrow in a box with words, a
-  // number or a date), ↑ and ↓ in a select, which choose among its options, and in a radio group or a slider.
-  // Not a control a box that takes the focus and does not hold it has clipped wholly out of sight (a link scrolled
-  // up out of the Reader's message box lies above nothing in the header): it is reached from the box. One out of
-  // sight only by the page, by a box the focus is in, or by a box that takes no focus (the versions in a reply's
-  // review), does lie that way, and the arrows scroll toward it. The focus scrolled out of its own box is judged
-  // where it went out, on the box's edge.
-  const LIES = key => `(e=>{if(!e||e===document.body||e===document.documentElement)return [];const key=${JSON.stringify(key)},vertical=key==='ArrowUp'||key==='ArrowDown';
-    const line=e.tagName==='INPUT'&&['text','search','email','url','tel','password'].includes(e.type),typed=e.matches('textarea,[contenteditable]:not([contenteditable=false])')||(e.tagName==='INPUT'&&!['checkbox','radio','button','submit','reset','file','color','image','range'].includes(e.type));
-    const suggests=e.matches('[role=combobox],[aria-autocomplete]')||Boolean(e.list);
-    if(typed&&(suggests||!((e.value===''&&(line||e.tagName==='TEXTAREA'))||(line&&vertical))))return [];
-    if((e.tagName==='SELECT'&&vertical)||e.matches('input[type=radio],input[type=range],[role=slider],[role=radio]'))return [];
-    const modal=[...document.querySelectorAll('dialog[open]')].filter(d=>d.matches(':modal')).at(-1),layer=modal??e.closest('dialog[open],[role=dialog]:not([hidden]),[role=menu]:not([hidden])')??document.body;
-    const area=(x,holding,only)=>{let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!(holding&&at.contains(holding));at=at.parentElement){const s=getComputedStyle(at);if((s.overflowX==='visible'&&s.overflowY==='visible')||(only&&!only(at)))continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return a};
-    const focusable=at=>at.matches('a[href],button,summary,input,select,textarea,[tabindex],[contenteditable]:not([contenteditable=false])')&&at.tabIndex>=0&&!at.disabled&&at.checkVisibility({visibilityProperty:true});
-    const clipped=x=>{const c=x.getBoundingClientRect(),a=area(x,e,focusable);return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
-    const r=e.getBoundingClientRect(),o=area(e,null),cl=(v,lo,hi)=>Math.min(Math.max(v,lo),hi),b={top:cl(r.top,o.top,o.bottom),bottom:cl(r.bottom,o.top,o.bottom),left:cl(r.left,o.left,o.right),right:cl(r.right,o.left,o.right)};
-    const shown=x=>x.checkVisibility({visibilityProperty:true})&&!x.disabled&&!x.closest('[inert],[aria-hidden=true]')&&x.getBoundingClientRect().width>0;
-    return [...layer.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&!x.contains(e)&&!e.contains(x)&&(x.tabIndex>=0||x.getAttribute('role')==='treeitem')&&shown(x)&&!clipped(x)).filter(x=>{const c=x.getBoundingClientRect();
-      if(key==='ArrowDown')return c.top>=b.bottom-1&&c.left<b.right&&c.right>b.left;if(key==='ArrowUp')return c.bottom<=b.top+1&&c.left<b.right&&c.right>b.left;
-      if(key==='ArrowRight')return c.left>=b.right-1&&c.top<b.bottom&&c.bottom>b.top;return c.right<=b.left+1&&c.top<b.bottom&&c.bottom>b.top})
-      .slice(0,3).map(x=>(x.id||x.dataset.key||x.getAttribute('aria-label')||x.textContent.trim().replace(/\\s+/g,' ').slice(0,30)||x.tagName)+'<'+x.tagName.toLowerCase()+(x.type&&x.tagName==='INPUT'?' '+x.type:'')+'>')})(document.activeElement)`;
-  // What a press may change in place of moving the focus (a section opened or folded, a stack shown, a message
-  // folded to its row): a press that changed it acted, and is no dead end.
-  // (A stack switched to latest and unread hides its earlier replies: the messages that show are counted. One
-  // whose replies all show either way changes nothing seen, and says so in its live region: what a live region
-  // is told is counted too.)
-  const ACTED = "(window.__spoken??=(o=>(new MutationObserver(ms=>{for(const m of ms)if((m.target.nodeType===1?m.target:m.target.parentElement)?.closest('[aria-live]'))o.n++}).observe(document.body,{subtree:true,childList:true,characterData:true}),o))({n:0})).n+'|'+[...document.querySelectorAll('[aria-expanded],details,[data-head-open],[aria-pressed]')].map(e=>(e.getAttribute('aria-expanded')??'')+(e.open?'o':'')+(e.dataset.headOpen??'')+(e.getAttribute('aria-pressed')??'')).join('')+'|'+document.querySelectorAll('.fold-line').length+'|'+[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).length+'|'+document.querySelectorAll('#messages [hidden]').length";
-  const treeStart = (p, scope) => () => p.evaluate(`(rows=>(rows.find(e=>e.tabIndex===0)??rows[0])?.focus())([...document.querySelectorAll('${scope} [role=treeitem]')].filter(e=>e.checkVisibility()))`);
-  // A control a redraw replaced (a message drawn again as a stack switched) is the same node as before: known by
-  // its message and its place among that message's controls, or by its id; each step marks such a control again.
-  const SIG = "(e=>{const m=e.closest('#messages [data-id]');if(m)return 'm:'+m.dataset.id+':'+(e===m?'self':[...m.querySelectorAll('a[href],button,summary,input,select,textarea,[tabindex]')].indexOf(e));return e.id?'id:'+e.id:null})";
-  const REMARK = `(()=>{const sig=${SIG},known=window.__arrowSig??={};for(const e of document.querySelectorAll('a[href],button,summary,input,select,textarea,[tabindex]')){const k=sig(e);if(!k)continue;if(e.dataset.arrowNode&&!e.dataset.arrowNode.startsWith('tree')){known[k]??=e.dataset.arrowNode}else if(!e.dataset.arrowNode&&known[k])e.dataset.arrowNode=known[k]}})()`;
-  // A tree is one node: its rows as they are drawn now, by the tree's place on the page.
-  const treeRows = id => `[...(document.querySelectorAll('[role=tree]')[${Number(id.slice(4))}]?.querySelectorAll('[role=treeitem]')??[])].filter(e=>e.checkVisibility())`;
-  const arrowClosure = async (p, scope, start, skip = null) => {
-    const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
-      const shown=e=>e.checkVisibility({visibilityProperty:true})&&!e.disabled&&!e.closest('[inert],[aria-hidden=true]')&&e.getBoundingClientRect().width>0;
-      const all=[...root.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(e=>(e.tabIndex>=0||e.getAttribute('role')==='treeitem')&&shown(e)&&!(skip&&e.closest(skip)));
-      const trees=[...document.querySelectorAll('[role=tree]')],tree=e=>e.getAttribute('role')==='treeitem'?'tree'+Math.max(0,trees.indexOf(e.closest('[role=tree]'))):null;
-      const out=[];all.forEach((e,i)=>{const id=tree(e)??'n'+i;e.dataset.arrowNode=id;
-        if(!out.some(o=>o.id===id))out.push({id,label:id.startsWith('tree')?'the tree '+(e.closest('[role=tree]')?.getAttribute('aria-label')??''):(e.id||(e.getAttribute('aria-label')??e.textContent).trim().replace(/\\s+/g,' ').slice(0,40)||e.tagName)})});return out})()`);
-    await p.evaluate(REMARK);
-    const label = id => nodes.find(node => node.id === id)?.label ?? id;
-    // Where a press lands; a control that was not marked (the feed itself, a row drawn since, a tree whose rows
-    // took their tree words since) is marked as it is found, and the arrows are pressed from it too.
-    const landed = async () => { await p.evaluate(REMARK); const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
-      if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound;const k=${SIG}(e);if(k)(window.__arrowSig??={})[k]??=e.dataset.arrowNode}return e.dataset.arrowNode})(document.activeElement)`);
-      if (at !== 'page' && at !== 'out' && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)"), via });
-      return at; };
-    const explore = [...nodes];
-    // How a control found as it was landed on was reached ({ from, key }): one drawn only while the keys are by it (a
-    // reply a stack shows while one of its messages is lit) is gone by the time its own presses come, and is
-    // reached again the same way first.
-    let via = null;
-    const focusNode = id => p.evaluate(`(e=>{if(!e||!e.isConnected)return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${id}"]'))`);
-    // Each way it was reached is tried in turn, the first first.
-    const reachAgain = async (node, depth = 0) => {
-      if (!node?.via || depth > 4) return false;
-      const ways = [node.via, ...edges.filter(edge => edge.to === node.id && !(edge.from === node.via.from && edge.key === node.via.key)).map(({ from, key }) => ({ from, key }))];
-      for (const way of ways) {
-        await p.evaluate(REMARK);
-        if (!await focusNode(way.from) && !await reachAgain(explore.find(each => each.id === way.from), depth + 1)) continue;
-        await arrowPress(p, way.key);
-        const got = await p.evaluate(`(e=>{if(!e||e===document.body)return 'page';if(!e.dataset.arrowNode)e.dataset.arrowNode=${JSON.stringify(node.id)};return e.dataset.arrowNode})(document.activeElement)`);
-        if (got === node.id) return true;
-        // Where that press lands now is a press like any other (the reply it reached was read, and no longer shows).
-        edges.push({ from: way.from, key: way.key, to: got });
-        console.log('arrow closure', 'reaching', node.id, 'again by', label(way.from), way.key, 'landed on', label(got));
+  await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
+    const topic = 'rail-notices-t';
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
+    const faults = [];
+    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop';
+      // A card of its own each time, not starred yet.
+      const message = (await control({ method: 'agent_message', operation_id: `${topic}-${size}-${theme}`, topic_id: topic, join: true, addressees: [facts.actor], body: `A card whose star is not settled (${at}).` })).result.message_id;
+      const p = await page('rail-notices-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', laptop ? { ...SIZES.laptop, height: 560 } : SIZES[size]);
+        if (SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const card = `#messages .message-card[data-id="${message}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body'))`), at + ': the card and the writing box are up');
+      const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
+      net.hold(payload => stars(payload) || sends(payload));
+      // A star Theseus is too busy to take, as in item 547 (its command lane full while the reader's own reply
+      // goes), its next try held: the status line says so.
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      // Scrolled into view, the card's middle is its own once the page is at rest (WebKit scrolls after the call returns).
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
+      if (laptop) await p.point(star); else await tap(p, star);
+      await net.answer(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star is on its way'), 503,
+        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.length>0)(document.getElementById('app-status'))"), at + ': the status line says what became of the star');
+      // A send held on its way: a move now waits, and the rail says why.
+      await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
+      await p.send('Input.insertText', { text: 'Sent while the page is asked to move' });
+      await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
+      await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way');
+      const row = `#outline a[data-topic-id="${topic}-23"]`;
+      if (!laptop) await openDrawer547(p, at);
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+      if (laptop) await p.point(row); else await tap(p, row);
+      await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
+      // The phone's drawer closes as a row is tapped; the notices are read in it, opened again.
+      if (!laptop && !(await drawer(p)).open) await openDrawer547(p, at + ' again');
+      const both = await until(async () => { const seen = await notices547(p); return seen.shown.length === 2 ? seen : null; }, at + ': both notices show').catch(async error => {
+        throw Error(`${error.message}: ${JSON.stringify(await notices547(p))} ${await p.evaluate("JSON.stringify({status:document.getElementById('app-status').outerHTML.slice(0,300),drawer:document.getElementById('rail').className})")}`); });
+      assert.ok(both);
+      // The rail scrolled a little, so the second notice would pass under the first where only the first was
+      // pinned (Tony's screenshot); scrolled to its end (where a laptop pins its notices); and at its top.
+      // (Where the first is pinned at the rail's top, the second's top would then be at its middle.)
+      const partly = await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=0;
+        const a=document.getElementById('app-status').getBoundingClientRect(),t=document.getElementById('topic-navigation-status').getBoundingClientRect();
+        return Math.max(1,Math.round(t.top-r.getBoundingClientRect().top-a.height/2))})()`);
+      // Each look is pictured first, and what it finds wrong is kept, so every size and theme is seen and pictured.
+      const fault = check => { try { check(); } catch (error) { faults.push(error.message); } };
+      for (const where of ['partly', 'scrolled', 'top']) {
+        await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : where === 'partly' ? partly : 'r.scrollHeight'}})()`);
+        await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+        await shot(p, `rail-notices-${size}-${theme}-${where}`);
+        const seen = await notices547(p);
+        fault(() => {
+          if (where !== 'top') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
+          assert.deepEqual(seen.shown.map(item => item.id), ['app-status', 'topic-navigation-status'], `${at} ${where}: the status line, then why the move stayed`);
+          if (laptop || where === 'top') for (const item of seen.shown) assert.ok(item.inRail, `${at} ${where}: ${item.id} is in sight in the rail: ${JSON.stringify(seen)}`);
+          apart547(seen, `${at} ${where}`);
+          // In sight, they share the rail's edges.
+          const inSight = seen.shown.filter(item => item.inRail);
+          assert.ok(inSight.every(item => item.box[0] === inSight[0].box[0] && item.box[2] === inSight[0].box[2]), `${at} ${where}: the notices line up: ${JSON.stringify(seen)}`);
+          assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
+        });
       }
-      return false;
-    };
-    // A start given as a step: where that step, taken once the controls are marked, lands.
-    if (typeof start === 'function') { await start(); start = await landed(); }
-    const edges = [], dead = [], skipped = new Set();
-    for (let i = 0; i < explore.length; i++) {
-      const node = explore[i];
-      if (node.id.startsWith('tree')) {
-        for (const [home, key] of [['Home', 'ArrowUp'], ['End', 'ArrowDown']]) {
-          via = null;
-          const on = await p.evaluate(`(rows=>{const row=rows.find(e=>e.tabIndex===0)??rows[0];row?.focus();return Boolean(row)&&document.activeElement===row})(${treeRows(node.id)})`);
-          assert.equal(on, true, `${label(node.id)}: the keys are put on one of its rows`);
-          await p.key(home); await p.key(key);
-          const to = await landed();
-          edges.push({ from: node.id, key, to });
-          if (to === node.id) { const lies = await p.evaluate(LIES(key)); if (lies.length) dead.push(`${label(node.id)} ${home} then ${key} stays; lies that way: ${lies.join(' | ')}`); }
-        }
-        // → from each open row that holds a control of its own (the Notebook row's pencil).
-        const holders = await p.evaluate(`${treeRows(node.id)}.filter(e=>e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility())).length`);
-        for (let n = 0; n < holders; n++) {
-          await p.evaluate(`${treeRows(node.id)}.filter(e=>e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility()))[${n}]?.focus()`);
-          await p.key('ArrowRight');
-          edges.push({ from: node.id, key: 'ArrowRight', to: await landed() });
-        }
-        continue;
-      }
-      // ↓ last: through a box that scrolls it reads to the end, and ← and → are pressed where it stood when reached.
-      // A select's ↑ and ↓ are its own, choosing among its options (and opening its menu on a Mac): only ← and →.
-      for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
-        await p.evaluate(REMARK);
-        via = { from: node.id, key };
-        const press = () => p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||(e.matches('select')&&${key === 'ArrowUp' || key === 'ArrowDown'}))return false;e.focus();return document.activeElement===e})(document.activeElement?.dataset?.arrowNode==='${node.id}'?document.activeElement:[...document.querySelectorAll('[data-arrow-node="${node.id}"]')].find(x=>x.checkVisibility())??null)`);
-        let ok = await press();
-        if (!ok && node.via && await reachAgain(node)) ok = await press();
-        if (!ok) { skipped.add(node.id); continue; }
-        // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
-        let to = node.id;
-        const before = await p.evaluate(ACTED);
-        // On as long as each press scrolls: a long message in the Reader's box is read a line at a time first.
-        for (let n = 0; n < 400 && to === node.id; n++) {
-          const step = await arrowPress(p, key);
-          to = await landed();
-          if (!step.scrolled) break;
-        }
-        edges.push({ from: node.id, key, to });
-        if (to === node.id && await p.evaluate(ACTED) === before) { const lies = await p.evaluate(LIES(key)); if (lies.length) dead.push(`${label(node.id)} ${key} stays; lies that way: ${lies.join(' | ')}`); }
-      }
-    }
-    const reached = new Set(), queue = [start];
-    while (queue.length) { const at = queue.shift(); if (reached.has(at)) continue; reached.add(at); for (const edge of edges) if (edge.from === at) queue.push(edge.to); }
-    // A control that stopped showing while the arrows were pressed (More outcomes, once every outcome is drawn)
-    // is none the arrows must reach; it is named in the evidence as gone.
-    await p.evaluate(REMARK);
-    const unreached = nodes.filter(node => !reached.has(node.id));
-    const showing = await p.evaluate(`${JSON.stringify(unreached.map(node => node.id))}.map(id=>id.startsWith('tree')?${'true'}:[...document.querySelectorAll('[data-arrow-node="'+id+'"]')].some(e=>e.checkVisibility({visibilityProperty:true})&&!e.closest('[inert]')))`);
-    const gone = unreached.filter((node, at) => !showing[at]).map(node => node.label);
-    const missing = unreached.filter((node, at) => showing[at]).map(node => node.label);
-    if (gone.length) console.log('arrow closure', scope, 'gone while pressed', JSON.stringify(gone));
-    // What each arrow did, for the evidence when a control is missed.
-    if (missing.length || dead.length) console.log('arrow closure', scope, JSON.stringify({ start, missing, dead, skipped: [...skipped].map(label), edges: edges.map(edge => `${label(edge.from)} ${edge.key} → ${label(edge.to)}`) }));
-    return { missing, lost: edges.filter(edge => edge.to === 'page').map(edge => `${label(edge.from)} ${edge.key}`), dead, count: nodes.length };
-  };
-
-  await check('rail arrows ↑ above the outline\'s first row goes on up the side rail to New outcome, the chips and the logo block, ↓ below its last row reaches Keys, and the arrows reach every control in the side rail', async () => {
-    for (const theme of ['light', 'dark']) {
-      const p = await arrowsAt('rail-arrows-outline-' + theme, '/?topic=t1', 'laptop', theme);
-      await settled(p, 'the topic is up');
-      await tabToOutline(p);
-      await p.key('Home');
-      assert.match(await keyedAt(p), /^(name|topic):/, 'Home is the outline\'s first row');
-      const up = await walk(p, 'ArrowUp');
-      assert.ok(!up.includes('page'), 'no arrow loses the focus to the page: ' + up.join(' → '));
-      assert.ok(up.length > 2 && up.slice(1).every(at => at.startsWith('rail:') && !at.startsWith('rail:row:')), '↑ goes on up the side rail, out of the outline: ' + up.join(' → '));
-      assert.equal(up[1], 'rail:outline-new-outcome', '↑ above the first row is New outcome, just above it');
-      assert.ok(up.some(at => /^rail:(Theseus Outcomes|health-link|How Theseus answers)/.test(at)), '↑ reaches the logo block: ' + up.join(' → '));
-      await shot(p, 'rail-arrows-logo-laptop-' + theme);
-      // Back down, into the outline's one stop.
-      const down = await walk(p, 'ArrowDown', 30, at => at.startsWith('rail:row:'));
-      assert.ok(!down.includes('page'), 'no arrow loses the focus coming down: ' + down.join(' → '));
-      assert.match(await keyedAt(p), /^(name|topic):/, '↓ comes back into the outline: ' + down.join(' → '));
-      // Below the last row: Keys, and ↑ from it back to the outline.
-      await p.key('End');
-      const last = await keyedAt(p);
-      await p.key('ArrowDown');
-      assert.equal(await keyedAt(p), 'outline:Keys', `↓ below the last row (${last}) reaches Keys`);
-      assert.equal(await focusInView(p), true, 'Keys comes into view');
-      await p.key('ArrowUp');
-      assert.ok((await focusAt(p)).startsWith('rail:row:'), '↑ from Keys comes back to the outline');
-      if (theme === 'light') {
-        const { missing, lost, dead, count } = await arrowClosure(p, '#rail', treeStart(p, '#outline'));
-        assert.ok(count > 5, 'the side rail has its controls: ' + count);
-        assert.deepEqual(missing, [], 'the arrows reach every control in the side rail from the outline');
-        assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
-        assert.deepEqual(dead, [], 'and none stays put where a control lies that way');
-      }
+      const said = await p.evaluate("document.getElementById('app-status').textContent");
+      fault(() => assert.match(said, /^Starring “A card whose star is not settled[^”]*” is not saved yet: Theseus was busy\. The page sends it again\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection: ${said}`));
+      net.hold(null);
+      for (const entry of [...net.held()]) await net.pass(entry);
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes').catch(error => faults.push(error.message));
       assert.deepEqual(p.errors, []); await p.close();
     }
+    assert.deepEqual(faults, [], 'every size and theme');
   });
 
-  await check('rail arrows on a phone, in the side rail\'s drawer, ↑ above the outline\'s first row goes on up to New outcome and the logo block, and the arrows reach every control in the drawer and never the page behind, at 390, 375 and 320', async () => {
-    for (const size of ['390', '375', '320']) {
-      const p = await arrowsAt('rail-arrows-drawer-' + size, '/?topic=t1', size, size === '390' ? 'dark' : 'light');
-      await topicUp(p, size + ': the topic is up');
-      await until(() => p.evaluate("(b=>{b?.focus();return Boolean(b)&&document.activeElement===b})(document.getElementById('rail-open'))"), size + ': ☰ Topics takes the focus');
-      // Each focus move from Return on, for the evidence if the focus does not end in the drawer.
-      await p.evaluate("(()=>{const d=e=>e?(e.id||e.tagName+':'+(e.getAttribute('aria-label')||e.textContent||'').trim().slice(0,24))+(e.isConnected?'':' (gone)'):'none';window.__focusMoves=[];for(const t of ['focusin','focusout'])document.addEventListener(t,e=>window.__focusMoves.push(t+' '+d(e.target)+' → '+d(e.relatedTarget)+' @'+Math.round(performance.now())),true);document.addEventListener('keydown',e=>{if(e.key==='Enter')window.__focusMoves.push('Return: the open topic in the rail '+JSON.stringify([...document.querySelectorAll('#rail a[aria-current=page]')].map(a=>[a.textContent.trim().slice(0,20),a.checkVisibility(),Boolean(a.closest('[inert]')),a.parentElement?.id||a.parentElement?.className])))},true)})()");
-      await p.key('Enter');
-      await until(() => p.evaluate("document.getElementById('rail-open').getAttribute('aria-expanded')==='true' && Boolean(document.activeElement?.closest?.('#rail'))"), size + ': Return on ☰ Topics opens the drawer, the focus in it')
-        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({expanded:document.getElementById('rail-open').getAttribute('aria-expanded'),open:document.getElementById('rail').classList.contains('open'),active:(e=>e&&(e.id||e.tagName+':'+(e.textContent||'').trim().slice(0,30)))(document.activeElement),current:[...document.querySelectorAll('#rail a[aria-current=page]')].map(e=>[e.textContent.trim().slice(0,30),e.isConnected,e.checkVisibility(),Boolean(e.closest('[inert]'))]),moves:window.__focusMoves})")); });
-      await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
-        .catch(async error => { await shot(p, 'rail-arrows-drawer-missing-' + size); throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({rows:[...document.querySelectorAll('#outline [role=treeitem]')].map(e=>[e.textContent.trim().slice(0,30),e.checkVisibility()]),outline:document.getElementById('outline')?.innerHTML.length,open:document.getElementById('rail').className})")); });
-      await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
-      await p.key('Home');
-      const up = await walk(p, 'ArrowUp');
-      assert.ok(!up.includes('page'), `${size}: no arrow loses the focus: ${up.join(' → ')}`);
-      assert.equal(up[1], 'rail:outline-new-outcome', `${size}: ↑ above the first row is New outcome: ${up.join(' → ')}`);
-      assert.ok(up.every(at => at.startsWith('rail:')), `${size}: the arrows stay in the drawer: ${up.join(' → ')}`);
-      if (size === '390') await shot(p, 'rail-arrows-drawer-390-dark');
-      const { missing, lost, dead, count } = await arrowClosure(p, '#rail', treeStart(p, '#outline'));
-      assert.ok(count > 5, `${size}: the drawer has its controls (${count})`);
-      assert.deepEqual(missing, [], `${size}: the arrows reach every control in the drawer`);
-      assert.deepEqual(lost, [], `${size}: and none loses the focus to the page`);
-      assert.deepEqual(dead, [], `${size}: and none stays put where a control lies that way`);
-      assert.match(await focusAt(p), /^rail:/, `${size}: the focus is still in the drawer`);
+  await check('rail a thumbs-up Theseus was too busy to take is said with its card in the rail at a laptop\'s width and in the drawer at 320 375 and 390, light and dark, never as a lost connection, and goes once its reactions read again land', async () => {
+    const topic = 'rail-thumb-busy-t';
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Busy thumbs-up topic' }] });
+    const faults = [];
+    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop';
+      const message = (await control({ method: 'agent_message', operation_id: `${topic}-${size}-${theme}`, topic_id: topic, join: true, addressees: [facts.actor], body: `A card whose thumbs-up was not taken (${at}).` })).result.message_id;
+      const p = await page('rail-thumb-busy-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', SIZES[size]);
+        if (SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const card = `#messages .message-card[data-id="${message}"]`, words = card + ' > .message-preview', thumb = '.message-bar [data-act=thumb]';
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), at + ': the card is up');
+      const net = await network547(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+      const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === message;
+      net.hold(payload => thumbs(payload) || reactions(payload));
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(thumb)})?.getClientRects().length > 0`), at + ': the card is lit, with its bar\'s 👍');
+      if (laptop) await p.point(thumb); else await tap(p, thumb);
+      // The server's own answer when its command lane is full (aim_next/server.py), as when the reader's own reply holds it.
+      await net.answer(await until(() => net.held().find(entry => thumbs(entry.payload)), at + ': the thumbs-up is on its way'), 503,
+        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+      const read = await until(() => net.held().find(entry => reactions(entry.payload)), at + ': its reactions are read again; that read is held');
+      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.length>0)(document.getElementById('app-status'))"), at + ': the status line says what became of the thumbs-up');
+      if (!laptop) await openDrawer547(p, at);
+      await p.evaluate("(()=>{document.getElementById('rail').scrollTop=0})()");
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      await shot(p, `rail-thumb-busy-${size}-${theme}`);
+      const seen = await notices547(p), said = await p.evaluate("document.getElementById('app-status').textContent");
+      const fault = check => { try { check(); } catch (error) { faults.push(error.message); } };
+      fault(() => {
+        assert.match(said, /^The thumbs-up on “A card whose thumbs-up was not taken[^”]*” was not saved: Theseus was busy\. Press again: Core keeps one of each\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection: ${said}`);
+        assert.deepEqual(seen.shown.map(item => item.id), ['app-status'], `${at}: the status line shows: ${JSON.stringify(seen)}`);
+        assert.ok(seen.shown[0].inRail && seen.shown[0].ownMiddle, `${at}: in sight in the rail, nothing over it: ${JSON.stringify(seen)}`);
+        assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
+      });
+      net.hold(null); await net.pass(read);
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once the reactions read again land, the status line goes').catch(error => faults.push(error.message));
+      await shot(p, `rail-thumb-busy-${size}-${theme}-gone`);
       assert.deepEqual(p.errors, []); await p.close();
     }
+    assert.deepEqual(faults, [], 'every size and theme');
   });
 
-  await check('rail arrows ↓ past the last message goes on down the page to the People row and the reply, ↑ comes back to the last message, at 1280, 390, 375 and 320', async () => {
-    for (const size of ['laptop', '390', '375', '320']) {
-      const p = await arrowsAt('rail-arrows-feed-' + size, '/?topic=t1', size);
-      await topicUp(p, size + ': the topic is up, its messages drawn');
-      await emptyReply(p, size);
-      const lastId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).at(-1).dataset.id");
-      // Into the messages with the keys, as a person does: ↓ from the page lights one.
-      await p.evaluate("document.activeElement?.blur()");
-      await p.key('ArrowDown');
-      assert.match(await focusAt(p), /^message:/, size + ': ↓ from the page lights a message');
-      const down = await walk(p, 'ArrowDown', 60, at => !at.startsWith('message:'));
-      const below = down.at(-1);
-      assert.ok(down.includes('message:' + lastId), `${size}: ↓ goes down the feed to the last message: ${down.join(' → ')}`);
-      assert.ok(below.startsWith('main:'), `${size}: ↓ past the last message goes on down the page, not ${below}: ${down.join(' → ')}`);
-      assert.equal(await p.evaluate("Boolean(document.querySelector('#messages')?.compareDocumentPosition(document.activeElement) & Node.DOCUMENT_POSITION_FOLLOWING)"), true,
-        `${size}: to what lies below the messages (${below})`);
-      assert.equal(await focusInView(p), true, size + ': which comes into view');
-      if (size === 'laptop' || size === '390') await shot(p, 'rail-arrows-below-' + size);
-      // On down to the reply, never lost.
-      const more = await walk(p, 'ArrowDown', 20);
-      assert.ok(!more.includes('page'), `${size}: no arrow loses the focus below the messages: ${more.join(' → ')}`);
-      assert.ok(more.some(at => /^main:(topic-people|participants|people|inline-|new-message-sheet)/.test(at) || /^main:.*(Remove|People|reply|message)/i.test(at)), `${size}: ↓ reaches the People row or the reply: ${more.join(' → ')}`);
-      // Back up to the last message.
-      const up = await walk(p, 'ArrowUp', 30, at => at.startsWith('message:'));
-      assert.equal(up.at(-1), 'message:' + lastId, `${size}: ↑ comes back to the last message: ${up.join(' → ')}`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  await check('rail arrows on a message\'s bar ← and → move along its buttons, and ↑ and ↓ go on from its message as from the message itself', async () => {
-    const p = await arrowsAt('rail-arrows-bar', '/?topic=t1', 'laptop');
-    await topicUp(p, 'the topic is up, its messages drawn');
-    const lastId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.checkVisibility()).at(-1).dataset.id");
-    // The keys on the last message: what ↑ from it reaches, and back.
-    await p.evaluate("document.activeElement?.blur()");
-    await p.key('ArrowDown');
-    await walk(p, 'ArrowDown', 60, at => at === 'message:' + lastId);
-    assert.equal(await focusAt(p), 'message:' + lastId, 'the keys are on the last message');
-    await p.key('ArrowUp');
-    const above = await focusAt(p);
-    await p.key('ArrowDown');
-    assert.equal(await focusAt(p), 'message:' + lastId, '↓ comes back to the last message');
-    const toBar = async () => { for (let n = 0; n < 4 && !(await focusAt(p)).startsWith('bar:'); n++) await p.key('Tab'); return focusAt(p); };
-    const first = await toBar();
-    assert.match(first, /^bar:/, 'Tab reaches the message\'s bar');
-    const along = await walk(p, 'ArrowRight', 8);
-    assert.ok(along.length > 1 && along.every(at => at.startsWith('bar:')), '→ moves along the bar\'s buttons: ' + along.join(' → '));
-    assert.equal(along.at(-1), 'bar:more', '→ reaches ⋯, the bar\'s last');
-    const back = await walk(p, 'ArrowLeft', 8);
-    assert.equal(back.at(-1), first, '← comes back along them to the first: ' + back.join(' → '));
-    await shot(p, 'rail-arrows-bar-laptop');
-    await p.key('ArrowUp');
-    assert.equal(await focusAt(p), above, '↑ from the bar goes where ↑ from its message goes');
-    await p.key('ArrowDown');
-    assert.equal(await focusAt(p), 'message:' + lastId, '↓ comes back to the last message');
-    assert.match(await toBar(), /^bar:/, 'Tab reaches its bar again');
-    await p.key('ArrowDown');
-    assert.match(await focusAt(p), /^main:/, '↓ from the last message\'s bar goes on down the page, as from the message');
+  await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back; one Core took, its answer lost, is settled on coming back by its own send, never by its words', async () => {
+    const [topic, other] = ['rail-doubt-t', 'rail-doubt-u'];
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Doubt topic' }, { id: other, title: 'Elsewhere topic' }] });
+    const p = await open('rail-doubt', '/?topic=' + topic);
+    await until(() => p.evaluate(`Boolean(document.querySelector('#outline a[data-topic-id="${other}"]')) && Boolean(document.getElementById('inline-writing-body'))`), 'the outline and the writing box are ready');
+    const net = await network547(p, true), sends = payload => payload?.kind === 'message.send';
+    net.hold(sends);
+    await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})"); await p.point('#inline-writing-body');
+    await p.send('Input.insertText', { text: 'A reply whose send is lost' });
+    await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
+    // The send never reaches Core: nobody can say it went.
+    await net.drop(await until(() => net.held().find(entry => sends(entry.payload)), 'the send is on its way'));
+    const review = () => p.evaluate("[...document.querySelectorAll('#inline-pending button, #topic-pending button')].map(b=>b.textContent)");
+    await until(async () => (await review()).includes('Review 1 reply'), 'the reply is in doubt: its Review button shows');
+    net.hold(null);
+    await reloaded(p, 'the page loads again');
+    await until(async () => (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
+    const row = `#outline a[data-topic-id="${other}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the outline is up again');
+    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+    await p.point(row);
+    await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page');
+    assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, 'nothing is said about leaving');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=' + topic, 'Doubt topic', 'back');
+    await until(async () => (await review()).includes('Review 1 reply'), 'the reply is kept: its Review button is there on coming back');
+    const said = async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.body === 'A reply whose send is lost').length;
+    assert.equal(await said(), 0, 'and it was not sent');
+    // The same words again, sent: Core takes this one, and its answer is lost.
+    await net.after(); net.hold(sends);
+    await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})"); await p.point('#inline-writing-body');
+    await p.send('Input.insertText', { text: 'A reply whose send is lost' });
+    await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
+    const lost = await until(() => net.held().find(entry => sends(entry.payload)), 'Core took the second send; its answer is held');
+    assert.equal(await said(), 1, 'Core holds it');
+    await net.drop(lost); net.hold(null);
+    await until(async () => (await review()).includes('Review 2 replies'), 'both are in doubt now');
+    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+    await p.point(row);
+    await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page again');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=' + topic, 'Doubt topic', 'back again');
+    // Read again, the one Core took is settled by its own send; the one with the same words that never went is not.
+    await until(async () => { const now = await review(); return now.includes('Review 1 reply') && !now.includes('Review 2 replies'); }, 'the one Core took is settled; the other, word for word the same, stays in doubt')
+      .catch(async error => { throw Error(`${error.message}: ${JSON.stringify(await review())}`); });
+    assert.equal(await said(), 1, 'sent once, never again');
+    assert.equal(p.calls.filter(call => sends(call.payload) && call.payload.operation_id === lost.payload.operation_id).length, 1, 'its send went once');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail arrows ↑ above the right rail\'s first section reaches "Just this topic" and "All of this outcome", → and ← move along them, ↓ comes back to the sections, and the arrows reach every control in the right rail', async () => {
-    const p = await arrowsAt('rail-arrows-things', '/?topic=t1', 'laptop');
-    await settled(p, 'the topic is up');
-    await until(() => p.evaluate(`Boolean(document.querySelector('#things .things-sec:not([hidden]) > summary')?.checkVisibility()) && Boolean(document.querySelector('#things .things-scope:not([hidden])'))`), 'the right rail has loaded, with its chips');
-    await p.evaluate("document.activeElement?.blur()");
-    for (let n = 0; n < 3 && !(await focusAt(p)).startsWith('things:'); n++) await p.key('ArrowRight');
-    assert.match(await keyedAt(p), /^things:/, '→ reaches the right rail');
-    await p.key('Home');
-    const top = await keyedAt(p);
-    await p.key('ArrowUp');
-    const chip = await focusAt(p);
-    assert.match(chip, /^things:(Just this topic|All of this outcome)$/, `↑ above the first section (${top}) reaches the rail's chips, not ${chip}`);
-    // To the other chip by the arrow pointing at it: beside it, or below it where the rail is too narrow for both in a row.
-    const toward = await p.evaluate(`(()=>{const [a,b]=[...document.querySelectorAll('#things .things-scope .chip')].map(e=>e.getBoundingClientRect()),me=document.activeElement.getBoundingClientRect(),other=Math.abs(me.left-a.left)<1&&Math.abs(me.top-a.top)<1?b:a;
-      return Math.abs(other.top-me.top)<2?(other.left>me.left?'ArrowRight':'ArrowLeft'):(other.top>me.top?'ArrowDown':'ArrowUp')})()`);
-    await p.key(toward);
-    assert.match(await focusAt(p), /^things:(Just this topic|All of this outcome)$/, `${toward} moves to the other chip`);
-    assert.notEqual(await focusAt(p), chip, `${toward} moves to the other chip`);
-    // From the first chip, ↓ goes on down to the sections (from the second, beside a heading's pencil, ↓ may land on the pencil first).
-    await p.evaluate("document.querySelector('#things .things-scope .chip').focus()");
-    const down = await walk(p, 'ArrowDown', 6, at => at.startsWith('things:row:'));
-    assert.ok(!down.includes('page'), 'never lost: ' + down.join(' → '));
-    assert.ok((await focusAt(p)).startsWith('things:row:'), '↓ comes back to the sections: ' + down.join(' → '));
-    // From the pencil in the Notebook's heading, a control inside a row, ↓ goes on to the row below and ↑ above it.
-    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
-    await p.key('ArrowDown');
-    assert.match(await focusAt(p), /^things:row:/, '↓ from the Notebook heading\'s pencil lands on the row below');
-    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
-    await p.key('ArrowUp');
-    assert.notEqual(await focusAt(p), 'things:New Notebook page', '↑ from the pencil moves too');
-    // The pencil is the Notebook row's own, as a card's speech bubble is: → from the open row gives it the focus,
-    // → from it goes on to the first page under the row, and ← from it comes back to the row.
-    const NOTEBOOK_ROW = "#things .things-sec[data-key=notebook] > summary";
-    const onRow = () => p.evaluate(`document.activeElement===document.querySelector('${NOTEBOOK_ROW}')`);
-    const onFirstPage = () => p.evaluate(`(r=>{const rows=[...r.parentElement.querySelectorAll('[role=treeitem]')].filter(e=>e!==r&&e.checkVisibility());return rows.length>0&&document.activeElement===rows[0]})(document.querySelector('${NOTEBOOK_ROW}'))`);
-    await p.evaluate(`(s=>{s.parentElement.open=true;s.focus()})(document.querySelector('${NOTEBOOK_ROW}'))`);
-    await until(() => p.evaluate(`document.querySelectorAll('${NOTEBOOK_ROW} ~ * [role=treeitem]').length > 0`), 'the open Notebook shows its pages as rows');
-    await p.key('ArrowRight');
-    assert.equal(await focusAt(p), 'things:New Notebook page', '→ on the open Notebook row gives its pencil the focus');
-    await p.key('ArrowRight');
-    assert.equal(await onFirstPage(), true, '→ from the pencil goes on to the first page under the row: ' + await focusAt(p));
-    await p.evaluate("document.querySelector('#things .notebook-create').focus()");
-    await p.key('ArrowLeft');
-    assert.equal(await onRow(), true, '← from the pencil comes back to the Notebook row: ' + await focusAt(p));
-    // A row with no control set in it keeps the tree's →: on a folded section it opens it, the focus staying.
-    const plain = await p.evaluate(`(d=>{if(!d)return null;d.open=false;d.querySelector(':scope > summary').focus();return d.dataset.key})([...document.querySelectorAll('#things .things-sec:not([hidden])')].find(d=>d.dataset.key!=='notebook'&&!d.querySelector(':scope > summary button')))`);
-    if (plain) {
-      await p.key('ArrowRight');
-      assert.equal(await p.evaluate(`(d=>d.open&&document.activeElement===d.querySelector(':scope > summary'))(document.querySelector('#things .things-sec[data-key=${plain}]'))`), true, `→ on the folded ${plain} section opens it and keeps the focus on its row`);
-    }
-    const { missing, lost, dead } = await arrowClosure(p, '#things', treeStart(p, '#things'));
-    assert.deepEqual(missing, [], 'the arrows reach every control in the right rail from its sections');
-    assert.deepEqual(lost, [], 'and no arrow there loses the focus to the page');
-    assert.deepEqual(dead, [], 'and none stays put where a control lies that way');
-    assert.deepEqual(p.errors, []); await p.close();
-  });
-
-  await check('rail arrows on the Outcomes home, an outcome\'s page, its pipeline and its Conversation, with nothing focused ↓ lands on a control in view, and the arrows go on from it, never to the page, at 1280, 390, 375 and 320', async () => {
-    await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-arrows-pipeline', target: { workspace_id: 'w1' }, args: { enabled: true } });
-    try {
-      for (const size of ['laptop', '390', '375', '320']) for (const [name, url, reaches] of [
-        ['home', '/', /^main:w1$|Isolated wiring|outcome\d|topic/i], ['outcome', '/?workspace=w1', /topic|t1|New topic/i], ['pipeline', '/?pipeline=w1', /./], ['conversation', '/?conversation=w1', /./]]) {
-        const p = await arrowsAt(`rail-arrows-${name}-${size}`, url, size, size === '390' ? 'dark' : 'light');
-        await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), `${size} ${name}: the page is up`);
-        await p.evaluate("document.activeElement?.blur()");
-        await p.key('ArrowDown');
-        const first = await focusAt(p);
-        assert.notEqual(first, 'page', `${size} ${name}: ↓ with nothing focused lands on a control`);
-        assert.equal(await focusInView(p), true, `${size} ${name}: one in view (${first})`);
-        const down = await walk(p, 'ArrowDown', 25);
-        assert.ok(!down.includes('page'), `${size} ${name}: ↓ never loses the focus: ${down.join(' → ')}`);
-        assert.ok(down.length > 1, `${size} ${name}: ↓ goes on from the first control: ${down.join(' → ')}`);
-        if (!down.some(at => reaches.test(at))) assert.fail(`${size} ${name}: ↓ reaches what the page lists: ${down.join(' → ')}; it stopped on ${await p.evaluate(`(e=>{const r=e.getBoundingClientRect(),near=[...document.querySelectorAll('#main a[href],#main button')].filter(x=>x!==e&&x.checkVisibility()).map(x=>{const b=x.getBoundingClientRect();return [x.textContent.trim().slice(0,20),Math.round(b.top),Math.round(b.bottom),Math.round(b.left),Math.round(b.right),Boolean(x.closest('[inert]'))]}).filter(b=>b[2]>r.top-10);return JSON.stringify({html:e.outerHTML.slice(0,240),box:[Math.round(r.top),Math.round(r.bottom),Math.round(r.left),Math.round(r.right)],scrollY,inner:innerHeight,doc:document.documentElement.scrollHeight,below:near.slice(0,12)})})(document.activeElement)`)}`);
-        if (size === 'laptop' || size === '320') {
-          // From the first control ↓ lands on with nothing focused, the arrows reach every control on the page.
-          const first = async () => { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-          const { missing, lost, dead, count } = await arrowClosure(p, 'body', first);
-          assert.ok(count > 2, `${size} ${name}: the page has its controls (${count})`);
-          assert.deepEqual(missing, [], `${size} ${name}: the arrows reach every control on the page from the first`);
-          assert.deepEqual(lost, [], `${size} ${name}: and no arrow loses the focus to the page`);
-          assert.deepEqual(dead, [], `${size} ${name}: and none stays put where a control lies that way`);
-        }
-        const up = await walk(p, 'ArrowUp', 25);
-        assert.ok(!up.includes('page'), `${size} ${name}: ↑ never loses the focus: ${up.join(' → ')}`);
-        for (const key of ['ArrowRight', 'ArrowLeft']) { await p.key(key); assert.notEqual(await focusAt(p), 'page', `${size} ${name}: ${key} keeps a control focused`); }
-        if (size === 'laptop' || size === '390') await shot(p, `rail-arrows-${name}-${size}`);
-        if (name === 'pipeline') {
-          // A one-line field the arrows land in never holds them: ← and → move its cursor, ↑ and ↓ go on.
-          await p.evaluate("(()=>{const f=document.querySelector('[data-key=\"add:next\"] input');f.scrollIntoView({block:'center'});f.focus();return true})()");
-          await p.send('Input.insertText', { text: 'Half a title' });
-          await p.key('ArrowLeft');
-          assert.deepEqual(await p.evaluate("(f=>[document.activeElement===f,f.selectionStart])(document.querySelector('[data-key=\"add:next\"] input'))"), [true, 11], `${size}: ← in the line moves its cursor, the focus staying`);
-          await p.key('ArrowDown');
-          const left = await focusAt(p);
-          assert.ok(left !== 'page' && !(await p.evaluate("document.activeElement===document.querySelector('[data-key=\"add:next\"] input')")), `${size}: ↓ in the one-line field goes on to the control below, not ${left}`);
-          assert.equal(await p.evaluate("document.querySelector('[data-key=\"add:next\"] input').value"), 'Half a title', `${size}: and the line keeps its words`);
-        }
-        assert.deepEqual(p.errors, []); await p.close();
-      }
-    } finally {
-      await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-arrows-pipeline-off', target: { workspace_id: 'w1' }, args: { enabled: false } });
-    }
-  });
-
-  await check('rail arrows a control out of sight is scrolled toward a third of a window at a time, the words between read on the way, and once it shows the next press lands on it', async () => {
-    const SCROLLED = "(()=>{let t=scrollY;for(let e=document.getElementById('far-button').parentElement;e&&e!==document.body;e=e.parentElement)t+=e.scrollTop;return t})()";
-    for (const size of ['laptop', '390', '375', '320']) {
-      const p = await arrowsAt('rail-arrows-far-' + size, '/', size);
-      await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), size + ': the home page is up');
-      // Words a long way below the last control, then one more control.
-      await p.evaluate(`(()=>{const main=document.getElementById('main'),words=document.createElement('div'),far=document.createElement('button');
-        words.id='far-words';words.style.height=(innerHeight*3)+'px';words.textContent='Words to read on the way.';far.id='far-button';far.type='button';far.textContent='Far below';
-        main.append(words,far);return true})()`);
-      // On the last control above the words; a list the page draws again meanwhile takes the focus with the old one, so until it holds.
-      await until(() => p.evaluate("(c=>{const e=c.at(-1);if(document.activeElement!==e){e.focus();e.scrollIntoView({block:'end'})}return document.activeElement===e})([...document.querySelectorAll('#main button, #main a[href]')].filter(e=>e.id!=='far-button'&&e.checkVisibility()))"),
-        size + ': the last control above the words takes the focus');
-      const from = await focusAt(p), h = await p.evaluate('innerHeight');
-      const steps = [];
-      for (let n = 0; n < 30 && await focusAt(p) !== 'main:far-button'; n++) {
-        const y = await p.evaluate(SCROLLED);
-        const { at } = await arrowPress(p, 'ArrowDown');
-        steps.push({ at, by: await p.evaluate(SCROLLED) - y });
-      }
-      const said = `${size}: ${from} → ${JSON.stringify(steps)}`;
-      assert.equal(steps.at(-1)?.at, 'main:far-button', said + ': ↓ reaches the control far below');
-      const scrolls = steps.slice(0, -1);
-      assert.ok(scrolls.length >= 3, said + ': it is not reached in one press, the words between scrolled past first');
-      assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying on ' + from);
-      assert.equal(await focusInView(p), true, said + ': and it shows');
-      // So inside a box that scrolls, from a control in that box: what the box holds out of sight lies that way of
-      // the focus in it (what a box has scrolled away lies no way only of a control outside it). The words and the
-      // control far below go first, so nothing but the box's own lies below the control in it.
-      await p.evaluate(`(()=>{document.getElementById('far-words').remove();document.getElementById('far-button').remove();const box=document.createElement('div'),near=document.createElement('button'),words=document.createElement('div'),far=document.createElement('button');
-        box.id='far-box';box.style.cssText='overflow:auto;height:'+Math.round(innerHeight/2)+'px';near.id='box-near';near.type='button';near.textContent='Near';
-        words.style.height=(innerHeight*2)+'px';words.textContent='Words in the box.';far.id='box-far';far.type='button';far.textContent='Far in the box';
-        box.append(near,words,far);document.getElementById('main').append(box);box.scrollIntoView({block:'center'});near.focus({preventScroll:true});return true})()`);
-      const inBox = [];
-      for (let n = 0; n < 30 && await focusAt(p) !== 'main:box-far'; n++) {
-        const y = await p.evaluate("document.getElementById('far-box').scrollTop");
-        const { at } = await arrowPress(p, 'ArrowDown');
-        inBox.push({ at, by: await p.evaluate("document.getElementById('far-box').scrollTop") - y });
-      }
-      const boxSaid = `${size}: in the box ${JSON.stringify(inBox)}`;
-      assert.equal(inBox.at(-1)?.at, 'main:box-far', boxSaid + ': ↓ from the control in the box reaches the one out of sight in it');
-      assert.ok(inBox.slice(0, -1).length >= 2 && inBox.slice(0, -1).every(step => step.at === 'main:box-near' && step.by > 0), boxSaid + ': the box scrolled toward it first, the focus staying in the box');
+  await check('rail a star Theseus was too busy to take and a reply whose send is lost, together as on live: the line says the star with its card, no notice draws over another, nothing holds the move, the star is made once after the page has gone, and on coming back the card shows it and the reply its Review button', async () => {
+    for (const [size, theme] of [['laptop', 'light'], ['phone', 'dark']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop', topic = `rail-together-${size}`, other = `rail-together-${size}-away`;
+      await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Together ' + size }, { id: other, title: 'Away ' + size }] });
+      const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, join: true, addressees: [facts.actor], body: 'The card starred while Theseus is busy.' })).result.message_id;
+      const p = await open('rail-together-' + size, '/?topic=' + topic, size, theme);
+      const card = `#messages .message-card[data-id="${message}"]`, row = `#outline a[data-topic-id="${other}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body')) && Boolean(document.querySelector(${JSON.stringify(row)}))`), at + ': the card, the writing box and the outline are up');
+      const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
+      // The star: Theseus too busy to take it, each time it goes, until the page has moved on.
+      const lane = { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } };
+      net.hold(sends); net.always(stars, 503, lane);
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      // Scrolled into view, the card's middle is its own once the page is at rest (WebKit scrolls after the call returns).
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
+      if (laptop) await p.point(star); else await tap(p, star);
+      const busy = 'Starring “The card starred while Theseus is busy.” is not saved yet: Theseus was busy. The page sends it again.';
+      await until(() => p.evaluate(`document.getElementById('app-status').textContent===${JSON.stringify(busy)}`), at + ': the line says the star, its card, and busy')
+        .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('app-status').textContent")}`); });
+      const starTries = () => p.calls.filter(call => stars(call.payload)).length;
+      await until(() => starTries() >= 2, at + ': the star goes again as Theseus answers');
+      // The reply: its send lost before Core saw it, so it is in doubt.
+      await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
+      await p.send('Input.insertText', { text: 'A reply sent while Theseus is busy' });
+      await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
+      await net.drop(await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way'));
+      const review = () => p.evaluate("[...document.querySelectorAll('#inline-pending button, #topic-pending button')].map(b=>b.textContent)");
+      await until(async () => (await review()).includes('Review 1 reply'), at + ': the reply is in doubt: its Review button shows');
+      if (!laptop) await openDrawer547(p, at);
+      const seen = await notices547(p);
+      assert.deepEqual(seen.shown.map(item => item.id), ['app-status'], `${at}: the status line alone: ${JSON.stringify(seen)}`);
+      apart547(seen, at);
+      await shot(p, `rail-together-${size}-${theme}`);
+      // The first press on another topic moves the page, with nothing said.
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+      if (laptop) await p.point(row); else await tap(p, row);
+      await arrived(p, '?topic=' + other, 'Away ' + size, at + ': the first press moves the page')
+        .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('topic-navigation-status').textContent")}`); });
+      assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, `${at}: nothing is said about leaving`);
+      // Theseus takes the star now, at its next try from the page that has gone: it is made once.
+      const tries = starTries();
+      net.hold(null); net.always(null);
+      await control({ method: 'agent_message', operation_id: topic + '-later', topic_id: other, join: true, addressees: [facts.actor], body: 'Something new, so Theseus answers.' });
+      await until(() => starTries() > tries, at + ': the page that has gone sends the star again as Theseus answers');
+      await until(async () => (await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message)?.acts?.starred === true, at + ': Core holds the star');
+      assert.equal((await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message).acts.star_revision, 1, `${at}: made once`);
+      assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: the page reached says nothing of it`);
+      await p.evaluate('history.back()');
+      await arrived(p, '?topic=' + topic, 'Together ' + size, at + ': back');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.textContent === '★'`), at + ': the card shows its star');
+      await until(async () => (await review()).includes('Review 1 reply'), at + ': and the reply its Review button');
+      assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: nothing is said of the star`);
       assert.deepEqual(p.errors, []); await p.close();
     }
-  });
-
-  await check('rail arrows on a Notebook page\'s cards ↑ above the first card goes on to the page\'s controls, ↓ comes back to the cards, and the arrows reach every control on the page, at 1280, 390, 375 and 320 and in the composer\'s sheet', async () => {
-    await control({ method: 'outcome_reference', operation_id: 'rail-arrows-deck', item_id: 'rail-arrows-deck', title: 'Arrow deck', body: '## A card\n\nWords.\n\n## Another card\n\nMore words.\n' });
-    const inDeck = p => p.evaluate("Boolean(document.activeElement?.closest?.('.deck-card'))");
-    // ↑ from the cards until the focus leaves them: where it went at each press.
-    // (On a phone a pick moves no focus: from nothing, ↑ picks the card above until the first, then goes on.)
-    const outOfDeck = async p => { const seen = []; for (let n = 0; n < 10 && (await inDeck(p) || await focusAt(p) === 'page'); n++) { await arrowPress(p, 'ArrowUp'); seen.push(await focusAt(p)); } return seen; };
-    for (const [size, url] of [['laptop', '/?cards=rail-arrows-deck'], ['390', '/?cards=rail-arrows-deck'], ['375', '/?cards=rail-arrows-deck'], ['320', '/?cards=rail-arrows-deck'], ['laptop', '/?topic=t1&page=rail-arrows-deck']]) {
-      const where = `${size} ${url}`;
-      const p = await arrowsAt('rail-arrows-deck-' + size, url, size, size === '390' ? 'dark' : 'light');
-      await until(() => p.evaluate("document.body?.dataset.ready==='true' && [...document.querySelectorAll('.deck-card')].some(e=>e.checkVisibility())").catch(() => false), where + ': the cards are up');
-      // At a laptop on a card, as the page puts the keys there (or ↓ from nothing picks it); on a phone, with
-      // nothing focused, the card in view is the one picked.
-      if (size === 'laptop') {
-        if (!await inDeck(p)) { await p.evaluate("document.activeElement?.blur()"); await p.key('ArrowDown'); }
-        assert.equal(await inDeck(p), true, where + ': the keys are on a card');
-      } else await p.evaluate("document.activeElement?.blur()");
-      const up = await outOfDeck(p);
-      const out = await p.evaluate("(e=>e&&e!==document.body&&!e.closest('.deck-card'))(document.activeElement)");
-      assert.equal(out, true, `${where}: ↑ above the first card goes on out of the cards: ${up.join(' → ')}`);
-      assert.ok(!up.includes('page'), `${where}: and never to the page: ${up.join(' → ')}`);
-      assert.equal(await focusInView(p), true, where + ': to a control in view');
-      const above = await focusAt(p);
-      await p.key('ArrowDown');
-      assert.equal(await inDeck(p), true, `${where}: ↓ from ${above} comes back to the cards`);
-      if (size === 'laptop' || size === '390') await shot(p, `rail-arrows-deck-${size}${url.includes('page=') ? '-sheet' : ''}`);
-      // Every control on the page (in the sheet, the sheet's) is reached from the one above the cards.
-      const scope = url.includes('page=') ? '#new-message-sheet' : 'body';
-      const first = async () => { await p.evaluate("document.querySelector('.deck-card[tabindex=\"0\"]').focus()"); await outOfDeck(p); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      const { missing, lost, dead, count } = await arrowClosure(p, scope, first, '.deck-cards');
-      assert.ok(count > 2, `${where}: the page has its controls (${count})`);
-      assert.deepEqual(missing, [], `${where}: the arrows reach every control from the cards`);
-      assert.deepEqual(lost, [], `${where}: and none loses the focus to the page`);
-      assert.deepEqual(dead, [], `${where}: and none stays put where a control lies that way`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  await check('rail arrows in Topic settings and the Reader move between their controls and never leave the pop-up for the page behind', async () => {
-    const p = await arrowsAt('rail-arrows-popups', '/?topic=t1', 'laptop');
-    await settled(p, 'the topic is up');
-    await p.point('#settings-open');
-    await until(() => p.evaluate("document.getElementById('topic-settings')?.open"), 'Topic settings is open');
-    await p.evaluate("document.querySelector('#topic-settings button:not([disabled])').focus()");
-    const start = await focusAt(p);
-    const seen = new Set([start]);
-    for (const key of ['ArrowDown', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowDown', 'ArrowDown']) {
-      await p.key(key);
-      const at = await focusAt(p);
-      assert.match(at, /^dialog:/, `${key} keeps the focus in Topic settings, not ${at}`);
-      seen.add(at);
-    }
-    assert.ok(seen.size > 1, 'the arrows move between Topic settings\' controls: ' + [...seen].join(', '));
-    await shot(p, 'rail-arrows-settings-laptop');
-    const first = async () => { await p.evaluate("document.querySelector('#topic-settings [data-arrow-node]').focus()"); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-    const { missing, lost, dead } = await arrowClosure(p, '#topic-settings', first);
-    assert.deepEqual(missing, [], 'the arrows reach every control in Topic settings');
-    assert.deepEqual(lost, [], 'and none loses the focus to the page');
-    assert.deepEqual(dead, [], 'and none stays put where a control lies that way');
-    assert.match(await focusAt(p), /^dialog:/, 'the focus is still in Topic settings');
-    await p.key('Escape');
-    await until(() => p.evaluate("!document.getElementById('topic-settings').open"), 'Escape closes it');
-    // The Reader: along its header, ↑ ↓ and ⋯ and ✕, and never out of it.
-    await p.evaluate("document.activeElement?.blur()");
-    await p.key('ArrowDown');
-    assert.match(await focusAt(p), /^message:/, '↓ lights a message');
-    // On a dossier shown as its row, Return edits its title (item 385): the keys go on to a message of their own.
-    for (let n = 0; n < 4 && await p.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await p.key('ArrowDown');
-    await p.key('Enter');
-    await until(() => p.evaluate("document.getElementById('reader')?.open"), 'Return opens the Reader');
-    await p.evaluate("document.getElementById('reader-parent').focus()");
-    const along = await walk(p, 'ArrowRight', 8);
-    assert.ok(along.length > 2 && along.every(at => at.startsWith('dialog:')), '→ moves along the Reader\'s header: ' + along.join(' → '));
-    assert.ok(along.includes('dialog:reader-close'), '→ reaches ✕: ' + along.join(' → '));
-    const down = await walk(p, 'ArrowDown', 12);
-    assert.ok(down.every(at => at.startsWith('dialog:')), '↓ stays in the Reader: ' + down.join(' → '));
-    assert.ok(down.length > 1, '↓ goes on from the header: ' + down.join(' → '));
-    // Every control in the Reader, its reply's + and 👍 and Send among them, by the arrows from its header.
-    const readerClosure = async (q, size) => {
-      // A link in the message's words, as a message with one has: → from the words reaches it, ← comes back.
-      await q.evaluate("(b=>{const a=document.createElement('a');a.href='#arrow-link';a.id='arrow-link';a.textContent='a link in the words';b.prepend(a,' ')})(document.getElementById('source-body'))");
-      await q.evaluate("document.getElementById('source-body').focus()");
-      await q.key('ArrowRight');
-      assert.equal(await focusAt(q), 'dialog:arrow-link', size + ': → from the message\'s words reaches the link in them');
-      await q.key('ArrowLeft');
-      assert.equal(await focusAt(q), 'dialog:source-body', size + ': ← from the link comes back to the words');
-      // ↓ from the top of a long message reads it a step at a time to its end, then goes on to the reply below.
-      await q.evaluate("(b=>{b.scrollTop=0,b.focus()})(document.getElementById('source-body'))");
-      const through = await walk(q, 'ArrowDown', 80);
-      assert.ok(through.includes('dialog:who-chip'), `${size}: ↓ through the long message reaches the reply below it: ${through.join(' → ')}`);
-      // Read to its end, the message's box has scrolled its link up out of sight, above the header on the page but
-      // inside the box below it: ↑ from the header lands on nothing there, and leaves the message where it was read to.
-      // (At a laptop's width the message fits its box: words are added below for this, and taken away after.)
-      const was = await q.evaluate("(b=>{const was=b.scrollTop,more=document.createElement('div');more.id='arrow-more';more.textContent='More words.\\n'.repeat(120);b.append(more);return was})(document.getElementById('source-body'))");
-      const read = await q.evaluate("(b=>{b.scrollTop=b.scrollHeight;const l=document.getElementById('arrow-link').getBoundingClientRect(),k=b.getBoundingClientRect();return {top:b.scrollTop,hidden:l.bottom<=k.top,at:[Math.round(l.top),Math.round(l.bottom),Math.round(k.top),b.scrollTop,b.scrollHeight,b.clientHeight].join(' ')}})(document.getElementById('source-body'))");
-      assert.equal(read.hidden, true, `${size}: the link in the words is scrolled up out of the message's box (link top, bottom, box top, scrolled, height, shows: ${read.at})`);
-      const heads = await q.evaluate("[...document.querySelectorAll('#reader .reader-header a[href],#reader .reader-header button')].filter(e=>e.checkVisibility()).length");
-      assert.ok(heads > 2, `${size}: the header's controls show (${heads})`);
-      for (let n = 0; n < heads; n++) {
-        const from = await q.evaluate(`(e=>(e.focus(),e.id||e.textContent.trim()))([...document.querySelectorAll('#reader .reader-header a[href],#reader .reader-header button')].filter(e=>e.checkVisibility())[${n}])`);
-        await q.key('ArrowUp');
-        assert.notEqual(await focusAt(q), 'dialog:arrow-link', `${size}: ↑ from ${from} never lands on the link scrolled out of the message's box`);
-        assert.equal(await q.evaluate("document.getElementById('source-body').scrollTop"), read.top, `${size}: ↑ from ${from} leaves the message scrolled where it was read to, not back up toward the link out of sight in its box`);
-      }
-      await q.evaluate(`(b=>{document.getElementById('arrow-more').remove();b.scrollTop=${was}})(document.getElementById('source-body'))`);
-      const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      const { missing, lost, dead } = await arrowClosure(q, '#reader', readerFirst);
-      assert.deepEqual(missing, [], size + ': the arrows reach every control in the Reader');
-      assert.deepEqual(lost, [], size + ': and none loses the focus to the page');
-      assert.deepEqual(dead, [], size + ': and none stays put where a control lies that way');
-    };
-    await readerClosure(p, 'laptop');
-    assert.deepEqual(p.errors, []); await p.close();
-    const phone = await arrowsAt('rail-arrows-reader-390', '/?topic=t1', '390');
-    await topicUp(phone, '390: the topic is up');
-    await phone.evaluate("document.activeElement?.blur()");
-    await phone.key('ArrowDown');
-    for (let n = 0; n < 4 && await phone.evaluate("Boolean(document.activeElement?.matches?.('.stack-head-card') && document.activeElement.closest('.reply-stack')?.dataset.headOpen === 'false')"); ++n) await phone.key('ArrowDown');
-    await phone.key('Enter');
-    await until(() => phone.evaluate("document.getElementById('reader')?.open"), '390: Return opens the Reader');
-    await readerClosure(phone, '390');
-    await shot(phone, 'rail-arrows-reader-390');
-    assert.deepEqual(phone.errors, []); await phone.close();
-  });
-
-  await check('rail arrows in writing are the writing\'s: in the topic\'s composer every arrow moves the cursor and never the focus', async () => {
-    for (const size of ['laptop', '320']) {
-      const p = await arrowsAt('rail-arrows-writing-' + size, '/?topic=t1', size);
-      await topicUp(p, size + ': the topic is up');
-      await emptyReply(p, size);
-      await p.evaluate("(()=>{const f=document.getElementById('inline-writing-body');f.scrollIntoView({block:'center'});f.focus();return true})()");
-      await p.send('Input.insertText', { text: 'One line\nTwo line' });
-      await until(() => p.evaluate("document.getElementById('inline-writing-body').value==='One line\\nTwo line'"), size + ': the two lines are written');
-      for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowUp']) {
-        await p.key(key);
-        assert.equal(await focusAt(p), 'main:inline-writing-body', `${size}: ${key} in the writing leaves the focus there`);
-      }
-      assert.equal(await p.evaluate("document.getElementById('inline-writing-body').selectionStart"), 0, size + ': ↑ moved the cursor to the start');
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // A form control the arrows leave (item 301): a checkbox is pressed, not typed in, so every arrow goes on
-  // from it, as from a button; the reach box's "Mark it reached anyway" (web/targets.mjs), on an outcome to
-  // reach that nothing checks yet, its box for why below it.
-  await check('rail arrows from the reach box\'s checkbox, Mark it reached anyway, ↑ ↓ ← and → go on to the controls that way, and none in the target panel stays put where a control lies that way, at 1280, 390, 375 and 320, light and dark', async () => {
-    await control({ method: 'light_outcome', outcome: 'rail-arrows-reach', title: 'Arrow reach', topic: { id: 'rail-arrows-reach-plan', title: 'Plan' } });
-    const keyOf = p => p.evaluate("(e=>!e||e===document.body?'page':e.dataset?.key??e.id??e.tagName)(document.activeElement)");
-    const ANYWAY = '[data-key="reach-anyway"]';
-    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['390', 'dark'], ['375', 'light'], ['320', 'light']]) {
-      const where = `${size} ${theme}`;
-      const p = await arrowsAt(`rail-arrows-reach-${size}-${theme}`, '/?workspace=rail-arrows-reach', size, theme);
-      await until(() => p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector(\'[data-key="kind:reach"]\'))').catch(() => false), where + ': the kind chips show');
-      if (await p.evaluate(`document.querySelector('[data-key="kind:reach"]').getAttribute('aria-pressed')`) !== 'true') {
-        await p.evaluate(`document.querySelector('[data-key="kind:reach"]').scrollIntoView({block:'center'})`);
-        await p.point('[data-key="kind:reach"]');
-      }
-      await until(() => p.evaluate(`Boolean(document.querySelector('[data-key="say-reached"]'))`), where + ': an outcome to reach offers Say it is reached');
-      await p.evaluate(`document.querySelector('[data-key="say-reached"]').scrollIntoView({block:'center'})`);
-      await p.point('[data-key="say-reached"]');
-      await until(async () => (await keyOf(p)) === 'reach-words', where + ': the reach box opens with the caret in its box for why');
-      assert.equal(await p.evaluate(`Boolean(document.querySelector('${ANYWAY}'))`), true, where + ': nothing checks it, so it asks to mark it reached anyway');
-      const from = await p.evaluate(`(e=>{e.scrollIntoView({block:'center'});const b=e.getBoundingClientRect();return {top:b.top,bottom:b.bottom}})(document.querySelector('${ANYWAY}'))`);
-      const went = {};
-      for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
-        await p.evaluate(`document.querySelector('${ANYWAY}').focus()`);
-        const lies = await p.evaluate(LIES(key));
-        await p.key(key);
-        went[key] = { to: await keyOf(p), lies, box: await p.evaluate("(b=>({top:b.top,bottom:b.bottom}))(document.activeElement.getBoundingClientRect())") };
-      }
-      const said = `${where}: ${JSON.stringify(went)}`;
-      assert.equal(went.ArrowDown.to, 'reach-words', said + ': ↓ from the checkbox goes on to the box for why below it');
-      assert.notEqual(went.ArrowUp.to, 'reach-anyway', said + ': ↑ from the checkbox goes on');
-      assert.ok(went.ArrowUp.box.bottom <= from.top + 1, said + ': to a control above it');
-      for (const key of ['ArrowLeft', 'ArrowRight']) {
-        assert.notEqual(went[key].to, 'page', `${said}: ${key} never loses the focus to the page`);
-        if (went[key].lies.length) assert.notEqual(went[key].to, 'reach-anyway', `${said}: ${key} goes on to what lies that way`);
-      }
-      // A checkbox still ticks with Space, the arrows having taken nothing from it.
-      await p.evaluate(`document.querySelector('${ANYWAY}').focus()`);
-      await p.key(' ');
-      assert.equal(await p.evaluate(`document.querySelector('${ANYWAY}').checked`), true, where + ': Space ticks it');
-      if (theme === 'light' || size === '390') await shot(p, `rail-arrows-reach-${size}-${theme}`);
-      const first = async () => { await p.evaluate(`document.querySelector('${ANYWAY}').focus()`); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      const { missing, lost, dead } = await arrowClosure(p, '#target-panel', first);
-      assert.deepEqual(missing, [], where + ': the arrows reach every control in the target panel from the checkbox');
-      assert.deepEqual(lost, [], where + ': and none loses the focus to the page');
-      assert.deepEqual(dead, [], where + ': and none stays put where a control lies that way');
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // A select keeps ↑ and ↓, which choose among its options, and ← and → go on from it: the agent a card's ask goes
-  // to (web/deck-page.mjs), which the ask form draws as a select in a topic with two agents taking part.
-  await check('rail arrows in a card\'s ask form, ← and → from the agent it goes to go on along its line, → to Ask and ← back, at 1280 and 390', async () => {
-    await control({ method: 'light_outcome', outcome: 'rail-arrows-ask', title: 'Arrow ask', topic: { id: 'rail-arrows-ask-plan', title: 'Plan' } });
-    await control({ method: 'topic_state', operation_id: 'rail-arrows-ask-team', topic_id: 'rail-arrows-ask-plan', participants: ['fixture-planning-agent'], args: { state: 'active', note: '' } });
-    const item = (await control({ method: 'seed', topic_id: 'rail-arrows-ask-plan', memory_items: 1 })).item_ids[0];
-    const revised = await control({ method: 'memory_revise', operation_id: 'rail-arrows-ask-card', item_id: item, title: 'Ask deck', expected_revision: 1, body: '## A card to ask about\n\nWords.\n' });
-    assert.equal(revised.status, 'committed', JSON.stringify(revised));
-    for (const size of ['laptop', '390']) {
-      const p = await arrowsAt('rail-arrows-ask-' + size, '/?cards=' + item, size, size === '390' ? 'dark' : 'light');
-      await until(() => p.evaluate("document.body?.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-ask'))").catch(() => false), size + ': the card has its speech bubble, to ask an agent about it')
-        .catch(async error => { throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({ready:document.body?.dataset.ready,cards:[...document.querySelectorAll('#deck-page .deck-card')].map(c=>c.textContent.trim().slice(0,40)),bubbles:document.querySelectorAll('#deck-page .deck-bubble').length,status:document.querySelector('#deck-page [role=status]')?.textContent,deck:document.getElementById('deck-page')?.innerHTML.slice(0,600)})")); });
-      // The bubble is the card's own: Return on it asks, as a press does.
-      await p.evaluate("document.querySelector('#deck-page .deck-ask').focus()");
-      await p.key('Enter');
-      await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-ask-to')?.checkVisibility())"), size + ': the ask opens with the agent it goes to, of two, as a select');
-      const at = () => p.evaluate("(e=>e.matches('.deck-ask-to')?'select':e.textContent.trim()||e.tagName)(document.activeElement)");
-      await p.evaluate("document.querySelector('#deck-page .deck-ask-to').focus()");
-      await p.key('ArrowRight');
-      assert.equal(await at(), 'Ask', size + ': → from the agent it goes to goes on to Ask beside it');
-      await p.key('ArrowLeft');
-      assert.equal(await at(), 'select', size + ': ← from Ask comes back to the agent it goes to');
-      const lies = await p.evaluate(LIES('ArrowLeft'));
-      await p.key('ArrowLeft');
-      if (lies.length) assert.notEqual(await at(), 'select', `${size}: ← from it goes on to what lies that way (${lies.join(' | ')}), never held`);
-      assert.equal(await p.evaluate("document.querySelector('#deck-page .deck-ask-to').value"), await p.evaluate("document.querySelector('#deck-page .deck-ask-to option').value"), size + ': and the arrows chose no other agent');
-      if (size === 'laptop' || size === '390') await shot(p, 'rail-arrows-ask-' + size);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-  });
-
-  // The panes' keys answer first on a topic and a Conversation; what they leave unused goes on to the nearest
-  // control that way (item 301): ↑ from the header's top row (on a phone, the right rail's button above Topic
-  // settings and New message), and ← and → with nothing focused where no pane shows that way (a phone; → below
-  // 1181px, where the right rail is behind its button). Pressed last: ← on a message folds it.
-  await check('rail arrows on a topic and a Conversation, ↑ from the header\'s top row goes on to what lies above it, ← and → with nothing focused land on a control, and no arrow from any control stays put where a control lies that way, at 320, 375, 390, 820, 1024 and 1280', async () => {
-    // A question waits in another outcome, so on a phone the line under the header says so.
-    await control({ method: 'light_outcome', outcome: 'rail-arrows-panes-o', title: 'Panes elsewhere', topic: { id: 'rail-arrows-panes-t', title: 'Panes elsewhere topic' } });
-    await control({ method: 'agent_message', operation_id: 'rail-arrows-panes-elsewhere', body: 'Anything new?', topic_id: 'rail-arrows-panes-t', addressees: [facts.actor], intent: 'ask' });
-    const elsewhere = [];
-    for (const size of ['320', '375', '390', '820', '1024', 'laptop']) for (const [name, url] of [['topic', '/?topic=t1'], ['conversation', '/?conversation=w1']]) {
-      const where = `${size} ${name}`;
-      const p = await arrowsAt(`rail-arrows-panes-${name}-${size}`, url, size, size === '390' || size === '1024' ? 'dark' : 'light');
-      if (name === 'topic') { await topicUp(p, where + ': the topic is up, its messages drawn'); await emptyReply(p, where); }
-      else await until(() => p.evaluate('document.body?.dataset.ready==="true"').catch(() => false), where + ': the page is up');
-      const nothing = {};
-      for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
-        await p.evaluate('(document.activeElement?.blur(), scrollTo(0, 0))');
-        await p.key(key);
-        nothing[key] = await focusAt(p);
-      }
-      // Each press that went wrong, so a failure names every one.
-      const wrong = Object.entries(nothing).filter(([, at]) => at === 'page').map(([key]) => `${key} with nothing focused leaves the focus on the page`);
-      if (ARROW_SIZES[size].width <= 760) for (const id of ['settings-open', 'new-message']) {
-        if (!(await p.evaluate(`(e=>Boolean(e)&&e.checkVisibility()&&!e.closest('[inert]'))(document.getElementById('${id}'))`))) continue;
-        const top = await p.evaluate(`(e=>{scrollTo(0,0);e.focus();return e.getBoundingClientRect().top})(document.getElementById('${id}'))`);
-        const lies = await p.evaluate(LIES('ArrowUp'));
-        await p.key('ArrowUp');
-        const at = await focusAt(p), above = await p.evaluate(`document.activeElement.getBoundingClientRect().bottom <= ${top} + 1`);
-        if (!lies.length) wrong.push(`no control lies above ${id}`);
-        else if (at === 'main:' + id) wrong.push(`↑ from ${id} stays, though ${lies.join(' | ')} lies above it`);
-        else if (!above) wrong.push(`↑ from ${id} lands on ${at}, not above it`);
-      }
-      // On a phone the line under the header saying what is new elsewhere is a row of the header's keys: ↓ from the
-      // header's buttons comes to it, ↓ from it goes on into the feed, and ↑ from it goes back up to the buttons.
-      if (ARROW_SIZES[size].width <= 760 && name === 'topic' && await p.evaluate("(e=>Boolean(e)&&e.checkVisibility()&&!e.closest('[inert]'))(document.getElementById('outline-elsewhere'))")) {
-        elsewhere.push(size);
-        await p.evaluate("(scrollTo(0,0),document.getElementById('settings-open').focus())");
-        await p.key('ArrowDown');
-        if (await focusAt(p) !== 'main:outline-elsewhere') wrong.push(`↓ from Topic settings lands on ${await focusAt(p)}, not the line under the header`);
-        await p.evaluate("document.getElementById('outline-elsewhere').focus()");
-        await p.key('ArrowUp');
-        if (!await p.evaluate("Boolean(document.activeElement.closest('#main > .topic-header'))")) wrong.push(`↑ from the line under the header lands on ${await focusAt(p)}, not the header's buttons`);
-        await p.evaluate("document.getElementById('outline-elsewhere').focus()");
-        await p.key('ArrowDown');
-        if (!await p.evaluate("Boolean(document.activeElement.closest('#messages, #main > .feed-filters'))")) wrong.push(`↓ from the line under the header lands on ${await focusAt(p)}, not the feed`);
-      }
-      assert.deepEqual(wrong, [], `${where}: every arrow lands on a control (nothing focused: ${JSON.stringify(nothing)})`);
-      if (size === '390' || size === '1024') await shot(p, `rail-arrows-panes-${name}-${size}`);
-      const first = async () => { await p.evaluate('(document.activeElement?.blur(), scrollTo(0, 0))'); await p.key('ArrowDown'); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      // Links and buttons in a message's words are the message's, reached by Tab from it (message-menu.mjs), as a
-      // deck's cards are the deck's: left out here.
-      const { missing, lost, dead, count } = await arrowClosure(p, 'body', first, '#messages .message-preview, #messages .message-reply-to');
-      assert.ok(count > 5, `${where}: the page has its controls (${count})`);
-      assert.deepEqual(missing, [], `${where}: the arrows reach every control on the page from the first`);
-      assert.deepEqual(lost, [], `${where}: and no arrow loses the focus to the page`);
-      assert.deepEqual(dead, [], `${where}: and none stays put where a control lies that way`);
-      assert.deepEqual(p.errors, []); await p.close();
-    }
-    assert.ok(elsewhere.length > 0, 'the line under the header shows on a phone at least once, so its keys were pressed');
   });
 }

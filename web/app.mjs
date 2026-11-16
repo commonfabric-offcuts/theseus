@@ -1,5 +1,5 @@
 import { mountFeedFences } from './feed-fence-copy.mjs';
-import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
+import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -351,11 +351,10 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 // title; the topic's own goes in the composer while the composer shows, and
 // under the title until then; the Reader shows its writing's as well. Whatever
 // told the page of a change, all are drawn again from what the registry holds
-// now, so no editor an event hands in draws or erases one. Returns what it
-// drew, which is what the departure guard names.
+// now, so no editor an event hands in draws or erases one.
 // A writing with no reply in doubt but one set aside whose words are kept only
 // on its line has a Set aside chip in the same place, which opens the same list
-// (docs/replies-in-doubt.md); the guard never names it.
+// (docs/replies-in-doubt.md).
 function paintReview() {
   const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
   const drawn = [...entries, ...(registry?.keptAside ?? []).filter(kept => !entries.some(entry => entry.editor.key === kept.editor.key))];
@@ -368,7 +367,6 @@ function paintReview() {
   reviewControl($('inline-pending'), drawn.find(inComposer));
   const reading = registry?.current?.editors.reply?.key;
   reviewControl($('pending-submissions'), drawn.find(entry => entry.editor.key === reading));
-  return entries;
 }
 function reviewControl(host, entry) {
   if (!entry) { host.replaceChildren(); return; }
@@ -756,40 +754,27 @@ function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const first = writing || field ? null : firstInView();
-  const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
-  const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
+  const anchor = writing ? inline.field : field ? at : listAnchor();
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
-  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
-  const landed = control && last ? loadedAfter(list, present, last) : null;
-  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
-// messages, first in view at the top edge, what they load comes in where
-// they were, and the Notebook below moves down, rather than holding still
-// while the page jumps past all of it: the first card loaded after the last
-// one drawn before goes where the control was. Since item 465 the New
-// message composer rests between the last card and More, so the list's top
-// no longer holds that place. When the repaint draws nothing after the last
-// card, the list itself holds by its top. Loaded replies can gather messages
-// above into their stacks; the page still stays where it was. A card in a
-// reply stack is a card in view of its own, so a reply arriving above it in
-// its stack moves it no more than one above the stack.
+// messages, first in view at the top edge, the list itself holds by its top:
+// what they load comes in where they were, and the Notebook below moves down,
+// rather than holding still while the page jumps past all of it. Loaded
+// replies can gather messages above into their stacks; the page still stays
+// where it was. A card in a reply stack is a card in view of its own, so a
+// reply arriving above it in its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
-function firstInView() {
-  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
-}
-// The first card drawn now, after last, that the list did not hold before:
-// one loaded, not one a fold or a join only draws again.
-function loadedAfter(list, before, last) {
-  return entries(list).find(entry => !before.has(entry) && drawn(list, entry.dataset.id) && Boolean(last.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING));
+function listAnchor() {
+  const first = [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+  return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;
 }
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
@@ -834,7 +819,7 @@ function paintViews(kind) {
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
-    drawFeed(true);
+    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
     paintMoreMessages();
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
@@ -876,9 +861,7 @@ function paintViews(kind) {
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
-      // A new card goes above the New message composer resting under the messages (item 465), so the stacks
-      // drawn next move no card past it.
-      while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
+      while (following && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
@@ -957,23 +940,9 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
+    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
   return stackFeed;
-}
-// The topic's feed, its Notebook and its Team, drawn or not, with any other
-// parts of the page named. The New message sheet rests in the feed, just above
-// More (item 465), and a dialog in a box that is not drawn shows nothing, up
-// over the page or not: where the feed is not drawn (an outcome's page, Health,
-// a topic the reader can no longer read) the sheet rests at the page's end
-// instead, put back first if it was up in the feed, its writing kept
-// (arrangeStacks, which takes it back above More once the feed is drawn).
-function drawFeed(on, ...parts) {
-  const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
-  for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
-  if (on === inFeed) return;
-  if (!on && sheet.open) sheet.close();
-  if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
 }
 // The conversation's own word on a message: its item and the asks that wait,
 // as the conversation's newest read says, else as the page's messages say.
@@ -1200,7 +1169,6 @@ function paintReaderMark() {
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
   paintReaderThumb$();
   paintReaderStar();
-  paintReaderAside();
 }
 // The message the Reader shows, with its acts: its star and fold there are
 // the reader's own (stack-feed.mjs). The page's reply stacks hold it, or, for
@@ -1240,27 +1208,6 @@ function starFromReader() {
   if (!item) return;
   stackFeed.star(item);
 }
-// The archive button beside the star (item 378): Move below More for the
-// dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
-// the count of the messages that go with it (StackFeed.asideOffer); Bring back once it is
-// there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
-function readerAside() {
-  const item = readerFeedItem();
-  return item && views.messages.has(item.id) ? stackFeed.asideOffer(item.id) : null;
-}
-function paintReaderAside() {
-  const button = $('reader-aside'), offer = readerAside();
-  button.hidden = !offer;
-  if (!offer) return;
-  const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
-  button.querySelector('.aside-count').textContent = String(offer.count);
-  button.setAttribute('aria-pressed', String(offer.below));
-  button.setAttribute('aria-label', words); button.title = words;
-}
-function asideFromReader() {
-  const offer = readerAside();
-  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
-}
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
 function readerItem() {
@@ -1285,7 +1232,9 @@ async function replyMessage(id, card, chosen = null) {
 function loadMarks() {
   if (!marks || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
-  return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id));
+  const landed = reading('marks');
+  return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id))
+    .then(read => { if (read) landed(); return read; });
 }
 // The topic's own Notebook pages' read state, as loadMarks: nothing for a
 // denied topic, and owed while the runtime changed.
@@ -1317,7 +1266,10 @@ async function toggleMark() {
   let receipt;
   try { receipt = await marks.send(ref.id, !state.marked, state.mark_revision); }
   catch (error) {
-    if (registry.isSourceCurrent(p)) reader.notice(Error('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.', { cause: error }));
+    const { kind, why } = notTaken({ error });
+    const words = kind === 'unreached' ? 'Connection interrupted; whether the mark was saved is unknown.' : kind === 'refused' ? `The mark was not saved${why ? `: ${why}` : ''}.`
+      : kind === 'unconfirmed' ? `Not known whether the mark was saved: ${NOT_TAKEN[kind]}.` : `The mark was not saved: ${NOT_TAKEN[kind]}.`;
+    if (registry.isSourceCurrent(p)) reader.notice(Error(`${words} Press again to send the same request.`, { cause: error }));
     return;
   }
   // An explicit Mark read places the New line afresh, wherever the oldest
@@ -1385,11 +1337,25 @@ async function markFromMenu(messageId, marked) {
     const now = marks.state(messageId);
     if (receipt?.error?.code === 'REVISION_CONFLICT' && now?.marked === marked) return;
     if (!state && receipt?.error?.code === 'REVISION_CONFLICT' && now) receipt = await marks.send(messageId, marked, now.mark_revision);
-  } catch (error) { status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error })); return; }
+  } catch (error) {
+    if (notTaken({ error }).kind === 'unreached') status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error }));
+    else markRefused(messageId, marked, { error });
+    return;
+  }
   if (receipt?.status === 'committed' && !marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
-  if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  else if (receipt?.status !== 'committed') status(receipt?.error ?? 'The mark was not confirmed. Choose it again to send the same request.');
+  if (receipt?.status !== 'committed') markRefused(messageId, marked, { receipt });
 }
+// A mark from a card's menu that Theseus answered without taking: said with
+// its card until the marks, read again after it, show the card as Core holds
+// them (stack-feed.mjs notTaken).
+function markRefused(messageId, marked, failure) {
+  cardSaid('message.mark', views.messages.get(messageId) ?? { id: messageId }, { marked }, 'marks')(failure);
+  run(loadMarks);
+}
+// What says a card command Theseus answered without taking (stack-feed.mjs
+// notTaken), and the read of what shows the cards that ends it (reading).
+function cardSaid(kind, item, args, shows) { return failure => feedOf().notTaken(kind, item, args, failure, shows); }
+function reading(what) { return stackFeed ? stackFeed.reading(what) : () => {}; }
 // A Notebook page's link (docs/links.md, "A Notebook page's link"): the page as
 // it stands, or with revision, that revision.
 async function copyPageLink(source, revision, say) {
@@ -1671,7 +1637,7 @@ function updateStatus(state) {
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
-    drawFeed(false);
+    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
@@ -1989,7 +1955,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds, reading });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2131,7 +2097,7 @@ async function initialize() {
     },
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
-    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   mountFeedFences($('messages'));
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
@@ -2139,8 +2105,8 @@ async function initialize() {
   // (Core settled the person's delivery of it, or cleared their mark on it)
   // places the New line afresh, as Mark read does, wherever the oldest unread
   // message now is; one on a message already read moves nothing.
-  const thumbMessage = async (item, on) => {
-    const receipt = await reactions.thumb(item, on);
+  const thumbMessage = async (item, on, said = null) => {
+    const receipt = await reactions.thumb(item, on, said);
     if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
     return receipt;
   };
@@ -2161,7 +2127,9 @@ async function initialize() {
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
-    thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
+    // What Theseus answered without taking a card's 👍 or answer is said with its card (stack-feed.mjs notTaken).
+    thumb: (item, on) => act(thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
+    answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item) });
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
@@ -2187,7 +2155,6 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
-  $('reader-aside').onclick = () => asideFromReader();
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
@@ -2212,7 +2179,7 @@ async function initialize() {
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
-  topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
+  topicNavigation = new TopicNavigation({ registry, current: route,
     navigateTarget: (target, still) => { marks.leave(); if (!shell.go(target, still)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics; the outline
@@ -2431,15 +2398,12 @@ async function loadConversation() {
   if (!here.read && here.has) paintConversationNav();
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
-    const view = answer.conversation;
-    // On the page the waits and the items are taken together: a paint between the two reads
-    // (the messages' own, on every feed read) would put the new waits beside an item's old state.
-    const page = here.page && view ? checkedView(await api.view('topic_messages', { topic_id: view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
-      bootstrap.instance_id) : null;
-    here.view = view; here.read = true;
-    for (const item of page?.items ?? []) here.items.set(item.id, item);
+    here.view = answer.conversation; here.read = true;
     paintConversationNav();
-    if (page) {
+    if (here.page && here.view) {
+      const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
+        bootstrap.instance_id);
+      for (const item of page.items) here.items.set(item.id, item);
       if (topic) paintHeader(topic);
       paintConversationPage();
     }
@@ -2679,7 +2643,7 @@ async function initializeOutcomePage(route) {
   const shown=route.page?{id:route.page,revision:route.revision??null}:null;
   if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
   status('');
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   sentHost=$('sent-to-you');
@@ -2802,7 +2766,7 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
 // Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('pipeline-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
@@ -2827,7 +2791,7 @@ async function initializePipelinePage(route) {
 // says at once when the live feed drops.
 async function initializeHealthPage() {
   status('');
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   $('health-link').setAttribute('aria-current','page');
@@ -2846,7 +2810,7 @@ async function initializeHealthPage() {
 // back to the page in its topic or outcome. The deck reads again on commits.
 async function initializeDeckPage(route) {
   status('');
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   // The way back names the page's topic or outcome, or says only "The page" when that read fails.
@@ -2867,7 +2831,7 @@ async function initializeDeckPage(route) {
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
   status('');
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('measurements-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
@@ -2978,7 +2942,7 @@ function enableNewTopic(workspace) {
   topicLine={workspace,line};
 }
 async function initializeOpeningPage(route) {
-  drawFeed(false,'topic-pending','inline-composer');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -3028,7 +2992,7 @@ async function initializeUnfinished(route) {
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {
-  drawFeed(false,'topic-pending','inline-composer','topic-navigation');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
   outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});
@@ -3058,7 +3022,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).

@@ -1343,6 +1343,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
           assert.deepEqual([button.text, button.title, button.inside], ['Reload', 'Reload Theseus', true], `${width}: Reload says so, with a tooltip, in the window`);
           if (device === 'phone') assert.ok(button.width >= 44 && button.height >= 44, `${width}: Reload is a finger's size: ${JSON.stringify(button)}`);
         }
+        // On a phone the rail is folded and its notices stand above the topic, inset from the screen's top and sides.
+        if (device === 'phone') {
+          const box = await p.evaluate(`(() => { const r = document.getElementById('topic-navigation-status').getBoundingClientRect();
+            return { folded: !document.querySelector('.rail').classList.contains('open'), left: r.left, right: innerWidth - r.right, top: r.top + scrollY }; })()`);
+          assert.ok(box.folded && box.left >= 12 && box.right >= 12 && box.top >= 8, `${width}: the notice sits inset from the screen's top and sides, the rail folded: ` + JSON.stringify(box));
+        }
         assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width}: nothing scrolls sideways`);
         for (const look of ['light', 'dark']) { await scheme(p, look); await shot(p, `edit-build-updated-${width}-${look}`); }
         await scheme(p, '');
@@ -1616,12 +1622,19 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // Edit on the person's own message as they reach it: from its bar. Once a reply heads it into a stack shown as its
   // row alone (docs/reply-stacks.md), which has no bar, the person lights the row and presses it, which shows the
   // message whole with its bar (tests/stack_native.mjs, "a head shown as one row has no bar").
+  // A reply of the person's own folds their message (docs/reply-stacks.md): in a dossier its folded row stands under
+  // the head's row, which stays the title (item 471), and a press on that folded row shows it whole.
   const editReached = async (p, device, id) => {
     const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    const folded = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id) + ' > .message-folded > .folded-author')})?.getClientRects().length)`);
     if (!await shown()) {
       // Lit already (the Reader closing lights the message it showed), the next press on the row shows it whole.
       if (!(await lit(p)).includes(id)) await light(p, device, id);
-      await press(p, device, `${card(id)} .stack-who`);
+      if (!await shown() && !await folded()) {
+        await press(p, device, `${card(id)} .stack-who`);
+        await until(async () => await shown() || await folded(), `${device}: a press on the head's row shows it, whole or as its folded row`);
+      }
+      if (await folded()) await press(p, device, `${card(id)} > .message-folded > .folded-author`);
       await until(shown, `${device}: a press on the head's row shows it whole`);
     }
     await menuOf(p, device, id); await choose(p, device, 'Edit');
