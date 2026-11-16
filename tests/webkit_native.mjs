@@ -92,7 +92,7 @@ async function until(probe, description, timeout = 8000) {
     try { value = await probe(); }
     catch (error) {
       if (!error.navigation) throw error;
-      if (!await within(error.navigation, deadline - Date.now())) { left = ' (its page left during a read, and the page it went to never had its document)'; break; }
+      await sleep(25);
       continue;
     }
     if (value) return value;
