@@ -5,14 +5,17 @@ from __future__ import annotations
 
 Usage: tools/release_check.py --out ABSOLUTE_DIR [--chrome PATH] [--playwright DIR] [--python PATH] [--node PATH] [--repeats N]
          [--only STEP,... | --live COMMIT] [--cli LIVE/bin/aim-next --profile PROFILE [--base] [--report OUTCOME]]
+         [--quarantine-at COMMIT|event]
 
 The checkout this file lives in is the one checked. It must be clean, so the
 summary speaks for exactly its HEAD commit. Python units, node units, the
 deploy's refusals, every native browser mode and the wake replay run one at a
 time; any failure makes the run fail (exit 1) and a refusal before running
 anything exits 2. With --live, a change that none of the browser modes or the
-wake replay could see skips them, and the summary says so. docs/tools.md has
-the details.
+wake replay could see skips them, and the summary says so. With --quarantine-at,
+a browser step whose only failures are cases the policy at that earlier commit
+quarantines (tools/quarantine.py) does not fail the run's exit; its raw verdict
+and its failed cases stay in the summary. docs/tools.md has the details.
 """
 
 import collections
@@ -516,14 +519,22 @@ def base_code(root, commit, into):
         raise Refused("--base: the live commit %s could not be read from this repository: %s%s" % (commit, error, untar.stderr.decode("utf-8", "replace")))
 
 
-def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None, base=None, report=None, live=None):
+def quarantined(steps):
+    """The (step, case) of every failed case a step's quarantine record holds, in the steps' order."""
+    return [{"step": step["name"], "case": case} for step in steps for case in (step.get("quarantine") or {}).get("held") or []]
+
+
+def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None, base=None, report=None, live=None,
+          quarantine_at=None):
     """Run every step serially (or only those named) and write summary.json; returns the summary.
 
     live: the live commit; when nothing changed since it is a path the skippable steps could see, they are skipped and
     the summary's `skipped` says so (item 166). base: (cli, profile) to read the live release with and rerun the
     replayed steps on its code; report:
     (cli, profile, outcome) to report the run on the outcome's open release piece; playwright is the playwright-core
-    directory PLAYWRIGHT_HARNESSES load, without which they find none and fail."""
+    directory PLAYWRIGHT_HARNESSES load, without which they find none and fail. quarantine_at: the earlier commit whose
+    policy's quarantine the browser steps are judged with, or "event" for the GitHub run's event base (item 549); a
+    quarantine that cannot be read quarantines nothing, and the summary's `quarantine` says why."""
     started = now()
     commit = preflight(root, out, chrome, python, node)
     names = list(REQUIRED) if only is None else list(only)
@@ -547,6 +558,17 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
             skipped = {"steps": list(SKIPPABLE), "live": live, "changed": changed, "why": skipped_words(live)}
             names = [name for name in names if name not in SKIPPABLE]
     base_commit = live_commit(base[0], base[1]) if base else None
+    held_by, entries = None, None
+    if quarantine_at is not None:
+        from tools import quarantine
+        held_by = {"at": None if quarantine_at == "event" else quarantine_at}
+        try:
+            held_by["at"] = quarantine.event_base(os.environ) if quarantine_at == "event" else quarantine_at
+            entries = quarantine.at_commit(root, held_by["at"])
+        except quarantine.Refused as refusal:
+            held_by["refused"] = str(refusal)
+        else:
+            held_by["entries"] = len(entries)
     out.mkdir(parents=True, exist_ok=True)
     tools = tools_of(root, chrome, python, node)
     base_dir = Path(tempfile.mkdtemp(prefix="theseus-release-base-")).resolve() if base else None
@@ -585,9 +607,19 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
             step = native[name]
             evidence = out / "native" / step.name
             evidence.mkdir(parents=True)
-            return run_step(name, [node, step.harness, chrome, str(evidence)] + list(step.flags),
-                            root, out, lambda text: native_counts(step, evidence, text), step.harness,
-                            playwright=playwright if step.harness in PLAYWRIGHT_HARNESSES else None)
+            result = run_step(name, [node, step.harness, chrome, str(evidence)] + list(step.flags),
+                              root, out, lambda text: native_counts(step, evidence, text), step.harness,
+                              playwright=playwright if step.harness in PLAYWRIGHT_HARNESSES else None)
+            # A harness's stack names the checkout as node resolved it.
+            record = (quarantine.judge_step(result, out, entries, root, commit, str(Path(root).resolve()))
+                      if entries is not None else None)
+            if record is not None:
+                result["quarantine"] = record
+                if record["held"] or record["unheld"] or record.get("refused"):
+                    print(json.dumps({"name": name, "quarantined": record["held"], "green": record["green"],
+                                      "not_quarantined": record["unheld"], **({"refused": record["refused"]} if "refused" in record else {})}),
+                          flush=True)
+            return result
         base_steps, steps = [], []
         if reporter is not None:
             reporter.start(len(names))
@@ -615,6 +647,12 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
     if base_dir is not None:
         # The live release's code measured with this commit's release check, harnesses and replay file (D32).
         summary["base"] = {"commit": base_commit, "tools": tools, "steps": base_steps}
+    if held_by is not None:
+        # The raw verdict above stays as the steps ran; green is the run's verdict with the quarantine at the event base.
+        held_by["held"] = quarantined(steps)
+        held_by["green"] = (entries is not None and unchanged and [s["name"] for s in steps] == names
+                            and all(s["passed"] or (s.get("quarantine") or {}).get("green") is True for s in steps))
+        summary["quarantine"] = held_by
     write_summary(out, summary)
     return summary
 
@@ -710,6 +748,7 @@ def main(argv=None):
     parser.add_argument("--profile")
     parser.add_argument("--base", action="store_true")
     parser.add_argument("--report", metavar="OUTCOME")
+    parser.add_argument("--quarantine-at", metavar="COMMIT|event")
     args = parser.parse_args(argv)
     try:
         if (args.base or args.report) and not (args.cli and args.profile):
@@ -718,7 +757,8 @@ def main(argv=None):
         summary = check(REPO, args.out, chrome, args.python, args.node, playwright_path(args.playwright), repeats=args.repeats,
                         only=[name for name in args.only.split(",") if name] if args.only is not None else None,
                         base=(args.cli, args.profile) if args.base else None,
-                        report=(args.cli, args.profile, args.report) if args.report else None, live=args.live)
+                        report=(args.cli, args.profile, args.report) if args.report else None, live=args.live,
+                        quarantine_at=args.quarantine_at)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         # Recorded only where the run itself could have written, so a refusal never changes the checkout.
@@ -726,9 +766,12 @@ def main(argv=None):
             write_summary(args.out, {"tool": TOOL, "refused": str(refusal), "passed": False, "at": now()})
         return 2
     failed = [step["name"] for step in summary["steps"] if not step["passed"]]
-    print(json.dumps({"commit": summary["commit"], "passed": summary["passed"], "failed": failed,
-                      "skipped": (summary.get("skipped") or {}).get("why"), "summary": str(args.out / "summary.json")}))
-    return 0 if summary["passed"] else 1
+    held_by = summary.get("quarantine") or {}
+    print(json.dumps(dict({"commit": summary["commit"], "passed": summary["passed"], "failed": failed,
+                           "skipped": (summary.get("skipped") or {}).get("why"), "summary": str(args.out / "summary.json")},
+                          **({"quarantined": held_by.get("held"), "green": held_by.get("green") is True,
+                              **({"quarantine_refused": held_by["refused"]} if "refused" in held_by else {})} if held_by else {}))))
+    return 0 if summary["passed"] or held_by.get("green") is True else 1
 
 
 if __name__ == "__main__":

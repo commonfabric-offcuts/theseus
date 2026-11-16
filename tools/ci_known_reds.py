@@ -327,7 +327,8 @@ def unit_evidence(step, out, expected):
 def load_policy(policy, base_root):
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
     fields = {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'}
-    require(fields <= set(policy) <= fields | {'transitions'},
+    # quarantine is the release check's list (tools/quarantine.py, item 549), read and checked there; never an admission.
+    require(fields <= set(policy) <= fields | {'transitions', 'quarantine'},
             'invalid baseline fields')
     require(unique(policy['required'], 'policy required steps') == set(release_check.REQUIRED), 'incomplete reviewed steps')
     require(set(policy['inventory']) == set(NATIVE) | set(UNITS), 'incomplete reviewed check inventory')

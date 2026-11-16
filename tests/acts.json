@@ -15223,8 +15223,8 @@
    "break": [
     [
      "tools/train.py",
-     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\")",
-     "\"tools/ci_known_reds.py\")"
+     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\",",
+     "\"tools/ci_known_reds.py\","
     ]
    ],
    "check": {

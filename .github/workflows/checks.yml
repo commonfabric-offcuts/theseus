@@ -10,8 +10,12 @@
 # the combine job folds them into the one whole-run summary the deploy reads
 # (docs/tools.md), published as the release-check artifact.
 #
-# A red shard is a red check. Cases that fail on live today fail here too until
-# they are fixed or recorded as expected; this workflow does not hide them.
+# A red shard is a red check. The one exception is the quarantine (item 549,
+# docs/ci-known-reds.md): a browser case live fails too, quarantined in the
+# policy at the event's base (.github/check-baseline.json there, never this
+# commit's copy), still runs and still fails in the evidence, but a step whose
+# only failures are quarantined cases failing where they were quarantined does
+# not fail its shard or the whole run. Every other red stays red.
 #
 # This workflow is the producer, and nothing more: it runs the candidate's own
 # code, from the merge commit's copy of this file, and publishes the evidence.
@@ -132,7 +136,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}"
+          # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
+          /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
+            --quarantine-at event
       - name: Write this shard's receipt
         if: always()
         shell: bash
@@ -298,6 +304,21 @@ jobs:
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
+          # The quarantine (item 549): raw verdicts above stay as the shards ran them. A step that failed is green only when
+          # its quarantine record holds exactly its failed cases and no other, and every shard read one event base.
+          def held(step):
+              record = step.get("quarantine") or {}
+              failed = (step.get("counts") or {}).get("failed") or []
+              return (record.get("green") is True and not record.get("unheld") and not record.get("refused")
+                      and bool(failed) and sorted(record.get("held") or []) == sorted(failed))
+          bases = {json.dumps((d.get("quarantine") or {}).get("at")) for d in timed}
+          combined["quarantine"] = {
+              # The event base each shard read its quarantine at: one, or the run is not green.
+              "at": [json.loads(b) for b in sorted(bases)],
+              "held": [{"step": step["name"], "case": case} for step in steps for case in (step.get("quarantine") or {}).get("held") or []],
+              "green": (not missing and combined["tree_unchanged"] and len(bases) == 1
+                        and all(step["passed"] is True or held(step) for step in steps)),
+          }
           json.dump(combined, open(out, "w"), indent=1)
           # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
           # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
@@ -321,8 +342,9 @@ jobs:
           if observed:
               provenance["base_at_run"] = base_at_run
           json.dump(provenance, open(os.path.join(os.path.dirname(out), "provenance.json"), "w"), indent=1)
-          print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"]}))
-          sys.exit(0 if combined["passed"] else 1)
+          print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"],
+                            "quarantined": combined["quarantine"]["held"], "green": combined["quarantine"]["green"]}))
+          sys.exit(0 if combined["passed"] or combined["quarantine"]["green"] else 1)
           PY
       - name: Keep the whole run's summary
         if: always()

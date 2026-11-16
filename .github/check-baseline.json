@@ -120731,5 +120731,2041 @@
         ]
       }
     }
+  ],
+  "quarantine": [
+    {
+      "step": "native-colors",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "colors open a message in the Reader and reply: the New line fades out where it is, with no Refresh",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[3], true, 'none', 1], theme + ': where it was, under the oldest message newer than its own, inert: ' + JSON.stringify({ faded, ids, reply }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "await check('colors open a message in the Reader and reply: the New line fades out where it is, with no Refresh', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await newLineCheck({check,page,until,view,control,shot,observations,facts});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[3], true, 'none', 1], theme + ': where it was, under the oldest message newer than its own, inert: ' + JSON.stringify({ faded, ids, reply }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "await check('colors open a message in the Reader and reply: the New line fades out where it is, with no Refresh', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await newLineCheck({check,page,until,view,control,shot,observations,facts});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "assert.deepEqual([faded.after, faded.inert, faded.pointer, (await drawn(p)).count], [ids[3], true, 'none', 1], theme + ': where it was, under the oldest message newer than its own, inert: ' + JSON.stringify({ faded, ids, reply }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/new_line_native.mjs",
+              "text": "await check('colors open a message in the Reader and reply: the New line fades out where it is, with no Refresh', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await newLineCheck({check,page,until,view,control,shot,observations,facts});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-colors",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "colors reading colors distinguish authors and preserve source geometry",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "chromium laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "chromium laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "chromium phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "chromium phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "webkit laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "webkit laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "if (shape === 'stacked') assert.ok(long.lines >= 17, `laptop stacked writing a long reply shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "webkit phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-compose",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "webkit phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "assert.ok(long.lines >= 7, `phone writing a long reply with the keyboard up shows ${long.lines} lines`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await action(); results.push({ name: full, passed: true, ms: Date.now() - started }); console.log(`PASS ${full}`); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "await check(`phone ${scheme}: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_compose_native.mjs",
+              "text": "try { await phase(); } finally { await browser.close(); browserClosed = true; }",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-conversation",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "const waiting = await until(async () => { const d = await dots(p, item); return d?.running === 3 && d; }, 'the three dots pulse');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await conversationChecks({check,page,until,control,view,facts,replace,shot});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "const waiting = await until(async () => { const d = await dots(p, item); return d?.running === 3 && d; }, 'the three dots pulse');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await conversationChecks({check,page,until,control,view,facts,replace,shot});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "const waiting = await until(async () => { const d = await dots(p, item); return d?.running === 3 && d; }, 'the three dots pulse');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/conversation_native.mjs",
+              "text": "await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await conversationChecks({check,page,until,control,view,facts,replace,shot});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline Remove held by a finger beside an image whose upload fails removes its own image, nothing under the finger is pressed, and the field keeps the focus",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "const { focus } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'kept', touch: true, fail: true, from: '#inline-writing-body' });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove held by a finger beside an image whose upload fails removes its own image, nothing under the finger is pressed, and the field keeps the focus', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "const { focus } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'kept', touch: true, fail: true, from: '#inline-writing-body' });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove held by a finger beside an image whose upload fails removes its own image, nothing under the finger is pressed, and the field keeps the focus', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "const { focus } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'kept', touch: true, fail: true, from: '#inline-writing-body' });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove held by a finger beside an image whose upload fails removes its own image, nothing under the finger is pressed, and the field keeps the focus', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline Remove held down while its upload finishes removes the image at 1440 wide with the name screen.png",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await holdRemoveThroughUpload(p, '#inline-attachments', held, until, { name });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await holdRemoveThroughUpload(p, '#inline-attachments', held, until, { name });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_images_native.mjs",
+              "text": "await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await holdRemoveThroughUpload(p, '#inline-attachments', held, until, { name });",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline Remove held down while its upload finishes removes the image at 390 wide with the name Whiteboard photo from the Tuesday planning session, take two.png",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline Remove moves focus to the writing only while the person has not moved it",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(removed, 'Remove finished');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove moves focus to the writing only while the person has not moved it', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(removed, 'Remove finished');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove moves focus to the writing only while the person has not moved it', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "throw Error(`Timed out: ${description}`);",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await until(removed, 'Remove finished');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline Remove moves focus to the writing only while the person has not moved it', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline a finger that goes down below the image strip presses nothing there as an upload above fails",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.deepEqual(await p.evaluate('({rows:[...document.querySelectorAll(\"#inline-attachments .image-choice\")].map(r=>r.firstElementChild.textContent.split(\" \u00b7 \")[0]),remove:!document.querySelector(\"[data-slid]\").disabled,focus:document.activeElement?.id})'), { rows: [LONG_NAME, 'screen.png'], remove: true, focus: 'inline-writing-body' }, 'both images stay, Remove was never pressed, and focus stays in the message field');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline a finger that goes down below the image strip presses nothing there as an upload above fails', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.deepEqual(await p.evaluate('({rows:[...document.querySelectorAll(\"#inline-attachments .image-choice\")].map(r=>r.firstElementChild.textContent.split(\" \u00b7 \")[0]),remove:!document.querySelector(\"[data-slid]\").disabled,focus:document.activeElement?.id})'), { rows: [LONG_NAME, 'screen.png'], remove: true, focus: 'inline-writing-body' }, 'both images stay, Remove was never pressed, and focus stays in the message field');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline a finger that goes down below the image strip presses nothing there as an upload above fails', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.deepEqual(await p.evaluate('({rows:[...document.querySelectorAll(\"#inline-attachments .image-choice\")].map(r=>r.firstElementChild.textContent.split(\" \u00b7 \")[0]),remove:!document.querySelector(\"[data-slid]\").disabled,focus:document.activeElement?.id})'), { rows: [LONG_NAME, 'screen.png'], remove: true, focus: 'inline-writing-body' }, 'both images stay, Remove was never pressed, and focus stays in the message field');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline a finger that goes down below the image strip presses nothing there as an upload above fails', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-inline",
+      "case": {
+        "engine": null,
+        "expectedFailure": false,
+        "name": "inline find restore owner switch arrival and exact source-free send",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline find restore owner switch arrival and exact source-free send', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline find restore owner switch arrival and exact source-free send', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await action();",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_inline_native.mjs",
+              "text": "await check('inline find restore owner switch arrival and exact source-free send', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_persistence_native.mjs",
+              "text": "await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "native-webkit-colors",
+      "case": {
+        "engine": "webkit",
+        "expectedFailure": false,
+        "name": "colors reading colors distinguish authors and preserve source geometry",
+        "phase": null
+      },
+      "owner": "runner lane",
+      "leave": "after ten of ten whole-step passes on live once it is fixed; each run records the pass under steps[].quarantine.cases",
+      "red_in": [
+        {
+          "run": 43756859856,
+          "commit": "31cecd3349adf48e6330eba6379d2c510de04bc9",
+          "release": 80,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "try { await action(); results.push({ name, passed: true, engine: 'webkit', ms: Date.now() - started }); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "await readingColorsCheck({ check, page, until, facts, view, control, field, shot, observations });",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43762908423,
+          "commit": "e73e6e1e69cc051e619a95798ffc62c3c0d51b1e",
+          "release": 81,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "try { await action(); results.push({ name, passed: true, engine: 'webkit', ms: Date.now() - started }); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "await readingColorsCheck({ check, page, until, facts, view, control, field, shot, observations });",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        },
+        {
+          "run": 43771952998,
+          "commit": "24a7d9da5151b3b961e672f33d5fea11fcf63d08",
+          "release": 82,
+          "stage": [
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "assert.deepEqual(failures,[],'requested reading colors');",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "try { await action(); results.push({ name, passed: true, engine: 'webkit', ms: Date.now() - started }); }",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/reader_colors_native.mjs",
+              "text": "await check('colors reading colors distinguish authors and preserve source geometry', async () => {",
+              "count": 1,
+              "index": 0
+            },
+            {
+              "path": "tests/webkit_native.mjs",
+              "text": "await readingColorsCheck({ check, page, until, facts, view, control, field, shot, observations });",
+              "count": 1,
+              "index": 0
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

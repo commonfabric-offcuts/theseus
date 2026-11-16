@@ -37,7 +37,8 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
 DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
-               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json")
+               "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
+               "tools/quarantine.py")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
 # GitHub's REST API paths for one workflow run, one check run and one pull request, and its compare of a commit with a
