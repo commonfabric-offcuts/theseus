@@ -11,8 +11,14 @@
 // where Return does something else, or as the card is drawn again with other
 // words. The light is painted as a highlight over the card's own words
 // (CSS.highlights), so the card's nodes and what it stores stay as they are.
-import { drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
+// A highlight paints only its words' own height, so the rest of the dark field,
+// as tall line by line as the Reader's (lit-field.mjs), is painted behind the
+// words on the background of the box they show in (the card, or a code block,
+// a table or an excerpt that clips them), which moves nothing on the card and
+// is clipped and scrolled with the words.
+import { drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
+import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
 
 const NAME = 'lit-passage';
 const WORDS = ':scope > .message-preview';
@@ -24,7 +30,7 @@ export class FeedPassages {
   constructor({ host, lights, entryOf, doc = globalThis.document }) {
     Object.assign(this, { host, lights, entryOf, doc });
     this.win = doc.defaultView;
-    this.lit = null; this.pointer = null; this.shifted = false;
+    this.lit = null; this.pointer = null; this.shifted = false; this.fielded = [];
     // A card drawn again under its light with other words (the whole of a
     // cut-off message arriving in place of its excerpt, an edit) puts the
     // light out, as an edit drawn into the Reader puts out the passage lit
@@ -36,6 +42,9 @@ export class FeedPassages {
     this.redrawn = new this.win.MutationObserver(() => {
       if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();
     });
+    // The words wrapping anew (the window or the card resized, the card
+    // growing to its whole message) move the lines the field lies behind.
+    this.sized = new this.win.ResizeObserver(() => this.field());
     // A Shift-click lights, as a Shift-move does, and opens nothing; the
     // browser's own selection is kept from growing beside it, so what lights
     // is what quotes.
@@ -117,18 +126,54 @@ export class FeedPassages {
     this.doc.getSelection()?.removeAllRanges();
   }
 
+  // The lit words' range as they are drawn now, or null.
+  range(lit = this.lit) {
+    return lit?.words.isConnected && drawnText(lit.words) !== undefined ? rangeOf(lit.words, lit.start, lit.end) : null;
+  }
   paint() {
     const lit = this.lit;
     if (!lit) return;
-    const range = lit.words.isConnected && drawnText(lit.words) !== undefined ? rangeOf(lit.words, lit.start, lit.end) : null;
+    const range = this.range(lit);
     if (!range) { this.clear(); return; }
     this.win.CSS.highlights.set(NAME, new this.win.Highlight(range));
+    this.field(range);
     this.redrawn.disconnect();
     this.redrawn.observe(lit.words, { childList: true, subtree: true });
+    if (this.sizing !== lit.words) {
+      this.sized.disconnect();
+      this.sized.observe(lit.words); this.sized.observe(lit.words.parentElement);
+      this.sizing = lit.words;
+    }
+  }
+  // The dark field behind the lit words, one layer a line: as tall as the
+  // Reader's field for the same words (lit-field.mjs), on the background of the
+  // box each line shows in (clipBox), so it shows only where its words do and
+  // scrolls with them.
+  field(range = this.range()) {
+    this.unfield();
+    const card = this.lit?.words.parentElement, lines = range && card ? wordLines(range, card) : [];
+    const height = lines.length && readerField(this.doc);
+    if (!height) return;
+    const boxes = new Map();
+    for (const line of lines) boxes.set(line.box, [...(boxes.get(line.box) ?? []), line]);
+    for (const [box, its] of boxes) {
+      const layers = fieldLayers(box, its, height);
+      Object.assign(box.style, {
+        backgroundImage: layers.map(() => 'linear-gradient(var(--lit-field),var(--lit-field))').join(','),
+        backgroundPosition: layers.map(layer => `${layer.x}px ${layer.y}px`).join(','),
+        backgroundSize: layers.map(layer => `${layer.width}px ${layer.height}px`).join(','),
+        backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',
+      });
+      this.fielded.push(box);
+    }
+  }
+  unfield() {
+    for (const box of this.fielded.splice(0)) for (const name of ['background-image', 'background-position', 'background-size', 'background-repeat', 'background-attachment']) box.style.removeProperty(name);
   }
   clear() {
     this.lit = null; this.pointer = null;
-    this.redrawn.disconnect();
+    this.redrawn.disconnect(); this.sized.disconnect(); this.sizing = null;
+    this.unfield();
     if (this.supported) this.win.CSS.highlights.delete(NAME);
   }
   // The light follows the message's: lighting another message, or none, puts it out.
@@ -146,14 +191,17 @@ export class FeedPassages {
   }
   // What Return quotes on the lit entry: the words selected in it, else its
   // lit passages; null when neither, and Return replies with nothing quoted.
+  // revision: the revision of the message the card's words are, which the
+  // quote names, since its words come from the card (docs/message-edit.md).
   chosen(entry) {
     if (!entry) return null;
+    const words = cardIn(entry)?.querySelector(WORDS), revision = words ? drawnRevision(words) : undefined;
     const selected = this.selected(entry);
-    if (selected) return selected;
+    if (selected) return { ...selected, revision };
     const lit = this.lit;
     if (!lit || lit.entry !== entry || !lit.words.isConnected) return null;
     const text = drawnText(lit.words);
-    return text === undefined ? null : { start: lit.start, end: lit.end, text: text.slice(lit.start, lit.end) };
+    return text === undefined ? null : { start: lit.start, end: lit.end, text: text.slice(lit.start, lit.end), revision };
   }
   // What ⌘C copies with no words selected: the lit passages' words, without
   // the whitespace at their end, which is no words (docs/topic-reading.md).

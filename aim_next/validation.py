@@ -14,6 +14,7 @@ COMMANDS = {
     "draft.save": "_command_draft_save",
     "note.save": "_command_note_save",
     "submission.prepare": "_command_submission_prepare",
+    "submission.set_aside": "_command_submission_set_aside",
     "topic.create_and_send": "_command_topic_create_and_send",
     "message.send": "_command_message_send",
     "message.post": "_command_message_post",
@@ -56,10 +57,11 @@ COMMANDS = {
     "outcome.reach": "_command_outcome_reach",
     "outline.order_set": "_command_outline_order_set",
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
+    "message.fold_through": "_command_message_fold_through",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
 EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
-            "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
+            "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "topic.read_through": set(), "message.edit": {"message_revision"},
             "message.edit_open": set(), "message.edit_draft": {"session_revision"}, "message.edit_close": set(),
@@ -93,8 +95,8 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "outcome.kind_set": {"workspace_revision"},
             "outcome.reach": {"workspace_revision"},
             "outline.order_set": {"order_revision"},
-            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "stack.aside": {"aside_revision"}, "stack.place": {"place_revision"},
-            "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
+            "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
+            "stack.place": {"place_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
 REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -108,8 +110,8 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "message.thumb": "thumb_revision", "message.answer": "answer_revision",
                      "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision",
                      "outline.order_set": "order_revision",
-                     "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "stack.aside": "aside_revision", "stack.place": "place_revision",
-                     "stack.name": "name_revision", "stack.join": "join_revision"}
+                     "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
+                     "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision"}
 VIEWS = {
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},

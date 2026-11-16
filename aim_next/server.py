@@ -26,6 +26,7 @@ from .effects_watch import WatchError
 from . import invite
 from .live import LiveFeed
 from .media import INLINE_TYPES
+from . import web_build
 
 
 MEDIA_CHUNK = 65536
@@ -380,9 +381,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Connection", "close")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; "
-                         "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
-                         "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header("Content-Security-Policy", self.server.csp)
         self.end_headers()
 
     def _json_response(self, status: int, value: Any):
@@ -748,23 +747,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")
+        # The build this server serves (aim_next/web_build.py): a page moving in
+        # place reads it first, and loads afresh when it is not its own.
+        if path == "/api/build":
+            self._json_response(200, {"build": self.server.build.stamp})
+            return
         if path.startswith("/api/"):
             raise RequestError(404, "NOT_FOUND", "No such endpoint.")
-        try:
-            requested = unquote(path).lstrip("/") or "index.html"
-            candidate = (self.server.web_root / requested).resolve()
-            candidate.relative_to(self.server.web_root)
-            suffixes = {".js", ".mjs", ".css", ".svg", ".png", ".ico", ".woff", ".woff2"}
-            if candidate.name != "index.html" and candidate.suffix not in suffixes:
-                raise ValueError("Not a public asset")
-            if not candidate.is_file():
-                raise ValueError("Missing asset")
-            body = candidate.read_bytes()
-        except (ValueError, OSError):
+        name = unquote(path)
+        body = self.server.build.asset(name, urlsplit(self.path).query)
+        if body is None:
             raise RequestError(404, "NOT_FOUND", "No such public asset.")
-        if candidate.name == "index.html":
+        if name.lstrip("/") in ("", "index.html"):
             body = body.replace(b"__AIM_SESSION_TOKEN__", html.escape(self.server.session_token, quote=True).encode())
-        self._send(200, body, mimetypes.guess_type(str(candidate))[0] or "application/octet-stream")
+            name = "index.html"
+        self._send(200, body, mimetypes.guess_type(name)[0] or "application/octet-stream")
 
     def _live_handshake(self):
         """Accept a WebSocket for the live feed, or refuse it with the usual JSON error.
@@ -988,9 +985,13 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.store_factory = store_factory
     server.instance_id = instance_id
     server.actor = actor
+    # The page's files, read once: the server serves this build until it stops (aim_next/web_build.py).
+    server.build = web_build.load(web_root)
+    script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+    server.csp = ("default-src 'self'; script-src %s; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                  "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'" % script_src)
     # Where an invited agent's sign-in file is written: beside the server's own profile (serve.py), or None to invite no one.
     server.sign_in_folder = None if sign_in_folder is None else Path(sign_in_folder)
-    server.web_root = Path(web_root).resolve()
     server.session_token = token or secrets.token_urlsafe(32)
     server.max_json_bytes = max_json_bytes
     server.request_timeout = 10.0

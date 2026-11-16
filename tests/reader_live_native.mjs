@@ -227,26 +227,36 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(before, 'a card is in view');
     await arrive('Arrives while a card is read');
     await stays(before, 'the card being read stays where it was');
-    // The page's own field is the people's add field, below the messages: with
-    // the caret in it, it is scrolled away below the screen, and a card is in view.
-    const add = "document.querySelector('#participants .people-add input')";
-    // It waits behind "+ Add", which opens it with the caret in it.
-    await p.evaluate("document.querySelector('#participants .add-chip').scrollIntoView({block:'center'})");
-    await p.point('#participants .add-chip');
-    await until(() => p.evaluate(`document.activeElement === ${add}`), 'the add field opens with the caret in it');
-    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - innerHeight - 100); })(${add})`);
-    assert.equal(await p.evaluate(`${add}.getBoundingClientRect().top >= innerHeight && document.activeElement === ${add}`), true,
+    // A field on the page the person types in, below the messages, with the
+    // caret in it, scrolled away below the screen while a card is in view. The
+    // page's own such field was the people's add field, below the messages;
+    // since item 378 the people sit in the topic's header, above everything a
+    // message arriving moves, where holding the field or the card leaves the
+    // page the same. So the check puts a field where the people were, just
+    // below More: the rule is any field on the page the person types in.
+    await p.evaluate(`(() => { const field = document.createElement('input'); field.id = 'fixture-field'; field.type = 'text';
+      document.querySelector('#more-messages').after(field); })()`);
+    const typed = "document.querySelector('#fixture-field')";
+    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - innerHeight - 100); })(${typed})`);
+    assert.equal(await p.evaluate(`${typed}.getBoundingClientRect().top >= innerHeight && document.activeElement === ${typed}`), true,
       'the field with the caret is below the screen');
     const away = await reading();
+    assert.ok(away && away[1] < await p.evaluate('innerHeight'), `a card is in view: ${JSON.stringify(away)}`);
     await arrive('Arrives while focus is scrolled away');
     await stays(away, 'the card in view stays where it was, not the field out of view');
 
     // A field on the screen being typed in holds still too; the cards above it move up.
-    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - 300); })(${add})`);
-    const typing = await p.evaluate(`Math.round(${add}.getBoundingClientRect().top)`);
+    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - 300); })(${typed})`);
+    const typing = await p.evaluate(`Math.round(${typed}.getBoundingClientRect().top)`);
+    const above = await reading();
     await arrive('Arrives while a name is being typed');
-    assert.ok(Math.abs(await p.evaluate(`Math.round(${add}.getBoundingClientRect().top)`) - typing) <= 1,
+    assert.ok(Math.abs(await p.evaluate(`Math.round(${typed}.getBoundingClientRect().top)`) - typing) <= 1,
       'the field being typed in stays where it was');
+    // The arrival lands between the card in view and the field, so holding the
+    // field moves that card up: were the card held, the field would move down.
+    assert.ok(await p.evaluate(`Math.round(document.querySelector('#messages [data-id=${JSON.stringify(above[0])}]').getBoundingClientRect().top)`) < above[1] - 1,
+      `the card above the field moves up: ${JSON.stringify(above)}`);
+    await p.evaluate(`${typed}.remove()`);
 
     // The browser's own scroll anchoring must not hold the page by the rail:
     // with a rail row and a card both in view, the rail growing moves no card.
@@ -459,7 +469,10 @@ export async function liveChecks({ check, page, until, control, observations, or
 
   // Older messages that More loads appear where the loaded messages ended, so
   // the person reads on from where they asked, and what they read holds still;
-  // the button's focus holds nothing still. While the oldest message not yet
+  // the button's focus holds nothing still. Where they ended is the last
+  // card's own place: the first older card follows it as each older card
+  // follows the one before. Since item 465 the New message composer rests
+  // between the last card and More, and goes down to the list's new end. While the oldest message not yet
   // read is further back, the New line says "More new below" and hides More,
   // so the person reads the topic and answers it first: the list then ends at
   // More's button.
@@ -472,15 +485,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     const count = await p.evaluate("document.querySelectorAll('#messages .message-card').length");
     await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
     const before = await p.evaluate(`(()=>{const cards=document.querySelectorAll('#messages .message-card'),last=cards[cards.length-1],end=last.nextElementSibling??document.querySelector('#more-messages');
-      return {last:last.dataset.id,lastTop:Math.round(last.getBoundingClientRect().top),end:end.id||end.dataset.line,endTop:Math.round(end.getBoundingClientRect().top),button:Math.round(document.querySelector('#more-messages').getBoundingClientRect().top)}})()`);
+      return {last:last.dataset.id,lastTop:Math.round(last.getBoundingClientRect().top),lastBottom:Math.round(last.getBoundingClientRect().bottom),end:end.id||end.dataset.line,endTop:Math.round(end.getBoundingClientRect().top),button:Math.round(document.querySelector('#more-messages').getBoundingClientRect().top)}})()`);
     await p.point('#more-messages');
     assert.equal(await p.evaluate("document.activeElement.id"), 'more-messages', 'the press focuses the button');
     await until(() => p.evaluate(`document.querySelectorAll('#messages .message-card').length > ${count}`), 'older messages are loaded');
     await settled(p);
-    const after = await p.evaluate(`({first:Math.round(document.querySelectorAll('#messages .message-card')[${count}].getBoundingClientRect().top),lastTop:Math.round(document.querySelector('#messages [data-id="${before.last}"]').getBoundingClientRect().top)})`);
+    const after = await p.evaluate(`(()=>{const cards=document.querySelectorAll('#messages .message-card'),first=cards[${count}].getBoundingClientRect(),second=cards[${count + 1}].getBoundingClientRect();
+      return {first:Math.round(first.top),spacing:Math.round(second.top-first.bottom),lastTop:Math.round(document.querySelector('#messages [data-id="${before.last}"]').getBoundingClientRect().top)}})()`);
     const seen = JSON.stringify({ before, after });
     assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1, `the messages already shown hold still: ${seen}`);
-    assert.ok(Math.abs(after.first - before.endTop) <= 1, `the first older message is where the loaded messages ended: ${seen}`);
+    assert.ok(Math.abs(after.first - (before.lastBottom + after.spacing)) <= 1, `the first older message is where the loaded messages ended: ${seen}`);
     observations.push({ name: 'More messages', before, after });
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -512,7 +526,9 @@ export async function liveChecks({ check, page, until, control, observations, or
         const more = document.querySelector('#more-messages'); scrollBy(0, more.getBoundingClientRect().top - 4);
         await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
         const shown = node => { const b = node.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; };
-        return { more: more.getBoundingClientRect().top, entriesInView: [...document.querySelectorAll(${entry})].filter(shown).length,
+        const end = [...document.querySelectorAll(${entry})].at(-1).nextElementSibling;
+        return { more: more.getBoundingClientRect().top, end: end?.id || end?.className || null, endTop: end?.getBoundingClientRect().top ?? null,
+          entriesInView: [...document.querySelectorAll(${entry})].filter(shown).length,
           notebookInView: [...document.querySelectorAll('#memory-items .memory-card')].some(shown) }; })()`);
       assert.ok(before.more >= 0 && before.more <= 12 && before.entriesInView === 0 && before.notebookInView, `More is at the top edge, no message above it in view, the Notebook in view: ${JSON.stringify(before)}`);
       if (screen.mobile) {
@@ -858,10 +874,11 @@ export async function liveChecks({ check, page, until, control, observations, or
         setTimeout(() => leavingOpenEnded(JSON.stringify({ search: location.search, readerOpen: document.querySelector('#reader').open,
           pendingOpen: Boolean(observedRegistry.pendingOpen), error: record.error ?? null })), 0); } });
       return Array.prototype.push.call(this, record); }; })()`);
-    await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/app.mjs', requestStage: 'Response' },
-      { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }, { urlPattern: origin + '/app.mjs?*', requestStage: 'Response' }] });
-    // The next page is a move in place (in-place-navigation.mjs): its run of the page's module is what comes next, not a document.
-    const nextPage = url => url === away.url || url.startsWith(origin + '/app.mjs?place=');
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/b/*/app.mjs', requestStage: 'Response' },
+      { urlPattern: origin + '/b/*/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }, { urlPattern: origin + '/b/*/app.mjs?*', requestStage: 'Response' }] });
+    // The next page is a move in place (in-place-navigation.mjs): its run of the page's module, under the page's build
+    // (aim_next/web_build.py), is what comes next, not a document.
+    const nextPage = url => url === away.url || (url.startsWith(origin + '/b/') && new URL(url).pathname.endsWith('/app.mjs') && new URL(url).searchParams.has('place'));
     p.intercept((payload, event) => payload?.name === 'source' || nextPage(event.request.url));
     await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
     await p.point(card(topic.message));

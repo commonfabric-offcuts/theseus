@@ -4,6 +4,11 @@ Swiping a dossier's header/chrome, or its last visible message, to the right
 puts the whole dossier below More messages for this reader. Swiping another
 message uses the existing personal fold. The menu offers Move below More and
 Bring back; Command-Z reverses the act. More works even with no older page.
+The Reader offers the same act as an archive button beside the message's star,
+labelled with the count of the messages that move with it, every stack the page
+draws of the dossier counted (item 378,
+docs/reader.md). The page's New message composer at rest sits between the last
+dossier above More and the More line (item 465).
 
 The choice survives reloads and devices. Existing unread messages and the
 reader's own new replies do not bring it back. A newer visible message by

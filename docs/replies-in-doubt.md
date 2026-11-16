@@ -17,6 +17,96 @@ answer, `EditorRegistry.doubt(editor)` in `web/app-session.mjs`.
   `seq` is its place in that order.
 - `submission.prepare` answers with the reply's `seq`, beside its
   `submission_id`.
+- A reply set aside (below) is not listed by `unsent: true`, and `through`
+  does not change, so a page that prepared it reads it as no longer in doubt.
+- A page read with `unsent: true` and a `source_ref` also carries `aside`:
+  that writing's replies set aside and not sent, oldest first, each the
+  reply's words as `submission` answers them (body, quotes, attachments,
+  addressees, whisper, intent) plus `restored`, whether they went back into the
+  writing. An older server sends no `aside`, and an older page ignores it.
+
+## Setting a reply aside
+
+A reply prepared and never sent (its send operation has no outcome at all)
+stays in doubt for good: Check confirmation can only say it is not known sent.
+Its line in the Review list therefore offers **Set aside**, a short word with
+its name and a tooltip, 44px to touch on a phone, beside Check confirmation.
+
+- `submission.set_aside` takes `args` `{submission_id, aside}`, and optionally
+  `restored`, and no target. `aside: true` sets the reply aside; `aside: false`
+  puts it back in doubt (Undo). `restored: true` (only with `aside: true`)
+  says its words went back into the writing; without it they are kept on its
+  line. Its `operation_id` begins `aside:<submission_id>:`. It answers
+  `{submission_id, aside, restored, changed}`; recording what is already so
+  changes nothing (`changed: false`), and the same operation again answers its
+  first receipt.
+- Only the reply's author can: another reader's act is refused `FORBIDDEN`,
+  as every read of someone else's reply is. A reply whose send is recorded
+  committed went, so it is refused `ALREADY_SENT`, either way. A send under
+  way on this page is the page's to wait for: it offers no Set aside then.
+- A reply set aside whose send later shows committed is simply sent.
+
+### How it is recorded, with no schema step
+
+The `submissions` table is immutable (its triggers abort any update or
+delete), so a reply's row and metadata never change. Setting aside is the
+person's own committed operation in `operations`, the journal every command
+already writes: the unsent list leaves a reply out when the latest committed
+`submission.set_aside` operation naming it says `aside: true`. The operation
+ids begin with `aside:<submission_id>:` so that read is a range of the
+operations table's own key (actor, id), however long the person's history; it
+then checks the submission id the receipt names, so one id beginning another's
+is not confused with it. No table, column or index is added, and
+`SCHEMA_VERSION` does not move.
+
+It is backward and forward compatible: an older server never sees the
+command (it refuses it `UNKNOWN_COMMAND` and records nothing), and an older
+page reading a newer server sees only a shorter unsent list, which it already
+reads as replies known sent. The `submission` view keeps its shape exactly (a
+page checks it field for field), so whether a reply is set aside is said only
+by the unsent list.
+
+### The words are kept
+
+Setting a reply aside never deletes anything: the submission keeps its words,
+quotes and attachments, and its words are always somewhere on the page: in the
+writing, or on its line in the Review list.
+
+- When the writing the reply came from (the topic's composer, or the message's
+  writing) is empty, they go back into it as its draft: every field of the
+  writing, so who it goes to and how come back with the words. A whisper comes
+  back as the same whisper to the same one, never as writing everyone in the
+  topic would see; an ask comes back an ask; a name only offered in that
+  writing that the reply does not name is not added. Its line says "Its words
+  are back in your writing."
+- Otherwise its line shows them: its words with Copy, and each image with Open,
+  which shows it in place. They stay there once the list closes and after a
+  reload, because the line is drawn from Core's `aside` list, not from the
+  open list: a writing with no reply in doubt but one set aside whose words
+  are only on its line shows a quiet **Set aside N** chip where its Review
+  button was (a short word with its name and a tooltip, 44px to touch on a
+  phone), which opens the same list. The departure guard never names it:
+  nothing in it is in doubt.
+- The page first records the reply set aside with its words kept on its line,
+  and records `restored` only once they are in the writing, so a failure
+  between leaves them in both places, never in neither.
+
+Every reply set aside keeps its line, with Undo, whenever the list is open.
+Undo puts the reply back in doubt and, while the writing still holds exactly
+the words this page put back, empties every field it filled again.
+
+An image goes back as a draft holds one, named by its id (Theseus keeps a
+draft's images so, and an image the person chose goes in so), so the draft this
+device keeps is the draft Theseus holds: the copy kept on this device is retired
+once it is saved, and after a reload the writing is ready to send with nothing
+to check in Review versions. Leaving a topic never waits on such an image: the
+departure guard holds only an image still on its way to Theseus, never one the
+draft names that Theseus already holds, even while the page is still checking
+it.
+
+A reply set aside is in doubt no more at once: the Review button and the
+departure guard stop counting it, after a reload too and on another device of
+the same reader, since all of them read Core's unsent list.
 
 ## The answer
 
@@ -28,7 +118,8 @@ A reply is in doubt unless one of these holds:
   `seq` no higher than `through`, so the read could see it and found it sent;
 - it is on its way (its send or its correction is under way here);
 - it was refused and replaced by a correction this device holds, which then
-  answers for its words.
+  answers for its words;
+- it was set aside (see "Setting a reply aside").
 
 A list not read to its end, or not read at all, is unread: more replies may be
 in doubt, so the answer is never "none". The button then reads "Review N+

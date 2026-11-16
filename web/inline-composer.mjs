@@ -7,6 +7,7 @@ import { addressedTo } from './at-names.mjs';
 import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './image-pick.mjs';
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
+import { holdPlace } from './sheet-holder.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -24,8 +25,8 @@ export class InlineComposer {
     this.bar = new ComposeBar({ root: this.root, field: this.field, notice: this.$('notice'), panels: { who: this.$('who-panel'), plus: this.$('plus-panel') },
       openers: { who: this.$('who-chip'), plus: this.$('plus-button') }, taller: this.$('taller-field'), naming: this.naming });
     // New message at the top of a topic page pops this composer up on its
-    // own, ready to type; Escape, ✕ or a press outside puts it back at the
-    // page's end, its writing kept. Shown only where the composer is
+    // own, ready to type; Escape, ✕ or a press outside puts it back in its
+    // place in the feed, just above More (reply-stacks.mjs), its writing kept. Shown only where the composer is
     // (aim.css), so it is never one more row of buttons.
     this.sheet = document.querySelector('#new-message-sheet');
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
@@ -107,8 +108,10 @@ export class InlineComposer {
   caret() { return this.input.caret(); }
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
+    // At rest it is among the dossiers (item 465): a holder keeps its place there, so the feed does not move behind it.
+    holdPlace(this.sheet);
     this.sheet.showModal(); this.popped = true;
-    // The sheet gives the field its height (aim.css): the height it grew to at the page's end goes.
+    // The sheet gives the field its height (aim.css): the height it grew to in its place in the feed goes.
     this.bar.fit();
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);

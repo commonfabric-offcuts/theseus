@@ -227,7 +227,9 @@ between two feed pages (topics and Conversations) goes like this:
 
 1. The page's guard (`TopicNavigation.openTarget`) decides first, as it does
    for a load. Unsent writing that cannot be kept stops the move. A send under
-   way stops it with the same words as before.
+   way stops it with the same words as before. Where the move waits (it reads
+   the served build first, below), the guard's last look is asked again just
+   before it is made.
 2. The address changes with `pushState`. Each entry the page makes carries
    its place in the page's history (`aimPlace`).
 3. The old run ends as an unload ends a page. Its `pagehide` listeners run,
@@ -281,7 +283,8 @@ moves to it as Return does, and once its run is up opens its New message box
 ### What a move ends, and what it leaves
 
 A run is `app.mjs` alone. Every other module is loaded once for the whole
-visit, before the first run begins, and keeps its own state across every run.
+visit, before the first run begins, and keeps its own state across every run,
+which is why a visit stays on one build (below).
 Two rules follow, so nothing a module remembers disagrees with what a move
 ends.
 
@@ -356,6 +359,103 @@ up when their turn comes.
 The rails read one read at a time (`oneAtATime`), so they never crowd the
 page's own reads out of the server's admission lanes. The outline reads in
 the foreground lane. The right rail reads in the background lane.
+
+### One build per document
+
+A fresh run of `app.mjs` finds every other module already loaded, from the
+build the document was opened on. After a deploy, a run of the new release's
+`app.mjs` would call the old release's modules: the next release's Edit
+called `start()` on release 76's `MessageEditWriting`, which had none
+("writing.start is not a function"). So every module a document loads is of one build, and a
+move to another build is a load.
+
+- The server reads `web/` once as it starts and names what it serves with a
+  stamp, a hash of those bytes (`aim_next/web_build.py`). A deploy restarts the
+  server, so a new release is a new stamp. `GET /api/build` says it, without a
+  session.
+- Every module is served under its build, `/b/<stamp>/<name>`. `index.html`
+  names its entry that way, so each relative import, the run's
+  `./app.mjs?place=N` included, carries the build. An import map before the
+  entry sends an absolute address (`/api.mjs`, as a check imports it) to the
+  same build. Before them, and before the page's stylesheets, where
+  `index.html` names it, comes the page's boot (`web/boot.js`), written in
+  whole, below: an inline script after a stylesheet would hold the page's
+  parsing until the stylesheet came. The page's Content-Security-Policy allows
+  those two inline scripts by their hashes.
+- An address under another build is refused (404), and so is a module asked
+  for with a query outside a build: the run of a page opened before builds
+  were stamped. A module asked for plainly outside a build is still the file
+  as it stands, for a document that is not a page.
+- The page has one dynamic import, the run's `import('./app.mjs?place=N')`
+  (`in-place-navigation.mjs`); every other module is a static import, loaded
+  with the entry as the document opens. Under a build that import names the
+  document's own build, so another server refuses it and the move loads
+  instead (`shell.leave`). A page opened before builds were stamped imports
+  `/app.mjs?place=N`, which is refused too, so its next move loads the new
+  build.
+- A page whose `index.html` came from one server and whose modules are asked
+  for once the next one has started (a deploy between the two) gets refusals,
+  and one asked for while the server restarts gets no answer. Either way the
+  module graph fails as a whole: none of it runs, so nothing is assembled from
+  two builds, and the browser says so only by an error on the entry's script
+  element. The boot hears that error and reads the served build. On another
+  build it loads the page afresh, which then comes up on that build alone. A
+  load gets the build the server serves as it answers, so another load comes
+  only from another deploy, never in a loop. On the page's own build, or with
+  the server unread, it loads nothing by itself and says "Theseus could not
+  open this page." with Reload, in the page's status line, which shows on a
+  phone too. Nothing of the page has run, so no writing is in the document to
+  lose; words this device kept from before stay in its stores and are offered
+  by the next load, as after any load. The boot is inline, so it needs no
+  request of its own however the server is, and it acts only on a module under
+  a build: a page that loads reads no build.
+- Before a move, the shell reads the served build. Meanwhile the phone's
+  drawer closes and the page is not ready (`data-ready`), since a back has
+  already changed the address. The page stays up meanwhile, so the person
+  can write on. The page's guard therefore hands the move its last look
+  (`still`, from `TopicNavigation.openTarget`), and the shell asks it again
+  once the build is read, just before the move (`shell.decide`). The look is
+  the guard's own last check: no send under way, the same writing in the
+  same boxes with nothing typed since, images attached, and nothing unsafe.
+  On the document's own build the move goes in place while the look stands.
+  If the read fails, the move goes the same way, and the refusal above is
+  what stops a run of another build. If what the guard cleared has changed,
+  for example words typed while the read was out, kept on this device yet or
+  not, the page stays where it is and says why, as a refused move does: "Keep
+  this page open until your writing and selected images are safely saved,
+  then choose the topic again.", by the topic line and in the Reader or New
+  message sheet when one is open. A back or forward is put back. A move that
+  a newer choice took over stays without a word. On another build the place
+  is loaded (`shell.leave`), so the new release's modules load together.
+  While a guard holds (writing not yet safe), or what the guard cleared has
+  changed, the page stays instead. It says "Theseus updated." with Reload, in
+  the same places, and puts back a back or forward that found the new build.
+  Reload goes through the browser's own ask while the guard holds, and the
+  words are kept as a load keeps them: words Theseus has come back in the
+  box, and words kept on this device only are offered under Review versions,
+  as after any load.
+
+Native checks open a page on release 76 (`bb3a46da`), serve this build, move
+once, and Edit; they move on one build and on another at 320, 375 and 390 by
+touch and on a laptop, where the move to another build asks for no run of the
+old one; they hold writing and press Reload, once Theseus has the words and
+while only this device has them; they go back while writing in the open Reader
+and in the New message sheet, at the same widths, and find the address put back
+and Theseus updated said there; and they reload on one build with words on this
+device only. On one build they type while a move reads the build, after a row
+and after a back with the cursor left in the composer, with the device's copy
+of the words kept and with it still being written. Each time they find the
+page where it was, saying why, with the words in their box and no run asked
+for, at 320, 375 and 390 by touch and on a laptop. Chosen again once the words
+are safe, the move goes in place. On another build, words typed meanwhile and
+kept on this device keep the page too, saying Theseus updated. They load a page
+again with its modules held, its entry let through, and serve another build
+before its imports go, on a laptop and at 390 by touch: the page loads once
+more by itself and comes up with every module of the new build. They lose its
+imports on its own build, and stop the server before they go: the page says it
+could not open, with Reload, having loaded nothing by itself, and Reload brings
+it up. A page with its modules held on one server, and one opened plainly,
+loads once and reads no build.
 
 ## Known gaps
 

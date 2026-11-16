@@ -14,6 +14,15 @@
 // New line are a new page's. What a person leaves goes through the page's own
 // guard first (TopicNavigation.openTarget), so writing not yet saved still
 // stops the move, as it stopped a load.
+//
+// A document runs one build (aim_next/web_build.py, docs/rails.md): its
+// modules come from /b/<build>/, and the fresh run of app.mjs is imported
+// beside them, so it shares the modules the document already holds. Before a
+// move the shell reads the build the server serves now; when a deploy has
+// changed it, the place loads afresh, as a link would, rather than run the new
+// build's app.mjs beside the old build's modules. The server refuses another
+// build's addresses as well, so a deploy between the read and the import
+// still ends in a load, never in a page assembled from two builds.
 import { parseRoute, routeHref, routeKey } from './topic-navigation.mjs';
 import { railDrawer } from './rail-drawer.mjs';
 import { depart, stay } from './api.mjs';
@@ -147,11 +156,30 @@ export class Superseded extends Error {
   constructor() { super('The page moved on before this was read.'); this.name = 'Superseded'; }
 }
 
+// The build a module's address names (/b/<build>/name), or null for one served outside a build.
+export const buildOf = url => { try { return /^\/b\/([^/]+)\//.exec(new URL(url).pathname)?.[1] ?? null; } catch { return null; } };
+// The build the server serves now, or null when it could not be read: then the
+// move goes on, and the import's own address, which names this document's
+// build, is what the server refuses if the build has changed.
+export async function servedBuild(fetcher = (...args) => globalThis.fetch(...args)) {
+  try {
+    const response = await fetcher('/api/build', { cache: 'no-store', credentials: 'same-origin' });
+    if (!response.ok) return null;
+    const { build } = await response.json();
+    return typeof build === 'string' && build ? build : null;
+  } catch { return null; }
+}
+
 export class Shell {
   // reads: { depart, stay }, the page asking Theseus nothing more while it
   // loads another, and again once it stays (api.mjs).
-  constructor({ doc = globalThis.document, win = globalThis.window, load = place => import(`./app.mjs?place=${place}`), reads = { depart, stay } } = {}) {
-    Object.assign(this, { doc, win, load, reads });
+  // build: this document's build, from the address of its entry module, which
+  // every module it loads shares (aim_next/web_build.py refuses another);
+  // served(): the build the server serves now (servedBuild). With no build (a
+  // check's own document), a move reads nothing first.
+  constructor({ doc = globalThis.document, win = globalThis.window, load = place => import(`./app.mjs?place=${place}`), reads = { depart, stay },
+    build = buildOf(doc?.querySelector?.('script[type=module][src]')?.src), served = servedBuild } = {}) {
+    Object.assign(this, { doc, win, load, reads, build, served });
     // The run's guards on leaving (guard), and whether the page holds its
     // reads for a load it asked for (leave) until it goes or stays.
     this.guards = []; this.leaving = false;
@@ -212,7 +240,7 @@ export class Shell {
   }
   // A run of app.mjs starts: from here, what it adds is its own. The place it
   // reads is the address as it starts; the rails forget the place before it.
-  // page: { open(target, title), retire(ids) }.
+  // page: { open(target, title), retire(ids), updated(reload), refused(why) }.
   begin(page) {
     this.install();
     this.scope = new Scope();
@@ -337,28 +365,81 @@ export class Shell {
   get between() { return this.installed && this.feed && (this.moving || (!this.handles && Boolean(this.page))); }
   // The page's guard said the person may go: true when the move is made in
   // place, false when the caller loads the destination as before. Asked
-  // before the run is up, the move waits for it.
-  go(target) {
+  // before the run is up, the move waits for it. still: the guard's last look
+  // (TopicNavigation.openTarget), asked again where the move is made (decide).
+  go(target, still = () => true) {
     const from = this.route(), popped = this.popping;
     this.popping = null;
     if (!this.installed || !this.page || this.moving || !movesInPlace(from, target)) return false;
-    if (!this.handles) { this.owe({ go: target }); return true; }
-    if (!popped) this.places.push(routeHref(target));
+    if (!this.handles) { this.owe({ go: target, still }); return true; }
     // Return on a row (the keys, in a rail) keeps the keys there, and so does
     // a click or a tap on a row of the outline, which selected it as the keys
     // would. A press on a row of the right rail, a link in the page, a tap in
-    // the phone's drawer, back and forward land on the page reached: the rail
-    // lets the focus go now (its tree no longer holds it), so a key meanwhile
-    // rings nothing there, and the phone's drawer, closing, hands it to no button.
+    // the phone's drawer, back and forward land on the page reached.
     const at = this.doc?.activeElement ?? null;
     // Where the move began, for what the shell keeps (the outline's drawer opens on the row chosen only while that stands).
     const began = popped ? null : this.by === 'keys' ? at : this.pressed;
     for (const listener of this.listeners) listener.leaving?.(began);
-    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';
-    this.writing = !popped && this.writeTo === routeKey(target);
-    if (this.landing === 'page' && inRails(at)) at.blur();
-    this.move();
+    const way = { target, popped, still, landing: !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page', writing: !popped && this.writeTo === routeKey(target) };
+    // The rail lets the focus go now (its tree no longer holds it), so a key
+    // meanwhile rings nothing there, and the phone's drawer, closing, hands it to no button.
+    if (way.landing === 'page' && inRails(at)) at.blur();
+    if (!this.build) { this.decide(way, null); return true; }
+    // The move is under way while the server says which build it serves: what
+    // is asked meanwhile waits for it, as it waits for a run on its way. The
+    // drawer closes as the move begins, so the page shows meanwhile, and its
+    // notice shows if the page stays (updated).
+    // Meanwhile the page is between places, not up on the place the address
+    // may already name (a back): it is not ready (data-ready) until the run
+    // of that place is, or until it stays.
+    this.moving = true;
+    this.drawer?.close();
+    const body = this.doc?.body;
+    way.ready = body?.dataset.ready;
+    if (body) delete body.dataset.ready;
+    this.served().then(build => this.decide(way, build));
     return true;
+  }
+  // The server has said which build it serves (null: unread, or a document
+  // with no build). The person may have written on while it was read, so the
+  // guard's last look is asked again here, just before the move: false, a
+  // newer choice took this one's place, and the page stays without a word; a
+  // throw, what the guard cleared has changed, and the page stays and says why
+  // (page.refused), or on another build says Theseus updated (updated).
+  decide(way, build) {
+    let why = null;
+    try { if (!way.still()) { this.stay(way); return; } } catch (error) { why = error; }
+    if (build !== null && build !== this.build) { this.updated(way, why); return; }
+    if (!why) { this.proceed(way); return; }
+    this.stay(way);
+    this.page?.refused?.(why);
+  }
+  // The move in place, on this document's own build.
+  proceed({ target, popped, landing, writing }) {
+    if (!popped) this.places.push(routeHref(target));
+    this.landing = landing; this.writing = writing;
+    this.move();
+  }
+  // The server serves another build than this document's: the place loads
+  // afresh, as a link loads it, through the browser's own guard. While writing
+  // here is not yet safe (a guard holds), or has changed since the guard
+  // cleared the move (why), the page stays where it is and says so
+  // (page.updated, "Theseus updated" with Reload), so no words are left
+  // behind; a back or forward puts the address back.
+  updated(way, why = null) {
+    const { target, popped } = way;
+    if (!why && !this.guards.some(holds => holds())) { this.moving = false; this.leave(popped ? null : routeHref(target)); return; }
+    this.stay(way);
+    this.page?.updated?.(() => this.leave());
+  }
+  // The move is not made: the page is up where it was, ready again, a back or
+  // forward put back, and what was asked meanwhile is taken up.
+  stay({ popped, ready }) {
+    this.moving = false;
+    if (popped) this.refuse(popped);
+    if (ready !== undefined) this.doc.body.dataset.ready = ready;
+    const owed = this.owed; this.owed = null;
+    if (owed) Promise.resolve().then(() => this.settle(owed));
   }
   // A place chosen from what the shell keeps (the outline, the right rail):
   // through the page's own guard, as a link on the page goes. Chosen while a
@@ -402,7 +483,7 @@ export class Shell {
   owe(ask) { this.owed?.resolve?.(false); this.owed = ask; }
   // The run is up: what was asked meanwhile is done now, through its guard.
   async settle(owed) {
-    if (owed.go) { this.go(owed.go); return; }
+    if (owed.go) { this.go(owed.go, owed.still); return; }
     if (owed.open) { owed.resolve(await this.page.open(owed.open, owed.title)); return; }
     // A back or forward: the address may have moved on from the run's place.
     const to = this.route();
@@ -423,12 +504,14 @@ export class Shell {
     if (to && this.at === routeKey(to)) return;
     await this.arrive(to, said);
   }
+  // A back or forward the page did not take: the address goes back, once.
+  refuse(said) { if (said.refused) return; said.refused = true; this.places.refuse(said); }
   async arrive(to, said) {
     const page = this.page;
     this.popping = said;
     try { await page.open(to, 'the page you went back to'); } finally { this.popping = null; }
     // The page stayed: its guard refused (it says why), so the address goes back too.
-    if (this.page === page && !this.moving) this.places.refuse(said);
+    if (this.page === page && !this.moving) this.refuse(said);
   }
   // The run that was the page goes as an unload ends it; the page's parts
   // are put back as index.html drew them; a fresh run reads the new place.

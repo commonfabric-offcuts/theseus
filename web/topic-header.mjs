@@ -1,8 +1,8 @@
 // The top of a topic: the outcome's name, the title
 // with a gear that opens Topic settings, and under the title only the topic's
 // note, as a subtitle. Where the topic stands in full, and the form that
-// changes it, are in Topic settings (topic-settings.mjs); the people are at
-// the bottom of the page, after the messages.
+// changes it, are in Topic settings (topic-settings.mjs); the topic's people
+// are its Team, on the title row's right, under the title (item 465).
 import { STATES, stateLabel, waitsOn } from './topic-state.mjs';
 
 // Active, and waiting on nobody: the state that needs no word of its own.

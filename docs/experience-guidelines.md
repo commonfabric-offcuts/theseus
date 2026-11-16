@@ -58,8 +58,10 @@ never promises a quote that Return would not make.
   arrives …" and "reading an edit arriving under a card's lit passage puts
   the light out …" (a card drawn again with other words lights none of them
   until the pointer moves, so Return and ⌘C act on no words that were not
-  lit), and "reading Shift-click on a link in a card's words opens it in a new
-  window …".
+  lit), "reading Shift-click on a link in a card's words opens it in a new
+  window …", "reading a card's lit passage goes out as the message's ⋯ menu
+  takes the focus …" and "reading Tab off a lit passage on a dossier's card
+  puts the light out …".
 
 ## Every input works
 
@@ -73,7 +75,10 @@ and the writing. Focus stays visible and follows what the person did.
   and Shift-Tab comes back", "rail the arrows move through the outline as a
   tree" and "rail → and ← move between the outline, the messages and the right
   rail"; "rail → on a folded outcome opens it, the next → lands on its pencil
-  with a ring, …" reaches each pencil by the keys and presses it with Return.
+  with a ring, …" reaches each pencil by the keys and presses it with Return;
+  from anywhere outside writing an arrow lands on the nearest control that
+  way and the arrows reach every control a click reaches, the "rail arrows
+  …" cases (docs/interaction.md, "The arrows everywhere").
   `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
@@ -114,6 +119,28 @@ starts or ends inside the pop-up is not an outside press.
 - `tests/reader_persistence_native.mjs` (`native-correction`): "correction
   explicit Close Escape and Topic cancel pending navigation with preserved
   writing".
+
+A reply in doubt that will never go can be set aside without losing its
+words: they go back into the empty writing (to the same people, a whisper
+still a whisper), or stay readable on its line with Copy and its images, in
+reach through a Set aside chip after the list closes and after a reload, and
+Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
+
+- `tests/set_aside_native.mjs` (`native-rail`, `native-webkit-rail`): "rail set
+  aside composer", "rail set aside message", "rail set aside attachment",
+  "rail set aside kept words", "rail set aside kept image", "rail set aside
+  whisper", and "rail set aside looks right" and "rail set aside kept looks
+  right" (1280, 320, 375 and 390, light and dark). Each of the composer,
+  message and attachment shapes loads the page again on the topic, opens its
+  writing (a message's in the Reader), closes it and presses another topic,
+  which goes on the first try; then, in a second tab, the writing is ready to
+  send and the press goes.
+- `tests/ui_inline_wiring.test.mjs`: "a reply set aside with its words kept has
+  a Set aside chip the guard does not name".
+- Node units: `tests/ui_topic_navigation.test.mjs`, "an image retained from
+  the draft lets the page leave while it is still being checked; one the draft
+  does not name holds".
+- Core: `tests/test_set_aside.py`.
 
 ## Your place holds
 
@@ -193,7 +220,7 @@ content needs: a title line is about a sentence wide, and a few sentences about
   (the audit's own negative control), then the rule on each surface: "forms the
   Outcomes page and its New outcome line keep to the rule", "forms an outcome
   page, its New topic line, its purpose and its team keep to the rule", "forms
-  a topic page, its People row and its composer keep to the rule", "forms the
+  a topic page, its Team and its composer keep to the rule", "forms the
   Reader on a message, on a Notebook page, its note and its Start a topic line
   keep to the rule", "forms a resumed opening and a resumed outcome form keep to
   the rule".
@@ -279,6 +306,10 @@ nothing scrolls sideways, and nothing depends on hover.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
+  dossier look a folded excerpt draws only its row, by touch at 390, 375 and 320
+  and on a laptop, …": a message the reader folded draws only its row by touch,
+  and no card's words paint outside its own box.
 - `tests/device_native.mjs` (`native-webkit-device`): "device at a phone's width
   every phone check control is in reach by touch and nothing scrolls sideways".
 - A real phone: the phone check records what Tony's phone did with the names

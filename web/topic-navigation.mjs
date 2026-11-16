@@ -198,8 +198,10 @@ export class TopicNavigation {
     const previousChoice = this.departureChoice; this.departureChoice = null;
     if (destinationKey === routeKey(this.current)) return false;
     if(this.beforeLeave){await this.beforeLeave(destinationKey,title);if(request!==this.serial)return false;}
-    const navigate = () => this.navigateTarget ? this.navigateTarget(structuredClone(destination)) :
-      destination.kind==='topic' ? this.navigate(destination.id) : badRoute();
+    // still: the guard's last look, handed to the move, which asks it again where it is made (a move in place may
+    // wait first, in-place-navigation.mjs). Without writing owners there is nothing for it to look at.
+    const navigate = (still = () => true) => this.navigateTarget ? this.navigateTarget(structuredClone(destination), still) :
+      destination.kind==='topic' ? this.navigate(destination.id, still) : badRoute();
     const registry = this.registry;
     // Root/outcome browsing has no writing owners. Creation supplies its own
     // registered owners before admitting any editable surface.
@@ -222,7 +224,10 @@ export class TopicNavigation {
     }));
     const samePending = (a, b) => a.length === b.length && a.every((entry, index) =>
       entry.session === b[index].session && entry.editor === b[index].editor && entry.identity === b[index].identity);
+    // An image Theseus already holds (one the draft names, retained from it) loses nothing when the page leaves,
+    // even while this page is still checking it; only an image still on its way to Theseus holds the press.
     const imagesAttached = () => editors.every(editor => currentImages(editor).every(image =>
+      image.origin === 'retained-ref' ? editor.draft.attachments.some(ref => ref.id === image.retained_ref?.id) :
       image.ready_descriptor && image.association?.cycle_id === editor.clientCycleId &&
       editor.draft.attachments.some(ref => ref.id === image.association.media_id)));
     let nextChoice = null;
@@ -241,15 +246,22 @@ export class TopicNavigation {
         }
       }
       await registry.keepEditorsLocal(editors);
-      if (request !== this.serial) return false;
-      sendGuard();
-      if (!same() || !imagesAttached() || registry.hasUnprotectedWriting) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
+      // The guard's last look: false once a newer choice has taken this one's place; it throws why the page stays
+      // when what it cleared has changed. The move asks it again where it is made, since the person may write on
+      // while a move waits (in-place-navigation.mjs reads the build the server serves first).
+      const still = () => {
+        if (request !== this.serial) return false;
+        sendGuard();
+        if (!same() || !imagesAttached() || registry.hasUnprotectedWriting) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
+        return true;
+      };
+      if (!still()) return false;
       const pending = pendingSnapshot();
       if (pending.length && !(previousChoice?.destinationKey === destinationKey && previousChoice.same() && samePending(previousChoice.pending, pending))) {
         nextChoice = { destinationKey, same, pending };
         throw Error(`Not every reply here is confirmed sent; each is kept. Use ${pending.map(entry => `“${entry.label}”`).join(' or ')} to check, or choose “${title}” again to leave without resolving it.`);
       }
-      navigate(); return true;
+      navigate(still); return true;
     } catch (error) {
       // Preserve through the same registry even after a refused or offline save.
       const kept = await Promise.allSettled([registry.keepEditorsLocal(editors)]);

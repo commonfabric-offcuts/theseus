@@ -26,6 +26,7 @@ import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } 
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { FeedPassages } from './feed-passages.mjs';
+import { reach } from './arrow-reach.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -80,7 +81,11 @@ export class MessageMenu {
       if (event.pointerType === 'touch') return;
       // WebKit also emits pointermove after a scroll with unchanged screen
       // coordinates. That event must not take selection from the keyboard.
-      const still = pointer && pointer.x === event.screenX && pointer.y === event.screenY;
+      // After a finger's press the pointer has no place yet, and the first
+      // mouse move only gives it one: WebKit may send a mouse's move after a
+      // scroll that follows a tap, and that move must not take a light the
+      // tap gave (docs/reply-stacks.md, "The bar").
+      const still = pointer ? pointer.x === event.screenX && pointer.y === event.screenY : this.touch;
       pointer = { x: event.screenX, y: event.screenY };
       // While the bar's ⋯ menu is open the light stays on its message.
       if (still || this.menuOpen()) return;
@@ -172,10 +177,11 @@ export class MessageMenu {
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
     this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
     // A reply stack's head that comes to show only its row loses its bar, and
-    // gets it back once its full message shows again (tabOnly). A lit message
+    // gets it back once its full message shows again, as a message a dossier
+    // folds and unfolds does (barless). A lit message
     // its stack folds away loses its light, and its bar with it (place).
     new doc.defaultView.MutationObserver(() => { if (this.lit) this.paintBar(); })
-      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open', 'hidden'] });
+      .observe(host, { subtree: true, attributes: true, attributeFilter: ['data-head-open', 'hidden', 'data-folded'] });
   }
   buildBar() {
     const doc = this.doc, bar = doc.createElement('div');
@@ -260,7 +266,7 @@ export class MessageMenu {
   }
   paintBar() {
     const item = this.lit && this.item(this.lit.dataset.id);
-    if (!item || this.tabOnly()) { this.bar.hidden = true; return; }
+    if (!item || this.barless()) { this.bar.hidden = true; return; }
     // Also runs when a selected stack opens: its header alone has no message
     // viewport to measure until the original card becomes visible.
     const card = cardIn(this.lit);
@@ -274,12 +280,15 @@ export class MessageMenu {
     this.bar.hidden = false;
     this.place();
   }
-  // Whether the lit message is a reply stack's head showing only its row, the
-  // stack's tab (reply-stacks.mjs): it has no bar until its full message shows.
-  // Under Only new a stack draws nothing, and its head reads whole.
-  tabOnly() {
-    const card = this.lit && cardIn(this.lit);
-    return Boolean(card?.classList.contains('stack-head-card') && card.closest('.reply-stack')?.dataset.headOpen === 'false' && !card.closest('.only-new'));
+  // Whether the lit message shows no bar: a reply stack's head showing only its
+  // row, the stack's tab (reply-stacks.mjs), until its full message shows; and a
+  // message a dossier shows as its folded row (item 471), which a press unfolds.
+  // Under Only new a stack draws nothing, and its messages read whole.
+  barless() {
+    const card = this.lit && cardIn(this.lit), section = card?.closest('.reply-stack');
+    if (!section || card.closest('.only-new')) return false;
+    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false'
+      || card.dataset.folded === 'true' && section.dataset.single === 'false';
   }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow
@@ -342,8 +351,9 @@ export class MessageMenu {
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
-    // line), answer Return themselves.
-    const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList;
+    // line), answer Return themselves. On the bar ↑ and ↓ go on from its message.
+    const onBar = this.bar.contains(at) && event.key !== 'Enter' && this.lit?.isConnected;
+    const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList || onBar;
     const entry = inList && this.entryOf(at);
     if (!onPage || inList && event.key === 'Enter' && !(entry && at === cardIn(entry))) return;
     if (event.key === 'Enter') {
@@ -358,7 +368,6 @@ export class MessageMenu {
     }
     const entries = this.entries();
     if (!entries.length) return;
-    event.preventDefault();
     // A dossier's chevron holding the focus is where the keys are, whether it
     // is a stop of its own or stands for its dossier's head; else the lit message.
     const selected = (at?.matches?.('.stack-toggle') ? stopAt(this.host, at, entries) : null)
@@ -367,12 +376,21 @@ export class MessageMenu {
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
     // Focus on the list's own control between the stops (More messages, a
     // stack's line) is where the keys are: ↑ the stop drawn just above it, ↓
-    // the one just below, none past either end.
+    // the one just below.
     const between = inList && at !== this.host && !entry && !at.closest('.stack-toggle');
     const after = stop => Boolean(at.compareDocumentPosition(stop) & at.DOCUMENT_POSITION_FOLLOWING);
-    const next = between ? (event.key === 'ArrowDown' ? entries.find(after) : entries.findLast(stop => !after(stop)))
-      : index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
-    if (!next) return;
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const next = between ? (step > 0 ? entries.find(after) : entries.findLast(stop => !after(stop)))
+      : index < 0 ? inView ?? entries[0] : entries[index + step];
+    if (!next) {
+      // Past the last message (or above the first, with no buttons over the
+      // feed), the keys go on to what lies that way in the page's column: More
+      // messages, the People row, the Notebook and the reply (arrow-reach.mjs).
+      const from = between || !selected ? at : cardIn(selected).hidden ? selected.querySelector('.fold-line') : cardIn(selected);
+      if (from && reach(from, step > 0 ? 'down' : 'up', { within: this.host.closest('#main') ?? null, doc: this.doc })) event.preventDefault();
+      return;
+    }
+    event.preventDefault();
     // A dossier's header shows no message toolbar (focusin also clears the
     // light when focus lands on the chevron).
     this.light(next.matches('.stack-toggle') ? null : next);

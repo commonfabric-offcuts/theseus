@@ -68,6 +68,7 @@ import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
+import { headerClick } from './reply-stacks.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
@@ -79,7 +80,8 @@ import { showLine, lineText } from './lines.mjs';
 // way lands there and never on the page that followed it.
 let retired = null, notebookSheet = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); } });
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; notebookSheet?.retire(); },
+  updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 const node = (tag, text, className) => {
   const element = document.createElement(tag); if (text !== undefined) element.textContent = text;
   if (className) element.className = className; return element;
@@ -351,17 +353,21 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 // told the page of a change, all are drawn again from what the registry holds
 // now, so no editor an event hands in draws or erases one. Returns what it
 // drew, which is what the departure guard names.
+// A writing with no reply in doubt but one set aside whose words are kept only
+// on its line has a Set aside chip in the same place, which opens the same list
+// (docs/replies-in-doubt.md); the guard never names it.
 function paintReview() {
   const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
+  const drawn = [...entries, ...(registry?.keptAside ?? []).filter(kept => !entries.some(entry => entry.editor.key === kept.editor.key))];
   const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
   const title = $('topic-pending'), hosts = new Map([...title.children].map(host => [host.dataset.key, host]));
-  const rows = entries.filter(entry => !inComposer(entry)).map(entry => {
+  const rows = drawn.filter(entry => !inComposer(entry)).map(entry => {
     const host = hosts.get(entry.editor.key) ?? node('div'); host.dataset.key = entry.editor.key; reviewControl(host, entry); return host;
   });
   if (rows.length !== title.children.length || rows.some((host, n) => title.children[n] !== host)) title.replaceChildren(...rows);
-  reviewControl($('inline-pending'), entries.find(inComposer));
+  reviewControl($('inline-pending'), drawn.find(inComposer));
   const reading = registry?.current?.editors.reply?.key;
-  reviewControl($('pending-submissions'), entries.find(entry => entry.editor.key === reading));
+  reviewControl($('pending-submissions'), drawn.find(entry => entry.editor.key === reading));
   return entries;
 }
 function reviewControl(host, entry) {
@@ -370,7 +376,10 @@ function reviewControl(host, entry) {
   if (!control) { control = node('button'); control.type = 'button'; host.append(control); }
   // A small chip on the reply's line; what it is about is in its name.
   control.textContent = entry.label; control.onclick = () => run(() => showPending(entry.editor.key, control));
-  control.setAttribute('aria-label', `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'} may not have sent. Review`);
+  const replies = `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'}`;
+  control.setAttribute('aria-label', entry.kept ? `${replies} set aside, words kept. Open` : `${replies} may not have sent. Review`);
+  control.classList.toggle('kept', Boolean(entry.kept));
+  if (entry.kept) control.title = 'Replies you set aside, their words kept here to copy, or Undo'; else control.removeAttribute('title');
 }
 // The replies in doubt of the writing registered under this key, read again
 // from the registry at each draw and each act.
@@ -382,34 +391,78 @@ async function showPending(key, opener) {
   // The replies in doubt, and those that were while the list is open, so a
   // reply checked as sent says so in place.
   const shown = new Set();
+  // The writing as it is now, wherever it shows, after its words came back or went.
+  const redrawWriting = editor => {
+    if (inline?.editor === editor) { inline.drawEditor(); inline.paintStatus(); inline.paintImages(); }
+    if (reader?.editor === editor) { reader.drawEditor(); reader.paintStatus(); reader.paintImages(); }
+  };
+  // An act that changes whether a reply is set aside, then the writing and the list drawn again, whatever it answered.
+  const settle = async (id, aside) => { try { await registry.setAside(writing(), id, aside); } finally { redrawWriting(writing()); draw(); } };
+  const asideButton = (label, name, tip, action) => {
+    const control = button(label, action); control.setAttribute('aria-label', name); control.title = tip; control.classList.add('aside-act'); return control;
+  };
+  // A reply set aside, as Core lists it (registry.asidesOf), says its words went
+  // back into the writing, or shows them, its images opened in place and its
+  // words with Copy; either way it offers Undo. So the words are always in the
+  // writing or on this line, after a reload too.
+  const asideCard = (aside, editor) => {
+    const card = node('section', undefined, 'pending-card'); card.dataset.id = aside.id; card.dataset.state = 'aside';
+    card.append(node('h3', 'Set aside'), node('p', `To ${aside.topic_id}`, 'muted'));
+    if (aside.restored) card.append(node('p', 'Its words are back in your writing.', 'muted'));
+    else {
+      if (aside.body) card.append(node('pre', aside.body));
+      if (aside.attachments.length) {
+        card.append(node('p', 'Included in this reply · ' + imageSummary(editor, aside.attachments), 'muted'));
+        for (const attachment of aside.attachments) card.append(attachmentControl(attachment, undefined, current, failure => reviewStatus(failure ? failure.message ?? String(failure) : '')));
+      }
+      if (aside.body) card.append(asideButton('Copy', 'Copy this reply\'s words', 'Copy its words', async () => { await navigator.clipboard.writeText(aside.body); reviewStatus('Copied.'); }));
+    }
+    card.append(asideButton('Undo', 'Undo set aside: this reply may not have sent', 'Put it back with the replies that may not have sent', () => settle(aside.id, false)));
+    return card;
+  };
+  const makeCard = (item, editor, local, statusKey) => {
+    const card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
+    card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted'));
+    card.dataset.state = 'doubt';
+    if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
+      if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
+    else card.append(button('Read submitted writing', async () => {
+      const detail = await registry.inspectPending(writing(), item.id);
+      if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
+      draw();
+    }));
+    card.append(button('Check confirmation', async () => { await registry.checkPending(writing(), item.id); draw(); }));
+    if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
+      card.append(button('Prepare this reply again', () => {
+        const now = writing(), kept = now?.submissions.find(entry => entry.id === item.id);
+        if (!kept) throw Error('This writing changed. Review it again.');
+        return showCorrection(now, kept, opener);
+      }));
+    }
+    // Item 548: a reply that may never go is set aside, so it is in doubt no more; its words are kept.
+    if (!['confirmed', 'committed'].includes(statusKey)) {
+      card.append(asideButton('Set aside', 'Set this reply aside', 'Set aside: stop counting it as maybe not sent. Its words are kept, and Undo puts it back.', () => settle(item.id, true)));
+    }
+    return card;
+  };
   const draw = () => {
     const editor = writing();
     if (!current() || !editor) return;
     for (const id of registry.doubt(editor).ids) shown.add(id);
     const local = new Map(editor.submissions.map(item => [item.id, item]));
-    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
-    for (const item of entries) {
-      const statusKey = item.status ?? item.send_status;
+    const asides = new Map(registry.asidesOf(editor).map(item => [item.id, item]));
+    const listed = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id) && !asides.has(item.id));
+    for (const item of [...listed, ...asides.values()]) {
+      const statusKey = item.status ?? item.send_status, aside = asides.get(item.id);
       let card = [...host.children].find(child => child.dataset.id === item.id);
-      if (!card) {
-        card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
-        card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted')); host.append(card);
-        if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
-          if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
-        else card.append(button('Read submitted writing', async () => {
-          const detail = await registry.inspectPending(writing(), item.id);
-          if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
-          draw();
-        }));
-        card.append(button('Check confirmation', async () => { await registry.checkPending(writing(), item.id); draw(); }));
-        if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
-          card.append(button('Prepare this reply again', () => {
-            const now = writing(), kept = now?.submissions.find(entry => entry.id === item.id);
-            if (!kept) throw Error('This writing changed. Review it again.');
-            return showCorrection(now, kept, opener);
-          }));
-        }
+      // A line is drawn again when its state changes, or when a reply set aside has its words back in the writing or not.
+      if (!card || card.dataset.state !== (aside ? 'aside' : 'doubt') || aside && card.dataset.restored !== String(aside.restored)) {
+        const made = aside ? asideCard(aside, editor) : makeCard(item, editor, local, statusKey);
+        if (aside) made.dataset.restored = String(aside.restored);
+        if (card) card.replaceWith(made); else host.append(made);
+        card = made;
       }
+      if (aside) continue;
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
       const reason = registry.pendingReason(editor, item);
       let explanation = card.querySelector('[data-refusal]');
@@ -703,27 +756,40 @@ function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const anchor = writing ? inline.field : field ? at : listAnchor();
+  const first = writing || field ? null : firstInView();
+  const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
+  const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
+  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
+  const landed = control && last ? loadedAfter(list, present, last) : null;
+  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
-// messages, first in view at the top edge, the list itself holds by its top:
-// what they load comes in where they were, and the Notebook below moves down,
-// rather than holding still while the page jumps past all of it. Loaded
-// replies can gather messages above into their stacks; the page still stays
-// where it was. A card in a reply stack is a card in view of its own, so a
-// reply arriving above it in its stack moves it no more than one above the stack.
+// messages, first in view at the top edge, what they load comes in where
+// they were, and the Notebook below moves down, rather than holding still
+// while the page jumps past all of it: the first card loaded after the last
+// one drawn before goes where the control was. Since item 465 the New
+// message composer rests between the last card and More, so the list's top
+// no longer holds that place. When the repaint draws nothing after the last
+// card, the list itself holds by its top. Loaded replies can gather messages
+// above into their stacks; the page still stays where it was. A card in a
+// reply stack is a card in view of its own, so a reply arriving above it in
+// its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
-function listAnchor() {
-  const first = [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
-  return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;
+function firstInView() {
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+}
+// The first card drawn now, after last, that the list did not hold before:
+// one loaded, not one a fold or a join only draws again.
+function loadedAfter(list, before, last) {
+  return entries(list).find(entry => !before.has(entry) && drawn(list, entry.dataset.id) && Boolean(last.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
@@ -768,7 +834,7 @@ function paintViews(kind) {
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
+    drawFeed(true);
     paintMoreMessages();
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
@@ -790,6 +856,8 @@ function paintViews(kind) {
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
         if (foldedClick($('messages'), messageEntries.get(item.id), event)) return;
+        // In a dossier a press on a message's header folds it; its words open it (item 471).
+        if (headerClick($('messages'), messageEntries.get(item.id), event)) return;
         const name = event?.target?.closest?.('.author-name');
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);
@@ -801,14 +869,16 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed' }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
-      while (following && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
+      // A new card goes above the New message composer resting under the messages (item 465), so the stacks
+      // drawn next move no card past it.
+      while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
@@ -888,8 +958,22 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
   return stackFeed;
+}
+// The topic's feed, its Notebook and its Team, drawn or not, with any other
+// parts of the page named. The New message sheet rests in the feed, just above
+// More (item 465), and a dialog in a box that is not drawn shows nothing, up
+// over the page or not: where the feed is not drawn (an outcome's page, Health,
+// a topic the reader can no longer read) the sheet rests at the page's end
+// instead, put back first if it was up in the feed, its writing kept
+// (arrangeStacks, which takes it back above More once the feed is drawn).
+function drawFeed(on, ...parts) {
+  const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
+  for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on === inFeed) return;
+  if (!on && sheet.open) sheet.close();
+  if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
 }
 // The conversation's own word on a message: its item and the asks that wait,
 // as the conversation's newest read says, else as the page's messages say.
@@ -1116,6 +1200,7 @@ function paintReaderMark() {
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
   paintReaderThumb$();
   paintReaderStar();
+  paintReaderAside();
 }
 // The message the Reader shows, with its acts: its star and fold there are
 // the reader's own (stack-feed.mjs). The page's reply stacks hold it, or, for
@@ -1154,6 +1239,27 @@ function starFromReader() {
   const item = readerFeedItem();
   if (!item) return;
   stackFeed.star(item);
+}
+// The archive button beside the star (item 378): Move below More for the
+// dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
+// the count of the messages that go with it (StackFeed.asideOffer); Bring back once it is
+// there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
+function readerAside() {
+  const item = readerFeedItem();
+  return item && views.messages.has(item.id) ? stackFeed.asideOffer(item.id) : null;
+}
+function paintReaderAside() {
+  const button = $('reader-aside'), offer = readerAside();
+  button.hidden = !offer;
+  if (!offer) return;
+  const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
+  button.querySelector('.aside-count').textContent = String(offer.count);
+  button.setAttribute('aria-pressed', String(offer.below));
+  button.setAttribute('aria-label', words); button.title = words;
+}
+function asideFromReader() {
+  const offer = readerAside();
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
@@ -1457,7 +1563,7 @@ function repaintEdited(ids, edits) {
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
     if (preview) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed' });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -1565,7 +1671,7 @@ function updateStatus(state) {
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
+    drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
@@ -2081,6 +2187,7 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
+  $('reader-aside').onclick = () => asideFromReader();
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
@@ -2106,7 +2213,7 @@ async function initialize() {
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
-    navigateTarget: target => { marks.leave(); if (!shell.go(target)) shell.leave(routeHref(target)); } });
+    navigateTarget: (target, still) => { marks.leave(); if (!shell.go(target, still)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics; the outline
   // holds this list, and the right rail the outcome's Build topics (item 297).
@@ -2324,12 +2431,15 @@ async function loadConversation() {
   if (!here.read && here.has) paintConversationNav();
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
-    here.view = answer.conversation; here.read = true;
+    const view = answer.conversation;
+    // On the page the waits and the items are taken together: a paint between the two reads
+    // (the messages' own, on every feed read) would put the new waits beside an item's old state.
+    const page = here.page && view ? checkedView(await api.view('topic_messages', { topic_id: view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
+      bootstrap.instance_id) : null;
+    here.view = view; here.read = true;
+    for (const item of page?.items ?? []) here.items.set(item.id, item);
     paintConversationNav();
-    if (here.page && here.view) {
-      const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
-        bootstrap.instance_id);
-      for (const item of page.items) here.items.set(item.id, item);
+    if (page) {
       if (topic) paintHeader(topic);
       paintConversationPage();
     }
@@ -2506,12 +2616,28 @@ async function openDestination(target, title, from = null) {
   catch(error) {
     if(serial!==topicNavigation.serial)return;
     shell.stayed();
-    showLine(notice,error);
-    // Said where the person is looking: the Reader or the New message sheet,
-    // open over the page, covers the rail's notice, so it says why it stayed too.
-    const near=$('reader').open?'reader-notice':$('new-message-sheet').open?'inline-notice':null;
-    if(near)showLine($(near),error);else notice.scrollIntoView({block:'nearest'});
+    stayedWhy(error);
   }
+}
+// Why the page stayed, said by the topic line: for a move the guard refused,
+// and for one the shell refused once it had read the build (in-place-navigation.mjs, decide).
+function stayedWhy(error) {
+  const notice=$('topic-navigation-status');
+  showLine(notice,error);
+  // Said where the person is looking: the Reader or the New message sheet,
+  // open over the page, covers the rail's notice, so it says why it stayed too.
+  const near=$('reader').open?'reader-notice':$('new-message-sheet').open?'inline-notice':null;
+  if(near)showLine($(near),error);else notice.scrollIntoView({block:'nearest'});
+}
+// A move found Theseus updated while writing here was not yet safe, or changed as the move waited
+// (in-place-navigation.mjs, updated): the page stays, and says so where a refused move says why, with Reload,
+// which goes through the browser's own guard, so words not yet kept are asked about first.
+function updatedNotice(reload) {
+  const said = () => { const again = node('button', 'Reload'); again.type = 'button'; again.className = 'updated-reload'; again.title = 'Reload Theseus'; again.onclick = reload; return ['Theseus updated.', again]; };
+  const notice = $('topic-navigation-status');
+  showLine(notice, said());
+  const near = $('reader').open ? 'reader-notice' : $('new-message-sheet').open ? 'inline-notice' : null;
+  if (near) showLine($(near), said()); else notice.scrollIntoView({ block: 'nearest' });
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
 // opens: what a press on an outcome opens, its page ('workspace') or its Conversation ('conversation').
@@ -2553,7 +2679,7 @@ async function initializeOutcomePage(route) {
   const shown=route.page?{id:route.page,revision:route.revision??null}:null;
   if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   sentHost=$('sent-to-you');
@@ -2676,7 +2802,7 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
 // Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('pipeline-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
@@ -2701,7 +2827,7 @@ async function initializePipelinePage(route) {
 // says at once when the live feed drops.
 async function initializeHealthPage() {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   $('health-link').setAttribute('aria-current','page');
@@ -2720,7 +2846,7 @@ async function initializeHealthPage() {
 // back to the page in its topic or outcome. The deck reads again on commits.
 async function initializeDeckPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   // The way back names the page's topic or outcome, or says only "The page" when that read fails.
@@ -2741,7 +2867,7 @@ async function initializeDeckPage(route) {
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('measurements-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
@@ -2852,7 +2978,7 @@ function enableNewTopic(workspace) {
   topicLine={workspace,line};
 }
 async function initializeOpeningPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -2902,7 +3028,7 @@ async function initializeUnfinished(route) {
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer','topic-navigation');
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
   outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});

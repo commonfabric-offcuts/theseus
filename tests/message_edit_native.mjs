@@ -15,6 +15,16 @@
 // device, a kept close, a reload, a slice-1 row, and each session command
 // answered late or never.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, cpSync, mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Release 76's commit (bb3a46da): the build a tab opened before 4:50 AM on 11 November held, whose
+// MessageEditWriting has no start() (item 523, docs/rails.md, "One build per document").
+const RELEASE_76 = 'bb3a46dae2ba8e5c09ae64897344ea0a25fef05a';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Before the page's own code, after HEARD. Each session command the page sends (message.edit_open, message.edit_draft,
 // message.edit_close and message.edit, the Save) is listed in window.session as [kind, operation_id, holder], as it
@@ -108,11 +118,12 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     return { revision: item.revision, body: item.body, edited: Number.isSafeInteger(item.edited_ms) };
   };
   // A command of the person's from somewhere else (another device), through Core.
-  const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
-  const boot = async () => (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+  // Read at each command: a restarted server (the build cases' deploys) hands out a new session.
+  const headers = () => ({ Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' });
+  const boot = async () => (await fetch(facts.origin + '/api/bootstrap', { headers: headers() })).json();
   const elsewhere = async (kind, id, expected, args, operation) => {
     const b = await boot();
-    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers: headers(), body: JSON.stringify({ v: 1, instance_id: b.instance_id,
       operation_id: operation, kind, target: { message_id: id },
       expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, ...expected }, args }) })).json();
     assert.equal(receipt.status, 'committed', `${kind} elsewhere commits: ` + JSON.stringify(receipt.error ?? null));
@@ -1077,6 +1088,732 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     await p.point(button('cancel'));
     await until(async () => await readerOn(p) === null, 'Cancel');
     assert.deepEqual(await kindsOf(p), ['edit_open', 'edit_draft', 'edit_close'], 'a key just after a renewal sends none');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // One build per document (item 523, docs/rails.md): a page opened on one build, the server then serving another
+  // (a deploy), and a move in place (in-place-navigation.mjs), then Edit on the person's own message.
+  // A topic's row in the outline, and a move to it as the person makes one: a press, or on a phone a tap in the drawer.
+  const outlineRow = id => `#outline a[data-topic-id="${id}"]`;
+  const railOpen = p => p.evaluate(`document.querySelector('#rail').classList.contains('open')`);
+  // What the page was doing, kept in a failure of a move: where it is, the shell's state, every press and click it heard
+  // since the move began (with where ☰ was then) and, in Chrome, each shift of its layout, with what moved.
+  const moveState = p => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => ({ at: location.search, ready: document.body?.dataset.ready,
+    drawer: document.querySelector('#rail')?.classList.contains('open'), expanded: document.querySelector('#rail-open')?.getAttribute('aria-expanded'),
+    inert: document.querySelector('#main')?.inert, sheet: document.querySelector('#new-message-sheet')?.open, focus: document.activeElement?.id || document.activeElement?.tagName,
+    notices: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), presses: window.movePresses, shifts: window.moveShifts, restartNotices: window.restartNotices,
+    shell: { moving: shell.moving, page: Boolean(shell.page), handles: Boolean(shell.handles), owed: Boolean(shell.owed), leaving: shell.leaving, build: shell.build } }))`)
+    .catch(e => ({ unread: e.message }));
+  const explained = (p, error) => moveState(p).then(state => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) }); });
+  const moveTo = async (p, device, id) => {
+    // The rails' reads settled first: what they bring (the outline's rows, the line under ☰ of what is new elsewhere) moves them.
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading')`).catch(() => false), `${device}: the rails are quiet`);
+    await p.evaluate(`(window.movePresses = [], window.moveShifts = [], ['pointerdown', 'pointerup', 'click'].forEach(type => addEventListener(type, e => window.movePresses.push(type + ':'
+      + (e.target.id || e.target.getAttribute?.('data-topic-id') || e.target.className || e.target.tagName) + ':' + e.defaultPrevented + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY)
+      + ' ☰' + Math.round(document.querySelector('#rail-open')?.getBoundingClientRect().top) + ' scroll' + Math.round(scrollY)), true)),
+      (() => { try { new PerformanceObserver(list => { for (const shift of list.getEntries()) window.moveShifts.push((shift.sources ?? []).map(s => (s.node?.id || s.node?.className || s.node?.nodeName) + ' ' + Math.round(s.previousRect.top) + '→' + Math.round(s.currentRect.top)).join(', ')); })
+        .observe({ type: 'layout-shift' }); } catch {} })(), true)`);
+    // ☰ Outcomes is at the top of the page, which the person scrolls back to first.
+    if (device === 'phone' && !await railOpen(p)) {
+      await centre(p, '#rail-open');
+      await press(p, device, '#rail-open');
+      await until(() => railOpen(p), 'phone: the drawer opens').catch(error => explained(p, error));
+    }
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(outlineRow(id))}))`), `the outline names ${id}`);
+    await centre(p, outlineRow(id));
+    await press(p, device, outlineRow(id));
+  };
+  // The page shows the topic, started: by a move in place or by a load.
+  // A document being replaced answers nothing, and has not arrived.
+  const arrived = (p, id, first) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + id)} && document.body?.dataset.ready === 'true'
+    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), `the page shows ${id}`, 15000).catch(error => explained(p, error));
+  // The document this page was is gone: a load replaced it.
+  const replaced = (p, what) => until(() => p.evaluate('window.sameDocument !== true').catch(() => false), what, 15000);
+  // The build the page's modules came from (aim_next/web_build.py), and the one the server serves: null for none.
+  const pageBuild = p => p.evaluate(`(s => { const [, b, build] = s ? new URL(s.src).pathname.split('/') : []; return b === 'b' && build ? build : null; })(document.querySelector('script[type=module][src]'))`);
+  const servedBuild = async () => { const r = await fetch(facts.origin + '/api/build'); return r.ok ? (await r.json()).build : null; };
+  // What the page says of a move: the notice where a refused move says why, and the New message sheet's or the Reader's.
+  const moveNotice = p => p.evaluate(`['topic-navigation-status', 'inline-notice', 'reader-notice'].map(id => document.getElementById(id)).filter(n => n && !n.hidden).map(n => n.textContent).join(' | ')`);
+  // The stack of each error the Reader says, and what the page's MessageEditWriting is, read from the page's own modules.
+  const watchNotices = p => p.evaluate(`import('/reader.mjs').then(({ Reader }) => { window.noticed = []; const said = Reader.prototype.notice;
+    Reader.prototype.notice = function (what) { if (what instanceof Error) window.noticed.push(String(what.stack || what.message)); return said.call(this, what); }; return true; })`);
+  const editEvidence = p => p.evaluate(`import('/message-edit-writing.mjs').then(m => ({ notice: document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent,
+    stacks: window.noticed ?? [], constructor: m.MessageEditWriting.name, start: typeof m.MessageEditWriting.prototype.start,
+    methods: Object.getOwnPropertyNames(m.MessageEditWriting.prototype).join(' ') }))`);
+  // Files served to the page in place of the server's, as a page opened on them holds them; stop() lets the server serve again.
+  const keyOf = url => { const { pathname } = new URL(url); return pathname === '/' ? '/index.html' : pathname; };
+  const typeOf = key => /\.m?js$/.test(key) ? 'text/javascript; charset=utf-8' : key.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8';
+  const bodyOf = (files, key) => key === '/index.html' ? Buffer.from(files.get(key).toString().replace('__AIM_SESSION_TOKEN__', facts.token)) : files.get(key);
+  const serveFiles = async (q, files) => {
+    const ours = url => { const u = new URL(url); return u.origin === facts.origin && !u.pathname.startsWith('/api/') && files.has(keyOf(url)); };
+    if (engine === 'webkit') {
+      const fulfil = route => route.fulfill({ status: 200, contentType: typeOf(keyOf(route.request().url())), body: bodyOf(files, keyOf(route.request().url())) });
+      const matches = url => ours(url.href);
+      await q.pw.route(matches, fulfil);
+      return () => q.pw.unroute(matches, fulfil);
+    }
+    await q.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/*', requestStage: 'Response' }] });
+    q.intercept(async (payload, event) => {
+      if (!ours(event.request.url)) return false;
+      const key = keyOf(event.request.url);
+      await q.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: typeOf(key) }], body: bodyOf(files, key).toString('base64') });
+      return true;
+    });
+    return async () => { q.intercept(null); await q.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] }); };
+  };
+  let release76 = null;
+  const filesOf = revision => new Map(execFileSync('git', ['ls-tree', '-r', '--name-only', revision, 'web'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n')
+    .map(file => ['/' + file.slice('web/'.length), execFileSync('git', ['show', `${revision}:${file}`], { cwd: ROOT })]));
+  // A deploy: the server stops and starts again on web (another build's files), or on the checkout's own.
+  // p, a page open meanwhile: it hears the server go, and reaches it again before the person acts: its live feed up, and
+  // every line it showed while Theseus was away (its words of not reaching Theseus, its saves and updates waiting) gone.
+  // On a phone those lines sit above ☰ (aim.css, the folded rail), so one going after the person aims moves ☰ from under
+  // the finger. window.restartNotices lists each line that showed meanwhile, for a failure.
+  const contactOf = p => p.evaluate(`import('/api.mjs').then(({ contact }) => ({ live: contact.live, unreached: Boolean(document.querySelector('[data-unreached]')),
+    notices: [...document.querySelectorAll('.notice:not([hidden])')].filter(n => n.getClientRects().length).map(n => n.id + ': ' + n.textContent), seen: window.restartNotices }))`).catch(() => null);
+  const watchRestart = p => p.evaluate(`(() => { window.restartNotices = []; const seen = () => { for (const n of document.querySelectorAll('.notice:not([hidden])')) {
+    const line = n.id + ': ' + n.textContent; if (n.getClientRects().length && !window.restartNotices.includes(line)) window.restartNotices.push(line); } };
+    new MutationObserver(seen).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] }); return true; })()`);
+  const restartOn = async (web = null, p = null) => {
+    if (p) await watchRestart(p);
+    await control({ method: 'server_stop' });
+    if (p) await until(async () => (await contactOf(p))?.live === false, 'the page hears the server go');
+    const restarted = await control({ method: 'server_start', ...(web ? { web } : {}) });
+    assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
+    facts.token = restarted.token;
+    if (p) {
+      let last = null;
+      await until(async () => { last = await contactOf(p); return last?.live === true && !last.unreached && last.notices.length === 0; }, 'the page reaches the server again', 15000)
+        .catch(error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(last) }); });
+    }
+  };
+  // Another build of the page: the checkout's files with one module changed.
+  const anotherBuild = () => {
+    const dir = path.join(mkdtempSync(path.join(os.tmpdir(), 'theseus-build-')), 'web');
+    cpSync(path.join(ROOT, 'web'), dir, { recursive: true });
+    appendFileSync(path.join(dir, 'lines.mjs'), '\n// Another build of the page (message_edit_native.mjs).\n');
+    return dir;
+  };
+  const twoTopics = async (name) => {
+    const ids = await edited(name);
+    const there = await seed(name + '-away', [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Another topic, open first.' }]]);
+    return { topic: name, away: name + '-away', ids, there };
+  };
+  // Each run of app.mjs the page asks the server for from here on (a move in place imports app.mjs?place=N), by its
+  // address: what the browser sent, so a run the server then refuses is listed too.
+  const runsAsked = p => {
+    const run = url => /\/app\.mjs\?place=/.test(url);
+    if (engine === 'webkit') { const asked = []; p.pw.on('request', request => { if (run(request.url())) asked.push(new URL(request.url()).pathname); }); return () => asked; }
+    const from = p.network.length;
+    return () => p.network.slice(from).filter(e => e.method === 'Network.requestWillBeSent' && run(e.params.request.url)).map(e => new URL(e.params.request.url).pathname);
+  };
+  const PHONES = [320, 375, 390];
+  const sized = async (p, device, width) => { if (device === 'phone' && width !== 390) await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true }); };
+
+  await check('reading edit build a page opened on release 76, moved in place once the server serves this build, opens Edit on the person\'s message with no error', async () => {
+    const { topic, away, ids, there } = await twoTopics('edit-build-76');
+    release76 ??= filesOf(RELEASE_76);
+    let stop = null;
+    const p = await open('edit-build-76', 'laptop', away, there.note, EDIT_FAULTS, undefined, async q => { stop = await serveFiles(q, release76); });
+    assert.equal(await pageBuild(p), null, 'the page runs release 76, whose modules name no build');
+    // From here the server serves this build, as when release 77 went live under the open tab.
+    await stop();
+    await p.evaluate('(window.sameDocument = true)');
+    await moveTo(p, 'laptop', topic);
+    await arrived(p, topic, ids.mine);
+    const moved = { sameDocument: await p.evaluate('window.sameDocument === true'), build: await pageBuild(p), served: await servedBuild() };
+    await watchNotices(p);
+    await menuOf(p, 'laptop', ids.mine); await choose(p, 'laptop', 'Edit');
+    await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), 'Edit opens, or the Reader says why not');
+    const seen = await editEvidence(p);
+    assert.equal(seen.notice, '', 'Edit opens with no notice: ' + JSON.stringify({ moved, ...seen }));
+    await editing(p, 'laptop', 'My own words, as I sent them.');
+    assert.ok(moved.served, 'the server names the build it serves');
+    assert.deepEqual(moved, { sameDocument: false, build: moved.served, served: moved.served }, 'the move loaded the place afresh, on the build the server serves');
+    await p.point(button('cancel')); await until(async () => await readerOn(p) === null, 'Cancel');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading edit build a move on one build stays in place and says nothing; once the server starts on another build the next move loads the place afresh on it, the writing kept, and Edit opens: at 320, 375 and 390 by touch and on a laptop', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+        const { topic, away, ids, there } = await twoTopics(`edit-build-next-${width}`);
+        const p = await open(`edit-build-next-${width}`, device, away, there.note, EDIT_FAULTS);
+        await sized(p, device, width);
+        const first = await pageBuild(p);
+        await p.evaluate('(window.sameDocument = true)');
+        const inPlace = runsAsked(p);
+        await moveTo(p, device, topic);
+        await arrived(p, topic, ids.mine);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: on one build the move is made in place, with no load`);
+        assert.deepEqual(inPlace(), [`/b/${first}/app.mjs`], `${width}: by one run of app.mjs, under the page's own build`);
+        assert.equal(await moveNotice(p), '', `${width}: and nothing is said`);
+        // Writing in the composer, saved, before the deploy.
+        const words = `Written before the deploy (${width}).`;
+        await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+        await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved to Theseus')`), `${width}: the writing is saved`, 15000);
+        if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
+        await p.evaluate('document.activeElement?.blur()');
+        // Each width's page opened on the build the server served; the deploy is to the other one.
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
+        const across = runsAsked(p);
+        await moveTo(p, device, away);
+        await arrived(p, away, there.note);
+        const served = await servedBuild();
+        assert.deepEqual(across(), [], `${width}: the move read the build and loaded, asking the server for no run of the page's old build`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), false, `${width}: across builds the move loads the place afresh, never running another build's code in this document`);
+        assert.ok(served && first && served !== first, `${width}: the server serves another build than the page first had`);
+        assert.equal(await pageBuild(p), served, `${width}: the page loaded runs the server's build`);
+        assert.equal(await moveNotice(p), '', `${width}: with nothing said`);
+        // On the new build a move is in place again, and the writing is there.
+        await p.evaluate('(window.sameDocument = true)');
+        await moveTo(p, device, topic);
+        await arrived(p, topic, ids.mine);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: on the new build the move is in place`);
+        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: the writing is kept, as the page restores it`);
+        await watchNotices(p);
+        await menuOf(p, device, ids.mine); await choose(p, device, 'Edit');
+        await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${width}: Edit opens, or the Reader says why not`);
+        assert.equal((await editEvidence(p)).notice, '', `${width}: Edit opens with no notice`);
+        await editing(p, device, 'My own words, as I sent them.');
+        await press(p, device, button('cancel')); await until(async () => await readerOn(p) === null, 'Cancel');
+        await shot(p, `edit-build-next-${width}`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  // The move's read of the build the server serves, held unanswered, as a slow connection holds it; release() answers it.
+  const holdBuildRead = async p => {
+    if (engine === 'webkit') {
+      const routes = [];
+      await p.pw.route(facts.origin + '/api/build', route => { routes.push(route); });
+      return { out: () => until(() => routes.length > 0, 'the move reads the build').catch(error => explained(p, error)), release: async () => { for (const route of routes.splice(0)) await route.continue(); await p.pw.unroute(facts.origin + '/api/build'); } };
+    }
+    const isBuild = event => event.request.url === facts.origin + '/api/build';
+    p.intercept((payload, event) => isBuild(event));
+    return { out: () => until(() => p.held.some(h => isBuild(h.event)), 'the move reads the build').catch(error => explained(p, error)),
+      // Each read let go leaves the list, so a later hold on the same page waits for a read of its own.
+      release: async () => { p.intercept(null); for (const h of p.held.filter(h => isBuild(h.event))) { p.held.splice(p.held.indexOf(h), 1); await p.send('Fetch.continueResponse', { requestId: h.event.requestId }); } } };
+  };
+  // The page's device copy of writing held unwritten (journal.mjs) while window.holdJournal is true, so the writing is not yet safe.
+  const holdJournal = p => p.evaluate(`import('/journal.mjs').then(({ RecoveryJournal }) => { window.journalHeld = [];
+    for (const name of ['save', 'saveLatest']) { const write = RecoveryJournal.prototype[name];
+      RecoveryJournal.prototype[name] = function (...args) { if (!window.holdJournal) return write.apply(this, args);
+        return new Promise(go => window.journalHeld.push(go)).then(() => write.apply(this, args)); }; } return true; })`);
+  const letJournal = p => p.evaluate('(() => { window.holdJournal = false; for (const go of window.journalHeld.splice(0)) go(); return true; })()');
+  const scheme = (p, value) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
+
+  await check('reading edit build a move that finds another build while writing here is not yet safe stays, says Theseus updated with Reload, keeps the words, and Reload loads the new build with them: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+        const { topic, away, ids, there } = await twoTopics(`edit-build-held-${width}`);
+        const p = await open(`edit-build-held-${width}`, device, away, there.note, EDIT_FAULTS);
+        await sized(p, device, width);
+        await holdJournal(p);
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
+        await p.evaluate('(window.sameDocument = true)');
+        const read = await holdBuildRead(p);
+        await moveTo(p, device, topic);
+        await read.out();
+        // While the move waits on the answer, the person writes, and the device has not kept the words yet.
+        const words = `Written as Theseus updated (${width}).`;
+        await p.evaluate('window.holdJournal = true');
+        await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+        await until(() => p.evaluate('window.journalHeld.length > 0'), `${width}: the device copy is out`);
+        await read.release();
+        await until(async () => (await moveNotice(p)).startsWith('Theseus updated.'), `${width}: the page says Theseus updated`);
+        assert.equal(await p.evaluate(`location.search`), '?topic=' + away, `${width}: the page stays where it was`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: and nothing loaded`);
+        assert.equal(await valueOf(p, '#inline-writing-body'), words, `${width}: the words are in their box`);
+        const reload = await p.evaluate(`[...document.querySelectorAll('.updated-reload')].filter(b => b.getClientRects().length).map(b => { const r = b.getBoundingClientRect();
+          return { text: b.textContent, title: b.title, width: r.width, height: r.height, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight }; })`);
+        assert.ok(reload.length >= 1, `${width}: Reload shows: ` + JSON.stringify(reload));
+        for (const button of reload) {
+          assert.deepEqual([button.text, button.title, button.inside], ['Reload', 'Reload Theseus', true], `${width}: Reload says so, with a tooltip, in the window`);
+          if (device === 'phone') assert.ok(button.width >= 44 && button.height >= 44, `${width}: Reload is a finger's size: ${JSON.stringify(button)}`);
+        }
+        assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width}: nothing scrolls sideways`);
+        for (const look of ['light', 'dark']) { await scheme(p, look); await shot(p, `edit-build-updated-${width}-${look}`); }
+        await scheme(p, '');
+        // The words kept on the device, Reload loads the place on the new build, and the words come with it.
+        await letJournal(p);
+        // The words safe (no guard of the page's holds), as the page says it: then Reload loads with no ask.
+        await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), `${width}: the device keeps the words`);
+        await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent === 'Saved to Theseus'`), `${width}: the page says the words are saved to Theseus`);
+        const where = await p.evaluate(`['topic-navigation-status', 'inline-notice'].find(id => document.querySelector('#' + id + ' .updated-reload')?.getClientRects().length)`);
+        await press(p, device, `#${where} .updated-reload`);
+        await replaced(p, `${width}: Reload loads the page`);
+        await arrived(p, away, there.note);
+        assert.equal(await p.evaluate('window.sameDocument === true'), false, `${width}: Reload loaded the page`);
+        assert.equal(await pageBuild(p), await servedBuild(), `${width}: on the server's build`);
+        await until(async () => await valueOf(p, '#inline-writing-body') === words, `${width}: with the words, as the page restores them`).catch(async error => {
+          const state = await p.evaluate(`({ value: document.querySelector('#inline-writing-body').value, saved: document.querySelector('#inline-save-state').textContent,
+            notice: [...document.querySelectorAll('.notice:not([hidden])')].map(n => n.id + ': ' + n.textContent), build: document.querySelector('script[type=module][src]')?.src })`).catch(e => ({ unread: e.message }));
+          throw Object.assign(error, { message: error.message + ' ' + JSON.stringify(state) });
+        });
+        assert.equal(await moveNotice(p), '', `${width}: and nothing more to say`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+        void ids;
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  // Theseus updated said where the person writes (app.mjs updatedNotice): in the open Reader, and in the New message
+  // sheet, beside the topic line; reached by a back, whose address is put back (in-place-navigation.mjs, updated).
+  await check('reading edit build a back that finds another build while writing in the open Reader or New message sheet is not yet safe stays, puts the address back, and says Theseus updated there with Reload: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const surface of ['reader', 'sheet']) {
+        for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+          const name = `edit-build-back-${surface}-${width}`;
+          const { topic, away, ids, there } = await twoTopics(name);
+          const p = await open(name, device, away, there.note, EDIT_FAULTS);
+          await sized(p, device, width);
+          // A move in place on one build, so a back is the page's own.
+          await p.evaluate('(window.sameDocument = true)');
+          await moveTo(p, device, topic);
+          await arrived(p, topic, ids.mine);
+          await holdJournal(p);
+          onNext = !onNext; await restartOn(onNext ? next : null, p);
+          const field = surface === 'reader' ? '#writing-body' : '#inline-writing-body', notice = surface === 'reader' ? '#reader-notice' : '#inline-notice';
+          if (surface === 'reader') await openReader(p, device, ids.theirs, 'An agent says');
+          else { await press(p, device, '#new-message'); await until(() => p.evaluate(`document.querySelector('#new-message-sheet').open`), `${width}: New message opens`); }
+          const read = await holdBuildRead(p);
+          await p.evaluate('history.back()');
+          await read.out();
+          // While the back waits on the answer, the person writes, and the device has not kept the words yet.
+          const words = `Written in the ${surface} as Theseus updated (${width}).`;
+          await p.evaluate('window.holdJournal = true');
+          await into(p, device, field); await p.send('Input.insertText', { text: words });
+          await until(() => p.evaluate('window.journalHeld.length > 0'), `${width}: the device copy is out`);
+          await read.release();
+          const says = selector => p.evaluate(`(n => n && !n.hidden && n.getClientRects().length > 0 ? n.textContent : '')(document.querySelector(${JSON.stringify(selector)}))`);
+          await until(async () => (await says(notice)).startsWith('Theseus updated.'), `${width}: the ${surface} says Theseus updated`);
+          assert.ok((await p.evaluate(`document.querySelector('#topic-navigation-status').textContent`)).startsWith('Theseus updated.'), `${width}: and so does the topic line`);
+          await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + topic)}`), `${width}: the back is put back: the address names the page that stayed`);
+          assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: nothing loaded`);
+          assert.equal(await p.evaluate(surface === 'reader' ? `document.querySelector('#reader').open` : `document.querySelector('#new-message-sheet').open`), true, `${width}: the ${surface} stays open`);
+          assert.equal(await valueOf(p, field), words, `${width}: the words are in their box`);
+          const reload = await p.evaluate(`(b => { if (!b || !b.getClientRects().length) return null; const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            return { text: b.textContent, title: b.title, width: r.width, height: r.height, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, hit: b.contains(document.elementFromPoint(x, y)) }; })(document.querySelector(${JSON.stringify(notice + ' .updated-reload')}))`);
+          assert.ok(reload, `${width}: Reload shows in the ${surface}`);
+          assert.deepEqual([reload.text, reload.title, reload.inside, reload.hit], ['Reload', 'Reload Theseus', true, true], `${width}: Reload says so, with a tooltip, in the window, uncovered: ${JSON.stringify(reload)}`);
+          if (device === 'phone') assert.ok(reload.width >= 44 && reload.height >= 44, `${width}: Reload is a finger's size: ${JSON.stringify(reload)}`);
+          assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width}: nothing scrolls sideways`);
+          for (const look of ['light', 'dark']) { await scheme(p, look); await shot(p, `edit-build-back-${surface}-${width}-${look}`); }
+          await scheme(p, '');
+          // The words kept, Reload in the ${surface} loads the page that stayed, on the new build.
+          await letJournal(p);
+          await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), `${width}: the device keeps the words`);
+          await press(p, device, notice + ' .updated-reload');
+          await replaced(p, `${width}: Reload loads the page`);
+          await arrived(p, topic, ids.mine);
+          assert.equal(await pageBuild(p), await servedBuild(), `${width}: on the server's build`);
+          assert.deepEqual(p.errors, []);
+          await p.close();
+          void away;
+        }
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  // The page's guard hands the move its last look, which the shell asks again once the build is read
+  // (in-place-navigation.mjs, decide): words typed while the read is out keep the page where it is, whether this
+  // device has kept them yet or its copy of them is still being written, after a row and after a back with the cursor
+  // left in the composer. The page says why, as a refused move does, and the words stay in their box.
+  const keptHere = (p, what) => until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), what);
+  const STAYED = 'Keep this page open until your writing and selected images are safely saved, then choose the topic again.';
+  const savedToTheseus = (p, what) => until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent === 'Saved to Theseus'`), what, 15000);
+  await check('reading edit build on one build, words typed while a move reads the build keep the page where it is, which says why, with the words in their box, kept on this device or not yet, after a row and after a back with the cursor in the composer: at 320, 375 and 390 by touch and on a laptop, light and dark', async () => {
+    for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+      const name = `edit-build-typed-${width}`;
+      const { topic, away, ids, there } = await twoTopics(name);
+      const p = await open(name, device, away, there.note, EDIT_FAULTS);
+      await sized(p, device, width);
+      await holdJournal(p);
+      await p.evaluate('(window.sameDocument = true)');
+      const first = await pageBuild(p);
+      // One move held at its read of the build while the person writes on. held: the device's copy of the words is
+      // still being written as the read is answered; otherwise the device has kept them first.
+      const typedWhileRead = async (how, held, words, place, look) => {
+        const runs = runsAsked(p), read = await holdBuildRead(p);
+        if (how === 'row') await moveTo(p, device, topic);
+        else { await into(p, device, '#inline-writing-body'); await p.evaluate('history.back()'); }
+        await read.out();
+        if (how === 'row') await into(p, device, '#inline-writing-body');
+        const before = await p.evaluate(`(f => { f.setSelectionRange(f.value.length, f.value.length); return f.value; })(document.querySelector('#inline-writing-body'))`);
+        if (held) await p.evaluate('window.holdJournal = true');
+        await p.send('Input.insertText', { text: words });
+        if (held) await until(() => p.evaluate('window.journalHeld.length > 0'), `${width} ${how}: the device's copy is still being written`);
+        else await keptHere(p, `${width} ${how}: the device has kept the words`);
+        await read.release();
+        await until(async () => (await p.evaluate(`document.querySelector('#topic-navigation-status').textContent`)) === STAYED, `${width} ${how}: the page says why it stayed`)
+          .catch(error => explained(p, error));
+        await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + place)}`), `${width} ${how}: the address names the page that stayed`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width} ${how}: nothing loaded`);
+        assert.deepEqual(runs(), [], `${width} ${how}: and no run of the page was asked for`);
+        assert.equal(await valueOf(p, '#inline-writing-body'), before + words, `${width} ${how}: the words are in their box`);
+        // Said where the person is looking: in the New message sheet when it is open over the page, else by the topic line,
+        // brought into the window (within a pixel's rounding). A back is put back by a traversal, after which the browser
+        // puts back that entry's scroll, as it does for any back the page refuses: there the line's words are checked.
+        const line = await p.evaluate(`(() => { const sheet = document.querySelector('#new-message-sheet').open, n = document.querySelector(sheet ? '#inline-notice' : '#topic-navigation-status');
+          const r = n.getBoundingClientRect(), whole = ${JSON.stringify(how === 'row')};
+          return { sheet, text: n.hidden ? '' : n.textContent, inside: !whole || r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1,
+          rect: [r.left, r.top, r.right, r.bottom].map(Math.round), window: [innerWidth, innerHeight, Math.round(scrollY)], visual: visualViewport && [visualViewport.width, visualViewport.height, visualViewport.offsetTop].map(Math.round),
+          focus: document.activeElement?.id, display: getComputedStyle(n).display }; })()`);
+        assert.deepEqual([line.text, line.inside], [STAYED, true], `${width} ${how}: said in the window where the person writes: ${JSON.stringify(line)}`);
+        assert.equal(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), true, `${width} ${how}: nothing scrolls sideways`);
+        if (look) { for (const scheme_ of ['light', 'dark']) { await scheme(p, scheme_); await shot(p, `edit-build-typed-${how}-${width}-${scheme_}`); } await scheme(p, ''); }
+        if (held) await letJournal(p);
+        await savedToTheseus(p, `${width} ${how}: the words are saved to Theseus`);
+        return before + words;
+      };
+      await typedWhileRead('row', false, `Typed as the row's move read the build (${width}).`, away, false);
+      const awayWords = await typedWhileRead('row', true, ` And while the device was still writing (${width}).`, away, true);
+      // Chosen again with the words safe, the move is made in place, on the page's own build.
+      const again = runsAsked(p);
+      await moveTo(p, device, topic);
+      await arrived(p, topic, ids.mine);
+      assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: chosen again, the move is made in place`);
+      assert.deepEqual(again(), [`/b/${first}/app.mjs`], `${width}: by one run of app.mjs, under the page's own build`);
+      await typedWhileRead('back', false, `Typed as the back read the build (${width}).`, topic, false);
+      await typedWhileRead('back', true, ` And while the device was still writing (${width}).`, topic, true);
+      // A back with the words safe goes, in place, and the first topic's words are in its box.
+      if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
+      await p.evaluate('history.back()');
+      await arrived(p, away, there.note);
+      assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: the back goes in place`);
+      await until(async () => await valueOf(p, '#inline-writing-body') === awayWords, `${width}: the first topic's words are in its box`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // On another build, words typed while the move reads the build and kept on this device keep the page where it is too:
+  // it says Theseus updated with Reload (the guard's last look no longer stands), rather than load the new build with
+  // the words only under Review versions.
+  await check('reading edit build words typed while a move reads the build and kept on this device keep the page where it is when the server serves another build, which says Theseus updated, with the words in their box: at 320, 375 and 390 by touch and on a laptop', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const [device, width] of [...PHONES.map(w => ['phone', w]), ['laptop', 1280]]) {
+        const name = `edit-build-typed-next-${width}`;
+        const { topic, away, there } = await twoTopics(name);
+        const p = await open(name, device, away, there.note, EDIT_FAULTS);
+        await sized(p, device, width);
+        onNext = !onNext; await restartOn(onNext ? next : null, p);
+        await p.evaluate('(window.sameDocument = true)');
+        const read = await holdBuildRead(p);
+        await moveTo(p, device, topic);
+        await read.out();
+        const words = `Typed as Theseus updated, kept on this device (${width}).`;
+        await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+        await keptHere(p, `${width}: the device has kept the words`);
+        await read.release();
+        await until(async () => (await moveNotice(p)).startsWith('Theseus updated.'), `${width}: the page says Theseus updated`).catch(error => explained(p, error));
+        assert.equal(await p.evaluate('location.search'), '?topic=' + away, `${width}: the page stays where it was`);
+        assert.equal(await p.evaluate('window.sameDocument === true'), true, `${width}: and nothing loaded`);
+        assert.equal(await valueOf(p, '#inline-writing-body'), words, `${width}: the words are in their box`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  // Saves of the topic's writing to Theseus held unsent while window.holdDrafts is true (the page's fetch, as it leaves).
+  const holdDrafts = p => p.evaluate(`(() => { window.holdDrafts = true; window.draftsHeld = 0; const send = window.fetch;
+    window.fetch = function (input, init) { let body = null; try { body = JSON.parse(init?.body ?? 'null'); } catch {}
+      if (window.holdDrafts && body?.kind === 'draft.save') { window.draftsHeld += 1; return new Promise(() => {}); } return send.call(this, input, init); }; return true; })()`);
+
+  // Words kept on this device only, which Theseus never had, come back after a load as the page offers them
+  // (tests/reader_persistence_native.mjs, "explicit device recovery"): Review versions shows them as writing kept on
+  // this device, and Recover this version puts them back in the box.
+  const recovered = async (p, words) => {
+    await until(() => p.evaluate(`!document.querySelector('#inline-review-versions').hidden`).catch(() => false), 'the page offers the versions kept on this device');
+    await p.point('#inline-review-versions');
+    const chosen = await until(() => p.evaluate(`(() => { const section = [...document.querySelectorAll('#review-content section')].find(e => e.querySelector('pre')?.textContent === ${JSON.stringify(words)}
+      && [...e.querySelectorAll('button')].some(b => b.textContent === 'Recover this version')); if (!section) return null; section.id = 'chosen-device-recovery';
+      return '#chosen-device-recovery button'; })()`), 'the words are among them, kept on this device');
+    await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(chosen)})].find(b => b.textContent === 'Recover this version').id = 'chosen-device-recover'`);
+    await p.point('#chosen-device-recover');
+    await until(async () => await valueOf(p, '#inline-writing-body') === words, 'Recover this version puts the words back');
+  };
+
+  await check('reading edit build Reload pressed once the words are kept on this device, before Theseus has them, loads the new build, and the words come back as on any load', async () => {
+    const next = anotherBuild();
+    try {
+      const { topic, away, there } = await twoTopics('edit-build-device');
+      const p = await open('edit-build-device', 'laptop', away, there.note, EDIT_FAULTS);
+      await holdJournal(p);
+      await restartOn(next, p);
+      await p.evaluate('(window.sameDocument = true)');
+      const read = await holdBuildRead(p);
+      await moveTo(p, 'laptop', topic);
+      await read.out();
+      const words = 'Written as Theseus updated, kept on this device only.';
+      await p.evaluate('window.holdJournal = true');
+      await holdDrafts(p);
+      await into(p, 'laptop', '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+      await until(() => p.evaluate('window.journalHeld.length > 0'), 'the device copy is out');
+      await read.release();
+      await until(async () => (await moveNotice(p)).startsWith('Theseus updated.'), 'the page says Theseus updated');
+      await letJournal(p);
+      await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), 'the device keeps the words');
+      await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved on this device')`), 'the page says the words are on this device');
+      // Any Save to Theseus is held unsent (holdDrafts), so the words are on this device only as Reload is pressed.
+      assert.notEqual(await p.evaluate(`document.querySelector('#inline-save-state').textContent`), 'Saved to Theseus', 'and Theseus has not had them');
+      await p.point('#topic-navigation-status .updated-reload');
+      await replaced(p, 'Reload loads the page');
+      await arrived(p, away, there.note);
+      assert.equal(await pageBuild(p), await servedBuild(), 'on the server\'s build');
+      await recovered(p, words);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  await check('reading edit build on one build, a reload with the words kept on this device only, before Theseus has them, brings them back as the page offers them', async () => {
+    const { away, there } = await twoTopics('edit-build-device-same');
+    const p = await open('edit-build-device-same', 'laptop', away, there.note, EDIT_FAULTS);
+    const words = 'Written on one build, kept on this device only.';
+    await holdDrafts(p);
+    await into(p, 'laptop', '#inline-writing-body'); await p.send('Input.insertText', { text: words });
+    await until(() => p.evaluate(`document.querySelector('#inline-save-state').textContent.startsWith('Saved on this device')`), 'the page says the words are on this device');
+    await until(() => p.evaluate(`import('/in-place-navigation.mjs').then(({ shell }) => !shell.guards.some(holds => holds()))`), 'the device keeps the words');
+    await p.evaluate('(window.sameDocument = true, location.reload(), true)');
+    await replaced(p, 'the page reloads');
+    await arrived(p, away, there.note);
+    await recovered(p, words);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Edit on the person's own message as they reach it: from its bar. Once a reply heads it into a stack shown as its
+  // row alone (docs/reply-stacks.md), which has no bar, the person lights the row and presses it, which shows the
+  // message whole with its bar (tests/stack_native.mjs, "a head shown as one row has no bar").
+  const editReached = async (p, device, id) => {
+    const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
+    if (!await shown()) {
+      // Lit already (the Reader closing lights the message it showed), the next press on the row shows it whole.
+      if (!(await lit(p)).includes(id)) await light(p, device, id);
+      await press(p, device, `${card(id)} .stack-who`);
+      await until(shown, `${device}: a press on the head's row shows it whole`);
+    }
+    await menuOf(p, device, id); await choose(p, device, 'Edit');
+  };
+  await check('reading edit build going back into Edit after posting a reply while Edit was held, twice, opens on the latest words with no notice; an agent\'s message offers no Edit, and another device holding the edit is said', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const topic = `edit-again-${device}`;
+      const ids = await seed(topic, [['theirs', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An agent asks for a word.' }]]);
+      const p = await open(topic, device, topic, ids.theirs, EDIT_FAULTS);
+      await watchNotices(p);
+      // The person posts a message.
+      const posted = `Posted from the composer (${device}).`;
+      await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: posted });
+      if (device === 'laptop') await p.key('Enter', 4); else await press(p, device, '#inline-send');
+      const mine = await until(() => p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id]')].find(c => c.querySelector('.message-preview')?.textContent === ${JSON.stringify(posted)})?.dataset.id ?? null`), `${device}: the message is posted`, 15000);
+      if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
+      assert.equal((await menuOf(p, device, ids.theirs)).includes('Edit'), false, `${device}: an agent's message offers no Edit`);
+      await closeMenu(p);
+      let latest = posted;
+      for (const round of [1, 2]) {
+        // Edit, kept open with new words in it.
+        await editReached(p, device, mine);
+        await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${device} ${round}: Edit opens, or the Reader says why not`);
+        assert.equal((await editEvidence(p)).notice, '', `${device} ${round}: Edit opens with no notice: ` + JSON.stringify(await editEvidence(p)));
+        await editing(p, device, latest);
+        latest = `Changed in round ${round} (${device}).`;
+        await replaceWords(p, latest);
+        await until(async () => await status(p) === 'Kept', `${device} ${round}: Core keeps the words`);
+        // A reply posted while the edit is held: from the Reader beside it in round 1, from the topic's composer once the Reader is closed in round 2.
+        const reply = `A reply in round ${round} (${device}).`;
+        if (round === 1) {
+          await into(p, device, '#writing-body'); await p.send('Input.insertText', { text: reply });
+          if (device === 'laptop') await p.key('Enter', 4); else await press(p, device, '#send-reply');
+          await until(() => p.evaluate(`[...document.querySelectorAll('#messages .message-card .message-preview')].some(e => e.textContent === ${JSON.stringify(reply)})`), `${device} ${round}: the reply is posted`, 15000);
+          if (await readerOn(p) !== null) await closeReader(p, device);
+        } else {
+          await closeReader(p, device);
+          await into(p, device, '#inline-writing-body'); await p.send('Input.insertText', { text: reply });
+          if (device === 'laptop') await p.key('Enter', 4); else await press(p, device, '#inline-send');
+          await until(() => p.evaluate(`[...document.querySelectorAll('#messages .message-card .message-preview')].some(e => e.textContent === ${JSON.stringify(reply)})`), `${device} ${round}: the reply is posted`, 15000);
+          if (await p.evaluate(`document.querySelector('#new-message-sheet').open`)) await press(p, device, '#new-message-close');
+        }
+      }
+      // Back into Edit after the second reply: the latest words, no notice.
+      await editReached(p, device, mine);
+      await until(() => p.evaluate(`document.querySelector('#reader').dataset.editing === 'true' || !document.querySelector('#reader-notice').hidden`), `${device}: Edit opens again, or the Reader says why not`);
+      assert.equal((await editEvidence(p)).notice, '', `${device}: Edit opens with no notice: ` + JSON.stringify(await editEvidence(p)));
+      await editing(p, device, latest);
+      // Another device takes the edit: this page says so, and keeps its words.
+      await openElsewhere(mine, `${topic}-other-open`);
+      await until(async () => await status(p) === 'Open on your other device', `${device}: this page learns another device holds the edit`);
+      assert.equal(await valueOf(p, FIELD), latest, `${device}: the words stay`);
+      await press(p, device, button('cancel')); await until(async () => await readerOn(p) === null, 'Cancel');
+      await elsewhere('message.edit_close', mine, {}, { holder: OTHER }, `${topic}-other-close`);
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // A page loaded across a deploy (item 523, docs/rails.md, "One build per document"): its index.html from one server
+  // and its modules asked for once the next one has started, or while none is up. The page's boot (web/boot.js) loads
+  // afresh on the build the server serves, or says it could not open the page, with Reload; it never stays blank.
+  // Each document this page loads counts itself (sessionStorage.loads), so a load the boot asked for is counted, and
+  // counts its reads of the build (window.buildReads), answered or not: a read that got no answer leaves no resource entry in WebKit.
+  const LOADS = `(()=>{try{sessionStorage.loads=String(Number(sessionStorage.loads||0)+1)}catch(e){}
+    window.buildReads=0;const f=window.fetch;window.fetch=function(input,init){if(new URL(String(input instanceof Request?input.url:input),location.href).pathname==='/api/build')window.buildReads++;return f.call(this,input,init)}})()`;
+  const loads = p => p.evaluate('Number(sessionStorage.loads)');
+  // What the document loaded: its modules' addresses, whether it read the build, and what its status line says.
+  const loaded = p => p.evaluate(`({ modules: performance.getEntriesByType('resource').map(e => new URL(e.name)).filter(u => /\\.m?js$/.test(u.pathname)).map(u => u.pathname),
+    readBuild: window.buildReads > 0,
+    status: document.querySelector('#app-status').hidden ? '' : document.querySelector('#app-status').textContent, ready: document.body?.dataset.ready ?? null })`).catch(() => null);
+  // Every module the page asks for under a build is held unsent, as a slow connection holds it: step() sends on those
+  // asked so far and holds the next, let(lose) sends on every one held, or loses it (a dropped connection), and holds no more.
+  const holdModules = async p => {
+    const isModule = url => { const u = new URL(url); return u.origin === facts.origin && u.pathname.startsWith('/b/'); };
+    if (engine === 'webkit') {
+      const routes = []; let holding = true;
+      const match = url => isModule(url.href), handler = route => { if (holding) routes.push(route); else route.continue(); };
+      await p.pw.route(match, handler);
+      const go = (lose = false) => Promise.allSettled(routes.splice(0).map(route => lose ? route.abort('connectionrefused') : route.continue()));
+      return { asked: () => routes.map(route => new URL(route.request().url()).pathname), step: () => go(),
+        let: async (lose = false) => { holding = false; await go(lose); await p.pw.unroute(match, handler); } };
+    }
+    const mine = () => p.held.filter(h => h.event.responseStatusCode === undefined && isModule(h.event.request.url));
+    const go = (lose = false) => Promise.allSettled(mine().map(h => { p.held.splice(p.held.indexOf(h), 1);
+      return p.send(lose ? 'Fetch.failRequest' : 'Fetch.continueRequest', { requestId: h.event.requestId, ...(lose ? { errorReason: 'ConnectionRefused' } : {}) }); }));
+    p.intercept((payload, event) => event.responseStatusCode === undefined && isModule(event.request.url));
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, { urlPattern: facts.origin + '/b/*', requestStage: 'Request' }] });
+    return { asked: () => mine().map(h => new URL(h.event.request.url).pathname), step: () => go(), let: async (lose = false) => { p.intercept(null); await go(lose); } };
+  };
+  // The page loads again with every module held: its index.html comes from the server as it stands, and its entry
+  // module is let through, so the entry's own imports are what wait. Gives the build index.html named and the held modules.
+  const reloadHeld = async (p, what) => {
+    const held = await holdModules(p);
+    const reloading = p.send('Page.reload').catch(error => error);
+    await until(() => held.asked().some(at => /^\/b\/[^/]+\/app\.mjs$/.test(at)), `${what}: the page asks for its entry under its build`);
+    const [, , build] = held.asked().find(at => /^\/b\/[^/]+\/app\.mjs$/.test(at)).split('/');
+    await held.step();
+    await until(() => held.asked().length > 0, `${what}: the entry's own imports are asked for, and held`);
+    return { build, held, reloading };
+  };
+  const comesUp = (p, topic, first, what) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + topic)} && document.body?.dataset.ready === 'true'
+    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), what, 15000)
+    .catch(async error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify({ loads: await loads(p).catch(() => null), loaded: await loaded(p) }) }); });
+  const onOneBuild = (seen, build, what) => {
+    assert.ok(seen.modules.length > 10, `${what}: the page's modules are listed (${seen.modules.length})`);
+    assert.deepEqual(seen.modules.filter(at => !at.startsWith(`/b/${build}/`)), [], `${what}: every module is of build ${build}, none of another`);
+  };
+
+  await check('reading edit build a page whose modules are asked for once the server has started on another build loads afresh on it, once, and comes up on that build alone: on a laptop and at 390 by touch', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const device of ['laptop', 'phone']) {
+        const name = `edit-build-boot-${device}`;
+        const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page loaded across a deploy.' }]]);
+        const p = await open(name, device, name, ids.note, LOADS);
+        const before = await loads(p);
+        const { build: first, held, reloading } = await reloadHeld(p, device);
+        // The deploy: the next server serves another build before the first one's modules are asked for.
+        onNext = !onNext; await restartOn(onNext ? next : null);
+        const served = await servedBuild();
+        assert.ok(served && served !== first, `${device}: the server now serves another build than the page's index.html named`);
+        await held.let();
+        await reloading;
+        await comesUp(p, name, ids.note, `${device}: the page comes up, rather than stay blank`);
+        assert.equal(await loads(p), before + 2, `${device}: by one load of its own after the reload, no more`);
+        assert.equal(await pageBuild(p), served, `${device}: on the build the server serves`);
+        const seen = await loaded(p);
+        onOneBuild(seen, served, device);
+        assert.equal(seen.status, '', `${device}: saying nothing`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  await check('reading edit build a page whose modules the server could not give says Theseus could not open this page, with Reload, and loads nothing by itself: a module lost on its own build, and the server away mid-deploy; Reload brings it up: on a laptop and at 390 by touch', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const name = `edit-build-said-${device}`;
+      const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page whose modules were lost.' }]]);
+      const p = await open(name, device, name, ids.note, LOADS);
+      for (const way of ['lost', 'away']) {
+        const what = `${device}, ${way}`;
+        const before = await loads(p);
+        const { build, held, reloading } = await reloadHeld(p, what);
+        if (way === 'away') await control({ method: 'server_stop' });
+        // Lost: the server serves the page's own build, so loading again would meet the same; away: nothing answers.
+        await held.let(way === 'lost');
+        await reloading;
+        await until(async () => (await loaded(p))?.status !== '', `${what}: the page says it could not open, rather than stay blank`, 15000)
+          .catch(async error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify({ loads: await loads(p).catch(() => null), loaded: await loaded(p) }) }); });
+        const seen = await loaded(p);
+        assert.deepEqual({ status: seen.status, ready: seen.ready, readBuild: seen.readBuild, loads: await loads(p) },
+          { status: 'Theseus could not open this page.Reload', ready: null, readBuild: true, loads: before + 1 }, `${what}: in plain words with Reload, having read the build and loaded nothing by itself`);
+        assert.equal(await p.evaluate(`Boolean(document.querySelector('#app-status').getClientRects().length && document.querySelector('#app-status .updated-reload').getClientRects().length)`), true, `${what}: where the person sees it`);
+        await shot(p, `edit-build-said-${device}-${way}`);
+        if (way === 'away') {
+          const restarted = await control({ method: 'server_start' });
+          assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
+          facts.token = restarted.token;
+        }
+        assert.equal(await servedBuild(), build, `${what}: the server serves the page's build`);
+        await press(p, device, '#app-status .updated-reload');
+        await comesUp(p, name, ids.note, `${what}: Reload brings the page up`);
+        assert.equal(await loads(p), before + 2, `${what}: by the one load Reload asked for`);
+        onOneBuild(await loaded(p), build, what);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading edit build a page on one build, its modules slow but the server the same, loads once and reads no build; nor does a page opened plainly', async () => {
+    const name = 'edit-build-once';
+    const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page on one build.' }]]);
+    const p = await open(name, 'laptop', name, ids.note, LOADS);
+    const served = await servedBuild();
+    let seen = await loaded(p);
+    assert.deepEqual({ loads: await loads(p), readBuild: seen.readBuild, status: seen.status }, { loads: 1, readBuild: false, status: '' }, 'opened plainly: one load, no build read, nothing said');
+    onOneBuild(seen, served, 'opened plainly');
+    const { build, held, reloading } = await reloadHeld(p, 'slow');
+    assert.equal(build, served, 'the page asks for the build the server serves');
+    await held.let();
+    await reloading;
+    await comesUp(p, name, ids.note, 'slow: the page comes up');
+    seen = await loaded(p);
+    assert.deepEqual({ loads: await loads(p), readBuild: seen.readBuild, status: seen.status }, { loads: 2, readBuild: false, status: '' }, 'slow: the reload alone, no build read, nothing said');
+    onOneBuild(seen, served, 'slow');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

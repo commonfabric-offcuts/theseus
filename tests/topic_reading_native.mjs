@@ -19,8 +19,13 @@
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
+import { pngPixels } from './png-bands.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
+// A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
+// kept out of DEVICES, which the checks that run on every device go through.
+const POINTER_WIDTHS = { w390: { width: 390, height: 844, deviceScaleFactor: 1, mobile: false }, w375: { width: 375, height: 812, deviceScaleFactor: 1, mobile: false },
+  w320: { width: 320, height: 640, deviceScaleFactor: 1, mobile: false } };
 const entry = id => `#messages [data-id="${id}"]`;
 // A message's card: the entry itself, or the card a folded line holds; either carries its id.
 const card = id => `#messages .message-card[data-id="${id}"]`;
@@ -38,7 +43,8 @@ const BAR = '.message-bar';
 // window.waitView = name: the page's reads of the view so named wait unsent, as a slow connection holds them, until
 // window.letViews() sends them; what Core commits meanwhile reaches the page in one answer. window.waitingViews: those waiting.
 // window.fetchesOut: how many of the page's requests are out and not yet answered (held reports aside).
-const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.waitingViews=[];window.letViews=()=>{window.waitView=null;for(const go of window.waitingViews.splice(0))go()};
+// window.sendReceipts: Core's answers to the page's message.send commands, in the order they came.
+const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.fetchesOut=0;window.waitingViews=[];window.letViews=()=>{window.waitView=null;for(const go of window.waitingViews.splice(0))go()};
   const f=window.fetch;window.fetch=function(input,init){
   let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null;if(b&&b.kind)window.sent.push(b.kind)}catch(e){}
   if(b&&b.name&&b.name===window.waitView)return new Promise(go=>window.waitingViews.push(go)).then(()=>window.fetch.call(this,input,init));
@@ -46,6 +52,7 @@ const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.wai
   if(b&&b.kind==='message.thumb'&&window.staleThumb){window.staleThumb=false;b.expected.thumb_revision+=99;init={...init,body:JSON.stringify(b)}}
   const answer=f.call(this,input,init),watch=window.watchFor,back=()=>{window.fetchesOut--};window.fetchesOut++;answer.then(back,back);
   if(watch&&b&&b.name===watch.read)answer.then(r=>r.clone().text()).then(t=>{if(t.includes(watch.words))window.watched=true},()=>{});
+  if(b&&b.kind==='message.send')answer.then(r=>r.clone().json()).then(j=>window.sendReceipts.push(j),()=>{});
   return answer};
   addEventListener('click',()=>{window.taps++},true)})()`;
 
@@ -67,14 +74,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     return ids;
   };
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
-  // query: the page's address after the origin, the topic's page unless given.
-  const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic) => {
-    const metrics = DEVICES[device];
+  // query: the page's address after the origin, the topic's page unless given. before(q): more to do to the page
+  // before it is opened, once its size and touch are set (what serves its files, say).
+  const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic, before = null) => {
+    const metrics = DEVICES[device] ?? POINTER_WIDTHS[device];
     const p = await page(name, null, true, { url: facts.origin + query, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
       await q.send('Emulation.setDeviceMetricsOverride', metrics);
       if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      if (before) await before(q);
     } });
     await until(() => p.evaluate(`document.body.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(first))}))`), name + ': the topic is drawn');
     return p;
@@ -156,15 +165,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
   // offWords: the pointer rests on its author's line instead, so no passage of its words lights with it
   // (item 478), and Return answers the message with nothing quoted.
-  // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row,
-  // with its bar, under the pointer; on a phone a tap on that row unfolds it, so it is unfolded first (unfoldRow).
+  // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row
+  // under the pointer, with its bar, but in a dossier with none (item 471); on a phone a tap on that row unfolds it, so it
+  // is unfolded first (unfoldRow).
   const light = async (p, device, id, offWords = false) => {
     await centre(p, card(id));
     if (await foldedRow(p, id)) {
       if (device === 'phone') await unfoldRow(p, device, id);
       else {
+        const dossier = await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack')?.dataset.single === 'false'`);
         await p.point(card(id) + ' > .message-folded > .folded-author', 'move');
-        await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `${device}: ${id} lights on its folded row, with its bar`);
+        await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === dossier, `${device}: ${id} lights on its folded row, ${dossier ? 'with no bar in a dossier' : 'with its bar'}`);
         return;
       }
     }
@@ -178,8 +189,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // Whether a message shows as its folded row, and a press on that row, which shows it whole again (docs/reply-stacks.md).
   const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
   const unfoldRow = async (p, device, id) => {
-    // On its "Folded", which keeps its width however long the author's name runs.
-    const row = card(id) + ' > .message-folded > .folded-cue';
+    // On its author, at the row's start ("Folded" is said to a screen reader only in a dossier, item 471).
+    const row = card(id) + ' > .message-folded > .folded-author';
     await centre(p, row); await press(p, device, row);
     await until(async () => !await foldedRow(p, id) && await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`), `${device}: a press on ${id}'s row shows it whole`);
   };
@@ -305,14 +316,19 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       // The page shows each reply Core holds; a card moved under a resting pointer takes the light,
       // so the pointer comes to rest on the ask again (a finger's tap lights only when the ask is not lit: a second tap is a press).
       // An answer is a reply, so it folds the ask for the person (docs/reply-stacks.md, item 377): heading its stack, the ask is
-      // its head row, and a press on that row shows it whole again.
+      // its dossier's first message, which shows as its folded row once the dossier is fully open (a press on the dossier's
+      // head row), and a press on that row shows it whole again (item 471).
       const relight = async () => {
         const said = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.reply_to === ids.ask && item.author_id === facts.actor).map(item => item.id);
         await until(() => p.evaluate(`${JSON.stringify(said)}.every(id => document.querySelector('#messages [data-id="' + id + '"]'))`), device + ': the page shows each reply');
         await until(async () => (await view('message_acts', { topic_id: topic })).items.some(item => item.message_id === ids.ask && item.acts.folded), device + ': the answer folds the ask, in Core');
-        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .stack-head > .stack-folded')})?.getClientRects().length)`), device + ': the ask shows as its folded head row');
-        await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
-        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded head row shows the ask whole');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))})?.dataset.folded === 'true'`), device + ': the page shows the ask folded');
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))}).closest('.reply-stack')?.dataset.headOpen === 'false'`)) {
+          await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
+          await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .message-folded')})?.getClientRects().length)`), device + ': a press on the dossier\'s head row shows the ask as its folded row');
+        }
+        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-author');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded row shows the ask whole');
         if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
       };
       await until(async () => await mine() === 'yes', device + ': the card shows ✅ as the answer');
@@ -375,7 +391,12 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await until(() => p.evaluate('window.watched === true && window.fetchesOut === 0'), 'phone: the page reads the dossiers\' places after the star');
         await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
       });
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), 'phone: the tap on the head shows the ask whole');
+      // The head row is the dossier's title (item 471): the tap opens the dossier, its light kept on the ask it landed
+      // in, and the ask, which the answer folded, shows as its row; a tap on that row shows it whole.
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.ask))}).closest('.reply-stack')?.dataset.headOpen === 'true'`), 'phone: the tap on the head opens the dossier');
+      assert.ok((await lit(p)).includes(ids.ask), `phone, a star on a message ${starred === 'shown' ? 'the page shows' : 'not loaded'}: the tap held through the repaint keeps the light on the ask (lit ${JSON.stringify(await lit(p))})`);
+      if (await foldedRow(p, ids.ask)) await unfoldRow(p, device, ids.ask);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), 'phone: the ask shows whole');
       if (starred === 'shown') await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(target))})?.dataset.starred === 'true'`), 'phone: the page shows the star');
       await until(async () => (await lit(p)).includes(ids.ask) && (await bar(p))?.yes === 'true' && (await bar(p))?.no === 'false',
         `phone, a star on a message ${starred === 'shown' ? 'the page shows' : 'not loaded'}: the ask stays lit and its bar shows ✅`).catch(async error => {
@@ -773,8 +794,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-long-' + device;
       const body = Array.from({ length: 80 }, (_, i) => `Line ${i} of a long message that runs on past what a card shows.`).join('\n');
-      const ids = await seed(topic, [['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
-        ...Array.from({ length: 6 }, (_, i) => ['after' + i, { sender: 'aim-core', join: i === 0, addressees: [facts.actor], body: 'A short message ' + i + '.' }])]);
+      // Older messages below it leave the page room to scroll on past the box's edge: the topic's Team is in its header
+      // now (item 465), so the page no longer runs on below the feed.
+      const ids = await seed(topic, [...Array.from({ length: 3 }, (_, i) => ['before' + i, { sender: 'aim-core', join: i === 0, addressees: [facts.actor], body: 'An earlier message ' + i + '.' }]),
+        ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }],
+        ...Array.from({ length: 6 }, (_, i) => ['after' + i, { sender: 'aim-core', addressees: [facts.actor], body: 'A short message ' + i + '.' }])]);
       const p = await open('reading-long-' + device, device, topic, ids.long);
       const preview = card(ids.long);
       const state = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(preview)}),s=getComputedStyle(e),b=e.getBoundingClientRect();
@@ -1814,6 +1838,392 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await phone.close();
   });
 
+  // The dark field behind a lit passage (item 527, docs/reading-colors.md): what lights, and where the field is painted,
+  // read from the screenshot's own pixels, the rows of exactly the field's black, not the boxes of the words, which name
+  // the words and not the paint. litLines gives the words lit, on the card (its CSS highlight) or in the Reader (its
+  // .hover-quote spans), as a box per line, the boxes of their characters joined. fieldOf finds the field's rows in
+  // columns every one of those lines covers: above holds how far it reaches over the first line's words, below how far
+  // under the last line's, gaps how many rows between its top and its bottom are left unlit, and lines each line's
+  // field, its words' height with above and below (a passage of one line: its field's whole height, both edges in sight).
+  // The field's colour: black, and on the person's own black card its light words' colour (aim.css, --lit-field).
+  const FIELD = [0, 0, 0], OWN_FIELD = [0xe0, 0xe8, 0xe5];
+  const litLines = (p, surface) => p.evaluate(`(()=>{let range=null;
+    if(${JSON.stringify(surface)}==='reader'){const lit=[...document.querySelectorAll('#source-body .hover-quote')];if(lit.length){range=document.createRange();range.setStartBefore(lit[0]);range.setEndAfter(lit.at(-1))}}
+    else{const h=CSS.highlights.get('lit-passage');range=h&&h.size?[...h][0]:null}
+    if(!range)return null;
+    const c=range.commonAncestorContainer,host=c.nodeType===1?c:c.parentNode,walk=document.createTreeWalker(host,NodeFilter.SHOW_TEXT),boxes=[];
+    for(let n=walk.nextNode();n;n=walk.nextNode()){if(!range.intersectsNode(n)||!n.data.trim())continue;const r=document.createRange();r.selectNodeContents(n);
+      if(n===range.startContainer)r.setStart(n,range.startOffset);if(n===range.endContainer)r.setEnd(n,range.endOffset);
+      for(const b of r.getClientRects())if(b.width>2)boxes.push({left:b.left,right:b.right,top:b.top,bottom:b.bottom})}
+    boxes.sort((a,b)=>a.top-b.top);const lines=[];
+    for(const b of boxes){const l=lines.find(l=>Math.min(l.bottom,b.bottom)-Math.max(l.top,b.top)>(b.bottom-b.top)/2);
+      if(l)Object.assign(l,{left:Math.min(l.left,b.left),right:Math.max(l.right,b.right),top:Math.min(l.top,b.top),bottom:Math.max(l.bottom,b.bottom)});else lines.push({...b})}
+    return {text:range.toString().trim(),lines}})()`);
+  const fieldOf = async (p, surface, color = FIELD) => {
+    const lit = await litLines(p, surface);
+    assert.ok(lit?.lines.length, `${surface}: a passage is lit`);
+    const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    const lines = lit.lines, high = lines[0].bottom - lines[0].top;
+    const left = Math.ceil(Math.max(...lines.map(l => l.left))) + 1, right = Math.min(Math.floor(Math.min(...lines.map(l => l.right))) - 1, left + 24);
+    assert.ok(right - left >= 4, `${surface}: the lines lit share columns to measure the field in (${left} to ${right})`);
+    const dark = y => { for (let x = left; x <= right; x++) if (image.pixel(x, y).every((v, i) => v === color[i])) return true; return false; };
+    // The field's rows: from the middle of each line lit, every row painted in its colour, over and under, without a
+    // break; rows of words not lit nearby, painted in that colour on the person's own card, are not reached.
+    const found = new Set(), low = Math.max(0, Math.floor(lines[0].top - 2 * high)), high2 = Math.min(image.height, Math.ceil(lines.at(-1).bottom + 2 * high));
+    for (const line of lines) {
+      const mid = Math.round((line.top + line.bottom) / 2);
+      if (!dark(mid)) continue;
+      for (let y = mid; y >= low && dark(y); y--) found.add(y);
+      for (let y = mid + 1; y < high2 && dark(y); y++) found.add(y);
+    }
+    const rows = [...found].sort((a, b) => a - b);
+    assert.ok(rows.length, `${surface}: the field is painted behind the words lit`);
+    const top = rows[0], bottom = rows.at(-1) + 1, above = lines[0].top - top, below = bottom - lines.at(-1).bottom;
+    const round = n => Math.round(n * 10) / 10;
+    return { text: lit.text, lines: lines.map(l => round(l.bottom - l.top + above + below)), above: round(above), below: round(below), gaps: bottom - top - rows.length,
+      steps: lines.slice(1).map((l, i) => round(l.top - lines[i].top)) };
+  };
+  // A card's layout as it stands, measured from its top: each line of its words (the top of its characters), the
+  // height its lines keep and the size of its words, and how tall the card is.
+  const layoutOf = (p, id) => p.evaluate(`(c=>{const w=c.querySelector(':scope > .message-preview'),at=c.getBoundingClientRect().top,walk=document.createTreeWalker(w,NodeFilter.SHOW_TEXT),tops=new Set();
+    for(let n=walk.nextNode();n;n=walk.nextNode()){if(!n.data.trim())continue;const r=document.createRange();r.selectNodeContents(n);for(const b of r.getClientRects())if(b.width>2)tops.add(Math.round((b.top-at)*10)/10)}
+    const s=getComputedStyle(w);return {height:Math.round(c.getBoundingClientRect().height*10)/10,tops:[...tops].sort((a,b)=>a-b),lineHeight:parseFloat(s.lineHeight),size:parseFloat(s.fontSize)}})(document.querySelector(${JSON.stringify(card(id))}))`);
+  // The Reader's words, pointed at as moveTo points at a card's: the passage holding text scrolled into the middle of
+  // what shows, and the pointer moved onto text.
+  const readerTo = async (p, text) => {
+    const at = await p.evaluate(`(()=>{const w=document.querySelector('#source-body'),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+      while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return null;n.parentElement.closest('[data-start]')?.scrollIntoView({block:'center'});
+      const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);const b=r.getClientRects()[0];return {x:b.left+b.width/2,y:b.top+b.height/2}})()`);
+    assert.ok(at, `${text} is drawn in the Reader`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+  };
+  const scheme = async (p, dark) => {
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : '' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${dark}`), `the page in the ${dark ? 'dark' : 'light'} scheme`);
+  };
+  const WIDTHS = [['laptop', 'a laptop\'s width'], ['w390', '390px with a pointer'], ['w375', '375px with a pointer'], ['w320', '320px with a pointer']];
+
+  // Tony (Mez en place #5287): the black field behind a passage lit on a card is as tall as the one behind a passage
+  // lit in the Reader. On each card and in the Reader the same two passages light: a line of its own, whose field's
+  // height is measured whole, and a passage of several lines, whose field reaches as far over its first line and under
+  // its last as the Reader's and leaves no row between its lines unlit. Each line's field matches the Reader's to
+  // within a pixel. The person's own black card paints its field in its light words' colour, as tall. The light moves
+  // nothing on the card: before it, while it shows and once it is out, the card's lines are where they were and it is
+  // as tall, and its lines keep their own height, 1.5 times its words' size, not the Reader's 1.7.
+  for (const [width, called] of WIDTHS) await check(`reading a passage lit on a topic's card and a dossier's at ${called} has a dark field as tall as the Reader's, line by line, in light and dark, and moves nothing on the card`, async () => {
+    const topic = 'reading-field-' + width;
+    const short = 'A short line.', long = 'The long passage runs on across more than one line on every card and in the Reader alike, so its dark field is measured where its lines meet as well as at its top and its bottom.';
+    const body = ['Words before the field.', short, long, 'Words after the field.'].join('\n\n');
+    const ids = await seed(topic, [['mine', { sender: 'person', body }],
+      ['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body }],
+      ['alone', { sender: 'aim-core', addressees: [facts.actor], body }]]);
+    const p = await open(topic, width, topic, ids.alone);
+    const passages = [['short', 'short line', short], ['long', 'long passage runs', long]];
+    for (const dark of [false, true]) {
+      const tone = dark ? 'dark' : 'light';
+      await scheme(p, dark);
+      const fields = [];
+      for (const [id, where, color] of [[ids.alone, 'topic card', FIELD], [ids.reply, 'dossier card', FIELD], [ids.mine, 'own card', OWN_FIELD]]) {
+        await centre(p, card(id)); await away(p);
+        const before = await layoutOf(p, id);
+        assert.ok(Math.abs(before.lineHeight - 1.5 * before.size) < 0.6, `${tone} ${where}: a line of its words is 1.5 times their size (${before.lineHeight}px at ${before.size}px), as before`);
+        for (const [name, text, said] of passages) {
+          await moveTo(p, id, text);
+          await until(async () => await shiningOn(p) !== null && (await shiningOn(p)).trim() === said, `${tone} ${where}: the ${name} passage lights under the pointer`);
+          const field = await fieldOf(p, 'card', color);
+          fields.push({ where, name, field });
+          assert.ok(field.steps.every(step => Math.abs(step - before.lineHeight) < 0.6), `${tone} ${where}: the ${name} passage's lines are the card's own line height apart (${before.lineHeight}px): ${JSON.stringify(field.steps)}`);
+          assert.deepEqual(await layoutOf(p, id), before, `${tone} ${where}: the ${name} passage lit moves no line of the card and leaves it as tall`);
+          await shot(p, `reading-field-${width}-${tone}-${where.split(' ')[0]}-${name}`);
+        }
+        await centre(p, card(id === ids.alone ? ids.reply : ids.alone)); await away(p);
+        await moveTo(p, id === ids.alone ? ids.reply : ids.alone, 'Words after');
+        await until(async () => (await shiningOn(p))?.trim() === 'Words after the field.', `${tone}: the light moves to the other card`);
+        assert.deepEqual(await layoutOf(p, id), before, `${tone} ${where}: with its light out, the card's lines are where they were and it is as tall`);
+      }
+      // The Reader on the same message, opened by a click on its words, and the same two passages lit there.
+      await centre(p, card(ids.alone));
+      await moveTo(p, ids.alone, 'Words before');
+      await until(async () => (await lit(p)).includes(ids.alone), `${tone}: the topic card lights`);
+      await p.point(words(ids.alone));
+      await until(async () => (await readerOn(p))?.startsWith('Words before'), `${tone}: a click opens the Reader on the message`);
+      // Measured once the Reader has come to rest: on a phone it rises into place.
+      await until(() => p.evaluate("document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), `${tone}: the Reader has come to rest`);
+      const reader = {};
+      for (const [name, text, said] of passages) {
+        await readerTo(p, text);
+        await until(() => p.evaluate(`[...document.querySelectorAll('#source-body .hover-quote')].map(s=>s.textContent).join('').trim() === ${JSON.stringify(said)}`), `${tone}: the ${name} passage lights in the Reader`);
+        reader[name] = await fieldOf(p, 'reader');
+        await shot(p, `reading-field-${width}-${tone}-reader-${name}`);
+      }
+      await closeReader(p, 'laptop');
+      assert.equal(reader.short.lines.length, 1, `${tone}: the short passage is one line in the Reader`);
+      assert.ok(reader.long.lines.length > 1, `${tone}: the long passage runs to more lines than one in the Reader`);
+      for (const { where, name, field } of fields) {
+        const theirs = reader[name], says = `${tone} ${where}, the ${name} passage: the card's field per line ${JSON.stringify(field.lines)}px (over its words ${field.above}, under ${field.below}, ${field.gaps} rows unlit), the Reader's ${JSON.stringify(theirs.lines)}px (over ${theirs.above}, under ${theirs.below}, ${theirs.gaps} unlit)`;
+        if (name === 'short') assert.equal(field.lines.length, 1, `${says}: one line on the card too`);
+        else assert.ok(field.lines.length > 1, `${says}: more lines than one on the card too`);
+        assert.equal(field.gaps, 0, `${says}: no row between the lines is left unlit`);
+        assert.ok(field.lines.every(line => Math.abs(line - theirs.lines[0]) <= 1), `${says}: each line's field as tall as the Reader's, to within a pixel`);
+      }
+    }
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Where a lit passage's field may show (item 527): behind the lit words where they show, and nowhere else on the
+  // card. shownLit gives each box of the lit characters (a text node's part on a line, as litLines reads them) with
+  // the part of the card it can show in: the card's own box, cut to every box between the words and the card that
+  // clips what overflows it (a code block or a table that scrolls sideways, a phone's excerpt cut off at a height).
+  // solid: the same, less the edges a box that scrolls fades out where it has more to show (aim.css, .md-scrolls'
+  // mask), where its words and their field fade together.
+  const shownLit = (p, id) => p.evaluate(`(c=>{const h=CSS.highlights.get('lit-passage'),range=h&&h.size?[...h][0]:null;if(!range||!c)return null;
+    const o=c.getBoundingClientRect(),boxes=[];
+    const fade=2*parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const shows=n=>{let s={left:o.left,right:o.right,top:o.top,bottom:o.bottom},solid={...s};
+      for(let e=n.parentElement;e&&e!==c;e=e.parentElement){const st=getComputedStyle(e);if(st.overflowX==='visible'&&st.overflowY==='visible')continue;
+        const r=e.getBoundingClientRect(),l=r.left+e.clientLeft,t=r.top+e.clientTop,m=[st.maskImage,st.webkitMaskImage].some(v=>v&&v!=='none')?fade:0;
+        s={left:Math.max(s.left,l),right:Math.min(s.right,l+e.clientWidth),top:Math.max(s.top,t),bottom:Math.min(s.bottom,t+e.clientHeight)};
+        solid={left:Math.max(solid.left,l+m),right:Math.min(solid.right,l+e.clientWidth-m),top:Math.max(solid.top,t),bottom:Math.min(solid.bottom,t+e.clientHeight)}}
+      return {...s,solid}};
+    const k=range.commonAncestorContainer,walk=document.createTreeWalker(k.nodeType===1?k:k.parentNode,NodeFilter.SHOW_TEXT);
+    for(let n=walk.nextNode();n;n=walk.nextNode()){if(!range.intersectsNode(n)||!n.data.trim())continue;const r=document.createRange();r.selectNodeContents(n);
+      if(n===range.startContainer)r.setStart(n,range.startOffset);if(n===range.endContainer)r.setEnd(n,range.endOffset);
+      const s=shows(n);for(const b of r.getClientRects())if(b.width>2)boxes.push({left:b.left,right:b.right,top:b.top,bottom:b.bottom,shows:s})}
+    return {card:{left:o.left,right:o.right,top:o.top,bottom:o.bottom},boxes}})(document.querySelector(${JSON.stringify(card(id))}))`);
+  // The field as painted on a card, read from the screenshot's pixels of the field's colour (within a few levels, so
+  // a field seen through a code block's faint tint counts): stray counts those on the card outside every place a lit
+  // box's field may reach (where the box shows, and over and under it by less than its words' height, which a field's
+  // reach always is), at gives the first; bare names each lit box that shows whose rows just over and just under its
+  // words, inside what shows unfaded (solid), are not all the field's colour. Only on a card whose own words are not in that colour.
+  const fieldPaint = async (p, id, color = FIELD) => {
+    const lit = await shownLit(p, id);
+    assert.ok(lit?.boxes.length, `a passage is lit on ${id}`);
+    const image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    const near = (x, y) => image.pixel(x, y).every((v, i) => Math.abs(v - color[i]) <= 16);
+    const places = lit.boxes.map(b => {
+      const reach = b.bottom - b.top;
+      return { left: Math.floor(Math.max(b.left, b.shows.left)) - 1, right: Math.ceil(Math.min(b.right, b.shows.right)) + 1,
+        top: Math.floor(Math.max(b.top - reach, b.shows.top)) - 1, bottom: Math.ceil(Math.min(b.bottom + reach, b.shows.bottom)) + 1 };
+    }).filter(a => a.right - a.left > 2 && a.bottom > a.top);
+    const reach = Math.max(...lit.boxes.map(b => b.bottom - b.top));
+    const x0 = Math.max(0, Math.ceil(lit.card.left)), x1 = Math.min(image.width - 1, Math.floor(lit.card.right) - 1);
+    const y0 = Math.max(0, Math.ceil(lit.card.top), Math.floor(Math.min(...lit.boxes.map(b => b.top)) - 2 * reach));
+    const y1 = Math.min(image.height - 1, Math.floor(lit.card.bottom) - 1, Math.ceil(Math.max(...lit.boxes.map(b => b.bottom)) + 2 * reach));
+    let stray = 0, at = null;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (!near(x, y) || places.some(a => x >= a.left && x <= a.right && y >= a.top && y <= a.bottom)) continue;
+      stray++; at ??= [x, y];
+    }
+    const bare = [];
+    for (const b of lit.boxes) {
+      const left = Math.ceil(Math.max(b.left, b.shows.solid.left)) + 2, right = Math.floor(Math.min(b.right, b.shows.solid.right)) - 2;
+      if (right - left < 6) continue;
+      for (const y of [Math.floor(b.top) - 2, Math.ceil(b.bottom) + 1]) {
+        if (y <= b.shows.top + 1 || y >= b.shows.bottom - 1 || y < 0 || y >= image.height) continue;
+        const step = Math.max(1, Math.floor((right - left) / 60));
+        for (let x = left; x <= right; x += step) if (!near(x, y)) { bare.push(`the box at ${Math.round(b.left)},${Math.round(b.top)} has no field at ${x},${y}`); break; }
+      }
+    }
+    return { stray, at, bare, boxes: lit.boxes.length, shown: places.length };
+  };
+  // Two animation frames: the frame after the one in flight, by which a scroll or a resize is painted.
+  const painted = p => p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+
+  // Reviewer (B1): a lit code block on a card painted its field across the card, outside the code box that clips its
+  // long line, and left it behind when the box scrolled sideways. A code block with a line longer than the card, a
+  // blank line, and a short line; then a table wider than the card. On a topic's and a dossier's card, each lit under
+  // the pointer: its field shows only where its words show, inside the box that clips them (nothing in the card's
+  // padding beside the box), and each lit line that shows has its field over and under it; then the box scrolls 300
+  // pixels sideways, and the field moves with the words: nothing is left where the short line was, and what shows of
+  // the long line still has its field.
+  for (const [width, called] of WIDTHS) await check(`reading a lit code block or table on a topic's card and a dossier's at ${called} paints its field only where its words show, inside the box that scrolls them sideways, before and after it scrolls, in light and dark`, async () => {
+    const topic = 'reading-clip-' + width;
+    const long = '$ tail ' + Array.from({ length: 24 }, (_, i) => `step${i}=done`).join(' ');
+    const cells = ['first', 'second', 'third', 'fourth', 'fifth'].map(n => `${n}_column_holds_a_long_value`);
+    const table = [`| ${cells.join(' | ')} |`, `|${cells.map(() => '---').join('|')}|`, `| ${cells.map((_, i) => `row_value_${i}_runs_long_unbroken`).join(' | ')} |`].join('\n');
+    const body = ['Words before the code.', ['```', long, '', 'second short line', '```'].join('\n'), 'Words between.', table, 'Words after the table.'].join('\n\n');
+    const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body }],
+      ['alone', { sender: 'aim-core', addressees: [facts.actor], body }]]);
+    const p = await open(topic, width, topic, ids.alone);
+    const boxes = [['code block', '.md-pre', 'second short line', 'second short line'], ['table', '.md-table-wrap', 'row_value_0', 'row_value_0_runs_long_unbroken']];
+    for (const dark of [false, true]) {
+      const tone = dark ? 'dark' : 'light';
+      await scheme(p, dark);
+      for (const [id, where] of [[ids.alone, 'topic card'], [ids.reply, 'dossier card']]) {
+        for (const [what, selector, text, shows] of boxes) {
+          const box = card(id) + ' ' + selector, says = `${tone} ${where} at ${called}, the ${what}`;
+          assert.ok(await p.evaluate(`(b=>b.scrollWidth>b.clientWidth+300)(document.querySelector(${JSON.stringify(box)}))`), `${says}: is wider than its box by more than 300px`);
+          await centre(p, box); await away(p);
+          await moveTo(p, id, text);
+          await until(async () => (await shiningOn(p))?.includes(shows), `${says}: lights under the pointer`);
+          const lit = await shiningOn(p);
+          const before = await fieldPaint(p, id);
+          assert.equal(before.stray, 0, `${says}: no field is painted on the card where no lit word shows (${before.stray} pixels, the first at ${before.at})`);
+          assert.deepEqual(before.bare, [], `${says}: each lit line that shows has its field over and under it`);
+          await shot(p, `reading-clip-${width}-${tone}-${where.split(' ')[0]}-${what.split(' ')[0]}`);
+          await p.evaluate(`document.querySelector(${JSON.stringify(box)}).scrollLeft = 300`);
+          await until(() => p.evaluate(`document.querySelector(${JSON.stringify(box)}).scrollLeft === 300`), `${says}: scrolls 300px sideways`);
+          await painted(p);
+          assert.equal(await shiningOn(p), lit, `${says}: the same words stay lit as the box scrolls`);
+          const after = await fieldPaint(p, id);
+          assert.ok(after.shown > 0, `${says}: some lit words still show once scrolled`);
+          assert.equal(after.stray, 0, `${says}: scrolled 300px sideways, no field is left where no lit word shows (${after.stray} pixels, the first at ${after.at})`);
+          assert.deepEqual(after.bare, [], `${says}: scrolled, each lit line that shows still has its field over and under it`);
+          await shot(p, `reading-clip-${width}-${tone}-${where.split(' ')[0]}-${what.split(' ')[0]}-scrolled`);
+          await p.evaluate(`document.querySelector(${JSON.stringify(box)}).scrollLeft = 0`);
+        }
+      }
+    }
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // The rest of B1's class: a phone's excerpt cut off at a height (aim.css, a coarse pointer: a tablet with a trackpad
+  // or a mouse) and a card that scrolls in place. A message longer than a card shows, whose first sentence runs past
+  // where the excerpt is cut off: lit under the pointer while its whole words are still on their way, the sentence's
+  // field stops where the excerpt is cut off, and none shows on the card below it. Once the whole message has come,
+  // the card scrolls in place; a short sentence lit there has its field behind it, and keeps it as the card scrolls
+  // 60 pixels under it.
+  await check('reading a lit passage on a phone\'s cut-off excerpt paints no field past where the excerpt is cut off, and on a card that scrolls in place its field moves with the words, in light and dark', async () => {
+    const topic = 'reading-clip-phone';
+    const first = 'Here begins one sentence, ' + Array.from({ length: 30 }, () => 'and the words run on across the line').join(', ') + '.';
+    const shorts = Array.from({ length: 24 }, (_, i) => `Short sentence ${i}.`);
+    const ids = await seed(topic, [['earlier', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['long', { sender: 'aim-core', join: true, addressees: [facts.actor], body: [first, shorts.join(' ')].join('\n\n') }]]);
+    const p = await open(topic, 'phone', topic, ids.long);
+    const on = card(ids.long);
+    await p.evaluate("window.waitView = 'source'");
+    for (const dark of [false, true]) {
+      const tone = dark ? 'dark' : 'light';
+      await scheme(p, dark);
+      await centre(p, on); await away(p);
+      await moveTo(p, ids.long, 'Here begins');
+      await until(async () => (await shiningOn(p))?.startsWith('Here begins'), `${tone}: the first sentence lights under the pointer`);
+      assert.ok(await p.evaluate(`(c=>{const w=c.querySelector(':scope > .message-preview'),r=w.getBoundingClientRect(),h=CSS.highlights.get('lit-passage'),last=[...[...h][0].getClientRects()].at(-1);
+        return c.dataset.whole!=='shown'&&getComputedStyle(w).overflowY==='hidden'&&w.scrollHeight>w.clientHeight+1&&last.bottom>r.bottom+10})(document.querySelector(${JSON.stringify(on)}))`), `${tone}: the excerpt is cut off, and the lit sentence runs past where it is cut off`);
+      const clipped = await fieldPaint(p, ids.long);
+      assert.equal(clipped.stray, 0, `${tone}: no field is painted on the card past where the excerpt is cut off (${clipped.stray} pixels, the first at ${clipped.at})`);
+      assert.deepEqual(clipped.bare, [], `${tone}: each lit line that shows has its field over and under it`);
+      await shot(p, `reading-clip-phone-${tone}-excerpt`);
+    }
+    await away(p);
+    await p.evaluate('window.letViews()');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on)}).classList.contains('scroll-in-place')`), 'the whole message comes, and the card scrolls in place');
+    for (const dark of [false, true]) {
+      const tone = dark ? 'dark' : 'light';
+      await scheme(p, dark);
+      await p.evaluate(`(c=>{c.scrollIntoView({block:'center'});c.scrollTop=c.scrollHeight})(document.querySelector(${JSON.stringify(on)}))`);
+      await painted(p); await away(p);
+      await moveTo(p, ids.long, 'Short sentence 10.');
+      await until(async () => (await shiningOn(p))?.trim() === 'Short sentence 10.', `${tone}: a short sentence lights under the pointer`);
+      const top = await p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop`);
+      assert.ok(top > 120, `${tone}: the card has scrolled in place (${top}px)`);
+      const still = await fieldPaint(p, ids.long);
+      assert.equal(still.stray, 0, `${tone}: no field shows where no lit word does (${still.stray} pixels, the first at ${still.at})`);
+      assert.deepEqual(still.bare, [], `${tone}: on the card scrolled in place, the lit sentence has its field over and under it`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop -= 60`);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop === ${top - 60}`), `${tone}: the card scrolls 60px under the pointer`);
+      await painted(p);
+      assert.equal((await shiningOn(p))?.trim(), 'Short sentence 10.', `${tone}: the same sentence stays lit as the card scrolls`);
+      const whole = await shownLit(p, ids.long);
+      assert.ok(whole.boxes.every(b => b.top >= b.shows.top + 8 && b.bottom <= b.shows.bottom - 8), `${tone}: the lit sentence still shows whole in the card, clear of its edges`);
+      const moved = await fieldPaint(p, ids.long);
+      assert.equal(moved.stray, 0, `${tone}: scrolled in place, no field is left where no lit word shows (${moved.stray} pixels, the first at ${moved.at})`);
+      assert.deepEqual(moved.bare, [], `${tone}: scrolled in place, the lit sentence has its field over and under it`);
+      await shot(p, `reading-clip-phone-${tone}-in-place`);
+    }
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Reviewer (B2): the field follows the words when they wrap anew. A passage of several lines lit on a topic's card
+  // at 1280 wide; the window narrows to 760, where the passage runs to more lines, and widens to 1280 again, the
+  // pointer resting on the words throughout: after each, every lit line has its field behind it, over and under, no
+  // row between the lines is left unlit, and no field is left where the lines were.
+  await check('reading a lit passage on a card keeps its field behind every lit line as the window narrows and widens and the words wrap anew', async () => {
+    const topic = 'reading-field-wrap';
+    const long = 'The long passage runs on across several lines on the card, and runs to more of them once the window narrows, so its dark field must follow its words to wherever they wrap.';
+    const ids = await seed(topic, [['earlier', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-core', join: true, addressees: [facts.actor], body: ['Words before the field.', long, 'Words after the field.'].join('\n\n') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    await centre(p, card(ids.alone)); await away(p);
+    await moveTo(p, ids.alone, 'long passage runs');
+    await until(async () => (await shiningOn(p))?.trim() === long, 'the long passage lights under the pointer');
+    let lines = (await litLines(p, 'card')).lines.length;
+    for (const wide of [760, 1280]) {
+      await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.laptop, width: wide });
+      await until(async () => await p.evaluate('innerWidth') === wide && (await litLines(p, 'card'))?.lines.length !== lines, `the window is ${wide}px wide and the lit words wrap anew`);
+      await painted(p);
+      const now = (await litLines(p, 'card')).lines.length;
+      assert.equal((await shiningOn(p))?.trim(), long, `at ${wide}px the same passage stays lit`);
+      await p.evaluate(`(w=>{const r=w.getBoundingClientRect();if(r.top<0||r.bottom>innerHeight)w.scrollIntoView({block:'center'})})(document.querySelector(${JSON.stringify(words(ids.alone))}))`);
+      await painted(p);
+      const field = await fieldOf(p, 'card'), paint = await fieldPaint(p, ids.alone);
+      const says = `at ${wide}px (${lines} lines lit before, ${now} now): the field per line ${JSON.stringify(field.lines)}px (over ${field.above}, under ${field.below}, ${field.gaps} rows unlit)`;
+      assert.equal(field.lines.length, now, `${says}: every lit line is measured`);
+      assert.equal(field.gaps, 0, `${says}: every lit line has its field behind it after the resize, no row between them unlit`);
+      assert.ok(field.above >= 1 && field.below >= 1, `${says}: the field reaches over the first line and under the last`);
+      assert.ok(field.lines.every(line => Math.abs(line - field.lines[0]) <= 1), `${says}: each line's field as tall as the others`);
+      assert.equal(paint.stray, 0, `${says}: no field is left where no lit word shows (${paint.stray} pixels, the first at ${paint.at})`);
+      assert.deepEqual(paint.bare, [], `${says}: each lit line has its field over and under it`);
+      await shot(p, `reading-field-wrap-${wide}`);
+      lines = now;
+    }
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // A card's passage light in each of its states at a phone's widths with a pointer (item 527), as on a laptop
+  // (the cases above): off the words nothing lights; under the pointer a passage lights; off the words again it stays;
+  // moved with Shift held it grows; the focus moving to a control of the message, where Return presses the control,
+  // puts it out; back on the card it lights again, and Return quotes it. Nothing scrolls sideways at any of them.
+  for (const [width, called] of WIDTHS.slice(1)) await check(`reading a card's passage light at ${called}: none off the words, lit, kept off the words, grown with Shift, out at a control of the message, and quoted by Return`, async () => {
+    const topic = 'reading-states-' + width;
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, width, topic, ids.alone);
+    const on = card(ids.alone), sideways = () => p.evaluate('document.scrollingElement.scrollWidth - innerWidth');
+    const focus = () => p.evaluate(`(c=>{const e=document.activeElement,b=document.querySelector('${BAR}');return e===c?'card':c.contains(e)||b.contains(e)?(e.getAttribute('aria-label')||e.title||e.textContent):e?e.tagName.toLowerCase():null})(document.querySelector(${JSON.stringify(on)}))`);
+    await centre(p, on);
+    await p.point(on + ' > .message-author', 'move');
+    await until(async () => (await lit(p)).includes(ids.alone), `${called}: the message lights from its author's line`);
+    assert.equal(await shiningOn(p), null, `${called}: off the words no passage lights`);
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', `${called}: the passage under the pointer lights`);
+    assert.ok(await sideways() <= 0, `${called}: nothing scrolls sideways with a passage lit`);
+    await shot(p, `reading-states-${width}-lit`);
+    await p.point(on + ' > .message-author', 'move');
+    assert.equal(await shiningOn(p), said[1] + ' ', `${called}: off the words the passage lit stays lit`);
+    await moveTo(p, ids.alone, 'Words after', 8);
+    await becomes(() => shiningOn(p), `${said[1]} ${said[2]}`, `${called}: moved with Shift held, the light grows to the passage under the pointer`);
+    assert.ok(await sideways() <= 0, `${called}: nothing scrolls sideways with the light grown`);
+    await shot(p, `reading-states-${width}-grown`);
+    assert.equal(await focus(), 'card', `${called}: the focus is on the card`);
+    await p.key('Tab');
+    await until(async () => !['card', 'body', null].includes(await focus()), `${called}: Tab reaches a control of the message`);
+    assert.equal(await shiningOn(p), null, `${called}: at ${await focus()}, where Return presses the control, no passage is lit`);
+    await shot(p, `reading-states-${width}-out`);
+    for (let i = 0; i < 4 && await focus() !== 'card'; i++) {
+      const was = await focus();
+      await p.key('Tab', 8);
+      await until(async () => await focus() !== was, `${called}: Shift-Tab moves the focus back`);
+    }
+    assert.equal(await focus(), 'card', `${called}: Shift-Tab comes back to the card`);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', `${called}: back on the card the passage under the pointer lights again`);
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), `${called}: Return opens the Reader`);
+    assert.equal(await replyOf(p), `> ${said[0]} \n\n`, `${called}: Return quotes the passage lit, and nothing more`);
+    assert.ok(await sideways() <= 0, `${called}: nothing scrolls sideways in the Reader`);
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // A lit passage promises the quote Return would make (docs/experience-guidelines.md, "Keys mean one thing in each
   // place"): the focus moving where Return does something else, a control of the lit message (its ☆, the bar's 👍,
   // Reply and ⋯) or writing, puts the light out, as it goes out in the Reader. Back on the card, where Return quotes,
@@ -2024,6 +2434,154 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  // The person's Save on another device, through Core (docs/message-edit.md): message id edited from revision from to body.
+  const editElsewhere = async (id, from, body, operation) => {
+    const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
+    const b = await (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+      operation_id: operation, kind: 'message.edit', target: { message_id: id },
+      expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, message_revision: from }, args: { body } }) })).json();
+    assert.equal(receipt.status, 'committed', 'the edit elsewhere commits: ' + JSON.stringify(receipt.error ?? null));
+  };
+  // The words a card shows drawn again as they were keep its light on them (item 527): a reply's card is drawn again
+  // with its own unchanged words when the message it answers is edited (its "Replying to" line reads the new words).
+  // The light stays on the same words of the words drawn anew, and Return quotes them.
+  await check('reading a reply\'s card drawn again with its own words, as the message it answers is edited, keeps its lit passage', async () => {
+    const topic = 'reading-passage-same';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['mine', { sender: 'person', body: 'The message the reply answers.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'mine', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.reply);
+    const on = card(ids.reply);
+    await centre(p, on);
+    await moveTo(p, ids.reply, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights on the reply\'s card');
+    await p.evaluate(`window.wordsBefore = [...document.querySelector(${JSON.stringify(words(ids.reply))}).childNodes]`);
+    await editElsewhere(ids.mine, 1, 'The message the reply answers, edited elsewhere.', topic + '-elsewhere');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' > .message-reply-to')})?.textContent.includes('edited elsewhere')`), 'the reply\'s line reads the edited words');
+    assert.equal(await p.evaluate('window.wordsBefore.every(node => !node.isConnected)'), true, 'the reply\'s own words were drawn again');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.reply))}).textContent`), said.join(' '), 'as the same words');
+    assert.equal(await shiningOn(p), said[1] + ' ', 'the light stays on the same words, drawn anew');
+    assert.equal(await p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return Boolean(h&&h.size&&[...h][0].startContainer.isConnected)})()`), true, 'lit on the words as they are drawn now');
+    await shot(p, 'reading-passage-same');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${said[1]} \n\n`, 'Return quotes the passage still lit');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // A quote taken from a card names the revision of the words the card shows, the words it quotes (item 527). A card
+  // still showing an older revision than the Reader that Return opens on (the page has heard of an edit made
+  // elsewhere, and its read of the edited words is slow) quotes that revision's words and names that revision, and
+  // Core records it so; a quote naming the Reader's newer revision would name words it does not hold, which Core
+  // refuses.
+  await check('reading Return on a card still showing an older revision quotes that revision\'s words and names it, though the Reader opens on the newer one', async () => {
+    const topic = 'reading-passage-revision';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const edited = 'New words come first in this edit, longer. Then a second sentence. The end.';
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['mine', { sender: 'person', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.mine);
+    await centre(p, card(ids.mine));
+    await moveTo(p, ids.mine, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    // From here the page's reads of the topic's messages wait unsent, as a slow connection holds them.
+    await p.evaluate("window.waitView = 'topic_messages'");
+    await editElsewhere(ids.mine, 1, edited, topic + '-elsewhere');
+    await until(() => p.evaluate('window.waitingViews.length > 0'), 'the page hears of the edit, and its read of the edited words waits');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent`), said.join(' '), 'the card still shows revision 1');
+    assert.equal(await shiningOn(p), said[1] + ' ', 'with its passage lit');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p)) !== null && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader, the cursor in the reply');
+    assert.equal(await readerOn(p), edited, 'the Reader shows revision 2, the newer one');
+    assert.equal(await replyOf(p), `> ${said[1]} \n\n`, 'the reply quotes the words lit on the card');
+    // Core's answer to the send, which refuses a quote naming a revision whose words do not hold it (INVALID_QUOTE).
+    await p.key('Enter', 4);
+    const receipt = await until(() => p.evaluate('window.sendReceipts[0] ?? null'), 'Core answers the reply\'s send');
+    assert.equal(receipt.status, 'committed', 'Core takes the reply with its quote: ' + JSON.stringify(receipt.error ?? null));
+    let sent = null;
+    await until(async () => {
+      const page = await view('topic_messages', { topic_id: topic, direction: 'before', limit: 5 });
+      const reply = page.items.find(item => item.reply_to === ids.mine && item.author_id === facts.actor);
+      if (!reply) return false;
+      sent = await view('source', { source_ref: { kind: 'message', id: reply.id } });
+      return true;
+    }, 'the reply lands in Core');
+    assert.deepEqual(sent.quotes.map(q => [q.source, q.excerpt]), [[{ kind: 'message', id: ids.mine, revision: 1 }, said[1] + ' ']],
+      'the quote names revision 1, the one the card showed and its words come from');
+    await p.evaluate('window.letViews()');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === ${JSON.stringify(edited)}`), 'the card then draws the edited words');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // The focus going to the message's ⋯ menu, opened from its bar or by a right-click on its words, puts a lit passage
+  // out (item 527, docs/interaction.md "The light"): Return there presses a menu item, and quotes nothing.
+  await check('reading a card\'s lit passage goes out as the message\'s ⋯ menu takes the focus, from its bar or a right-click', async () => {
+    const topic = 'reading-passage-menu';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const menu = () => p.evaluate(`(m=>m?{focused:m.contains(document.activeElement),items:[...m.querySelectorAll('[role=menuitem]')].map(b=>b.firstChild.textContent)}:null)(document.querySelector('.message-menu-list'))`);
+    await centre(p, card(ids.alone));
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    await p.point(BAR + ' [data-act="more"]');
+    await until(async () => (await menu())?.focused, 'the bar\'s ⋯ opens the message\'s menu, the focus on its first item');
+    assert.equal(await shiningOn(p), null, 'with the focus in the menu, where Return presses an item, no passage is lit');
+    await shot(p, 'reading-passage-menu-bar');
+    await p.key('Escape');
+    await until(async () => await menu() === null, 'Escape closes the menu');
+    assert.equal(await shiningOn(p), null, 'and lights nothing again');
+    // Back on the words, a passage lights; a right-click on the card opens the menu where the pointer is. It is pressed
+    // in the card's corner, off its words, where the light stays as it was: Safari's engine selects the word a
+    // right-click lands on, and words selected keep the browser's own menu.
+    await moveTo(p, ids.alone, 'Words after');
+    await becomes(() => shiningOn(p), said[2], 'the pointer on the words lights a passage again');
+    const corner = await p.evaluate(`(b=>({x:b.left+6,y:b.top+6}))(document.querySelector(${JSON.stringify(card(ids.alone))}).getBoundingClientRect())`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: corner.x, y: corner.y });
+    assert.equal(await shiningOn(p), said[2], 'off the words, in the card\'s corner, the passage lit stays lit');
+    for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: corner.x, y: corner.y, button: 'right', clickCount: 1 });
+    await until(async () => (await menu())?.focused, 'a right-click on the card opens the message\'s menu, the focus on its first item');
+    assert.equal(await shiningOn(p), null, 'with the focus in the menu a right-click opened, no passage is lit');
+    await shot(p, 'reading-passage-menu-right');
+    await p.key('Escape');
+    await until(async () => await menu() === null, 'Escape closes the menu');
+    assert.equal(await readerOn(p), null, 'nothing opened');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Tab off a lit passage on a dossier's card, to a control of its message, empties the page's light (item 527), as on
+  // a topic's card: CSS.highlights holds no passage, so nothing shows lit where Return would press the control.
+  await check('reading Tab off a lit passage on a dossier\'s card puts the light out, and back on the card it lights again', async () => {
+    const topic = 'reading-passage-dossier-tab';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.reply);
+    const on = card(ids.reply), empty = () => p.evaluate(`(h=>!h||h.size===0)(CSS.highlights.get('lit-passage'))`);
+    const focus = () => p.evaluate(`(c=>{const e=document.activeElement,b=document.querySelector('${BAR}');return e===c?'card':c.contains(e)||b.contains(e)?(e.getAttribute('aria-label')||e.title||e.textContent):e?e.tagName.toLowerCase():null})(document.querySelector(${JSON.stringify(on)}))`);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(on)}).closest('.reply-stack'))`), true, 'the reply\'s card is in a dossier');
+    await centre(p, on);
+    await moveTo(p, ids.reply, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights on the dossier\'s card');
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    await p.key('Tab');
+    await until(async () => !['card', 'body', null].includes(await focus()), 'Tab reaches a control of the message');
+    assert.equal(await empty(), true, `at ${await focus()}, where Return presses the control, CSS.highlights holds no lit passage`);
+    await shot(p, 'reading-passage-dossier-tab');
+    await p.key('Tab', 8);
+    await until(async () => await focus() === 'card', 'Shift-Tab comes back to the card');
+    await moveTo(p, ids.reply, 'Words after');
+    await becomes(() => shiningOn(p), said[2], 'back on the card the passage under the pointer lights again');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Shift-click on a link in a card's words opens the link as the browser does, in a new window, as it did before a
   // card's passages lit (item 478); the page leaves it alone, as the Reader leaves a press on a link, and it grows no
   // light. Shift-click on the card's other words still grows the light, and opens nothing. The link goes to a file of
@@ -2053,20 +2611,24 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await becomes(() => shiningOn(p), said.join(' '), 'Shift-click on the card\'s words grows the light from the passage lit to the one under the pointer');
     assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), true, 'the page takes a Shift-click on words from the browser');
     assert.equal(await readerOn(p), null, 'Shift-click on words opens nothing');
-    // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does.
+    // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does. Words of
+    // the passage before it are then selected, as a drag over them selects them: Shift grows a light from words
+    // selected (the Shift-click case above), so a light the Shift-click grew would reach back over that passage, and
+    // differ from the one lit (item 527). The Shift-click lands where the pointer rests, so nothing moves before it.
     await moveTo(p, ids.alone, 'aim.css');
     await becomes(() => shiningOn(p), said[1] + ' ', 'the passage the link is in lights');
+    assert.equal(await selectOn(p, ids.alone, 'before the'), true, 'words of the passage before the link selected');
     const before = await windows.list();
     await shiftClick('aim.css');
+    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
+    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
+    const onLink = await p.evaluate('window.linkFocused === true');
+    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light, from the words selected or the passage lit (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
     assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), false, 'the page leaves a Shift-click on a link to the browser');
     const added = await until(async () => { const now = [...(await windows.list())].filter(([id]) => !before.has(id)); return now.some(([, url]) => url === ELSEWHERE) ? now : null; }, 'Shift-click on the link opens a new window at its address');
     assert.deepEqual(added.map(([, url]) => url), [ELSEWHERE], 'one new window, at the link\'s address');
     for (const [id] of added) await windows.close(id);
     await p.send('Page.bringToFront');
-    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
-    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
-    const onLink = await p.evaluate('window.linkFocused === true');
-    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
     assert.equal(await readerOn(p), null, 'and the card did not open');
     assert.deepEqual(p.errors, []);
     await p.close();

@@ -41,7 +41,7 @@ KINDS_DOWN = ("DROP TABLE outcome_reached", "DROP TABLE outcome_kinds")
 # reached outcome's topics (4.5). Every other command that writes in a reached
 # outcome is refused OUTCOME_REACHED (Store._refuse_reached).
 REACHED_EXEMPT = frozenset({
-    "topic.read_through", "message.mark", "delivery.ack", "note.save", "draft.save", "submission.prepare",
+    "topic.read_through", "message.mark", "delivery.ack", "note.save", "draft.save", "submission.prepare", "submission.set_aside",
     "media.begin", "media.publish", "color.set", "workspace.create", "memory.read",
 })
 

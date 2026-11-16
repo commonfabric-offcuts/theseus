@@ -105,6 +105,34 @@ test('topic navigation rejects new typing, replaced owners and unrelated unprote
     await assert.rejects(pending); assert.deepEqual(f.visits, []);
   }
 });
+// The move the guard clears may wait before it is made (in-place-navigation.mjs reads the build the server serves
+// first), and the person may write on meanwhile. The guard hands the move its last look, still(), which the move asks
+// again where it is made: it throws why the page stays when what it cleared has changed, and answers false once a newer
+// choice has taken the move's place.
+test('topic navigation hands the move its last look, which refuses new typing, a replaced owner, unprotected work, a send or an unready image once they come, and gives way to a newer choice', async () => {
+  const keep = /Keep this page open until your writing and selected images are safely saved/;
+  for (const [what, change, refusal] of [['new typing', f => f.editors[0].localVersion++, keep], ['a replaced owner', f => f.registry.sessions.delete('inline'), keep],
+    ['the Reader replaced', f => { f.registry.current = { editors: {} }; }, keep], ['unprotected work', f => { f.registry.hasUnprotectedWriting = true; }, keep],
+    ['a send', f => { f.registry.sessions.get('inline').sends.set('s1', {}); }, /Wait for the send to finish/],
+    ['an unready image', f => { const e = f.editors[0]; e.clientCycleId = 'cycle'; e.draft = { attachments: [] };
+      e.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, bytes_state: 'durable' }] }; }, keep]]) {
+    const f = fixture(), looks = [];
+    const navigation = new TopicNavigation({ registry: f.registry, topicId: 'a', navigate: (id, still) => { f.visits.push(id); looks.push(still); } });
+    assert.equal(await navigation.open('b'), true, what);
+    assert.deepEqual(f.visits, ['b']);
+    assert.equal(typeof looks[0], 'function', `${what}: the move is handed the guard's last look`);
+    assert.equal(looks[0](), true, `${what}: as the guard hands it over, it stands`);
+    change(f);
+    assert.throws(() => looks[0](), refusal, `${what}: once it comes, the move is refused`);
+  }
+  const f = fixture(), looks = [];
+  const navigation = new TopicNavigation({ registry: f.registry, topicId: 'a', navigate: (id, still) => { f.visits.push(id); looks.push(still); } });
+  assert.equal(await navigation.open('b'), true);
+  const later = navigation.open('c');
+  assert.equal(looks[0](), false, 'a newer choice takes the waiting move\'s place, which then stays without a word');
+  assert.equal(await later, true); assert.equal(looks[1](), true, 'and the newer one stands');
+});
+
 test('newer topic choice wins, current topic does nothing, and clean editors need no receipt', async () => {
   const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
   f.registry.flush = async () => { throw Error('Clean writing must not be saved again'); };
@@ -139,6 +167,27 @@ test('canonical attachments, removed selections and prior-submission images allo
     { selected: true, owner: { kind: 'submission', id: 'old' }, bytes_state: 'durable' },
   ] };
   assert.equal(await f.navigation.open('b'), true); assert.deepEqual(f.visits, ['b']);
+});
+
+// Item 548, review B4: an image the draft names and Theseus already holds (a reply set aside put it back, or the
+// draft came from another page) is retained from the draft; while this page is still checking it, leaving loses
+// nothing, so it holds no press. One the draft no longer names, and a chosen file not yet published, still hold.
+test('an image retained from the draft lets the page leave while it is still being checked; one the draft does not name holds', async () => {
+  const leave = async (entry, attachments) => {
+    const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
+    const editor = f.editors[1]; editor.clientCycleId = 'cycle'; editor.draft = { attachments };
+    editor.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, ready_descriptor: null, association: null, ...entry }] };
+    const left = await f.navigation.open('b').catch(error => error.message);
+    return [left, f.visits];
+  };
+  const retained = { origin: 'retained-ref', retained_ref: { id: 'kept' }, bytes_state: 'released' };
+  assert.deepEqual(await leave(retained, [{ id: 'kept' }]), [true, ['b']], 'still being checked, it goes');
+  assert.deepEqual(await leave({ ...retained, local_error: 'Retained attachment is unavailable — check or remove it' }, [{ id: 'kept' }]), [true, ['b']],
+    'one this page could not check is still the draft\'s, so it goes');
+  const [held, visits] = await leave(retained, [{ id: 'other' }]);
+  assert.match(held, /image/); assert.deepEqual(visits, [], 'one the draft does not name holds');
+  const [file, none] = await leave({ origin: 'file', bytes_state: 'durable' }, [{ id: 'kept' }]);
+  assert.match(file, /image/); assert.deepEqual(none, [], 'a chosen file not yet published holds');
 });
 
 test('a new selected image during preservation prevents departure at the final boundary', async () => {

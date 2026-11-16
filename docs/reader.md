@@ -23,6 +23,28 @@ message too: the page reads its acts with the loaded messages', and again
 whenever they change (`TopicViews.showAlone`), so a star made on another
 device shows there as well.
 
+Beside the star, an archive glyph with a number is Move below More for the
+message's whole dossier (item 378): the same act as the card's ⋯ Move below
+More (`StackFeed.setAside`), and the number is how many messages move below
+More with it, the message itself included. The act moves the whole dossier, and
+a dossier whose first message the page has not loaded is drawn as one stack for
+each reply to it there, so every stack drawn from the dossier is counted ("Move below More: 3
+messages" by name and as its tooltip). Once the dossier is below More it shows
+pressed and brings it back ("Bring back above More: 3 messages"), as ⋯ does.
+The Reader stays open on the message and the focus stays on the button; the
+page behind it changes as after ⋯'s item, and ⌘Z on the page puts it back. It
+shows for a message the page's stacks hold whose dossier Core placed, and
+never for a Notebook page, a message opened alone (of this topic, from a link to
+an older message, or of another topic, from an About link) or a message Core
+sent no place for, which ⋯ offers no move either: moving on to one of these
+from a message it showed for, the button goes; a 44 pixel target under a finger (`paintReaderAside` in
+`web/app.mjs`, `StackFeed.asideOffer`). Pressed, it shows the move at once,
+while Core has it; a refusal puts it back unpressed and the page says why. A
+phone's header has no room for ←, the title with its star and this button,
+↑ ↓, ⋯ and ✕ in one row of 44 pixel targets, so there (480 pixels wide or
+less) the title, its star and the archive button take a second row, and who
+wrote the message and when stays in the first, beside ←.
+
 The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
 selection (only while words are selected or a passage is lit), Mark unread,
 Fold message (Unfold message once folded; a starred message offers none, as
@@ -128,7 +150,7 @@ be reached from the keyboard, in the order it is shown: the who chip, the
 review chips, `+`, the field and Send. Escape while a panel is open closes
 it, wherever the focus is, and returns focus to what opened it. The
 composer hears that Escape itself, on every surface it sits in (the Reader,
-the popped New message sheet, the topic page's end, where no dialog is
+the popped New message sheet, its place in the topic page's feed, where no dialog is
 open), so no surface passes the key on; a dialog it is not in keeps its
 own Escape (`web/compose-bar.mjs`, `heard`). A panel goes with its
 composer: a surface that closes or hides with a panel open (the Reader
@@ -289,7 +311,20 @@ opening, which names its people as it is made, is unchanged.
 A quiet ✎ at the top of a topic opens the same composer with no message
 above it, focused and ready to type. It is the only control it adds to the
 page. ✕, Escape or a press on the backdrop closes it, keeping what was
-written, and focus returns to ✎.
+written, and focus returns to ✎. At rest the same composer is drawn in the
+feed, one line until written in, just above More: under the last dossier shown
+above More and over the More line (item 465). It is never moved while it is up,
+and a holder of its height keeps its place there, so no dossier behind the
+backdrop moves, in Chrome or Safari's engine, by ✎ or by ⌘Return; the holder is
+drawn only while the sheet is up, as the sheet's own open state says, read by
+one rule in `web/aim.css` and taken away by no script, so the place comes back
+the moment it closes, before any close event is heard (`web/sheet-holder.mjs`,
+which a Notebook page in the sheet shares). It takes
+that place again as it is put back (`home` in `web/reply-stacks.mjs`);
+where the feed is not drawn (an outcome's page, Health, a topic the reader can
+no longer read), a dialog in it would show nothing, so it rests at the page's
+end instead, put back first if it was up, its writing kept, and goes up from
+there, a Notebook page too (`drawFeed` in `web/app.mjs`).
 
 A Notebook page opened as it stands comes up in the same sheet, with the
 page's title, Text and Cards, its saving sign, Full page and ✕ in place of the
@@ -302,8 +337,8 @@ the Reader, whose header then leads back to the page ("← page title").
 Chrome and WebKit): at 320×568, 375×667 and 390×844 with touch, at 480×300
 without touch (a narrow window, laid out as a phone is), at 1440×960 stacked
 and Wide, and at 2560×1440, past the maximum, with the composer empty,
-holding a draft longer than its field (in the sheet, one written at the
-page's end first), holding an image, and holding a HEIC image that waits on a
+holding a draft longer than its field (in the sheet, one written in its
+place in the feed first), holding an image, and holding a HEIC image that waits on a
 choice, its choices open (in the Reader by a refused Send, whose notice says
 why), the Reader and the New message sheet are each measured against the
 window: their height and width as above, the composer filling the sheet and

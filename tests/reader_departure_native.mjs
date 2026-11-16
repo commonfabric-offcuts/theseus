@@ -68,12 +68,14 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     window.departureDiagnostics=[];
     window.departureAct=0;window.departureClick=null;
     window.departureTrace=entry=>{departureDiagnostics.push(entry);console.log('departure-diagnostic',JSON.stringify(entry));};
-    import('/app-session.mjs').then(({EditorRegistry})=>{
+    // The page's own modules, once its import map and entry are parsed (aim_next/web_build.py): an import before them would load copies outside the page's build.
+    const pageModule=name=>new Promise(go=>{const up=()=>document.querySelector('script[type=module]');if(up())return go();new MutationObserver((_,o)=>{if(up()){o.disconnect();go()}}).observe(document,{childList:true,subtree:true})}).then(()=>import(name));
+    pageModule('/app-session.mjs').then(({EditorRegistry})=>{
       const original=EditorRegistry.prototype.initializeInline;
       EditorRegistry.prototype.initializeInline=function(...args){window.departureRegistry=this;return original.apply(this,args);};
       departureTrace({event:'registry trace installed'});
     });
-    import('/topic-navigation.mjs').then(({TopicNavigation})=>{const original=TopicNavigation.prototype.openTarget;TopicNavigation.prototype.openTarget=function(...args){
+    pageModule('/topic-navigation.mjs').then(({TopicNavigation})=>{const original=TopicNavigation.prototype.openTarget;TopicNavigation.prototype.openTarget=function(...args){
       const act=departureClick;departureTrace({event:'openTarget entered',act,destination:args[0],state:departureState()});
       const result=original.apply(this,args);result.then(value=>departureTrace({event:'openTarget settled',act,value,state:departureState()}),error=>departureTrace({event:'openTarget refused',act,error:error.message,state:departureState()}));return result;
     };departureTrace({event:'navigation trace installed'});});
@@ -209,7 +211,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
     await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'unconfirmed choice notice names the Review button');
     await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has the Review button the notice names');
-    await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
+    await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button:not(.aside-act)`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
     await point(p,'#review-close');await choose(p);await ready(p,'t2');await exact(p,held,unknown);
@@ -302,6 +304,83 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await point(p,'#inline-pending button');await reviewButton('Prepare this reply again');
     await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
     await point(p,'#review-content input[type=checkbox]');
+    // The arrows leave the acknowledgement's checkbox, pressed and not typed in (item 301; docs/interaction.md,
+    // "The arrows everywhere"): ↓ to a control below it, ↑ to one above it, in the dialog.
+    const ACK='#review-content input[type=checkbox]',onAck=()=>p.evaluate(`document.activeElement===document.querySelector('${ACK}')`);
+    const landed=way=>p.evaluate(`(e=>{const a=document.querySelector('${ACK}').getBoundingClientRect(),b=e.getBoundingClientRect();
+      return {on:e===document.querySelector('${ACK}')?'the acknowledgement':e.textContent.trim()||e.id||e.tagName,inDialog:Boolean(e.closest('#version-review')),that:${way==='down'}?b.top>=a.bottom-1:b.bottom<=a.top+1}})(document.activeElement)`);
+    await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowDown');
+    const down=await landed('down');
+    assert.deepEqual([down.on!=='the acknowledgement',down.inDialog,down.that],[true,true,true],'↓ from the acknowledgement goes on to a control below it in the dialog: '+JSON.stringify(down));
+    await p.evaluate(`document.querySelector('${ACK}').focus()`);await p.key('ArrowUp');
+    const up=await landed('up');
+    assert.equal(await onAck(),false,'↑ from the acknowledgement goes on');
+    assert.deepEqual([up.inDialog,up.that],[true,true],'to a control above it in the dialog: '+JSON.stringify(up));
+    assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,'and the arrows left it ticked');
+    // Three versions taller than the review's box leave the acknowledgement and Prepare this reply again out of sight
+    // below, in a box that takes no focus of its own: the arrows from the header and the footer still reach them, the
+    // box scrolling toward them a step at a time, at a laptop's width and a phone's (item 301; docs/interaction.md).
+    const PREPARE='Prepare this reply again';
+    const where=()=>p.evaluate(`(e=>({at:e===document.querySelector('${ACK}')?'the acknowledgement':e.id||e.textContent.trim().slice(0,40)||e.tagName,
+      top:Math.round(document.getElementById('review-content').scrollTop),inDialog:Boolean(e.closest('#version-review'))}))(document.activeElement)`);
+    // Presses key until neither the focus nor the box moves, and answers each landing.
+    const walk=async(key,trail)=>{
+      for(let n=0;n<60;n++){
+        const was=await where();await p.key(key);const now=await where();
+        trail.push(key.slice(5,6)+':'+now.at+'@'+now.top);
+        assert.ok(now.inDialog,'the arrows keep the focus in the review: '+trail.join(' '));
+        if(now.at===was.at&&now.top===was.top)return;
+      }
+      assert.fail(key+' never came to rest: '+trail.join(' '));
+    };
+    const texts=await p.evaluate(`[...document.querySelectorAll('#review-content pre')].map(e=>e.textContent)`);
+    assert.equal(texts.length,3,'the correction review shows its three versions');
+    await p.evaluate(`document.querySelectorAll('#review-content pre').forEach(e=>{e.textContent=Array.from({length:14},(_,i)=>'Line '+i+' of this version, a sentence of ordinary length').join('\\n')})`);
+    for(const [width,height] of [[1440,900],[390,844],[375,667],[320,568]]){
+      // The page's own widths, as the layout reads them (its breakpoints are by width), with no phone emulation
+      // to undo after: the case goes on at a laptop's width.
+      await p.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+      await until(()=>p.evaluate(`innerWidth===${width}`),width+': the window is drawn at its width');
+      const hidden=await p.evaluate(`(c=>{c.scrollTop=0;const k=c.getBoundingClientRect(),a=document.querySelector('${ACK}').getBoundingClientRect();return a.top>=k.bottom&&getComputedStyle(c).overflowY==='auto'&&c.tabIndex<0})(document.getElementById('review-content'))`);
+      assert.equal(hidden,true,width+': the acknowledgement starts out of sight below, in a box that takes no focus');
+      const starts=await p.evaluate(`['review-title',...[...document.querySelectorAll('#version-review>header button,#version-review>footer button')].filter(e=>e.checkVisibility()&&!e.disabled).map(e=>e.id)]`);
+      assert.ok(starts.includes('review-close')&&starts.includes('review-keep'),width+': the header\'s ✕ and the footer\'s Keep both for now show: '+starts.join(', '));
+      for(const start of starts){
+        await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('${start}').focus())`);
+        const trail=[start];await walk('ArrowDown',trail);await walk('ArrowUp',trail);
+        assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
+      }
+      // Where the arrows bring the focus to the acknowledgement: ↓ from the footer while the box scrolls, then ↑ until
+      // it lands there (past Prepare this reply again, where that lies below the acknowledgement's words).
+      const toAck=async()=>{
+        await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
+        await walk('ArrowDown',[]);
+        const trail=[];
+        for(let n=0;n<4&&(await where()).at!=='the acknowledgement';n++){await p.key('ArrowUp');const now=await where();trail.push(now.at+'@'+now.top);}
+        assert.equal((await where()).at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, reaches the acknowledgement: '+trail.join(' → '));
+      };
+      await toAck();
+      // The focus there, for the evidence, in light and dark.
+      for(const theme of ['light','dark']){
+        await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+        await until(()=>p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`),width+': drawn '+theme);
+        await shot(p,`review-arrows-acknowledgement-${width}-${theme}`);
+      }
+      await p.send('Emulation.setEmulatedMedia',{features:[]});
+      // Prepare this reply again follows the acknowledgement's words, on their last line: from the acknowledgement an
+      // arrow reaches it, → where it lies to the right, ↓ where it lies below.
+      const tried=[];
+      for(const way of ['ArrowRight','ArrowDown']){
+        await toAck();const trail=[];await walk(way,trail);tried.push(trail.join(' '));
+        if(trail.some(step=>step.includes(':'+PREPARE+'@')))break;
+      }
+      const boxes=await p.evaluate(`[document.querySelector('${ACK}'),[...document.querySelectorAll('#review-content button')].find(e=>e.textContent===${JSON.stringify(PREPARE)}),document.getElementById('review-keep')].map(e=>{const b=e.getBoundingClientRect();return [b.left,b.top,b.right,b.bottom].map(Math.round).join(',')}).join(' ')`);
+      assert.ok(tried.some(trail=>trail.includes(':'+PREPARE+'@')),`${width}: an arrow from the acknowledgement reaches ${PREPARE}: ${tried.join(' | ')} (acknowledgement, Prepare, Keep: ${boxes})`);
+      assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
+    }
+    await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    await until(()=>p.evaluate('innerWidth===1440'),'the window is back at a laptop\'s width');
+    await p.evaluate(`((t)=>document.querySelectorAll('#review-content pre').forEach((e,i)=>{e.textContent=t[i]}))(${JSON.stringify(texts)})`);
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');

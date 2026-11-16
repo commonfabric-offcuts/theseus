@@ -36,10 +36,12 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     for(const method of ['put','add','delete','clear']){const original=IDBObjectStore.prototype[method];IDBObjectStore.prototype[method]=function(...args){
       const act={method,store:this.name,db:this.transaction.db.name};storageWrites.push(act);console.log('ux-storage-write',JSON.stringify(act));return original.apply(this,args);
     };}
-    import('/journal.mjs').then(({RecoveryJournal})=>{for(const method of ['save','saveLatest','transition','capture','releaseBytes','releaseExact','removeExact','retireAcknowledged','retireImageCandidate','changeCandidateImages','adopt']){
+    // The page's own modules, once its import map and entry are parsed (aim_next/web_build.py): an import before them would load copies outside the page's build.
+    const pageModule=name=>new Promise(go=>{const up=()=>document.querySelector('script[type=module]');if(up())return go();new MutationObserver((_,o)=>{if(up()){o.disconnect();go()}}).observe(document,{childList:true,subtree:true})}).then(()=>import(name));
+    pageModule('/journal.mjs').then(({RecoveryJournal})=>{for(const method of ['save','saveLatest','transition','capture','releaseBytes','releaseExact','removeExact','retireAcknowledged','retireImageCandidate','changeCandidateImages','adopt']){
       const original=RecoveryJournal.prototype[method];if(!original)continue;RecoveryJournal.prototype[method]=function(...args){console.log('ux-journal-write',method);return original.apply(this,args);};
     }});
-    import('/creation.mjs').then(({OutcomeCreation})=>{const original=OutcomeCreation.prototype.persist;OutcomeCreation.prototype.persist=function(...args){console.log('ux-journal-write','creation.persist');return original.apply(this,args);};});
+    pageModule('/creation.mjs').then(({OutcomeCreation})=>{const original=OutcomeCreation.prototype.persist;OutcomeCreation.prototype.persist=function(...args){console.log('ux-journal-write','creation.persist');return original.apply(this,args);};});
   `});
   const storageActs=p=>p.events.filter(e=>e.method==='Runtime.consoleAPICalled'&&['ux-storage-write','ux-journal-write'].includes(e.params.args[0]?.value));
 
