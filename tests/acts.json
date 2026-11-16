@@ -14261,6 +14261,21 @@
   },
   {
    "item": 378,
+   "act": "With the archive button hidden, a phone's Reader header keeps one row: the title beside ✕, not on a row of its own",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}}",
+     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's archive button shows for no Notebook page"
+   }
+  },
+  {
+   "item": 378,
    "act": "The Reader's archive button shows for no message whose dossier Core has not placed",
    "break": [
     [
@@ -14400,7 +14415,7 @@
   },
   {
    "item": 465,
-   "act": "What keeps the sheet's place is drawn only while the sheet is up, so put back each dossier is where it was",
+   "act": "What keeps the sheet's place is drawn only while the sheet is up, by the sheet's own open state and no script, so put back each dossier is where it was, before the close event is heard",
    "break": [
     [
      "web/aim.css",

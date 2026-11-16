@@ -923,11 +923,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
 
   // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
   // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
-  const asideButton = p => p.evaluate(`(b=>({hidden:b.hidden,shown:b.getClientRects().length>0,name:b.getAttribute('aria-label')}))(document.querySelector('#reader-aside'))`);
+  // With the button hidden, a phone's header keeps one row: the title row beside ✕, not on a row of its own under it.
+  const asideButton = p => p.evaluate(`(b=>{const t=document.querySelector('#reader .reader-title-row').getBoundingClientRect(),x=document.querySelector('#reader-close').getBoundingClientRect();
+    return {hidden:b.hidden,shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),oneRow:t.top<x.bottom-4}})(document.querySelector('#reader-aside'))`);
   const noAsideAtEachWidth = async (p, device, said) => {
     for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
       if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-      await becomes(async () => { const b = await asideButton(p); return [b.hidden, b.shown]; }, [true, false], `${device} ${width}: no archive button for ${said}`);
+      await becomes(async () => { const b = await asideButton(p); return [b.hidden, b.shown, b.oneRow]; }, [true, false, true], `${device} ${width}: no archive button for ${said}, and the header keeps one row`);
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-archive-none-${said.replace(/\W+/g, '-')}-${device}-${width}-${theme}`); }
       await dossierTheme(p, 'light');
     }
@@ -1126,7 +1128,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // it (Chrome's scroll anchoring would hide a moved feed where Safari's engine shows it). By ✎ with the page at its top
   // and by ⌘Return with a dossier below the composer near the window's top, on a laptop, and by a finger's ✎ at 390:
   // every dossier and More stay where they were while it is up, and put back each is where it was, with the list no
-  // taller than before, nothing left holding a place.
+  // taller than before, nothing left holding a place. What gives the place back is the sheet's own open state, read by
+  // one rule (aim.css, .sheet-holder): so the composer is where it rested in the very task its close() runs in, before
+  // the close event is heard, read in that task, with no listener between.
   await check('reading stacks the New message composer popped up by ✎ or ⌘Return leaves every dossier behind it where it was, and put back each is where it was', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-composer-still-' + device;
@@ -1148,7 +1152,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const rows=[...list.children].filter(e=>e.getClientRects().length&&(e.matches('.reply-stack,.stack-more')||e.dataset.id));
         const sheet=document.querySelector('#new-message-sheet');
         return {scroll:scrollY,list:list.getBoundingClientRect().height,tops:Object.fromEntries(rows.map(e=>[e.dataset.stack??e.dataset.id??'More',e.getBoundingClientRect().top])),
-          composer:{height:sheet.getBoundingClientRect().height,words:document.querySelector('#inline-writing-body').value,compose:document.querySelector('#inline-composer').dataset.compose??null}}})()`);
+          composer:{top:sheet.getBoundingClientRect().top,height:sheet.getBoundingClientRect().height,words:document.querySelector('#inline-writing-body').value,compose:document.querySelector('#inline-composer').dataset.compose??null}}})()`);
       const moved = (from, to) => [['scroll', from.scroll, to.scroll], ['list', from.list, to.list],
         ...Object.keys({ ...from.tops, ...to.tops }).map(key => [key, from.tops[key], to.tops[key]])].filter(([, x, y]) => !(Math.abs(x - y) <= 1));
       const ways = device === 'phone' ? [['✎', 'top']] : [['✎', 'top'], ['⌘Return', 'scrolled']];
@@ -1171,6 +1175,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const after = await where();
         assert.deepEqual(moved(before, after), [], `${device} ${way}: put back, each is where it was, the list no taller: ${JSON.stringify({ before, after })}`);
         observations.push({ name: 'composer popped, the feed still', engine, device, way, before, up, after });
+        if (way !== '✎') continue;
+        // Up once more, then closed and read in one task: the place is back before any close event is heard.
+        await press(p, device, '#new-message');
+        await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up again`);
+        const closing = await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),holder=d.previousElementSibling;let heard=false;d.addEventListener('close',()=>{heard=true},{once:true});
+          d.close();return {open:d.open,heard,top:d.getBoundingClientRect().top,scroll:scrollY,holder:holder?.classList.contains('sheet-holder')?holder.getClientRects().length:null}})()`);
+        assert.deepEqual([closing.open, closing.heard, Math.abs(closing.top - before.composer.top) <= 1, Math.abs(closing.scroll - before.scroll) <= 1, closing.holder],
+          [false, false, true, true, 0], `${device} ${way}: closed, before its close event is heard, the composer is where it rested and its holder draws nothing: ${JSON.stringify({ before: before.composer, closing })}`);
+        await until(() => p.evaluate(`document.querySelector('#inline-composer').dataset.compose === 'line' && document.activeElement?.id === 'new-message'`), `${device} ${way}: the close heard, folded to its line`);
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
