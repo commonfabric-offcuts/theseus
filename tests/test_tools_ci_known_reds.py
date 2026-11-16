@@ -1129,5 +1129,48 @@ class Evidence(unittest.TestCase):
         self.assertEqual([a['attempt'] for a in result['attempts']], [1, 2])
 
 
+class TheRepositorysOwnChecks(unittest.TestCase):
+    """Item 575: what GitHub's classifier asks of this checkout's own checks, or it refuses every plan that holds them:
+    each file read a test makes is declared in tools/ci-input-reads.json ('test input read audit', from the policy's
+    source commit or the candidate's), and python-units runs each check once ('reviewed check inventory omitted or
+    duplicated', since a reviewed inventory names a check once)."""
+
+    def tracked(self):
+        listed = subprocess.run(['git', '-C', str(ci.ROOT), 'ls-files', '-z'], capture_output=True, check=True).stdout
+        checkout = ci.ROOT
+        return {path: (checkout / path).read_bytes() for path in listed.decode().split('\0')
+                if path and (checkout / path).is_file()}
+
+    def test_every_file_read_a_test_makes_is_declared(self):
+        _, errors = ci.ci_input_reads.discover(self.tracked(), ci.read_json(ci.ROOT / 'tools/ci-input-reads.json'))
+        self.assertEqual(errors, [], '%d undeclared' % len(errors))
+
+    def test_the_audit_still_finds_a_read_no_declaration_names(self):
+        # The negative: the same audit over the same files, with one of their declared reads taken out, finds it.
+        files = self.tracked()
+        declarations = ci.read_json(ci.ROOT / 'tools/ci-input-reads.json')
+        path = 'tests/test_checks_base_at_run.py'
+        calls, _ = ci.ci_input_reads.read_calls(path, files[path].decode('utf-8-sig'))
+        signature = next(key for key, expression in calls.items() if expression == 'WORKFLOW.read_text()')
+        del declarations[path][signature]
+        _, errors = ci.ci_input_reads.discover(files, declarations)
+        self.assertEqual([error.split(';')[0] for error in errors], [path + ': undeclared file read WORKFLOW.read_text()'])
+
+    def identities(self, suite):
+        for test in suite:
+            if isinstance(test, unittest.TestSuite):
+                yield from self.identities(test)
+            else:
+                yield str(test)
+
+    def test_python_units_run_each_check_once(self):
+        # As python-units discovers them (tools/release_check.py): every test_*.py under tests/, named as its log names them.
+        found = list(self.identities(unittest.TestLoader().discover(str(ci.ROOT / 'tests'), pattern='test_*.py')))
+        self.assertGreater(len(found), 1000)
+        self.assertIn('test_python_units_run_each_check_once (test_tools_ci_known_reds.TheRepositorysOwnChecks)', found)
+        twice = sorted({name for name in found if found.count(name) > 1})
+        self.assertEqual(twice, [])
+
+
 if __name__ == '__main__':
     unittest.main()
