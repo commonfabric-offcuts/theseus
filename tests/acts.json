@@ -8916,7 +8916,7 @@
    "break": [
     [
      "aim_next/memory.py",
-     "        return db.execute(\"SELECT 1 FROM outcome_reached WHERE workspace_id=?\", (workspace,)).fetchone() is None\n",
+     "        return self._closed(db, workspace) is None\n",
      "        return True\n"
     ]
    ],
@@ -9845,7 +9845,7 @@
    "break": [
     [
      "aim_next/assessments.py",
-     "self._assessment_open(db, topic['workspace_id'])\n        if topic['kind'] == 'conversation':",
+     "self._assessment_open(db, topic['workspace_id'], actor)\n        if topic['kind'] == 'conversation':",
      "if topic['kind'] == 'conversation':"
     ]
    ],
@@ -9859,7 +9859,7 @@
    "break": [
     [
      "aim_next/assessments.py",
-     "self._assessment_open(db, record['workspace_id'])\n        return record",
+     "self._assessment_open(db, record['workspace_id'], actor)\n        return record",
      "return record"
     ]
    ],
@@ -19357,9 +19357,14 @@
      "(\"41\", \"42\", INVITATIONS_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"43\", \"44\", ENDS_SCHEMA",
+     "(\"42\", \"43\", ENDS_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"43\"",
-     "SCHEMA_VERSION = \"42\""
+     "SCHEMA_VERSION = \"44\"",
+     "SCHEMA_VERSION = \"43\""
     ]
    ],
    "check": {
@@ -19434,6 +19439,259 @@
    ],
    "check": {
     "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A write into an archived or completed outcome is refused whole: the guard reads its end, not only Reached",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "        end = self._end(db, workspace_id)\n        return None if end is None else {\"how\": end[\"state\"], \"by\": end[\"by\"], \"ms\": end[\"ms\"]}\n",
+     "        return None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The guard looks at ends even where no outcome was ever reached",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "\"SELECT EXISTS (SELECT 1 FROM outcome_reached) OR EXISTS (SELECT 1 FROM outcome_ends)\"",
+     "\"SELECT EXISTS (SELECT 1 FROM outcome_reached)\""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Bring back unarchives exactly the topics the act archived, not a topic archived on its own before it",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "AND archived=1 AND id IN (SELECT value FROM json_each(?)) ORDER BY id",
+     "AND archived=1 AND json_valid(?) ORDER BY id"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Between archived and completed the topic list is carried, so Bring back after the switch restores the topics the first act archived",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "            listed, moved = end[\"topics\"], []\n",
+     "            listed, moved = [], []\n"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Only the outcome's owner archives, completes or brings it back",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "        if workspace[\"owner_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", \"Only %s, this outcome",
+     "        if False:\n            raise Refusal(\"FORBIDDEN\", \"Only %s, this outcome"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome leaves the outcome list and is listed alone with ended: true",
+   "break": [
+    [
+     "aim_next/store.py",
+     "which = reached_sql if reached else ENDED if ended else \"NOT %s AND NOT %s\" % (reached_sql, ENDED)",
+     "which = reached_sql if reached else ENDED if ended else \"NOT %s\" % reached_sql"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "An archived or completed outcome is brought back before it is said to be reached",
+   "break": [
+    [
+     "aim_next/outcome_kind.py",
+     "        if end is not None:\n            raise self._closed_refusal(db, actor, workspace[\"id\"], {\"how\": end[\"state\"], \"ms\": end[\"ms\"]}, \"bring it back to say it is reached.\")\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The light of an archived outcome is Quiet and a completed one's Done, each led by who did it",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "return {\"light\": _light(\"done\" if end[\"state\"] == \"completed\" else \"quiet\"",
+     "return {\"light\": _light(\"quiet\""
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "While it is archived or completed nobody is offered its kind or Say it is reached",
+   "break": [
+    [
+     "aim_next/checks.py",
+     "\"you_change\": actor == workspace[\"owner_id\"] and end is None}",
+     "\"you_change\": actor == workspace[\"owner_id\"]}"
+    ]
+   ],
+   "check": {
+    "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The agent CLI's outcomes leaves ended outcomes out and says how many there are",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "archived or completed (",
+     "archived and completed ("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_targets.py"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A press on Complete or Archive reads Completing… or Archiving… while it is in flight",
+   "break": [
+    [
+     "web/targets.mjs",
+     "word: this.ending === state ? ACTS[state].busy : ACTS[state].word",
+     "word: ACTS[state].word"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_targets.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Archived (N) is hidden while nothing is archived or completed",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "this.ended.hidden=this.denied||!this.endedCount;",
+     "this.ended.hidden=this.denied;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Archived (N) sits directly above Reached (N)",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "more.after(this.ended,this.reached);",
+     "more.after(this.reached,this.ended);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Bring back on a row under Archived (N) is offered to the outcome's owner only",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "if(this.bringBack&&this.reader!==null&&item.owner_id===this.reader){",
+     "if(this.bringBack){"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Brought back from its row, the keys land on the outcome's row in the list",
+   "break": [
+    [
+     "web/outcomes.mjs",
+     "    [...this.host.children].find(link=>link.dataset.workspaceId===item.id)?.focus();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcomes.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "Where it stands offers Bring back for an archived or completed outcome only, never a reached one",
+   "break": [
+    [
+     "web/outcome-light.mjs",
+     "if (last && bringBack && ENDED.includes(answer?.lead?.kind)) {",
+     "if (last && bringBack) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_light.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "A topic of a completed outcome says when it was completed",
+   "break": [
+    [
+     "web/outcome-end.mjs",
+     "return `This outcome was completed${endDay(ms) ? ' ' + endDay(ms) : ''}; its topics are kept to read`;",
+     "return 'This outcome was completed; its topics are kept to read';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_end.test.mjs"
+   }
+  },
+  {
+   "item": 404,
+   "act": "The outcome page offers its owner Bring back on Where it stands",
+   "break": [
+    [
+     "web/app.mjs",
+     "bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});",
+     "bringBack:null});"
+    ]
+   ],
+   "check": {
+    "native": "targets",
+    "case": "archives by touch"
    }
   }
  ]

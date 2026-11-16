@@ -105,9 +105,11 @@ function railFixture(t) {
   const queue=[],calls=[],opened=[],row=id=>({id,owner_id:'owner',title:'Same',title_truncated:true,version:1,light:light(id)});
   const answer=(ids,next_cursor=null)=>({instance_id:'instance',items:ids.map(row),next_cursor});
   const broughtBack=[];let bringing=null;
+  // The column the list sits in, so the lines the rail places after "More" land where the page has them.
+  const column=new Element();column.append(nodes.more);
   const rail=new OutcomeRail({...nodes,instanceId:'instance',current:'a',read:args=>{calls.push(args);const next=queue.shift();return typeof next==='function'?next():Promise.resolve(next);},open:(...args)=>opened.push(args),denied:error=>error.status===403,
     reader:'tony',bringBack:item=>{broughtBack.push(item.id);return bringing?bringing(item):Promise.resolve({});}});
-  return {...nodes,queue,calls,opened,answer,rail,broughtBack,bringWith:fn=>{bringing=fn;}};
+  return {...nodes,column,queue,calls,opened,answer,rail,broughtBack,bringWith:fn=>{bringing=fn;}};
 }
 test('outcome links expose stable IDs and preserve native activation and More focus',async t=>{
   const f=railFixture(t);f.queue.push(f.answer(['a'],'a'));await f.rail.load();
@@ -197,8 +199,7 @@ test('an outcome reload keeps the outcomes loaded with More',async t=>{
 // Item 404: archived and completed outcomes fold into one closed "Archived (N)" line directly above "Reached (N)".
 test('Archived (N) sits above Reached (N), hidden at 0, and reads ended outcomes only when it is opened; the owner brings one back from its row',async t=>{
   const f=railFixture(t);
-  const column=document.createElement();column.append(f.more);f.more.after(f.rail.ended,f.rail.reached);
-  assert.deepEqual(column.children.map(node=>node===f.rail.ended?'ended':node===f.rail.reached?'reached':'more'),['more','ended','reached'],'directly above Reached');
+  assert.deepEqual(f.column.children.map(node=>node===f.rail.ended?'ended':node===f.rail.reached?'reached':'more'),['more','ended','reached'],'directly above Reached');
   assert.equal(f.rail.ended.hidden,true);
   f.queue.push({...f.answer(['a']),reached_count:1,ended_count:0});await f.rail.load();
   assert.equal(f.rail.ended.hidden,true,'hidden at 0');
