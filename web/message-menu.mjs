@@ -164,10 +164,12 @@ export class MessageMenu {
     doc.defaultView.addEventListener('resize', () => this.place());
     // Content above the lit card can grow or shrink without a scroll (the
     // side rail filling in above the topic on a phone, a card arriving): the
-    // page's size changes, and the bar follows its card. The bar's own width
-    // changes too ("Link copied" on its ⋯), and it keeps to its corner.
+    // page's size changes, and the bar follows its card. Its ⋯ changes width
+    // too ("Link copied"), and the bar fits the window again (fit) and keeps to
+    // its corner. The ⋯ is watched, not the bar, whose width fit itself changes:
+    // a change made in the observer to what it watches is a loop WebKit reports.
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
-    this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
+    this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.buttons.more);
     // A reply stack's head that comes to show only its row loses its bar, and
     // gets it back once its full message shows again (tabOnly). A lit message
     // its stack folds away loses its light, and its bar with it (place).

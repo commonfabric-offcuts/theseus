@@ -14273,6 +14273,36 @@
     "native": "reading",
     "case": "go-ahead ask's bar keeps every button"
    }
+  },
+  {
+   "item": 473,
+   "act": "When its ⋯ says Link copied the message bar fits the window again",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     " this.sizes.observe(this.buttons.more);",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The message bar refits the window for Link copied with no ResizeObserver loop, which WebKit reports as an error",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "this.sizes.observe(this.buttons.more);",
+     "this.sizes.observe(this.bar);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "go-ahead ask's bar keeps every button"
+   }
   }
  ]
 }
