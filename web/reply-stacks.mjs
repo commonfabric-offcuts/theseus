@@ -569,7 +569,14 @@ function paintStack(section, stack, byId, context) {
   for (const entry of [head, ...desired]) if (entry.dataset.id) {
     entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
   }
-  let previousFace = open ? head : null;
+  // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
+  // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
+  // shows its tab alone. Drawn again only when what it says changes. A message on its own takes pills instead.
+  const cover = single ? null : coverOf(stack.head), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
+  const key = coverKey(cover, coverContext);
+  if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
+  // A cover stands between the first message and the replies, so the first reply overlaps no face of the head's.
+  let previousFace = open && !p.cover ? head : null;
   for (const entry of desired) {
     if (entry.hidden) continue;
     if (!entry.dataset.id) { previousFace = null; continue; }
@@ -584,12 +591,6 @@ function paintStack(section, stack, byId, context) {
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = single ? null : renameField(section, stack, shown, context);
-  // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
-  // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
-  // shows its tab alone. Drawn again only when what it says changes. A message on its own takes pills instead.
-  const cover = single ? null : coverOf(stack.head), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
-  const key = coverKey(cover, coverContext);
-  if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
   reconcile(section, [head, ...(p.cover ? [p.cover] : []), ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
