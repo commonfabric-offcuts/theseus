@@ -40,12 +40,13 @@ export function wordsShown(kind, count = 0, named = null) {
   return kind !== 'workspace' || (named !== null && named < count);
 }
 
-// Moves the one logo block, then the page's status notices, to the top of
-// host (the rail or main). The nodes move, so their handlers stay.
+// Moves the one logo block, then the page's notices, to the top of host (the
+// rail or main). The notices go as one group (index.html #page-notices: the
+// status line, the wakes', the updates' and why a move stayed), so where the
+// rail pins them they stack one under the other and never draw over each
+// other (rails.css). The nodes move, so their handlers stay.
 export function placeBrand(host, doc = host.ownerDocument) {
-  const brand = doc.querySelector('.brand');
-  const notices = ['app-status', 'wakes-status', 'updates-status'].map(id => doc.getElementById(id)).filter(Boolean);
-  host.prepend(brand, ...notices);
+  host.prepend(...[doc.querySelector('.brand'), doc.getElementById('page-notices')].filter(Boolean));
 }
 
 // One page inside an outcome. sections: [{name, node, load}] in any order;
@@ -70,7 +71,7 @@ export class OutcomeScope {
     this.paintHome(0);
     if (this.shown) {
       const ordered = RAIL_ORDER.flatMap(name => sections.filter(section => section.name === name));
-      let after = doc.getElementById('topic-navigation-status') ?? home;
+      let after = home;
       for (const { node } of ordered) { if (node.parentNode === rail) { after.after(node); after = node; } }
     }
     if (attention) {

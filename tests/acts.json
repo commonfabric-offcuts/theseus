@@ -21941,6 +21941,346 @@
    "check": {
     "python": "test_tools_quarantine.py"
    }
+  },
+  {
+   "item": 547,
+   "act": "A busy answer to an act on a card is said as busy, with the act and the card, never as a lost connection",
+   "break": [
+    [
+     "web/api.mjs",
+     "  if (isBusy(error)) return { kind: 'busy' };\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Theseus was too busy to take"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An act whose answer is lost goes again under its own operation once Theseus answers, and Core's answer ends what was said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      if (doubt.out || !(contact.answered > doubt.after)) continue;",
+     "      if (true) continue;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act whose answer is lost"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A failed act reads the acts at once, so the card shows what Core holds and the act can go again",
+   "break": [
+    [
+     "web/app.mjs",
+     "reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }",
+     "reread: () => { freshness?.invalidate('acts', 0, true); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Theseus was too busy to take"
+   }
+  },
+  {
+   "item": 547,
+   "act": "Core's answer to one act not settled leaves another said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const over = () => { this.doubts.delete(op); this.notices.delete(op); };",
+     "const over = () => { this.doubts.delete(op); this.notices.clear(); };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "two acts not settled"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An ask that fails again clears nothing of what is said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "error => { over(); this.failed(doubt, error, false); })",
+     "error => { over(); this.paintNotice(); })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "two acts not settled"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A session the server no longer holds, as after a deploy restarts it, is said as a restart, and the act goes again",
+   "break": [
+    [
+     "web/api.mjs",
+     "  if (sessionRefused(attemptOf(error))) return { kind: 'restarted' };\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "as after a deploy restarts it"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's own deal, made as the reader's reply arrives, says nothing while it is not settled",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const QUIET = new Set(['message.deal']);",
+     "const QUIET = new Set([]);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act whose answer is lost"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A refusal is said in words of its act and card until a read of the acts begun after it lands (blocker B1)",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    if (current()) landed();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Core refuses"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A read of the acts begun before a refusal ends nothing of what it says (blocker B1)",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (notice.shows === what && notice.at < began)",
+     "if (notice.shows === what)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Core refuses"
+   }
+  },
+  {
+   "item": 547,
+   "act": "After a refusal the acts are read again even while a read begun before it is out (blocker B1)",
+   "break": [
+    [
+     "web/app.mjs",
+     "freshness?.invalidate('acts', 0, true); freshness?.request();",
+     "freshness?.invalidate('acts', 0); freshness?.request();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Core refuses"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A 👍 on a card that Theseus answered without taking is said with its card, never as a lost connection (blocker B2)",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "const thrown = failure && (!said || answer.kind === 'unreached' ? unsaved(failure, answer) : (said(failure), null));",
+     "const thrown = failure && Error('Connection interrupted; whether that was saved is unknown. Press again: Core keeps one of each.', { cause: failure.error ?? undefined });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a thumbs-up Theseus was too busy to take"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A 👍 or an answer that Theseus answered without taking is thrown in words of what it answered, not as a lost connection (blocker B2)",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "  if (kind === 'unreached') return Error(",
+     "  if (kind) return Error("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reactions.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "What was said of a 👍 Theseus did not take goes once its reactions, read again after it, land (blocker B2)",
+   "break": [
+    [
+     "web/reactions.mjs",
+     "    landed();\n    return answer;",
+     "    return answer;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a thumbs-up Theseus was too busy to take is said only until"
+   }
+  },
+  {
+   "item": 547,
+   "act": "Mark unread from a card's menu that Theseus answered without taking is said with its card, never as a lost connection (blocker B2)",
+   "break": [
+    [
+     "web/app.mjs",
+     "    else markRefused(messageId, marked, { error });",
+     "    else status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error }));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Mark unread from a card"
+   }
+  },
+  {
+   "item": 547,
+   "act": "What was said of a mark Theseus did not take goes once the marks, read again after it, land (blocker B2)",
+   "break": [
+    [
+     "web/app.mjs",
+     "    .then(read => { if (read) landed(); return read; });",
+     "    .then(read => read);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Mark unread from a card"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The Reader's mark that Theseus answered without taking says what it answered, never a lost connection (blocker B2)",
+   "break": [
+    [
+     "web/app.mjs",
+     "    const words = kind === 'unreached' ?",
+     "    const words = kind ?"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An act asked again that Core takes is no longer said as not known when what follows its answer fails (blocker B3)",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "error => { over(); this.failed(doubt, error, false); })",
+     "error => { this.doubts.delete(op); this.failed(doubt, error, false); })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act asked again that Core takes"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An act not settled still goes after the page moves in place, so it is made once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  dispose() { this.gone = true; if (!this.doubts.size) this.deafen(); }",
+     "  dispose() { this.gone = true; this.deafen(); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "as on live"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's notices are pinned as one group, stacked, so none draws over another in a scrolled rail",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail>#page-notices:has(>:not([hidden])){display:flow-root;position:sticky;top:0;z-index:3;background:var(--paper)}",
+     "[data-rails] #rail>#page-notices>#app-status:not([hidden]){position:sticky;top:0;z-index:3}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "notices stack and never draw over"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's notices move under the logo block as one group",
+   "break": [
+    [
+     "web/outcome-scope.mjs",
+     "host.prepend(...[doc.querySelector('.brand'), doc.getElementById('page-notices')].filter(Boolean));",
+     "host.prepend(...[doc.querySelector('.brand')].filter(Boolean));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_scope.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply in doubt holds no move: the first choice leaves",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(still); return true;",
+     "      if (registry.inDoubt.length) throw Error('Not every reply here is confirmed sent.');\n      navigate(still); return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_departure_guard.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply in doubt holds no move in the browser, through a reload, and its Review button is there on coming back",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(still); return true;",
+     "      if (registry.inDoubt.length) throw Error('Not every reply here is confirmed sent.');\n      navigate(still); return true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "send is not confirmed holds no move"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply is settled by its own id and receipt, never by matching words or pictures",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "listed.get(id)?.send_status === 'committed' ||",
+     "[...listed.values()].some(item => item.send_status === 'committed' && item.body === local.get(id)?.snapshot?.body) ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_departure_guard.test.mjs"
+   }
   }
  ]
 }

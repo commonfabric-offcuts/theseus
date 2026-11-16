@@ -231,53 +231,28 @@ test('new registered session during preservation invalidates departure', async (
   const f=fixture();f.registry.keepLocal=async()=>f.registry.sessions.set('new',owner({key:'new',submissions:[],localVersion:0,context:{kind:'note'}}));
   await assert.rejects(f.navigation.open('b'));assert.deepEqual(f.visits,[]);
 });
-test('settled unconfirmed send requires a named informed second choice and no replay', async () => {
-  const f=fixture();f.editors[0].submissions.push(pendingItem());
-  await assert.rejects(f.navigation.open('b','Design'),/Use “Review 1 reply” to check.*“Design” again/s);assert.deepEqual(f.visits,[]);
-  assert.ok(f.keptEditors.includes(f.editors[0]));
+// Item 547: a reply whose send is not confirmed holds no move. Leaving goes at
+// the first choice, keeps the writing on this device first, and sends nothing.
+test('a settled unconfirmed send holds no move: the first choice leaves, its writing kept here first, nothing replayed', async () => {
+  const f=fixture(),item=pendingItem();f.editors[0].submissions.push(item);
+  assert.equal(f.registry.doubt(f.editors[0]).label,'Review 1 reply');
   assert.equal(await f.navigation.open('b','Design'),true);assert.deepEqual(f.visits,['b']);
+  assert.ok(f.keptEditors.includes(f.editors[0]),'kept on this device before the page went');
+  assert.deepEqual([f.editors[0].submissions.length,item.status],[1,'preparing'],'nothing sent again, nothing discarded');
 });
-test('informed departure choice invalidates on destination, writing, owner, session, item or operation changes', async () => {
-  for (const change of [
-    f=>{f.destination='c';},f=>f.editors[0].localVersion++,
-    f=>f.registry.sessions.set('inline',owner(f.editors[0])),
-    f=>f.registry.sessions.set('new',owner({key:'new',submissions:[],localVersion:0,context:{kind:'note'}})),
-    f=>f.editors[0].submissions.push(pendingItem('new')),
-    f=>f.editors[0].submissions.push({...pendingItem('new-confirmed'),status:'confirmed'}),
-    f=>{f.editors[0].submissions[0].status='prepared';},
-    f=>{f.editors[0].submissions[0].sendOperationId='changed';},
-    f=>{f.editors[0].submissions[0].prepareOperationId='changed';},
-    async f=>{await f.navigation.open('a');},
-  ]) {
-    const f=fixture();f.editors[0].submissions.push(pendingItem());
-    await assert.rejects(f.navigation.open('b','Design'),/Use “Review 1 reply” to check/);await change(f);
-    await assert.rejects(f.navigation.open(f.destination??'b','Design'),/Use “Review \d+ repl(y|ies)” to check/);assert.deepEqual(f.visits,[]);
-  }
-});
-// Item 118: leaving asks about exactly the replies a Review button shows: a
-// refused or earlier runtime's reply has one, and a reply that went has none.
-test('confirmed history permits departure, refused and detached replies ask as their Review button shows; resolution releases a prior choice', async () => {
+// Item 118's Review buttons still answer as before; none of them holds a move.
+test('confirmed, refused and detached replies all leave at the first choice', async () => {
   for(const [item,label] of [[{...pendingItem(),status:'confirmed'},null],[{...pendingItem(),status:'refused'},'Review 1 reply'],[{...pendingItem(),detached:true},'Review 1 reply']]) {
     const f=fixture();f.editors[0].submissions.push(item);
     assert.equal(f.registry.doubt(f.editors[0]).label,label);
-    if(label)await assert.rejects(f.navigation.open('b'),new RegExp(`Use “${label}” to check`));else assert.equal(await f.navigation.open('b'),true);
+    assert.equal(await f.navigation.open('b'),true);assert.deepEqual(f.visits,['b']);
   }
-  const f=fixture(),item=pendingItem();f.editors[0].submissions.push(item);
-  await assert.rejects(f.navigation.open('b'),/Review 1 reply/);item.status='confirmed';assert.equal(await f.navigation.open('b'),true);
 });
-test('settled-send consent never bypasses a required unavailable draft save', async () => {
+test('a reply in doubt never lets a move past a required unavailable draft save', async () => {
   const f=fixture();f.editors[0].submissions.push(pendingItem());
-  await assert.rejects(f.navigation.open('b'),/Review 1 reply/);
   f.editors[0].localVersion++;f.editors[0].unavailable=true;f.registry.flush=async()=>null;
   await assert.rejects(f.navigation.open('b'),/saved/i);assert.deepEqual(f.visits,[]);
-});
-test('departure choice is not armed before the warning can be shown', async () => {
-  const f=fixture(),gate=deferred();let calls=0;f.editors[0].submissions.push(pendingItem());
-  f.registry.keepEditorsLocal=async()=>{if(++calls===2)await gate.promise;};
-  const first=f.navigation.open('b');
-  for(let n=0;n<20&&calls<2;n++)await Promise.resolve();assert.equal(calls,2);
-  const second=f.navigation.open('b');await assert.rejects(second,/Review 1 reply/);
-  gate.resolve();await first;assert.deepEqual(f.visits,[]);
+  await assert.rejects(f.navigation.open('b'),/saved/i,'nor at a second choice');assert.deepEqual(f.visits,[]);
 });
 
 

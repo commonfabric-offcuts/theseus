@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 // Item 548: a reply in doubt set aside (docs/replies-in-doubt.md). A reply
 // prepared and never sent (a submission with a send operation id and no
 // outcome, as the fixture's agent_message makes it with unsent) stays in doubt
-// for good, so the departure guard holds a press on another topic. Each of the
+// for good; it holds no move (item 547), but it keeps its Review button. Each of the
 // three shapes a person's reply takes is seeded in a topic of its own: one
 // from the topic's composer, one replying to a message, and one replying to a
 // message with only an image. Its Review list offers Set aside; set aside, it
@@ -152,7 +152,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   });
 
   for (const [shape, words] of Object.entries(SHAPES)) {
-    await check(`rail set aside ${shape}: ${words} prepared and never sent holds the departure guard; Set aside takes it out of doubt and its words go back into the empty writing, Undo puts it back, and set aside again the press on another topic goes on the first try, as after a reload`, async () => {
+    await check(`rail set aside ${shape}: ${words} prepared and never sent stays in doubt; Set aside takes it out of doubt and its words go back into the empty writing, Undo puts it back, and set aside again the press on another topic goes on the first try, as after a reload`, async () => {
       const s = await seed(shape);
       assert.deepEqual(await unsent(s), [s.submission], 'Core lists the reply as not sent');
       const p = await open(`aside-${shape}`, `/?topic=${s.here}`);
@@ -161,10 +161,6 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       if (s.replyTo) { await openReader(p, s); await closeReader(p); }
       const button = s.replyTo ? '#topic-pending button' : '#inline-pending button';
       await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply in doubt has its one Review button');
-      // The guard holds a press on another topic and names the button.
-      await pressRow(p, s.away);
-      await until(async () => /Review 1 reply/.test(await notice(p)), 'the guard holds the press and names the Review button');
-      assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'), s.here, 'the press was held');
       // Set aside, from the Review list.
       await p.point(button);
       await until(async () => Boolean(await cardState(p, s)), 'the Review list shows the reply');

@@ -778,9 +778,8 @@ export class EditorRegistry {
     const count = unread ? (ids.size ? ids.size + '+' : 'more') : ids.size;
     return { ids, items, unread, count, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
   }
-  // The Review buttons, and the replies the departure guard asks about: one
-  // for each registered writing with a reply in doubt, in the order the
-  // writings registered, with doubt()'s answer. It reads only what the
+  // The Review buttons: one for each registered writing with a reply in
+  // doubt, in the order the writings registered, with doubt()'s answer. It reads only what the
   // registry holds now (docs/replies-in-doubt.md).
   get inDoubt() {
     return [...this.sessions.values()].map(session => ({ session, editor: session.editor, ...this.doubt(session.editor) })).filter(entry => entry.label);

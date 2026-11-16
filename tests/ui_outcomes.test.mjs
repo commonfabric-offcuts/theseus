@@ -70,14 +70,13 @@ test('typed outcome/root departures use the same save/send guard and do not alia
     assert.deepEqual(f.visits,[destination]);assert.equal(f.editor.ackVersion,1);
   }
 });
-test('the informed second choice is bound to destination kind as well as id', async () => {
-  const f=departure();
-  f.registry.inDoubt=[{session:f.registry.sessions.get('writing'),editor:f.editor,ids:new Set(['s']),items:[{id:'s',status:'prepared'}],unread:false,label:'Review 1 reply'}];
-  const w={kind:'workspace',id:'next'},t={kind:'topic',id:'next'};
-  await assert.rejects(f.navigation.openTarget(w,'Outcome'),/“Review 1 reply”.*“Outcome” again/);
-  await assert.rejects(f.navigation.openTarget(t,'Topic'),/“Review 1 reply”.*“Topic” again/);
-  assert.deepEqual(f.visits,[]);
-  await f.navigation.openTarget(t,'Topic');assert.deepEqual(f.visits,[t]);
+// Item 547: a reply in doubt holds no move, to an outcome or a topic alike.
+test('a reply in doubt holds no move to an outcome or a topic: each goes at the first choice', async () => {
+  for (const destination of [{kind:'workspace',id:'next'},{kind:'topic',id:'next'}]) {
+    const f=departure();
+    f.registry.inDoubt=[{session:f.registry.sessions.get('writing'),editor:f.editor,ids:new Set(['s']),items:[{id:'s',status:'prepared'}],unread:false,label:'Review 1 reply'}];
+    assert.equal(await f.navigation.openTarget(destination,'Chosen'),true);assert.deepEqual(f.visits,[destination]);
+  }
 });
 
 function railFixture(t) {

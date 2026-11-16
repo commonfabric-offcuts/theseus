@@ -1692,6 +1692,290 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   });
   else observations.push({ name: 'stacks quick acts', engine, held: 'holds Core\'s answers with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
 
+  // Item 547: Core's answers to the page's requests, held at the network for a check to drop, let through or
+  // answer itself, in Chrome with the harness's interception and in Safari's engine with Playwright's routing.
+  // before: what the check picks is held before Core sees it; else once Core has answered it.
+  const network = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    if (engine === 'chrome') {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
+    }
+    const held = []; let test = null;
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, held: () => held,
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
+  };
+  // The page's status line, as shown.
+  const statusLine = p => p.evaluate(`(()=>{const n=document.getElementById('app-status');return {shown:!n.hidden&&n.getClientRects().length>0,text:n.textContent}})()`);
+  const foldedCard = (p, id) => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded === 'true'`);
+
+  await check('reading stacks an act whose answer is lost says which act on which card until Core answers that same request again: then the line goes, the card shows what Core holds, Core holds it once, and the page\'s own act as a reply arrives says nothing', async () => {
+    const topic = 'stack-lost';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card whose fold is lost.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card the reader answers.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p), folds = payload => payload?.kind === 'message.fold' && payload.target.message_id === ids.a;
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const lost = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold reached Core; its answer is held');
+    assert.equal((await actsOf(topic, ids.a))?.folded, true, 'Core recorded the fold');
+    await net.drop(lost);
+    // The line is read while nothing has settled the fold: the page's next ask of Core is held too.
+    await becomes(() => statusLine(p), { shown: true, text: 'Not known yet whether folding “The card whose fold is lost.” was saved: the connection was interrupted. The page asks Theseus again.' },
+      'the line names the act and its card, and says what is not known');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'the page asks Core about the same fold again');
+    assert.equal((await statusLine(p)).shown, true, 'nothing has settled it while that ask is out');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core\'s answer settles it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    const sent = p.calls.filter(call => folds(call.payload)).map(call => call.payload.operation_id);
+    assert.deepEqual([sent.length, sent[1]], [2, sent[0]], 'asked again as the same request');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the fold once');
+    // The page's own act, a stack dealt with as the reader's reply arrives, settles the same way, without a word.
+    const deals = payload => payload?.kind === 'message.deal';
+    net.hold(deals);
+    const mine = (await control({ method: 'agent_message', operation_id: topic + '-mine', topic_id: topic, source: 'topic', sender: facts.actor, reply_to: ids.b, addressees: [other], body: 'The reader answers from another device.' })).result.message_id;
+    await net.drop(await until(() => net.held().find(entry => deals(entry.payload)), 'the reply arriving deals with its stack; that answer is held'));
+    const dealtAgain = await until(() => net.held().find(entry => deals(entry.payload)), 'the page asks Core about the deal again');
+    assert.equal((await statusLine(p)).shown, false, 'the page\'s own act says nothing while it is not settled');
+    net.hold(null); await net.pass(dealtAgain);
+    await until(async () => (await actsOf(topic, mine))?.dealt === true, 'Core holds the deal');
+    assert.equal((await statusLine(p)).shown, false, 'nor once it is');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act Theseus was too busy to take is said as busy, never as a lost connection, with its card, after the acts are read again; it goes again, and the line goes once Core takes it', async () => {
+    const topic = 'stack-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not take.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const first = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    const reads = () => p.calls.filter(call => call.payload?.name === 'message_acts').length, before = reads();
+    // The server's own answer when its command lane is full (aim_next/server.py).
+    await net.answer(first, 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    await until(() => reads() > before, 'the acts are read again from Core');
+    await until(async () => !(await foldedCard(p, ids.a)), 'the card shows what Core holds: not folded');
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card a busy Theseus did not take.” is not saved yet: Theseus was busy. The page sends it again.' },
+      'the line says busy, names the act and its card, and stays true after the acts are read again');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted/, 'a busy answer is no lost connection');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'the same fold goes again');
+    assert.equal(again.payload.operation_id, first.payload.operation_id, 'as the same request');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core takes it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds it once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act refused for a session Theseus no longer holds, as after a deploy restarts it, says so with its card, goes again once the page holds a session, and Core holds it once', async () => {
+    const topic = 'stack-restart';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded across a restart.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const first = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    // The server's answer to a session it does not hold (aim_next/server.py), as a restarted server gives it.
+    await net.answer(first, 401, { error: { code: 'SESSION_REQUIRED', message: 'Session required.' } });
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card folded across a restart.” is not saved yet: Theseus restarted. The page sends it again.' },
+      'the line says the server restarted, names the act and its card');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'once Theseus answers again, the same fold goes again');
+    assert.equal(again.payload.operation_id, first.payload.operation_id, 'as the same request');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core takes it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds it once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act Core refuses is said as not saved, in words of its act and card, never as unknown or a lost connection, until a read of the acts begun after it lands and the card shows what Core holds; a read begun before it, or one that fails, ends nothing', async () => {
+    const topic = 'stack-refused';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded on another device.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold', acts = payload => payload?.name === 'message_acts';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const REFUSED = 'Folding “The card folded on another device.” was not saved: it changed on another tab or device. The card shows what Theseus holds.';
+    net.hold(payload => folds(payload) || acts(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const held = await until(() => heldOf(folds), 'the fold is on its way, before Core');
+    // Meanwhile the reader folds it on another device: this page's fold is fenced on a revision gone by, and the
+    // page begins reading the acts for that commit before Core refuses its own.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.a, operation_id: topic + '-elsewhere', args: { folded: true } });
+    const early = await until(() => heldOf(acts), 'the page reads the acts for the other device\'s fold; that read is held');
+    await net.pass(held);
+    await becomes(() => statusLine(p), { shown: true, text: REFUSED }, 'the line says the fold was not saved, and why, in words of its act and card');
+    assert.doesNotMatch((await statusLine(p)).text, /Not known|Connection interrupted/, 'a refusal is an answer: neither unknown nor a lost connection');
+    // The read begun before the refusal lands: the card shows the other device's fold, and the line stays.
+    await net.pass(early);
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds, made on the other device');
+    const late = await until(() => net.held().find(entry => entry !== early && acts(entry.payload)), 'the acts are read again after the refusal; that read is held');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read begun before the refusal ends nothing');
+    // That read fails: nothing is ended by it, and the page reads the acts again, as it does after a failed read.
+    await net.drop(late);
+    const again = await until(() => net.held().find(entry => entry !== early && entry !== late && acts(entry.payload)), 'the acts are read once more');
+    assert.deepEqual(await statusLine(p), { shown: true, text: REFUSED }, 'a read that failed ends nothing');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'a read of the acts begun after the refusal lands: the line goes');
+    assert.equal(await foldedCard(p, ids.a), true, 'and the card shows what Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the other device\'s fold alone');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said as busy, with its card, never as a lost connection, until its reactions read again after it land; a read that fails ends nothing, and a press Core takes ends it', async () => {
+    const topic = 'stack-thumb-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'The thumbs-up on “The card a busy Theseus did not thumb.” was not saved: Theseus was busy. Press again: Core keeps one of each.';
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    const first = await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core');
+    // The server's own answer when its command lane is full (aim_next/server.py), as when the reader's own reply holds it.
+    await net.answer(first, 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    await net.drop(read);
+    await until(() => p.evaluate('window.fetchesOut===0'), 'the failed read has ended at the page');
+    assert.deepEqual(await statusLine(p), { shown: true, text: BUSY }, 'a read that failed ends nothing');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'the card shows no thumbs-up of the reader\'s');
+    // Pressed again, Core takes it; its reactions read after it end the line.
+    net.hold(null);
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await until(async () => (await view('reactions', { message_id: ids.a })).reactions.thumbs.some(thumb => thumb.actor_id === facts.actor), 'Core takes the thumbs-up');
+    await until(async () => !(await statusLine(p)).shown, 'its reactions read again: the line goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks a thumbs-up Theseus was too busy to take is said only until its reactions read again after it land: then the line goes, with the card as Core holds it', async () => {
+    const topic = 'stack-thumb-busy-read';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not thumb.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+    const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === ids.a, heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => thumbs(payload) || reactions(payload));
+    await light(p, 'laptop', ids.a);
+    await p.point('.message-bar [data-act=thumb]');
+    await net.answer(await until(() => heldOf(thumbs), 'the thumbs-up is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(reactions), 'the message\'s reactions are read again; that read is held');
+    await until(async () => /^The thumbs-up on .* was not saved: Theseus was busy\./.test((await statusLine(p)).text), 'what became of the thumbs-up is said while that read is out');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the read lands: the line goes');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}+' .message-reactions .mine')`), null, 'and the card shows what Core holds: no thumbs-up of the reader\'s');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks Mark unread from a card\'s menu that Theseus was too busy to take is said as busy, with its card, never as a lost connection, until the marks read again after it land', async () => {
+    const topic = 'stack-mark-busy';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card a busy Theseus did not mark.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), marking = payload => payload?.kind === 'message.mark', marksRead = payload => payload?.name === 'marks';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    const BUSY = 'Marking unread “The card a busy Theseus did not mark.” was not saved: Theseus was busy. Choose it again to send the same request.';
+    net.hold(payload => marking(payload) || marksRead(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Mark unread');
+    await net.answer(await until(() => heldOf(marking), 'the mark is on its way, before Core'), 503, { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+    const read = await until(() => heldOf(marksRead), 'the marks are read again; that read is held');
+    await becomes(() => statusLine(p), { shown: true, text: BUSY }, 'the line says busy, names the act and its card');
+    assert.doesNotMatch((await statusLine(p)).text, /Connection interrupted|Not known/, 'a busy answer is no lost connection');
+    net.hold(null); await net.pass(read);
+    await until(async () => !(await statusLine(p)).shown, 'the marks read lands: the line goes');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.a))}+' .unread-mark'))`), false, 'the card shows what Core holds: not marked unread');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks an act asked again that Core takes is no longer said as not known when the positions read after it fails: what the page says of a later act holds nothing of it', async () => {
+    const topic = 'stack-aside-positions';
+    const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The root moved aside.' }],
+      ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'An older unread reply.' }],
+      ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'The newest reply.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'The card folded after.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    const net = await network(p), asides = payload => payload?.kind === 'stack.aside', positions = payload => payload?.name === 'stack_positions';
+    const heldOf = test => net.held().find(entry => test(entry.payload));
+    net.hold(payload => asides(payload) || positions(payload));
+    await menuOf(p, 'laptop', ids.two); await choose(p, 'laptop', 'Move below More');
+    await net.drop(await until(() => heldOf(asides), 'the move reached Core; its answer is held, then lost'));
+    await until(async () => /^Not known yet whether moving below More/.test((await statusLine(p)).text), 'the move is said as not known');
+    for (let entry; (entry = heldOf(positions));) await net.drop(entry);
+    const again = await until(() => heldOf(asides), 'the page asks Core about the same move again');
+    await net.pass(again);
+    await net.drop(await until(() => heldOf(positions), 'Core took the move; the positions read after it is held, and its answer lost'));
+    net.hold(null);
+    for (const entry of [...net.held()]) await net.pass(entry);
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the move');
+    // Another card's fold, its answer lost too: the line says that fold alone, and goes once Core answers it.
+    const foldsB = payload => payload?.kind === 'message.fold' && payload.target.message_id === ids.b;
+    net.hold(foldsB);
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Fold');
+    await net.drop(await until(() => heldOf(foldsB), 'the other card\'s fold reached Core; its answer is held, then lost'));
+    await becomes(() => statusLine(p), { shown: true, text: 'Not known yet whether folding “The card folded after.” was saved: the connection was interrupted. The page asks Theseus again.' },
+      'the line says the fold alone: the move Core took is not said as not known');
+    const againB = await until(() => heldOf(foldsB), 'the page asks Core about the fold again');
+    net.hold(null); await net.pass(againB);
+    await until(async () => !(await statusLine(p)).shown, 'Core answers the fold: the line goes, with nothing of the move left on it');
+    assert.equal((await actsOf(topic, ids.b))?.fold_revision, 1, 'Core holds the fold once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('reading stacks two acts not settled each say their own card; a read or an ask that fails clears neither, and Core\'s answer to one leaves the other said until its own answer', async () => {
+    const topic = 'stack-two-lost';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'First card lost.' }],
+      ['b', { sender: other, addressees: [facts.actor], body: 'Second card lost.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p), fold = id => payload => payload?.kind === 'message.fold' && payload.target.message_id === id;
+    const acts = payload => payload?.name === 'message_acts', heldOf = test => net.held().find(entry => test(entry.payload));
+    const A = 'Not known yet whether folding “First card lost.” was saved: the connection was interrupted. The page asks Theseus again.';
+    const B = 'Not known yet whether folding “Second card lost.” was saved: the connection was interrupted. The page asks Theseus again.';
+    net.hold(payload => fold(ids.a)(payload) || fold(ids.b)(payload) || acts(payload));
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    await menuOf(p, 'laptop', ids.b); await choose(p, 'laptop', 'Fold');
+    await net.drop(await until(() => heldOf(fold(ids.a)), 'the first fold reached Core; its answer is held'));
+    await net.drop(await until(() => heldOf(fold(ids.b)), 'the second fold goes after it; its answer is held'));
+    await becomes(() => statusLine(p), { shown: true, text: A + ' ' + B }, 'each act not settled is said, with its own card');
+    // The acts read again fails: nothing is settled by it.
+    await net.drop(await until(() => heldOf(acts), 'the acts are read again; that answer is lost too'));
+    const againA = await until(() => heldOf(fold(ids.a)), 'once Theseus answers anything, the first fold is asked again');
+    assert.deepEqual(await statusLine(p), { shown: true, text: A + ' ' + B }, 'a read that failed clears neither');
+    await net.pass(againA);
+    const againB = await until(() => heldOf(fold(ids.b)), 'then the second');
+    await becomes(() => statusLine(p), { shown: true, text: B }, 'Core\'s answer to the first leaves the second said');
+    const out = await p.evaluate('window.fetchesOut');
+    await net.drop(againB);
+    await until(() => p.evaluate(`window.fetchesOut < ${out}`), 'the second fold\'s ask fails at the page');
+    assert.deepEqual(await statusLine(p), { shown: true, text: B }, 'an ask that failed does not clear it');
+    net.hold(null);
+    for (const entry of [...net.held()]) await net.pass(entry);
+    await until(async () => !(await statusLine(p)).shown, 'the second fold is settled at the next answer: the line goes');
+    assert.deepEqual([await foldedCard(p, ids.a), await foldedCard(p, ids.b)], [true, true], 'both cards show the folds Core holds');
+    assert.deepEqual([(await actsOf(topic, ids.a))?.fold_revision, (await actsOf(topic, ids.b))?.fold_revision], [1, 1], 'each held once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks ⇧⌘↑ joins a stack to the one above for everyone, its first message in view with a join line, and Split back out takes it out again', async () => {
     const topic = 'stack-join';
     const ids = await seed(topic, [['old', { sender: other, join: true, addressees: [facts.actor], body: 'The older stack.' }],

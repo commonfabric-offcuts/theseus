@@ -209,8 +209,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'&&h.payload.operation_id!==sending.payload.operation_id),'unknown publication response');
     p.intercept(null);await p.fail(held);
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
-    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'unconfirmed choice notice names the Review button');
-    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has the Review button the notice names');
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has a Review button');
     await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button:not(.aside-act)`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
@@ -237,7 +236,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     }finally{await control({method:'read_release',hold_id:hold});}
   });
 
-  await check('navigation correction blocked before prepare informed departure and retained return',async()=>{
+  await check('navigation correction blocked before prepare leaves at the first choice and is retained on return',async()=>{
     await setup();const p=await page('departure-blocked',null,true),body='Retain this exact blocked original without replay';
     await reveal(p,'t2');
     p.intercept(payload=>payload?.kind==='draft.save'&&payload.args.source_ref?.kind==='topic');
@@ -247,11 +246,10 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.fail(held);
     const original=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.blocked&&i.snapshot.body===body);},'durable blocked-before-prepare item');
     assert.equal(p.calls.some(c=>c.payload?.kind==='submission.prepare'),false,'preparation was never issued');
-    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'first blocked departure stays');
-    assert.match(await notice(p),/kept.*“Design discussion” again/is);
-    assert.equal(await p.evaluate(`document.querySelector('#inline-pending button')?.textContent`),'Review 1 reply','the notice names the Review button the page shows');
-    assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
-    await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
+    assert.equal(await p.evaluate(`document.querySelector('#inline-pending button')?.textContent`),'Review 1 reply','the reply in doubt shows its Review button');
+    // It holds no move (item 547): the first choice leaves, with nothing said.
+    await choose(p);await ready(p,'t2');assert.equal(await notice(p),'','the first choice leaves, and says nothing');
+    await choose(p,'t1');await ready(p,'t1');
     const retained=(await rows(p)).flatMap(r=>r.snapshot.submissions).find(i=>i.id===original.id);
     assert.deepEqual(retained,original,'same retained pending item survives both navigations');
     assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'||c.payload?.kind==='submission.prepare'),false,'departure never replays');
