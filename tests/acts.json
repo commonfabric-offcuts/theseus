@@ -16003,6 +16003,213 @@
     "native": "compose",
     "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
+  },
+  {
+   "item": 547,
+   "act": "A busy answer to an act on a card is said as busy, with the act and the card, never as a lost connection",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  if (isBusy(error)) return 'busy';\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Theseus was too busy to take"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An act whose answer is lost goes again under its own operation once Theseus answers, and Core's answer ends what was said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      if (doubt.out || !(contact.answered > doubt.after)) continue;",
+     "      if (true) continue;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act whose answer is lost"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A failed act reads the acts at once, so the card shows what Core holds and the act can go again",
+   "break": [
+    [
+     "web/app.mjs",
+     "reread: () => { freshness?.invalidate('acts', 0); freshness?.request(); }",
+     "reread: () => { freshness?.invalidate('acts', 0); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Theseus was too busy to take"
+   }
+  },
+  {
+   "item": 547,
+   "act": "Core's answer to one act not settled leaves another said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "sent.then(() => { this.doubts.delete(op); this.notices.delete(op); this.committed(doubt.kind); },",
+     "sent.then(() => { this.doubts.delete(op); this.notices.clear(); this.committed(doubt.kind); },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "two acts not settled"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An ask that fails again clears nothing of what is said",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "error => { this.doubts.delete(op); this.failed(doubt, error, false); })",
+     "error => { this.doubts.delete(op); this.notices.delete(op); this.paintNotice(); })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "two acts not settled"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A session the server no longer holds, as after a deploy restarts it, is said as a restart, and the act goes again",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  if (sessionRefused(attemptOf(error))) return 'restarted';\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "as after a deploy restarts it"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's own deal, made as the reader's reply arrives, says nothing while it is not settled",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const QUIET = new Set(['message.deal']);",
+     "const QUIET = new Set([]);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act whose answer is lost"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A refusal is said in words of its act and card, and goes at the next act Core takes",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    if (!QUIET.has(kind)) for (const [op, notice] of this.notices) if (notice.settled) this.notices.delete(op);",
+     "    for (const [op, notice] of this.notices) if (notice.settled && QUIET.has(kind)) this.notices.delete(op);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "an act Core refuses"
+   }
+  },
+  {
+   "item": 547,
+   "act": "An act not settled still goes after the page moves in place, so it is made once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "  dispose() { this.gone = true; if (!this.doubts.size) this.deafen(); }",
+     "  dispose() { this.gone = true; this.deafen(); }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "as on live"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's notices are pinned as one group, stacked, so none draws over another in a scrolled rail",
+   "break": [
+    [
+     "web/rails.css",
+     "[data-rails] #rail>#page-notices:has(>:not([hidden])){display:flow-root;position:sticky;top:0;z-index:3;background:var(--paper)}",
+     "[data-rails] #rail>#page-notices>#app-status:not([hidden]){position:sticky;top:0;z-index:3}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "notices stack and never draw over"
+   }
+  },
+  {
+   "item": 547,
+   "act": "The page's notices move under the logo block as one group",
+   "break": [
+    [
+     "web/outcome-scope.mjs",
+     "host.prepend(...[doc.querySelector('.brand'), doc.getElementById('page-notices')].filter(Boolean));",
+     "host.prepend(...[doc.querySelector('.brand')].filter(Boolean));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outcome_scope.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply in doubt holds no move: the first choice leaves",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(); return true;",
+     "      if (registry.inDoubt.length) throw Error('Not every reply here is confirmed sent.');\n      navigate(); return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_departure_guard.test.mjs"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply in doubt holds no move in the browser, through a reload, and its Review button is there on coming back",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      navigate(); return true;",
+     "      if (registry.inDoubt.length) throw Error('Not every reply here is confirmed sent.');\n      navigate(); return true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "send is not confirmed holds no move"
+   }
+  },
+  {
+   "item": 547,
+   "act": "A reply is settled by its own id and receipt, never by matching words or pictures",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "listed.get(id)?.send_status === 'committed' ||",
+     "[...listed.values()].some(item => item.send_status === 'committed' && item.body === local.get(id)?.snapshot?.body) ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_departure_guard.test.mjs"
+   }
   }
  ]
 }
