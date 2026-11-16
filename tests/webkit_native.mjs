@@ -70,7 +70,7 @@ const DESTROYED = /Execution context was destroyed/;
 const documents = new WeakMap();
 const nextDocument = (opened, seen) => new Promise(resolve => {
   const known = documents.get(opened);
-  if (!known || known.count > seen || opened.isClosed()) resolve(); else known.waiting.push(resolve);
+  if (!known || known.count > seen) resolve(); else known.waiting.push(resolve);
 });
 const read = async (opened, expression) => {
   const seen = documents.get(opened)?.count ?? 0;
@@ -219,7 +219,6 @@ try {
       documents.set(opened, known);
       // A new document of the main frame has parsed (Playwright tells this of the main frame only); a closed page will have none.
       opened.on('domcontentloaded', arrived);
-      opened.on('close', () => { for (const resolve of known.waiting.splice(0)) resolve(); });
       opened.on('request', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = true; });
       opened.on('framenavigated', frame => { if (frame === opened.mainFrame()) leaving = false; });
       opened.on('requestfailed', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = false; });
