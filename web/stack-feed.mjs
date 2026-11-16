@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, placeOf, sideOf, headOf } from './stack-order.mjs';
+import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
@@ -147,12 +147,9 @@ export class StackFeed {
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
   // home: the page's New message composer at rest, drawn just above More (arrangeStacks); put back after
   // being up over the page, it goes to that place at once.
-  // reply(id, card): the Reader on a message, the cursor in the reply (a title bar's Reply). menu(item, anchor):
-  // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, clock, doc });
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -214,18 +211,13 @@ export class StackFeed {
     } };
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, home: this.home, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(),
-      // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
-      reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
-      aside: (stack, below) => this.setAside(stack, below),
-      menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
-      landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = this.messages().get(card.dataset.id);
@@ -605,34 +597,6 @@ export class StackFeed {
     if (focus) this.focusOn(item.id);
     this.say(on ? 'Folded to one line, for you only' : 'Unfolded');
     return true;
-  }
-  // The bar's Fold (item 473), as ⋯ offers it: 'unfold' on a folded message,
-  // 'fold' on one that is not, and null on a starred one (a star keeps a
-  // message in view) or one no stack on the page holds.
-  foldState(item) {
-    if (!stackOf(this.list, this.entryFor(item.id))) return null;
-    const acts = this.actsOf(item.id, item);
-    return acts.folded ? 'unfold' : acts.starred ? null : 'fold';
-  }
-  toggleFold(item) {
-    const state = this.foldState(item);
-    if (state) this.setFold(item, state === 'fold');
-  }
-  // A link, search or Starred drew message id where its dossier sits, though
-  // the dossier is put below More (reply-stacks.mjs, reveal; item 426). The
-  // page reads Core's places again, and the dossier holds there while Core
-  // holds it at the place that read finds, not one the page held from before
-  // a move it had not yet heard of. A read that fails leaves the place the
-  // page held when the link was followed. A move made here meanwhile (mark
-  // no longer the one kept) has ended it already.
-  landedBelow(id, mark) {
-    this.refreshPositions().then(() => true, () => false).then(read => {
-      if (this.state.here.get(id) !== mark) return;
-      const found = stackOf(this.list, this.entryFor(id)), position = found && positionOf(found.stack);
-      if (read && position?.below) mark.place = placeOf(position);
-      mark.pending = false;
-      this.arrange();
-    });
   }
   // A press on a folded message's row (reply-stacks.mjs).
   unfoldId(id) {
