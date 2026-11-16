@@ -15347,7 +15347,7 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, Math.floor(win.innerHeight - end));",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
      "const room = needed;"
     ]
    ],
@@ -15362,8 +15362,8 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, Math.floor(win.innerHeight - end));",
-     "const room = shows ? needed : Math.max(needed, Math.floor(win.innerHeight - end));"
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
+     "const room = shows ? needed : Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);"
     ]
    ],
    "check": {

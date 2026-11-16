@@ -180,6 +180,11 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       await frames(p);
       const reading = await placeOf(p, ids[0]);
       assert.ok(reading.reach > 0 && reading.scroll > 0, label + ': the older card at the top again, the view reaches into the room: ' + JSON.stringify(reading));
+      // What moved, in order, for a failure's message: each scroll, room set and change in the list, with where the card was.
+      await p.evaluate(`(()=>{const c=()=>document.querySelector(${JSON.stringify(card(ids[0]))}),m=document.querySelector('main'),t=window.roomTrail=[];
+        const note=what=>t.push([what,Math.round(scrollY),Math.round(c().getBoundingClientRect().top),m.style.getPropertyValue('--line-room'),document.scrollingElement.scrollHeight]);
+        addEventListener('scroll',()=>note('scroll'));new MutationObserver(()=>note('room')).observe(m,{attributes:true,attributeFilter:['style']});
+        new MutationObserver(()=>note('list')).observe(document.querySelector('#messages'),{childList:true,subtree:true,attributes:true,attributeFilter:['class']});note('start')})()`);
       await p.point(card(ids[0]));
       await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), label + ': the Reader is open on the older message with its mark button');
       await until(async () => (await unread(topic))?.id === ids[1], label + ': opening it read it; the newer one is still unread');
@@ -191,7 +196,7 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed again');
       await still(p, label + ': moved');
       const moved = await placeOf(p, ids[0]);
-      assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card read is where it was on screen as the line moved up: ' + JSON.stringify({ reading, moved }));
+      assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card read is where it was on screen as the line moved up: ' + JSON.stringify({ reading, moved, trail: await p.evaluate('window.roomTrail') }));
       assert.ok(moved.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(moved));
       observations.push({ name: 'new line room keeps the place', engine, size, opened, closed, reading, moved });
       assert.deepEqual(p.errors, [], label + ': no page errors');

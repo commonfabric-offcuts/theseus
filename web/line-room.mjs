@@ -10,7 +10,8 @@
 // more, so the page does not get shorter under the person's view and nothing they are reading moves. As they scroll
 // up, the room goes with what the view no longer reaches, and as the view never reaches past the page's end it never
 // grows back: a person who has read everything is left no blank window after the Notebook once they scroll away.
-// What the view reaches is taken in whole pixels down, so the page never ends past the view, not even by one.
+// What the view reaches is taken in whole pixels up, so the page never ends short of the view and pulls it back a
+// pixel at a time; at the top of the page the window holds the view whatever the page's length, so none is kept.
 //
 // It is measured again as soon as the line comes, goes, moves, fades or shows again (the list's children change,
 // or a line's class does, heard before the next frame is drawn), when the page scrolls while it keeps more room than
@@ -29,7 +30,7 @@ export function keepLineRoom(main, list) {
     const shows = line?.getClientRects().length && !line.classList.contains('new-line-read') && win.getComputedStyle(line).visibility !== 'hidden';
     const end = contentEnd(main, win);
     needed = shows ? Math.max(0, Math.ceil(line.getBoundingClientRect().top + win.innerHeight - end)) : 0;
-    const room = Math.max(needed, Math.floor(win.innerHeight - end));
+    const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);
     if (room !== kept()) main.style.setProperty('--line-room', `${room}px`);
   };
   const measure = () => { if (!frame) frame = win.requestAnimationFrame(fit); };
