@@ -294,9 +294,12 @@ export class StackFeed {
   }
   // An act that did not commit (docs/reply-stacks.md, "When an answer is lost").
   // One not settled is kept and said as such, by its act and its card, until
-  // Core answers it; the acts are read again the first time, so the card shows
-  // what Core holds meanwhile. A refusal is said, and the acts read again. A
-  // failure after Core recorded the act (reading positions) says itself.
+  // Core answers it. The acts are read again the first time, so the card shows
+  // what Core holds meanwhile, and again each time no answer came at all: that
+  // read is the answer the act waits for, paced as the page's reads are when
+  // they fail. A busy or unconfirmed answer waits for Theseus to answer
+  // something else. A refusal is said, and the acts read again. A failure after
+  // Core recorded the act (reading positions) says itself.
   failed(act, error, first) {
     if (!(error instanceof ActFailure)) { this.status(error); this.reread(); return; }
     const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args), why = waiting(error);
@@ -306,7 +309,7 @@ export class StackFeed {
       if (!QUIET.has(act.kind)) this.notices.set(op, { words: WAITING[why](what), settled: false });
     } else if (!QUIET.has(act.kind)) this.notices.set(op, { words: refused(what, error), settled: true });
     this.paintNotice();
-    if (first || !why) this.reread();
+    if (first || !why || why === 'interrupted') this.reread();
   }
   // Each act not settled goes again, as it was made, once Theseus has answered
   // anything since it failed: at the next answer, never on a timer, so an act
