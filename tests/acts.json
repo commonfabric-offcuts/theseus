@@ -21681,6 +21681,304 @@
     "native": "compose",
     "case": "webkit stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside leaves Core's list of replies not sent, and Undo brings it back",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "\" AND \" + NOT_SENT + \" AND NOT \" + ASIDE if unsent",
+     "\" AND \" + NOT_SENT if unsent"
+    ]
+   ],
+   "check": {
+    "python": "test_set_aside.py"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply whose send is committed cannot be set aside",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        if sent and json.loads(sent[0])[\"status\"] == \"committed\":\n            raise Refusal(\"ALREADY_SENT\"",
+     "        if False:\n            raise Refusal(\"ALREADY_SENT\""
+    ]
+   ],
+   "check": {
+    "python": "test_set_aside.py"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Setting a reply aside takes an operation id naming it, so the read finds it by the operations key",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        if not envelope[\"operation_id\"].startswith(prefix) or envelope[\"operation_id\"] == prefix:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_set_aside.py"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Each reply in doubt in the Review list offers a named Set aside",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (!['confirmed', 'committed'].includes(statusKey)) {\n      card.append(asideButton('Set aside'",
+     "    if (false) {\n      card.append(asideButton('Set aside'"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside composer"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside puts its words back into the empty writing as its draft",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "        editor.receive(writingOf(words));",
+     "        editor.receive({});"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside composer"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside puts its images back into the draft by id, as Theseus keeps a draft, so the copy kept on this device is retired and after a reload the writing is ready to send",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "  attachments: (words.attachments ?? []).map(({ id }) => ({ id })) });",
+     "  attachments: copy(words.attachments ?? []) });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside attachment"
+   }
+  },
+  {
+   "item": 548,
+   "act": "The departure guard lets a press on another topic go while the page is still checking an image Theseus already holds",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      image.origin === 'retained-ref' ? editor.draft.attachments.some(ref => ref.id === image.retained_ref?.id) :\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Undo of a set-aside puts the reply back in doubt and empties the writing it filled",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "          editor.edit(emptyWriting()); this.edited(editor);",
+     "          this.edited(editor);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside composer"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside is in doubt no more, so no Review button shows and the guard lets a press on another topic go",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "      !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true && !this.asides?.has(id)), ids",
+     "      !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true), ids"
+    ],
+    [
+     "web/app-session.mjs",
+     "    } finally { await this.readPending(editor); }",
+     "    } finally { }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside composer"
+   }
+  },
+  {
+   "item": 548,
+   "act": "An image-only reply set aside, put back and set aside again, keeps its image as the writing's draft",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "!holdsWriting(editor.draft) && !currentImages(editor).length && !editor.uploadOpaque",
+     "!holdsWriting(editor.draft) && !uploadWork(editor) && !editor.uploadOpaque"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside attachment"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Core lists a writing's replies set aside, words and all, and whether they went back into the writing",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        if unsent and \"source_ref\" in args:\n            # The writing's replies set aside",
+     "        if False:\n            # The writing's replies set aside"
+    ]
+   ],
+   "check": {
+    "python": "test_set_aside.py"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Only a reply set aside can be recorded with its words back in the writing",
+   "break": [
+    [
+     "aim_next/drafts.py",
+     "        if args.get(\"restored\") and not args[\"aside\"]:\n            raise",
+     "        if False:\n            raise"
+    ]
+   ],
+   "check": {
+    "python": "test_set_aside.py"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside with its words kept stays on its line after the Review list closes and after a reload, drawn from Core's list",
+   "break": [
+    [
+     "web/app.mjs",
+     "    const asides = new Map(registry.asidesOf(editor).map(item => [item.id, item]));",
+     "    const asides = new Map();"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside kept words"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A writing with a reply set aside whose words are kept only on its line has a Set aside chip that opens the list",
+   "break": [
+    [
+     "web/app.mjs",
+     "...(registry?.keptAside ?? []).filter(",
+     "...[].filter("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside kept words"
+   }
+  },
+  {
+   "item": 548,
+   "act": "The Set aside chip is never named by the departure guard, and counts only replies whose words are kept on their line",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "count: this.asidesOf(editor).filter(item => !item.restored).length",
+     "count: this.asidesOf(editor).length"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 548,
+   "act": "Copy on a reply set aside hands over exactly its words",
+   "break": [
+    [
+     "web/app.mjs",
+     "await navigator.clipboard.writeText(aside.body);",
+     "await navigator.clipboard.writeText('');"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside kept words"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside with its images kept on its line opens each image there",
+   "break": [
+    [
+     "web/app.mjs",
+     "        for (const attachment of aside.attachments) card.append(attachmentControl(",
+     "        for (const attachment of []) card.append(attachmentControl("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside kept image"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply whose words went back into the writing is recorded so, so no Set aside chip follows it",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "        await record(true);",
+     "        await record(false);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside composer"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A whisper or an ask set aside into the empty writing comes back to the same people the same way",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "const writingOf = words => ({ ...Object.fromEntries(Object.entries(emptyWriting()).map(([field, empty]) => [field, copy(words[field] ?? empty)])),",
+     "const writingOf = words => ({ ...emptyWriting(), body: words.body ?? '', quotes: words.quotes ?? [],"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside whisper"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside into a writing that offers someone it does not name gains no name",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "        editor.receive(writingOf(words));",
+     "        editor.edit(writingOf(words));"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside whisper"
+   }
   }
  ]
 }

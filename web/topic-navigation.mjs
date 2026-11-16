@@ -224,7 +224,10 @@ export class TopicNavigation {
     }));
     const samePending = (a, b) => a.length === b.length && a.every((entry, index) =>
       entry.session === b[index].session && entry.editor === b[index].editor && entry.identity === b[index].identity);
+    // An image Theseus already holds (one the draft names, retained from it) loses nothing when the page leaves,
+    // even while this page is still checking it; only an image still on its way to Theseus holds the press.
     const imagesAttached = () => editors.every(editor => currentImages(editor).every(image =>
+      image.origin === 'retained-ref' ? editor.draft.attachments.some(ref => ref.id === image.retained_ref?.id) :
       image.ready_descriptor && image.association?.cycle_id === editor.clientCycleId &&
       editor.draft.attachments.some(ref => ref.id === image.association.media_id)));
     let nextChoice = null;

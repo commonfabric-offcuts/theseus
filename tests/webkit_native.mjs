@@ -28,6 +28,7 @@ import { whispersChecks } from './whisper_native.mjs';
 import { notebookChecks } from './notebook_pages_native.mjs';
 import { pipelineChecks } from './pipeline_native.mjs';
 import { railChecks } from './outcome_rail_native.mjs';
+import { setAsideChecks } from './set_aside_native.mjs';
 import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
@@ -381,6 +382,7 @@ try {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--rail') {
     await railChecks({ check, page, until, control, view, facts, shot });
+    await setAsideChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--new-line') {
     // A page at the size and address the check names, in light. With lose, the
     // first command it accepts reaches the server and its answer is lost (the

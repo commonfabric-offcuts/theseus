@@ -14,6 +14,7 @@ COMMANDS = {
     "draft.save": "_command_draft_save",
     "note.save": "_command_note_save",
     "submission.prepare": "_command_submission_prepare",
+    "submission.set_aside": "_command_submission_set_aside",
     "topic.create_and_send": "_command_topic_create_and_send",
     "message.send": "_command_message_send",
     "message.post": "_command_message_post",
@@ -60,7 +61,7 @@ COMMANDS = {
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
 }
 EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
-            "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
+            "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "topic.read_through": set(), "message.edit": {"message_revision"},
             "message.edit_open": set(), "message.edit_draft": {"session_revision"}, "message.edit_close": set(),

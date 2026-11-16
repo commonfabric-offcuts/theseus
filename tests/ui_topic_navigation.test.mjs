@@ -169,6 +169,27 @@ test('canonical attachments, removed selections and prior-submission images allo
   assert.equal(await f.navigation.open('b'), true); assert.deepEqual(f.visits, ['b']);
 });
 
+// Item 548, review B4: an image the draft names and Theseus already holds (a reply set aside put it back, or the
+// draft came from another page) is retained from the draft; while this page is still checking it, leaving loses
+// nothing, so it holds no press. One the draft no longer names, and a chosen file not yet published, still hold.
+test('an image retained from the draft lets the page leave while it is still being checked; one the draft does not name holds', async () => {
+  const leave = async (entry, attachments) => {
+    const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
+    const editor = f.editors[1]; editor.clientCycleId = 'cycle'; editor.draft = { attachments };
+    editor.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, ready_descriptor: null, association: null, ...entry }] };
+    const left = await f.navigation.open('b').catch(error => error.message);
+    return [left, f.visits];
+  };
+  const retained = { origin: 'retained-ref', retained_ref: { id: 'kept' }, bytes_state: 'released' };
+  assert.deepEqual(await leave(retained, [{ id: 'kept' }]), [true, ['b']], 'still being checked, it goes');
+  assert.deepEqual(await leave({ ...retained, local_error: 'Retained attachment is unavailable — check or remove it' }, [{ id: 'kept' }]), [true, ['b']],
+    'one this page could not check is still the draft\'s, so it goes');
+  const [held, visits] = await leave(retained, [{ id: 'other' }]);
+  assert.match(held, /image/); assert.deepEqual(visits, [], 'one the draft does not name holds');
+  const [file, none] = await leave({ origin: 'file', bytes_state: 'durable' }, [{ id: 'kept' }]);
+  assert.match(file, /image/); assert.deepEqual(none, [], 'a chosen file not yet published holds');
+});
+
 test('a new selected image during preservation prevents departure at the final boundary', async () => {
   const f = fixture(), editor = f.editors[0];
   f.registry.keepLocal = async () => {
