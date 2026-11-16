@@ -12,9 +12,11 @@ holds the rules a train runs by. The deploy's mechanics are in
 - Trains cut hourly. An item never waits for another item, and a train never
   waits for an item: what is approved at the cut boards, and what misses it
   rides the next cut.
-- A train's list is fixed at its cut. Nothing boards after it, and nothing is
-  pushed to a train's pull request while its run is in progress. A fix that
-  arrives later rides the next train.
+- A train's list is fixed at its cut by default, and a fix that arrives later
+  rides the next train. The release's owner may name an exception before the
+  push, such as an item allowed to join a cut train if it is approved before
+  that train pushes; the exception is stated when it is made. Once a run is in
+  progress, nothing is pushed to it.
 - A train of check or test fixes alone never cuts. Those fixes board the next
   cut that carries something a person sees.
 - A defect the owner hit, or asked after, boards the next cut if it is
@@ -52,8 +54,11 @@ live head ([tools.md](tools.md#a-merged-train---train-file)).
   tree is the tree the pull request's run tested, the merged head deploys on
   that run, and its own push run is attached to the record later
   ([tools.md](tools.md#a-merged-head-its-pull-requests-run-judged)).
-- A train with a migration does not touch the live store before the run that
-  judges it is green: the deploy waits on that judgment.
+- A train with a migration does not touch the live store before a complete
+  run judges it and clears the comparison. Clearing it means every red is
+  matched as known or placed; it need not be free of reds. The migrate step
+  then exits 0 and the live schema is read before the record is written
+  ([The deploy](#the-deploy)).
 
 ## Before the push
 
@@ -67,14 +72,19 @@ live head ([tools.md](tools.md#a-merged-train---train-file)).
   the train merges that commit's head.
 - When the cut resolved files by hand, the pieces' own named cases run on the
   merged tree, three of three in each engine, beside a review of the
-  resolution. A red there is the merge's: it is fixed in the train before the
-  push, both items kept, and the fix's diff is read against each item's own
-  head. If there is no way to run those cases, the train pushes, and the
-  record says the condition was not met.
+  resolution. A red found there is found on the merge; that alone does not
+  show the merge caused it. It is run at each item's own head: red there too,
+  it is that item's own fault (the case may be order-dependent at the item's
+  head), fixed in its item or as a test-only passenger; green there and red on
+  the merged tree, it is the merge's, fixed in the train before the push with
+  both items kept, and the fix's diff is read against each item's own head. If
+  there is no way to run those cases, the train pushes, and the record says
+  the condition was not met.
 - A single red at the merge is judged at the item's own head first. A case
   that passes three of three there and shows the same fault in the live
   release's push run is known by its signature. Otherwise it runs eight times
-  at the merge and eight at the base, read as below.
+  at the merge and eight at the base, and is placed by the eight-run count
+  below.
 
 ## Judging the push run
 
@@ -94,12 +104,15 @@ none of them is ever a known red.
   next train, so the next release clears it. Such an acceptance is carried for
   one run. A red that appears on the push run only, and passes eight of eight
   at both heads, goes on the list by acceptance as not reproduced.
-- **Outcomes before counts.** A new red's outcomes are written down before its
-  runs are counted. Run alone three times at the head and three at live: red
-  in three of three at the head and in none at live is the train's own; red at
-  both heads, or once in three at the head, is the quarantine's, by its
-  signature; any other count is placed before anything deploys. At eight runs
-  a head, the train's own is two or more of eight at the head and none at live.
+- **Outcomes before counts.** A red's outcomes are written down before its runs
+  are counted. There are two forms of the count:
+  - *Three runs a side* reads a case: a pre-push case, or a new red on the
+    push run. Red three of three at the head and none at live is the train's
+    own; red at both heads, or once in three at the head, is the quarantine's,
+    by its signature; any other count is placed before anything deploys.
+  - *Eight runs a side* places a single red. Red two or more of eight at the
+    head and none at live is the train's own; any other count is the
+    quarantine's, by its signature.
 - **A fault's unit is its mechanism**, read from the logs, not the strings of
   its assertions. Two assertion lines with one mechanism are one class. A
   deciding run is read per step to notice a pattern, but the fault is placed
@@ -132,10 +145,13 @@ none of them is ever a known red.
 - A local patch to the deploy may change only what the record says, never the
   deploy's mechanics, and is verified against the real range first. The
   permanent change is filed as a tool item.
-- A train pushed and not deployed folds into the next train. The next train's
-  head carries it whole, one push run judges both, and the release names both
-  trains' items. The first run stays in the audit, and its known reds carry
-  over to the next list.
+- A train pushed and not deployed may fold into the next train; folding is
+  the release owner's decision, taken when the hour a complete run costs is
+  better spent judging more. The next train's head carries it whole, one
+  complete push run judges both, and the release names both trains' items.
+  That run is compared against live's push run, and every red carried over
+  from the first train's list is matched again or placed again; nothing is
+  known merely because the first run had it. The first run stays in the audit.
 
 ## The deploy
 
@@ -172,6 +188,15 @@ A red is first only when it is seen before the fix is written. A red seen after
 the fix exists cannot show that the fix is what turned it green. A finding
 names the commit it was reproduced at, and that commit is the head under
 review.
+
+## Estimates
+
+- A time given to the owner is the measured duration of the run it waits on
+  (a release's push run takes about an hour), plus the prerequisite the train
+  is waiting on, such as the release before it going live. A guessed duration
+  is not an estimate.
+- When either the run or its prerequisite slips, the owner is told again, with
+  the new time and its reason.
 
 ## Speaking to the owner
 
