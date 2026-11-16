@@ -21118,8 +21118,8 @@
    "break": [
     [
      "web/rails.mjs",
-     "|| Boolean(doc.getElementById('messages')?.contains(at))),",
-     "|| Boolean(doc.getElementById('messages')?.contains(at)) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
+     "|| inMessages(at, doc)),",
+     "|| inMessages(at, doc) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
     ]
    ],
    "check": {
