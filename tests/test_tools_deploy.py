@@ -1207,6 +1207,22 @@ class DeployRefusesScoped(DeployCase):
                 self.assertIn("the release check has not passed for %s: the release check did not run %s" % (commit, name), refusal)
                 self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
 
+    def test_a_live_commit_the_deploy_cannot_read_takes_no_scoped_summary(self):
+        commit, _ = self.scoped(self.checks.HEALTH_FIX)
+        host = GitHost(self.config)
+        real = host.__call__
+
+        def headless(argv, **kw):
+            if argv[0] == "git" and "rev-parse" in argv:
+                host.calls.append(argv)
+                return subprocess.CompletedProcess(argv, 128, "", "fatal: not a git repository")
+            return real(argv, **kw)
+        refusal = self.refused(headless, sha=commit)
+        self.assertIn("ran only the browser steps a small fix touches beside the live commit %s, and that cannot be taken: "
+                      "the live commit cannot be read: fatal: not a git repository" % self.live, refusal)
+        self.assertFalse([argv for argv in host.calls if "diff" in argv], "no change is read beside a live commit it could not read")
+        self.assertFalse(host.ran("ps"))
+
     def test_a_summary_scoped_beside_another_live_commit_or_with_an_outcome_is_refused(self):
         commit, written = self.scoped(self.checks.HEALTH_FIX)
         written["scoped"]["live"] = "a" * 40
@@ -1300,6 +1316,89 @@ class KnownRedsFiles:
         path = self.live_summary("live-check", (RED_STEP, live or {}))
         self.listing(*[(RED_STEP, case, path) for case in listed])
         return path
+
+
+class DeployScopedKnownReds(KnownRedsFiles, DeployCase):
+    """Item 608: a small fix's scoped summary is taken with --known-reds as a whole run is. A browser step the deploy's
+    own choice did not touch, which the summary did not run, is not missing there, and a listed red of such a step is
+    said not to have run, never that it did not fail; a unit, the deploy's refusals or the wake replay that did not run
+    stays missing, and a step the change touches that the summary did not run is refused before any red is read."""
+
+    HEALTH_CASE = "health the release line says its full run"
+    # Reds of steps the health fix does not touch, as a live release's known reds list them.
+    ELSEWHERE = (("native-colors", "a reply keeps its colour"), ("native-rail", "the outline opens"),
+                 ("native-header", "the header holds at 320px"), ("native-webkit-rail", "the outline opens in Safari"))
+
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+        import test_tools_release_check as checks
+        self.checks = checks
+        self.live = checks.scoped_repository(self.config.live)
+
+    def scoped_fails(self, files=None, failed=(HEALTH_CASE,), drop=()):
+        """A commit changing files (the health fix) on the live commit, and its scoped summary beside the known reds:
+        native-health run whole with failed cases (none: passed), the steps in drop left out."""
+        commit = self.checks.scoped_change(self.config.live, self.live, files or self.checks.HEALTH_FIX)
+        written = self.checks.scoped_summary(commit, self.live, ["native-health"], sorted(files or self.checks.HEALTH_FIX))
+        health = native_run(self.candidate, "native-health", failed=failed, passed=("health a page at a time",), exit=1 if failed else 0)
+        health["argv"] = ["/usr/bin/node", release_check.PERSISTENCE, "/x/chrome", str(self.candidate / "native" / "health"), "--health"]
+        written["steps"] = [health if step["name"] == "native-health" else step for step in written["steps"] if step["name"] not in drop]
+        written["passed"] = not failed and not drop
+        self.summary.write_text(json.dumps(written))
+        live = self.live_summary("live-check", ("native-health", dict(failed=(self.HEALTH_CASE,), passed=("health a page at a time",))),
+                                 commit=self.live)
+        self.listing(("native-health", self.HEALTH_CASE, live), *[(step, case, None) for step, case in self.ELSEWHERE],
+                     live_commit=self.live)
+        return commit
+
+    def written(self):
+        return json.loads((self.evidence / "00-release-check.json").read_text())
+
+    def test_a_scoped_summary_whose_failed_cases_are_known_reds_is_taken_and_reds_of_steps_it_did_not_run_are_said_not_run(self):
+        commit = self.scoped_fails()
+        host = GitHost(self.config, ff=False)
+        refusal = self.refused(host, sha=commit, known_reds=self.known)
+        self.assertNotIn("known reds", refusal)
+        self.assertIn("fast-forward", refusal, "taken: the deploy goes on to the live checkout")
+        written = self.written()
+        self.assertEqual((written["passed"], written["reasons"]), (False, ["native-health failed (exit 1)"]))
+        taken = written["known_reds"]
+        self.assertEqual([(red["step"], red["case"], red["taken_by"]) for red in taken["accepted"]],
+                         [("native-health", self.HEALTH_CASE, "live")])
+        self.assertEqual(taken["not_run"], [{"step": step, "case": case} for step, case in self.ELSEWHERE])
+        self.assertEqual(taken["not_needed"], [], "a red of a step that did not run is not one that did not fail")
+
+    def test_a_scoped_summary_that_passed_says_which_reds_did_not_run(self):
+        commit = self.scoped_fails(failed=())
+        self.refused(GitHost(self.config, ff=False), sha=commit, known_reds=self.known)
+        taken = self.written()["known_reds"]
+        self.assertEqual((taken["accepted"], taken["not_needed"]), ([], [{"step": "native-health", "case": self.HEALTH_CASE}]))
+        self.assertEqual(taken["not_run"], [{"step": step, "case": case} for step, case in self.ELSEWHERE])
+
+    def test_a_unit_the_refusals_or_the_replay_it_did_not_run_stays_missing_with_known_reds(self):
+        for name in ("python-units", "node-units", release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY):
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                commit = self.scoped_fails(drop=(name,))
+                host = GitHost(self.config)
+                refusal = self.refused(host, sha=commit, known_reds=self.known)
+                self.assertIn("known reds: the release check did not run %s; a known red stands only for a case of a step that ran" % name,
+                              refusal)
+                self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+
+    def test_a_step_the_change_touches_that_it_did_not_run_is_refused_before_any_red_is_read(self):
+        # The fix touches the reply's colour too, which native-colors reads; native-colors is a listed known red, and the
+        # summary did not run it.
+        files = dict(self.checks.HEALTH_FIX, **{"web/aim.css": self.checks.SCOPED_CSS.replace("color:black", "color:#222").replace("color:blue", "color:navy")})
+        commit = self.scoped_fails(files=files)
+        host = GitHost(self.config)
+        refusal = self.refused(host, sha=commit, known_reds=self.known)
+        self.assertIn("but what changed since then touches native-colors, which it did not run", refusal)
+        self.assertNotIn("known reds", refusal)
+        self.assertIsNone(self.written()["known_reds"], "no red is read for a scope the deploy did not confirm")
+        self.assertFalse(host.ran("ps"))
 
 
 class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):

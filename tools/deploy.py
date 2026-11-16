@@ -696,6 +696,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
                   % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
     for red in (known or {}).get("not_needed") or []:
         print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
+    for red in (known or {}).get("not_run") or []:
+        print("known red not run: %s %r: the scoped run did not run %s, which no changed path touches; its full run follows"
+              % (red["step"], red["case"], red["step"]))
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})

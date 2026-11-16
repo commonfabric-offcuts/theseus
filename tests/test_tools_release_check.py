@@ -694,6 +694,49 @@ class ReleaseCheckScoped(FakeCheckout):
                                     "/stub/playwright-core", only=only, live=live, scoped=self.live)
             self.assertIn("give it alone", str(refused.exception))
 
+    def test_a_scoped_run_refuses_a_live_commit_that_is_not_its_full_commit_before_running_anything(self):
+        # git would read each of these as the live commit; only the full 40-character commit is one the deploy compares.
+        commit = commit_files(self.root, HEALTH_FIX)
+        for case, live in (("a short commit", self.live[:8]), ("the full commit in capitals", self.live.upper()),
+                           ("a ref", "HEAD~1"), ("a commit and one more character", self.live + "0")):
+            with self.subTest(case):
+                out = Path(self.tmp.name) / ("out-" + case.replace(" ", "-"))
+                with self.assertRaises(release_check.Refused) as refused, redirect_stdout(io.StringIO()):
+                    release_check.check(self.root, out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node,
+                                        "/stub/playwright-core", scoped=live)
+                self.assertIn("--scoped is the live release's full 40-character commit, not %r" % live, str(refused.exception))
+                self.assertFalse((out / "summary.json").exists())
+                self.assertEqual(sorted(path.name for path in out.glob("*.log")), [], "no step ran")
+        # The full commit is taken.
+        self.out = Path(self.tmp.name) / "out-full"
+        with mock.patch.dict(os.environ, {"STUB_FAIL": ""}), redirect_stdout(io.StringIO()):
+            summary = release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node,
+                                          "/stub/playwright-core", scoped=self.live)
+        self.assertEqual((summary["commit"], summary["scoped"]["live"]), (commit, self.live))
+
+    def test_scope_refuses_rules_it_cannot_read_and_steps_this_release_check_does_not_have(self):
+        # The rules at the commit cannot be read: its release check is gone, or does not parse.
+        for case, files, remove, words in (("no release check", {"docs/x.md": "# x\n"}, ["tools/release_check.py"], "no tools/release_check.py at"),
+                                           ("a release check that does not parse", {"tools/release_check.py": "NATIVE_STEPS = (\n"}, [], "")):
+            with self.subTest(case):
+                commit = commit_files(self.root, files, remove)
+                with self.assertRaises(release_check.Refused) as refused:
+                    release_check.scope(self.root, self.live, commit)
+                said = str(refused.exception)
+                self.assertIn("the browser steps the changes since %s touch cannot be chosen at %s: %s" % (self.live[:12], commit[:12], words), said)
+                subprocess.run(["git", "-C", str(self.root), "reset", "-q", "--hard", self.live], check=True)
+        # The rules at the commit name a step this release check does not run, and the change touches it.
+        lantern = {"tools/release_check.py": SCOPED_RELEASE_CHECK.replace('"health"', '"lantern"'),
+                   release_check.PERSISTENCE: SCOPED_HARNESS.replace("--health", "--lantern"), "web/aim.css": HEALTH_FIX["web/aim.css"]}
+        commit = commit_files(self.root, lantern)
+        with self.assertRaises(release_check.Refused) as refused:
+            release_check.scope(self.root, self.live, commit)
+        self.assertIn("the steps chosen at %s are not this release check's: native-lantern" % commit[:12], str(refused.exception))
+        subprocess.run(["git", "-C", str(self.root), "reset", "-q", "--hard", self.live], check=True)
+        # Steps it has are taken: the same change with the health step's own name.
+        commit = commit_files(self.root, {"web/aim.css": HEALTH_FIX["web/aim.css"]})
+        self.assertEqual(release_check.scope(self.root, self.live, commit)[1], ["native-health"])
+
 
 class JudgeScoped(unittest.TestCase):
     """Item 608: judge_summary takes a scoped summary only through scope, the reader's own choice of the steps: the same

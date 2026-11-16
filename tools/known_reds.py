@@ -168,15 +168,28 @@ def _compose_ended(report, said):
         raise Refused("%s: the harness did not complete (harnessCompleted %r)" % (said, report.get("harnessCompleted")))
 
 
+def not_run(summary):
+    """The browser steps a scoped summary (item 608) did not run, in the release check's order; [] for any other summary.
+    judge_summary has already refused a scope the deploy's own choice of steps did not confirm: every step that choice
+    touches ran, so a browser step that did not run is one no changed path touches. Only browser steps: a unit, the
+    deploy's refusals or the wake replay that did not run stays missing."""
+    if not isinstance(summary.get("scoped"), dict):
+        return []
+    ran = {step.get("name") for step in summary.get("steps") or [] if isinstance(step, dict)}
+    return [name for name in NATIVE if name not in ran]
+
+
 def candidate_failures(summary, out):
-    """{step: its failed cases} of a summary that did not pass, or Refused: every step it should have run is there,
-    every step that failed is a browser step, and each of those ended as ended_cases requires."""
+    """{step: its failed cases} of a summary that did not pass, or Refused: every step it should have run is there
+    (but the steps a skip or a scope the deploy confirmed left out), every step that failed is a browser step, and each
+    of those ended as ended_cases requires."""
     steps = [step for step in summary.get("steps") or [] if isinstance(step, dict)]
     ran = [step.get("name") for step in steps]
-    # judge_summary has already refused a skip the deploy did not confirm.
+    # judge_summary has already refused a skip, or a scope, the deploy did not confirm.
     skipped = summary.get("skipped") if isinstance(summary.get("skipped"), dict) else {}
+    left_out = set(skipped.get("steps") or []) | set(not_run(summary))
     required = sorted(set(release_check.REQUIRED) | set(summary.get("required") or []), key=str)
-    missing = [name for name in required if name not in ran and name not in (skipped.get("steps") or [])]
+    missing = [name for name in required if name not in ran and name not in left_out]
     if missing:
         raise Refused("the release check did not run %s; a known red stands only for a case of a step that ran"
                       % ", ".join(str(name) for name in missing))
@@ -337,18 +350,22 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     live checkout's HEAD, as the deploy reads it. policy(base): the Admissions of POLICY at base, the live HEAD the
     known reds were read beside (the event base, never the candidate), None when that commit keeps none, or Refused when
     it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
-    review}], not_needed: [{step, case}]}; accepted is empty only for a summary that passed."""
+    review}], not_needed: [{step, case}], not_run: [{step, case}]}; accepted is empty only for a summary that passed.
+    not_run: the listed reds of a browser step a scoped summary did not run (item 608), which are neither failed nor
+    passed there; not_needed: the other listed reds the candidate did not fail."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
-    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [], "acceptances": {}}
+    summary = json.loads(Path(summary_path).read_text())
+    unrun = set(not_run(summary))
+    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [], "acceptances": {},
+             "not_run": [{"step": step, "case": case} for step, case in listed if step in unrun]}
     if not unpassed:
-        taken["not_needed"] = [{"step": step, "case": case} for step, case in listed]
+        taken["not_needed"] = [{"step": step, "case": case} for step, case in listed if step not in unrun]
         return taken
     head = live_head()
     if known["live_commit"] != head:
         raise Refused("the known reds were read beside %s, but %s is live" % (known["live_commit"], head))
     admits = policy(head)
-    summary = json.loads(Path(summary_path).read_text())
     failures = candidate_failures(summary, Path(summary_path).parent)
     for step in sorted(failures):
         for case in failures[step]:
@@ -379,5 +396,6 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
             taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],
                                       "live_commit": known["live_commit"], "why": red["why"], "taken_by": taken_by,
                                       "review": review})
-    taken["not_needed"] = [{"step": step, "case": case} for step, case in listed if case not in failures.get(step, ())]
+    taken["not_needed"] = [{"step": step, "case": case} for step, case in listed
+                           if step not in unrun and case not in failures.get(step, ())]
     return taken
