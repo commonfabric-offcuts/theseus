@@ -35,7 +35,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     let replyTo = null, source = { kind: 'topic', id: here };
     if (extra.addressees) {
       // The agent the reply names writes in the topic first, as one of it.
-      await control({ method: 'agent_message', operation_id: `${here}-agent`, topic_id: here, join: true, whole_topic: true, body: `The agent in ${shape} ${n}` });
+      await control({ method: 'agent_message', operation_id: `${here}-agent`, topic_id: here, sender: extra.addressees[0], join: true, whole_topic: true, body: `The agent in ${shape} ${n}` });
     }
     if (!shape.startsWith('composer')) {
       const incoming = await control({ method: 'agent_message', operation_id: `${here}-incoming`, topic_id: here, member: true, body: `Incoming for ${shape} ${n}` });
@@ -291,23 +291,28 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await opened(again);
   });
 
-  await check('rail set aside whisper: a whisper set aside into the empty composer comes back as the same whisper to the same agent, an ask as the same ask, and Undo empties every field it filled', async () => {
-    const agent = 'fixture-notebook-agent';
+  await check('rail set aside whisper: a whisper set aside into the empty composer comes back as the same whisper to the same agent, an ask as the same ask, a whisper replying to another agent\'s message gains no name offered there, and Undo empties every field it filled', async () => {
+    const agent = 'fixture-notebook-agent', other = 'fixture-planning-agent';
     const fields = d => ({ body: d?.body ?? '', addressees: d?.addressees ?? [], whisper: d?.whisper === true, intent: d?.intent ?? null });
-    for (const [kind, extra] of [['whisper', { addressees: [agent], whisper: true }], ['ask', { addressees: [agent], intent: 'ask' }]]) {
-      const s = await seed('composer', extra);
+    // The last: a whisper to one agent replying to another's message, whose Reader offers that other agent.
+    for (const [kind, shape, extra] of [['whisper', 'composer', { addressees: [agent], whisper: true }], ['ask', 'composer', { addressees: [agent], intent: 'ask' }],
+      ['whisper', 'message', { addressees: [other], whisper: true }]]) {
+      const s = await seed(shape, extra);
       const expected = fields(s.words);
-      assert.deepEqual(expected, { body: s.body, addressees: [agent], whisper: kind === 'whisper', intent: kind === 'ask' ? 'ask' : null }, `the ${kind} as prepared`);
-      const p = await open(`aside-${kind}`, `/?topic=${s.here}`);
+      assert.deepEqual(expected, { body: s.body, addressees: extra.addressees, whisper: kind === 'whisper', intent: kind === 'ask' ? 'ask' : null }, `the ${kind} as prepared`);
+      const p = await open(`aside-${kind}-${shape}`, `/?topic=${s.here}`);
       await ready(p, s.here);
+      if (s.replyTo) { await openReader(p, s); await closeReader(p); }
       await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
-      await p.point('#inline-pending button');
+      await p.point(s.replyTo ? '#topic-pending button' : '#inline-pending button');
       await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
       await p.point(`${card(s)} .aside-act`);
       await until(async () => (await cardState(p, s))?.state === 'aside', 'set aside');
       await settles(async () => fields(await draft(s)), expected, `the draft is the same ${kind}, to the same agent`);
-      const pressed = await p.evaluate(`Object.fromEntries([...document.querySelectorAll('#inline-intent-row button[data-intent]')].map(c=>[c.dataset.intent,c.getAttribute('aria-pressed')==='true']))`);
-      assert.equal(pressed[kind], true, `the composer shows it as a ${kind}: ${JSON.stringify(pressed)}`);
+      if (!s.replyTo) {
+        const pressed = await p.evaluate(`Object.fromEntries([...document.querySelectorAll('#inline-intent-row button[data-intent]')].map(c=>[c.dataset.intent,c.getAttribute('aria-pressed')==='true']))`);
+        assert.equal(pressed[kind], true, `the composer shows it as a ${kind}: ${JSON.stringify(pressed)}`);
+      }
       await p.point(undo(s));
       await until(async () => (await cardState(p, s))?.state === 'doubt', 'Undo puts the reply back in doubt');
       await settles(async () => fields(await draft(s)), { body: '', addressees: [], whisper: false, intent: null }, 'Undo empties every field it filled');

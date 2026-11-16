@@ -1,10 +1,14 @@
-import { Editor, editorKey, restoreEditor, holdsWriting } from './editor.mjs';
+import { Editor, editorKey, restoreEditor, holdsWriting, noWriting } from './editor.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
 import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
+// Every field of a writing but where its caret sits, empty; and a reply's words as such a writing: its body, quotes
+// and images, and who it goes to and how (a whisper stays a whisper to the same one, an ask an ask).
+const emptyWriting = () => { const { caret, ...fields } = noWriting(); return fields; };
+const writingOf = words => Object.fromEntries(Object.entries(emptyWriting()).map(([field, empty]) => [field, copy(words[field] ?? empty)]));
 // A listed copy that holds the reply for image review until it is resolved.
 const imageCopy = item => item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable';
 const same = (a, b) => {
@@ -125,7 +129,9 @@ export class EditorRegistry {
 
   validatePage(page) {
     if (page?.instance_id !== this.bootstrap.instance_id || !Array.isArray(page.items) ||
-        !(page.next_cursor === null || Number.isInteger(page.next_cursor)) || !(page.through === undefined || Number.isSafeInteger(page.through))) throw Error('The pending reply page could not be confirmed.');
+        !(page.next_cursor === null || Number.isInteger(page.next_cursor)) || !(page.through === undefined || Number.isSafeInteger(page.through)) ||
+        !(page.aside === undefined || Array.isArray(page.aside) && page.aside.every(item => typeof item?.id === 'string' && typeof item.restored === 'boolean' &&
+          typeof item.body === 'string' && Array.isArray(item.attachments)))) throw Error('The pending reply page could not be confirmed.');
     return page;
   }
 
@@ -654,48 +660,69 @@ export class EditorRegistry {
   // puts it back in doubt (Undo). Core records it as the person's own
   // operation and leaves it out of the replies not sent from then on, here,
   // after a reload and on another device (docs/replies-in-doubt.md). Its words
-  // are kept: with the writing empty they go back into it as its draft
-  // (restored), and Undo takes them out again while they are as restored.
-  // Answers the reply's words and whether they went back into the writing.
+  // are kept: with the writing empty they go back into it as its draft, every
+  // field of it (restored), and Undo takes them out again while they are as
+  // restored; otherwise Core lists the reply under aside, words and all, so its
+  // line keeps them in reach. Core first records it kept on its line and only
+  // then, once the words are in the writing, restored, so a failure between
+  // leaves them in both places, never in neither.
   async setAside(editor, id, aside) {
     const session = this.sessionFor(editor);
     if (session.underWay(id) === true) throw Error('This reply is on its way. Wait for it to finish.');
     const local = editor.submissions.find(item => item.id === id);
     const words = aside ? copy(local?.snapshot ?? this.pendingDetails.get(id) ?? await this.inspectPending(editor, id)) : null;
-    const { authority_id, authority_epoch } = this.runtime.current;
-    const receipt = await this.api.command({ v: 1, instance_id: this.bootstrap.instance_id, operation_id: `aside:${id}:${crypto.randomUUID()}`,
-      kind: 'submission.set_aside', target: {}, expected: { authority: { authority_id, authority_epoch } }, args: { submission_id: id, aside } });
-    if (receipt?.status !== 'committed' || receipt.instance_id !== this.bootstrap.instance_id || receipt.result?.submission_id !== id ||
-        receipt.result.aside !== aside) throw Error(receipt?.error?.message ?? 'Theseus did not confirm this. Try again.');
-    if (aside) this.asides.add(id); else this.asides.delete(id);
-    let restored = false;
-    const current = this.sessions.get(editor.key) === session;
-    if (aside && current && !holdsWriting(editor.draft) && !currentImages(editor).length && !editor.uploadOpaque && !editor.imageBusy && !editor.imageReservation && !editor.unavailable && !editor.conflict && !editor.authorityRecovery) {
-      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: words.attachments ?? [] });
-      (this.restoredAsides ??= new Map()).set(id, { key: editor.key, version: editor.localVersion, media: (words.attachments ?? []).map(ref => ref.id) });
-      this.edited(editor); restored = true;
-      // Each image comes back checked and kept on this device, as one the person chose does, so a reload
-      // finds it ready to go and the departure guard does not hold it as an image still being saved.
-      if (words.attachments?.length) {
-        session.uploads.importRetained();
-        const back = new Set(words.attachments.map(ref => ref.id));
-        for (const entry of session.uploads.current().filter(entry => entry.origin === 'retained-ref' && back.has(entry.retained_ref?.id) && !entry.ready_descriptor)) {
-          await session.uploads.checkRetained(entry);
+    const record = async restored => {
+      const { authority_id, authority_epoch } = this.runtime.current;
+      const receipt = await this.api.command({ v: 1, instance_id: this.bootstrap.instance_id, operation_id: `aside:${id}:${crypto.randomUUID()}`,
+        kind: 'submission.set_aside', target: {}, expected: { authority: { authority_id, authority_epoch } },
+        args: { submission_id: id, aside, ...(restored ? { restored } : {}) } });
+      if (receipt?.status !== 'committed' || receipt.instance_id !== this.bootstrap.instance_id || receipt.result?.submission_id !== id ||
+          receipt.result.aside !== aside) throw Error(receipt?.error?.message ?? 'Theseus did not confirm this. Try again.');
+    };
+    try {
+      await record(false);
+      if (aside) this.asides.add(id); else this.asides.delete(id);
+      const current = this.sessions.get(editor.key) === session;
+      if (aside && current && !holdsWriting(editor.draft) && !currentImages(editor).length && !editor.uploadOpaque && !editor.imageBusy && !editor.imageReservation && !editor.unavailable && !editor.conflict && !editor.authorityRecovery) {
+        // receive, not edit: a name only offered here that the reply does not name is declined, never added to it.
+        editor.receive(writingOf(words));
+        (this.restoredAsides ??= new Map()).set(id, { key: editor.key, version: editor.localVersion, media: (words.attachments ?? []).map(ref => ref.id) });
+        this.edited(editor);
+        // Each image comes back checked and kept on this device, as one the person chose does, so a reload
+        // finds it ready to go and the departure guard does not hold it as an image still being saved.
+        if (words.attachments?.length) {
+          session.uploads.importRetained();
+          const back = new Set(words.attachments.map(ref => ref.id));
+          for (const entry of session.uploads.current().filter(entry => entry.origin === 'retained-ref' && back.has(entry.retained_ref?.id) && !entry.ready_descriptor)) {
+            await session.uploads.checkRetained(entry);
+          }
+        }
+        await record(true);
+      }
+      const kept = this.restoredAsides?.get(id);
+      if (!aside && kept) {
+        this.restoredAsides.delete(id);
+        if (current && kept.key === editor.key && kept.version === editor.localVersion) {
+          for (const entry of (editor.uploadState?.entries ?? []).filter(entry => entry.selected && kept.media.includes(entry.retained_ref?.id ?? entry.association?.media_id))) {
+            await session.uploads.remove(entry.selection_id);
+          }
+          editor.edit(emptyWriting()); this.edited(editor);
         }
       }
-    }
-    const kept = this.restoredAsides?.get(id);
-    if (!aside && kept) {
-      this.restoredAsides.delete(id);
-      if (current && kept.key === editor.key && kept.version === editor.localVersion) {
-        for (const entry of (editor.uploadState?.entries ?? []).filter(entry => entry.selected && kept.media.includes(entry.retained_ref?.id ?? entry.association?.media_id))) {
-          await session.uploads.remove(entry.selection_id);
-        }
-        editor.edit({ body: '', quotes: [], attachments: [] }); this.edited(editor);
-      }
-    }
-    await this.readPending(editor);
-    return { words, restored };
+    } finally { await this.readPending(editor); }
+  }
+  // This writing's replies set aside, as Core's list of replies not sent last
+  // answered: each with its words and whether they went back into the writing.
+  asidesOf(editor) {
+    const session = this.sessions.get(editor.key);
+    if (editor.context.kind !== 'reply' || session?.editor !== editor) return [];
+    return this.pages.get(editor.key)?.aside ?? [];
+  }
+  // The Set aside chips: one for each registered writing with a reply set aside
+  // whose words are kept only on its line, so they stay one press away.
+  get keptAside() {
+    return [...this.sessions.values()].map(({ editor }) => ({ editor, count: this.asidesOf(editor).filter(item => !item.restored).length }))
+      .filter(entry => entry.count).map(entry => ({ ...entry, kept: true, label: `Set aside ${entry.count}` }));
   }
   // The first page of this writing's replies not sent, read again.
   async readPending(editor) {

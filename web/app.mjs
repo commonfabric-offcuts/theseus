@@ -349,17 +349,21 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 // told the page of a change, all are drawn again from what the registry holds
 // now, so no editor an event hands in draws or erases one. Returns what it
 // drew, which is what the departure guard names.
+// A writing with no reply in doubt but one set aside whose words are kept only
+// on its line has a Set aside chip in the same place, which opens the same list
+// (docs/replies-in-doubt.md); the guard never names it.
 function paintReview() {
   const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
+  const drawn = [...entries, ...(registry?.keptAside ?? []).filter(kept => !entries.some(entry => entry.editor.key === kept.editor.key))];
   const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
   const title = $('topic-pending'), hosts = new Map([...title.children].map(host => [host.dataset.key, host]));
-  const rows = entries.filter(entry => !inComposer(entry)).map(entry => {
+  const rows = drawn.filter(entry => !inComposer(entry)).map(entry => {
     const host = hosts.get(entry.editor.key) ?? node('div'); host.dataset.key = entry.editor.key; reviewControl(host, entry); return host;
   });
   if (rows.length !== title.children.length || rows.some((host, n) => title.children[n] !== host)) title.replaceChildren(...rows);
-  reviewControl($('inline-pending'), entries.find(inComposer));
+  reviewControl($('inline-pending'), drawn.find(inComposer));
   const reading = registry?.current?.editors.reply?.key;
-  reviewControl($('pending-submissions'), entries.find(entry => entry.editor.key === reading));
+  reviewControl($('pending-submissions'), drawn.find(entry => entry.editor.key === reading));
   return entries;
 }
 function reviewControl(host, entry) {
@@ -368,7 +372,10 @@ function reviewControl(host, entry) {
   if (!control) { control = node('button'); control.type = 'button'; host.append(control); }
   // A small chip on the reply's line; what it is about is in its name.
   control.textContent = entry.label; control.onclick = () => run(() => showPending(entry.editor.key, control));
-  control.setAttribute('aria-label', `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'} may not have sent. Review`);
+  const replies = `${entry.count} ${entry.count === 1 ? 'reply' : 'replies'}`;
+  control.setAttribute('aria-label', entry.kept ? `${replies} set aside, words kept. Open` : `${replies} may not have sent. Review`);
+  control.classList.toggle('kept', Boolean(entry.kept));
+  if (entry.kept) control.title = 'Replies you set aside, their words kept here to copy, or Undo'; else control.removeAttribute('title');
 }
 // The replies in doubt of the writing registered under this key, read again
 // from the registry at each draw and each act.
@@ -380,35 +387,38 @@ async function showPending(key, opener) {
   // The replies in doubt, and those that were while the list is open, so a
   // reply checked as sent says so in place.
   const shown = new Set();
-  // The replies set aside while the list is open, each with its words and
-  // whether they went back into the writing (registry.setAside): its line says
-  // so, or shows them with Copy, and offers Undo.
-  const asides = new Map();
   // The writing as it is now, wherever it shows, after its words came back or went.
   const redrawWriting = editor => {
     if (inline?.editor === editor) { inline.drawEditor(); inline.paintStatus(); inline.paintImages(); }
     if (reader?.editor === editor) { reader.drawEditor(); reader.paintStatus(); reader.paintImages(); }
   };
+  // An act that changes whether a reply is set aside, then the writing and the list drawn again, whatever it answered.
+  const settle = async (id, aside) => { try { await registry.setAside(writing(), id, aside); } finally { redrawWriting(writing()); draw(); } };
   const asideButton = (label, name, tip, action) => {
     const control = button(label, action); control.setAttribute('aria-label', name); control.title = tip; control.classList.add('aside-act'); return control;
+  };
+  // A reply set aside, as Core lists it (registry.asidesOf), says its words went
+  // back into the writing, or shows them, its images opened in place and its
+  // words with Copy; either way it offers Undo. So the words are always in the
+  // writing or on this line, after a reload too.
+  const asideCard = (aside, editor) => {
+    const card = node('section', undefined, 'pending-card'); card.dataset.id = aside.id; card.dataset.state = 'aside';
+    card.append(node('h3', 'Set aside'), node('p', `To ${aside.topic_id}`, 'muted'));
+    if (aside.restored) card.append(node('p', 'Its words are back in your writing.', 'muted'));
+    else {
+      if (aside.body) card.append(node('pre', aside.body));
+      if (aside.attachments.length) {
+        card.append(node('p', 'Included in this reply · ' + imageSummary(editor, aside.attachments), 'muted'));
+        for (const attachment of aside.attachments) card.append(attachmentControl(attachment, undefined, current, failure => reviewStatus(failure ? failure.message ?? String(failure) : '')));
+      }
+      if (aside.body) card.append(asideButton('Copy', 'Copy this reply\'s words', 'Copy its words', async () => { await navigator.clipboard.writeText(aside.body); reviewStatus('Copied.'); }));
+    }
+    card.append(asideButton('Undo', 'Undo set aside: this reply may not have sent', 'Put it back with the replies that may not have sent', () => settle(aside.id, false)));
+    return card;
   };
   const makeCard = (item, editor, local, statusKey) => {
     const card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
     card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted'));
-    const aside = asides.get(item.id);
-    if (aside) {
-      card.dataset.state = 'aside';
-      if (aside.restored) card.append(node('p', 'Its words are back in your writing.', 'muted'));
-      else {
-        card.append(node('pre', aside.words.body ?? ''));
-        if (aside.words.attachments?.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, aside.words.attachments), 'muted'));
-        card.append(asideButton('Copy', 'Copy this reply\'s words', 'Copy its words', async () => { await navigator.clipboard.writeText(aside.words.body ?? ''); reviewStatus('Copied.'); }));
-      }
-      card.append(asideButton('Undo', 'Undo set aside: this reply may not have sent', 'Put it back with the replies that may not have sent', async () => {
-        await registry.setAside(writing(), item.id, false); asides.delete(item.id); redrawWriting(writing()); draw();
-      }));
-      return card;
-    }
     card.dataset.state = 'doubt';
     if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
       if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
@@ -427,10 +437,7 @@ async function showPending(key, opener) {
     }
     // Item 548: a reply that may never go is set aside, so it is in doubt no more; its words are kept.
     if (!['confirmed', 'committed'].includes(statusKey)) {
-      card.append(asideButton('Set aside', 'Set this reply aside', 'Set aside: stop counting it as maybe not sent. Its words are kept, and Undo puts it back.', async () => {
-        const answer = await registry.setAside(writing(), item.id, true);
-        asides.set(item.id, { item, ...answer }); redrawWriting(writing()); draw();
-      }));
+      card.append(asideButton('Set aside', 'Set this reply aside', 'Set aside: stop counting it as maybe not sent. Its words are kept, and Undo puts it back.', () => settle(item.id, true)));
     }
     return card;
   };
@@ -439,18 +446,19 @@ async function showPending(key, opener) {
     if (!current() || !editor) return;
     for (const id of registry.doubt(editor).ids) shown.add(id);
     const local = new Map(editor.submissions.map(item => [item.id, item]));
-    const listed = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
-    const ids = new Set(listed.map(item => item.id));
-    const entries = [...listed, ...[...asides.values()].map(aside => aside.item).filter(item => !ids.has(item.id))];
-    for (const item of entries) {
-      const statusKey = item.status ?? item.send_status;
+    const asides = new Map(registry.asidesOf(editor).map(item => [item.id, item]));
+    const listed = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id) && !asides.has(item.id));
+    for (const item of [...listed, ...asides.values()]) {
+      const statusKey = item.status ?? item.send_status, aside = asides.get(item.id);
       let card = [...host.children].find(child => child.dataset.id === item.id);
-      if (!card || card.dataset.state !== (asides.has(item.id) ? 'aside' : 'doubt')) {
-        const made = makeCard(item, editor, local, statusKey);
+      // A line is drawn again when its state changes, or when a reply set aside has its words back in the writing or not.
+      if (!card || card.dataset.state !== (aside ? 'aside' : 'doubt') || aside && card.dataset.restored !== String(aside.restored)) {
+        const made = aside ? asideCard(aside, editor) : makeCard(item, editor, local, statusKey);
+        if (aside) made.dataset.restored = String(aside.restored);
         if (card) card.replaceWith(made); else host.append(made);
         card = made;
       }
-      if (asides.has(item.id)) { card.querySelector('h3').textContent = 'Set aside'; continue; }
+      if (aside) continue;
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
       const reason = registry.pendingReason(editor, item);
       let explanation = card.querySelector('[data-refusal]');

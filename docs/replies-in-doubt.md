@@ -19,6 +19,11 @@ answer, `EditorRegistry.doubt(editor)` in `web/app-session.mjs`.
   `submission_id`.
 - A reply set aside (below) is not listed by `unsent: true`, and `through`
   does not change, so a page that prepared it reads it as no longer in doubt.
+- A page read with `unsent: true` and a `source_ref` also carries `aside`:
+  that writing's replies set aside and not sent, oldest first, each the
+  reply's words as `submission` answers them (body, quotes, attachments,
+  addressees, whisper, intent) plus `restored`, whether they went back into the
+  writing. An older server sends no `aside`, and an older page ignores it.
 
 ## Setting a reply aside
 
@@ -27,10 +32,12 @@ stays in doubt for good: Check confirmation can only say it is not known sent.
 Its line in the Review list therefore offers **Set aside**, a short word with
 its name and a tooltip, 44px to touch on a phone, beside Check confirmation.
 
-- `submission.set_aside` takes `args` `{submission_id, aside}` and no target.
-  `aside: true` sets the reply aside; `aside: false` puts it back in doubt
-  (Undo). Its `operation_id` begins `aside:<submission_id>:`. It answers
-  `{submission_id, aside, changed}`; setting aside a reply already set aside
+- `submission.set_aside` takes `args` `{submission_id, aside}`, and optionally
+  `restored`, and no target. `aside: true` sets the reply aside; `aside: false`
+  puts it back in doubt (Undo). `restored: true` (only with `aside: true`)
+  says its words went back into the writing; without it they are kept on its
+  line. Its `operation_id` begins `aside:<submission_id>:`. It answers
+  `{submission_id, aside, restored, changed}`; recording what is already so
   changes nothing (`changed: false`), and the same operation again answers its
   first receipt.
 - Only the reply's author can: another reader's act is refused `FORBIDDEN`,
@@ -62,12 +69,31 @@ by the unsent list.
 ### The words are kept
 
 Setting a reply aside never deletes anything: the submission keeps its words,
-quotes and attachments. When the writing the reply came from (the topic's
-composer, or the message's writing) is empty, they go back into it as its
-draft, attachments too, and the line says "Its words are back in your
-writing." Otherwise the line shows them, with Copy. Either way the line offers
-Undo, which puts the reply back in doubt and, while the writing still holds
-exactly the words put back, empties it again.
+quotes and attachments, and its words are always somewhere on the page: in the
+writing, or on its line in the Review list.
+
+- When the writing the reply came from (the topic's composer, or the message's
+  writing) is empty, they go back into it as its draft: every field of the
+  writing, so who it goes to and how come back with the words. A whisper comes
+  back as the same whisper to the same one, never as writing everyone in the
+  topic would see; an ask comes back an ask; a name only offered in that
+  writing that the reply does not name is not added. Its line says "Its words
+  are back in your writing."
+- Otherwise its line shows them: its words with Copy, and each image with Open,
+  which shows it in place. They stay there once the list closes and after a
+  reload, because the line is drawn from Core's `aside` list, not from the
+  open list: a writing with no reply in doubt but one set aside whose words
+  are only on its line shows a quiet **Set aside N** chip where its Review
+  button was (a short word with its name and a tooltip, 44px to touch on a
+  phone), which opens the same list. The departure guard never names it:
+  nothing in it is in doubt.
+- The page first records the reply set aside with its words kept on its line,
+  and records `restored` only once they are in the writing, so a failure
+  between leaves them in both places, never in neither.
+
+Every reply set aside keeps its line, with Undo, whenever the list is open.
+Undo puts the reply back in doubt and, while the writing still holds exactly
+the words this page put back, empties every field it filled again.
 
 A reply set aside is in doubt no more at once: the Review button and the
 departure guard stop counting it, after a reload too and on another device of

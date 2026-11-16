@@ -162,6 +162,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
     doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions, asides: this.asides }, editor); },
+    asidesOf(editor) { return EditorRegistry.prototype.asidesOf.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions }, editor); },
+    get keptAside() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'keptAside').get.call(this); },
     get inDoubt() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'inDoubt').get.call(this); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
@@ -1467,6 +1469,24 @@ test('a reply set aside here has no Review button, and the others keep theirs', 
   assert.deepEqual(page(listed, null, 5), ['Review 1 reply']);
   f.registry.asides = new Set();
   assert.deepEqual(page(listed, null, 5), ['Review 3 replies'], 'put back, it is in doubt again');
+});
+
+// Item 548: a reply set aside with its words kept only on its line has a quiet
+// Set aside chip where its Review button was, so the line stays one press away;
+// the departure guard never names it, and one whose words went back into the
+// writing has none.
+test('a reply set aside with its words kept has a Set aside chip the guard does not name', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  registered(f, modal); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => [host.firstElementChild?.textContent, Boolean(host.firstElementChild?.title)]);
+  const page = (aside, items = []) => { f.registry.pending = () => ({ items, next_cursor: null, through: 5, aside }); f.changed(modal); return shown(); };
+  const kept = (id, restored) => ({ id, restored, body: 'Words of ' + id, attachments: [], topic_id: 't1' });
+  assert.deepEqual(page([kept('a', false)]), [['Set aside 1', true]], 'its words kept only on its line: a named chip with a tooltip');
+  assert.deepEqual(f.registry.inDoubt, [], 'nothing is in doubt, so the guard names nothing');
+  assert.deepEqual(page([kept('a', false), kept('b', true)]), [['Set aside 1', true]], 'one whose words went back into the writing is not counted');
+  assert.deepEqual(page([kept('b', true)]), [], 'with every reply set aside back in the writing there is no chip');
+  assert.deepEqual(page([kept('a', false)], [{ id: 'other', send_status: 'unknown' }]), [['Review 1 reply', false]], 'a reply in doubt keeps its Review button, which opens the same list');
 });
 
 // Item 118: "Review 2 replies" opens those two. A reply checked as sent

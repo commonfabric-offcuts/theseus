@@ -1082,4 +1082,9 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
 
 .feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
-/* A reply set aside (item 548): Set aside, Copy and Undo are short words, each 44px to touch on a phone. */@media(max-width:760px),(pointer:coarse){#review-content .aside-act{min-height:44px;min-width:44px}}
+/* A reply set aside (item 548): Set aside, Copy, Undo and its image's Open are short words, each 44px to touch on a phone; its
+   image opens within its line; its chip is quiet, not a warning, since nothing is in doubt. */
+@media(max-width:760px),(pointer:coarse){#review-content .aside-act,#review-content .pending-card .attachment-label button,.review-chips button.kept,#topic-pending button.kept{min-height:44px;min-width:44px}}
+#review-content .pending-card .attachment-label{display:block}
+#review-content .pending-card .attachment-label img{display:block;max-width:min(16rem,100%);max-height:12rem;object-fit:contain;border-radius:.4rem;margin:.4rem 0}
+.review-chips button.kept,#topic-pending button.kept{color:var(--muted);background:var(--panel);border-color:var(--line)}

@@ -21,10 +21,21 @@ class SetAside(ReaderCase):
             self.committed(self.command("message.send", {"submission_id": "sub-%02d" % index}, target={"topic_id": "t1"}, op="send-%02d" % index))
         return "sub-%02d" % index
 
-    def aside(self, submission, aside=True, actor="owner", op=None):
+    def aside(self, submission, aside=True, actor="owner", op=None, **more):
         self.serial += 1
-        return self.command("submission.set_aside", {"submission_id": submission, "aside": aside}, actor=actor,
+        return self.command("submission.set_aside", dict({"submission_id": submission, "aside": aside}, **more), actor=actor,
                             op=op or "aside:%s:%d" % (submission, self.serial))
+
+    def kept(self, actor="owner"):
+        """The writing's replies set aside, as the unsent page lists them: (id, body, restored)."""
+        lists = []
+        for view in ("editor_state", "submissions"):
+            answer = self.store.view(actor, view, {"source_ref": TOPIC, "topic_id": "t1", "limit": 20, "unsent": True})
+            page = answer["submissions"] if view == "editor_state" else answer
+            self.assertIn("aside", page, "the unsent page of a writing lists its replies set aside")
+            lists.append([(item["id"], item["body"], item["restored"]) for item in page["aside"]])
+        self.assertEqual(lists[0], lists[1])
+        return lists[0]
 
     def unsent(self, actor="owner"):
         ids = {}
@@ -40,7 +51,7 @@ class SetAside(ReaderCase):
         first, second = self.reply(0), self.reply(1)
         self.assertEqual(self.unsent(), [first, second])
         result = self.committed(self.aside(first))
-        self.assertEqual(result, {"submission_id": first, "aside": True, "changed": True})
+        self.assertEqual(result, {"submission_id": first, "aside": True, "restored": False, "changed": True})
         self.assertEqual(self.unsent(), [second], "set aside, it is not in doubt; the other reply still is")
         self.committed(self.aside(first, aside=False))
         self.assertEqual(self.unsent(), [first, second], "Undo puts it back in doubt")
@@ -58,12 +69,44 @@ class SetAside(ReaderCase):
         first = self.reply(0)
         self.committed(self.aside(first))
         again = self.committed(self.aside(first))
-        self.assertEqual(again, {"submission_id": first, "aside": True, "changed": False})
+        self.assertEqual(again, {"submission_id": first, "aside": True, "restored": False, "changed": False})
         self.assertEqual(self.unsent(), [])
         # The same operation again answers its first receipt and records nothing new.
         op = "aside:%s:same" % first
         receipt = self.aside(first, aside=False, op=op)
         self.assertEqual(self.aside(first, aside=False, op=op), receipt)
+        self.assertEqual(self.unsent(), [first])
+
+    def test_a_reply_set_aside_is_listed_with_its_words_and_whether_they_went_back(self):
+        first, second, third = self.reply(0), self.reply(1), self.reply(2)
+        self.assertEqual(self.kept(), [])
+        self.committed(self.aside(first))
+        self.committed(self.aside(second, restored=True))
+        self.assertEqual(self.kept(), [(first, "Message 0", False), (second, "Message 1", True)],
+                         "each reply set aside, with its words, kept on its line or back in the writing; the reply in doubt is not listed")
+        self.assertEqual(self.unsent(), [third])
+        # Its words went back into the writing after all: the same reply, recorded again, changes.
+        self.assertEqual(self.committed(self.aside(first, restored=True))["changed"], True)
+        self.assertEqual(self.committed(self.aside(first, restored=True))["changed"], False)
+        self.assertEqual(self.kept(), [(first, "Message 0", True), (second, "Message 1", True)])
+        self.committed(self.aside(second, aside=False))
+        self.assertEqual(self.kept(), [(first, "Message 0", True)], "Undo takes it off the list")
+        self.assertEqual(self.unsent(), [second, third])
+        other = self.store.view("other-reader", "submissions", {"source_ref": TOPIC, "topic_id": "t1", "limit": 20, "unsent": True})
+        self.assertEqual(other.get("aside", []), [], "another reader is listed none of them")
+
+    def test_a_reply_set_aside_that_then_went_is_not_listed(self):
+        first = self.reply(0)
+        self.committed(self.aside(first))
+        self.committed(self.command("message.send", {"submission_id": first}, target={"topic_id": "t1"}, op="send-00"))
+        self.assertEqual(self.kept(), [])
+
+    def test_only_a_reply_set_aside_has_its_words_back_in_the_writing(self):
+        first = self.reply(0)
+        self.rejected(self.aside(first, aside=False, restored=True), "INVALID_ARGUMENT")
+        self.rejected(self.aside(first, restored="yes"), "INVALID_ARGUMENT")
+        self.rejected(self.aside(first, restored=True, words=True), "INVALID_ARGUMENT")
+        self.assertEqual(self.kept(), [])
         self.assertEqual(self.unsent(), [first])
 
     def test_only_the_replys_author_can_set_it_aside(self):
