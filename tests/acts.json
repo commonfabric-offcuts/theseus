@@ -15358,7 +15358,7 @@
   },
   {
    "item": 465,
-   "act": "When the New line moves down, the room keeps what the view reaches past the Notebook, so the card being read stays where it is",
+   "act": "When the New line moves up under a newer message, the room keeps what the view reaches past the Notebook, so the card read from the top of the window stays where it is",
    "break": [
     [
      "web/line-room.mjs",

@@ -136,16 +136,16 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
     }
   });
 
-  // Your place holds as the line fades or moves down (docs/attention.md). The room that lets the line reach the top
+  // Your place holds as the line fades or moves up (docs/attention.md). The room that lets the line reach the top
   // of the window keeps what the view reaches of it, so the card being read stays where it is on screen, and it goes
   // as the person scrolls up, leaving no blank window once they have. The oldest unread card at the top of the
   // window, its line below it, is opened in the Reader (the step the room is for): the line fades and the card is
   // where it was when the Reader closes. Scrolled to the top and back to the end, the page ends where what it holds
-  // ends. Then the newer message is marked unread elsewhere, the line shows under it and is scrolled to the top, and
-  // the older one, being read just below it, is marked unread too: the line moves down to it, and the card being
-  // read stays where it is. At a phone's 320, 375
+  // ends. Then both are marked unread elsewhere, the line shows again under the older one, and that card, at the top
+  // of the window, is opened and marked read in the Reader: the line moves up under the newer one, needing less
+  // room, and the card is where it was when the Reader closes. At a phone's 320, 375
   // and 390 widths and a laptop.
-  await check(`colors ${engine}: the room after the Notebook keeps the card being read in place as the New line fades or moves down, and goes as the person scrolls up`, async () => {
+  await check(`colors ${engine}: the room after the Notebook keeps the card being read in place as the New line fades or moves up, and goes as the person scrolls up`, async () => {
     for (const [size, metrics] of Object.entries(ROOM_SIZES)) {
       const label = `${engine} room ${size}`, id = `new-line-room-${engine}-${size}`;
       const { topic, ids, url } = await place(id, 'topic', 2);
@@ -170,19 +170,28 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       assert.equal(await blankBelow(p), 0, label + ': scrolled to the top, the room has gone');
       await scrollPage(p, 'end');
       assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
-      // The newer message is marked unread elsewhere: the faded line comes back under it, showing, with its room.
-      await control({ method: 'mark', operation_id: id + '-mark-newer', message_ids: [ids[1]], marked: true });
-      await until(async () => { const now = await line(p); return !now.read && now.opacity === '1' && now.after === ids[1]; }, label + ': the line comes back under the newer message, marked unread');
-      await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'start'})");
+      // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
+      // room. The older card at the top of the window again, it is opened in the Reader, which reads it while the
+      // newer one, above, holds the line; Mark unread and then Mark read there place the line afresh, up under the
+      // newer one, which now needs less room than the view reaches.
+      await control({ method: 'mark', operation_id: id + '-mark', message_ids: [ids[0], ids[1]], marked: true });
+      await until(async () => { const now = await line(p); return !now.read && now.opacity === '1' && now.after === ids[0]; }, label + ': the line comes back under the older message, marked unread');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[0]))}).scrollIntoView({block:'start'})`);
       await frames(p);
       const reading = await placeOf(p, ids[0]);
-      assert.ok(reading.reach > 0 && reading.scroll > 0, label + ': the line at the top, the view reaches into the room: ' + JSON.stringify(reading));
-      // The older one, being read just below the line, is marked unread elsewhere: the line moves down to it.
-      await control({ method: 'mark', operation_id: id + '-mark-older', message_ids: [ids[0]], marked: true });
-      await until(async () => { const now = await line(p); return !now.read && now.after === ids[0]; }, label + ': marked unread elsewhere, the line moves down to the oldest message');
+      assert.ok(reading.reach > 0 && reading.scroll > 0, label + ': the older card at the top again, the view reaches into the room: ' + JSON.stringify(reading));
+      await p.point(card(ids[0]));
+      await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), label + ': the Reader is open on the older message with its mark button');
+      await until(async () => (await unread(topic))?.id === ids[1], label + ': opening it read it; the newer one is still unread');
+      await p.point('#mark-unread');
+      await until(async () => (await unread(topic))?.id === ids[0], label + ': marked unread here');
+      await p.point('#mark-unread');
+      await until(async () => { const now = await line(p); return !now.read && now.after === ids[1]; }, label + ': Mark read here places the line afresh, up under the newer message');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed again');
       await still(p, label + ': moved');
       const moved = await placeOf(p, ids[0]);
-      assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card being read is where it was on screen as the line moved down: ' + JSON.stringify({ reading, moved }));
+      assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card read is where it was on screen as the line moved up: ' + JSON.stringify({ reading, moved }));
       assert.ok(moved.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(moved));
       observations.push({ name: 'new line room keeps the place', engine, size, opened, closed, reading, moved });
       assert.deepEqual(p.errors, [], label + ': no page errors');

@@ -6,10 +6,10 @@
 //
 // While a line shows, the room is what the window lacks below the line's top. Once no line needs it (none in the
 // feed, or one faded once nothing holds it, .new-line-read, which keeps its place but is not seen) or the line needs
-// less (it moved down), the room keeps what the view reaches past the page's content and no more, so the page does
-// not get shorter under the person's view and nothing they are reading moves. As they scroll up, the room goes with
-// what the view no longer reaches, and as the view never reaches past the page's end it never grows back: a person
-// who has read everything is left no blank window after the Notebook once they have scrolled away.
+// less (it moved up, under a newer message), the room keeps what the view reaches past the page's content and no
+// more, so the page does not get shorter under the person's view and nothing they are reading moves. As they scroll
+// up, the room goes with what the view no longer reaches, and as the view never reaches past the page's end it never
+// grows back: a person who has read everything is left no blank window after the Notebook once they scroll away.
 //
 // It is measured again as soon as the line comes, goes, moves, fades or shows again (the list's children change,
 // or a line's class does, heard before the next frame is drawn), when the page scrolls while it keeps more room than

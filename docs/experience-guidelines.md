@@ -148,8 +148,8 @@ A message arriving never moves what is being read or written, and nor does
 quoting from it, nor typing in the reply. A quote keeps its words in sight
 until you scroll the message yourself, however you scroll it, and keeps the
 words themselves when the lines wrap anew. Loading older messages shows them
-where they were asked for. The New line fading or moving down never leaves
-the page shorter under what is being read.
+where they were asked for. The New line fading or moving never leaves the
+page shorter under what is being read.
 
 - `tests/reader_compose_native.mjs` (`native-compose`): "quoting keeps your
   place: the quoted passage stays where it was on screen, …" and "quoting from
@@ -171,7 +171,7 @@ the page shorter under what is being read.
   puts the card or row being read behind the earlier-messages row.
 - `tests/new_line_native.mjs` (`native-colors`, `native-webkit-new-line`):
   "the room after the Notebook keeps the card being read in place as the New
-  line fades or moves down, and goes as the person scrolls up", at a phone's
+  line fades or moves up, and goes as the person scrolls up", at a phone's
   320, 375 and 390 widths and a laptop: the message opened from the top of
   the window is where it was when the Reader closes.
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads

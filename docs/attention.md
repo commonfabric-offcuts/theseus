@@ -441,14 +441,14 @@ of the window with every message it is under wholly above: while a line
 shows, the page ends with as much room after its last part (the Notebook)
 as the window lacks below the line's top. Once no line needs it (none in
 the feed, or one faded once nothing holds it) or the line needs less (it
-moved down), the room keeps what the reader's view reaches past the
-Notebook and no more, so the page never gets shorter under their view: the
-message they opened from the top of the window is where they left it when
-the Reader closes. As they scroll up the room goes with what the view no
-longer reaches, and it never comes back, so a reader who has read
-everything is left no blank window after the Notebook once they scroll
-away. The room comes after everything else on the page, so nothing in the
-feed moves (`web/line-room.mjs`). Since item 465 the
+moved up, under a newer message), the room keeps what the reader's view
+reaches past the Notebook and no more, so the page never gets shorter
+under their view: the message they opened from the top of the window is
+where they left it when the Reader closes. As they scroll up the room goes
+with what the view no longer reaches, and it never comes back, so a reader
+who has read everything is left no blank window after the Notebook once
+they scroll away. The room comes after everything else on the page, so
+nothing in the feed moves (`web/line-room.mjs`). Since item 465 the
 topic's Team is in the header rather than after the messages, and without
 the room a short window ended with the oldest unread message still showing
 above the line.
