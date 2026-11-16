@@ -48,6 +48,8 @@ export const olderControl = p => p.evaluate("document.querySelector('#more-messa
 // commit); heldAnswer() says whether one waits.
 // Sizes are a desk window and a phone.
 export const SIZES = { desk: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true } };
+// The room's sizes: a phone at its narrowest widths, 320, 375 and 390, and a laptop.
+const ROOM_SIZES = { 320: { width: 320, height: 568, deviceScaleFactor: 2, mobile: true }, 375: { width: 375, height: 667, deviceScaleFactor: 2, mobile: true }, 390: SIZES.phone, laptop: SIZES.desk };
 export async function newLineStaysChecks({ check, open, until, view, control, shot, observations, engine }) {
   const agent = 'fixture-notebook-agent';
   const unread = async topic => (await view('topic_unread', { topic_id: topic })).oldest_unread;
@@ -70,6 +72,69 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   const line = p => p.evaluate(`(()=>{const lines=[...document.querySelectorAll('#messages .new-line')],l=lines[0],c=l&&getComputedStyle(l);
     return {count:lines.length,kind:l?.dataset.line??null,read:l?.classList.contains('new-line-read')??null,opacity:c?.opacity??null,inert:l?.inert??null,
       after:l?.previousElementSibling?.dataset?.id??null}})()`);
+  // Where what the page holds ends, in the window: main's last box with main's padding below it.
+  const END = `(()=>{const m=document.querySelector('main'),last=[...m.children].filter(e=>e.getClientRects().length&&!['absolute','fixed'].includes(getComputedStyle(e).position)).at(-1);
+    return last.getBoundingClientRect().bottom+parseFloat(getComputedStyle(last).marginBottom)+parseFloat(getComputedStyle(m).paddingBottom)})()`;
+  // How far the page scrolls past what it holds: its end beyond the window and beyond main's last box with main's
+  // padding. While a New line shows, the page keeps room to scroll it to the top (docs/attention.md); once it has
+  // faded, or is gone, none beyond what the view reaches, and none once the person scrolls up.
+  const blankBelow = p => p.evaluate(`(()=>{const end=${END}+scrollY;
+    return Math.max(0,Math.round(Math.max(innerHeight,document.scrollingElement.scrollHeight)-Math.max(innerHeight,end)))})()`);
+  // Where a card is in the window, how far the view reaches past what the page holds, and how far the page ends
+  // past both the view and what it holds: a blank below the view.
+  const placeOf = (p, id) => p.evaluate(`(()=>{const end=${END};return {top:document.querySelector(${JSON.stringify(card(id))}).getBoundingClientRect().top,scroll:scrollY,
+    reach:innerHeight-end,blank:document.scrollingElement.scrollHeight-scrollY-Math.max(innerHeight,end)}})()`);
+  // Scrolls the page to its top, or its end, at once, and waits for the scroll it makes to be heard and drawn.
+  const scrollPage = (p, to) => p.evaluate(`new Promise(r=>{const y=${to === 'end' ? 'Math.max(0,document.scrollingElement.scrollHeight-innerHeight)' : '0'};
+    if(Math.abs(y-scrollY)<1)return r();addEventListener('scroll',()=>requestAnimationFrame(()=>requestAnimationFrame(r)),{once:true});scrollTo({top:y,behavior:'instant'})})`);
+  // Pushes the view down toward the page's end eight times, as a wheel or a finger keeps doing there, and gives the
+  // room the page keeps after each push, and how far past what the page holds the view reaches at the end, beyond
+  // the room. Each push waits two frames: a scroll it makes is heard in the first frame's rendering, before its
+  // frame callbacks, and the room that sets is drawn by the second.
+  const pushDown = p => p.evaluate(`(async()=>{const m=document.querySelector('main'),rooms=[];
+    const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    for(let n=0;n<8;n++){scrollBy({top:innerHeight,behavior:'instant'});await frames();await frames();
+      rooms.push(m.style.getPropertyValue('--line-room')||'0px')}
+    return {rooms,gap:innerHeight-${END}-parseFloat(rooms.at(-1))}})()`);
+  // What the page holds ends at a fraction of a pixel, as a card's lines often make it: main's padding below grows
+  // by what puts the end that far past a whole pixel, and the page has measured and drawn its room again (the change
+  // of main's size heard at one frame, measured at the next, drawn at the third).
+  const endAtFraction = (p, fraction) => p.evaluate(`(async()=>{const m=document.querySelector('main'),end=${END}+scrollY;
+    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1+${fraction}-end%1)%1)+'px';
+    for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()`);
+  // The page's length is a whole number of pixels, so at its end the view reaches past what the page holds, or
+  // stops short of it, by a fraction; where it reaches past, a room that took that fraction as a pixel more grew a
+  // pixel with every push (B6). With what the page holds ending at each tenth of a pixel in turn, and the window
+  // resized at the page's end first when resize is given, pushing down there leaves the room as it was (or as none,
+  // when none is given). At one fraction at least the view reaches past what the page holds, so the pushes test
+  // what B6 grew from. Then main's padding is its own again and the room measured anew, so what the case checks
+  // next sees the page as it is drawn: a padding left grown hid a room that crept down (a floor for the ceiling).
+  const pushesLeaveRoom = async (p, label, { resize = null, none = false } = {}) => {
+    const gaps = [];
+    for (const fraction of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      const at = `${label} (the end ${fraction}px past a pixel)`;
+      await endAtFraction(p, fraction);
+      if (resize) {
+        assert.deepEqual(await resizeTo(p, { ...resize, height: resize.height - 120 }), { height: resize.height - 120, heard: true }, at + ': the window is shorter');
+        assert.deepEqual(await resizeTo(p, resize), { height: resize.height, heard: true }, at + ': and grows back at the page\'s end');
+      }
+      const before = await roomNow(p);
+      if (none) assert.equal(before, '0px', at + ': no room is made');
+      const { rooms, gap } = await pushDown(p);
+      gaps.push(gap);
+      assert.deepEqual(rooms, Array(8).fill(before), at + ': pushing down at the page\'s end leaves the room as it was');
+    }
+    assert.ok(gaps.some(gap => gap > 0 && gap < 1), label + ': at some fraction the view reaches past what the page holds at its end: ' + gaps);
+    await p.evaluate("(async()=>{document.querySelector('main').style.paddingBottom='';for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()");
+  };
+  const roomNow = p => p.evaluate("document.querySelector('main').style.getPropertyValue('--line-room')||'0px'");
+  // Changes the window's size and waits two frames, in whose rendering the resize is heard; says the window's
+  // height then and whether a resize was heard, so a window that did not change cannot pass for one that did.
+  const resizeTo = async (p, metrics) => {
+    await p.evaluate("window.resizesHeard=0,addEventListener('resize',()=>window.resizesHeard++)");
+    await p.send('Emulation.setDeviceMetricsOverride', metrics);
+    return p.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>r({height:innerHeight,heard:window.resizesHeard>0})))))");
+  };
   // Reads until nothing is unread, bringing the oldest unread card into view,
   // and waits until the page has had the answer that says so and has drawn it.
   const readOnScreen = async (p, topic, label) => {
@@ -96,6 +161,8 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
         const held = await line(p);
         assert.deepEqual(held, { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] },
           label + ': read on screen, the line stays under the oldest unread message, showing');
+        const room = await blankBelow(p);
+        assert.ok(room > 0, label + ': the line showing, the page keeps room to scroll it to the top: ' + room);
         await shot(p, `new-line-stays-${engine}-${route}-${size}`);
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[1]))}).scrollIntoView({block:'center'})`);
         await p.point(card(ids[1]));
@@ -106,10 +173,91 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
         await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
         await still(p, label + ': closed');
         assert.deepEqual(await line(p), faded, label + ': closing the Reader leaves the line faded');
-        observations.push({ name: 'new line stays while read on screen', engine, route, size, held, faded });
+        const kept = await placeOf(p, ids[0]);
+        assert.ok(kept.blank <= 1, label + ': faded, the line keeps no room past what the view reaches: ' + JSON.stringify(kept));
+        await scrollPage(p, 'top');
+        assert.equal(await blankBelow(p), 0, label + ': faded and scrolled to the top, the page ends where what it holds ends');
+        observations.push({ name: 'new line stays while read on screen', engine, route, size, held, faded, room });
         assert.deepEqual(p.errors, [], label + ': no page errors');
         await p.close();
       }
+    }
+  });
+
+  // Your place holds as the line fades or moves up (docs/attention.md). The room that lets the line reach the top
+  // of the window keeps what the view reaches of it, so the card being read stays where it is on screen, and it goes
+  // as the person scrolls up, leaving no blank window once they have. The oldest unread card at the top of the
+  // window, its line below it, is opened in the Reader (the step the room is for): the line fades and the card is
+  // where it was when the Reader closes. Scrolled to the top and back to the end, the page ends where what it holds
+  // ends. Then both are marked unread elsewhere, the line shows again under the older one, and that card, at the top
+  // of the window, is opened and marked read in the Reader: the line moves up under the newer one, needing less
+  // room, and the card is where it was when the Reader closes. At a phone's 320, 375
+  // and 390 widths and a laptop.
+  await check(`colors ${engine}: the room after the Notebook keeps the card being read in place as the New line fades or moves up, and goes as the person scrolls up`, async () => {
+    for (const [size, metrics] of Object.entries(ROOM_SIZES)) {
+      const label = `${engine} room ${size}`, id = `new-line-room-${engine}-${size}`;
+      const { topic, ids, url } = await place(id, 'topic', 2);
+      const p = await open(url, metrics, id);
+      await readOnScreen(p, topic, label);
+      assert.deepEqual(await line(p), { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] }, label + ': the line shows under the oldest message');
+      await pushesLeaveRoom(p, label + ' the line showing');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[0]))}).scrollIntoView({block:'start'})`);
+      await frames(p);
+      const opened = await placeOf(p, ids[0]);
+      assert.ok(opened.reach > 0 && opened.scroll > 0, label + ': the oldest card at the top, the view reaches into the room: ' + JSON.stringify(opened));
+      await p.point(card(ids[0]));
+      await until(() => p.evaluate("document.querySelector('#reader').open"), label + ': the Reader is open on the oldest message');
+      await until(async () => { const now = await line(p); return now.read && now.opacity === '0'; }, label + ': opened, the line fades');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
+      await still(p, label + ': closed');
+      const closed = await placeOf(p, ids[0]);
+      assert.ok(Math.abs(closed.top - opened.top) <= 1, label + ': the card opened is where it was on screen as the line faded: ' + JSON.stringify({ opened, closed }));
+      assert.ok(closed.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(closed));
+      await shot(p, `new-line-room-faded-${engine}-${size}`);
+      await pushesLeaveRoom(p, label + ' faded');
+      await scrollPage(p, 'top');
+      assert.equal(await blankBelow(p), 0, label + ': scrolled to the top, the room has gone');
+      await scrollPage(p, 'end');
+      assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
+      // At the page's end with no room, the window shrinks and grows back: measured again where the view reaches a
+      // fraction past what the page holds, no room is made, and pushing down there makes none. The window is 400 tall
+      // (the reviewer's 390x400), so the page, two messages long, scrolls at every width; then it is as it was.
+      await pushesLeaveRoom(p, label + ' no room, the window resized at the end', { resize: { ...metrics, height: 400 }, none: true });
+      assert.deepEqual(await resizeTo(p, metrics), { height: metrics.height, heard: true }, label + ': the window as it was');
+      assert.equal(await blankBelow(p), 0, label + ': and the page ends where what it holds ends');
+      // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
+      // room. The older card at the top of the window again, it is opened in the Reader, which reads it while the
+      // newer one, above, holds the line; Mark unread and then Mark read there place the line afresh, up under the
+      // newer one, which now needs less room than the view reaches.
+      await control({ method: 'mark', operation_id: id + '-mark', message_ids: [ids[0], ids[1]], marked: true });
+      await until(async () => { const now = await line(p); return !now.read && now.opacity === '1' && now.after === ids[0]; }, label + ': the line comes back under the older message, marked unread');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[0]))}).scrollIntoView({block:'start'})`);
+      await frames(p);
+      const reading = await placeOf(p, ids[0]);
+      assert.ok(reading.reach > 0 && reading.scroll > 0, label + ': the older card at the top again, the view reaches into the room: ' + JSON.stringify(reading));
+      // What moved, in order, for a failure's message: each scroll, room set and change in the list, with where the card was.
+      await p.evaluate(`(()=>{const c=()=>document.querySelector(${JSON.stringify(card(ids[0]))}),m=document.querySelector('main'),t=window.roomTrail=[];
+        const note=what=>t.push([what,Math.round(scrollY),Math.round(c().getBoundingClientRect().top),m.style.getPropertyValue('--line-room'),document.scrollingElement.scrollHeight]);
+        addEventListener('scroll',()=>note('scroll'));new MutationObserver(()=>note('room')).observe(m,{attributes:true,attributeFilter:['style']});
+        new MutationObserver(()=>note('list')).observe(document.querySelector('#messages'),{childList:true,subtree:true,attributes:true,attributeFilter:['class']});note('start')})()`);
+      await p.point(card(ids[0]));
+      await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), label + ': the Reader is open on the older message with its mark button');
+      await until(async () => (await unread(topic))?.id === ids[1], label + ': opening it read it; the newer one is still unread');
+      await p.point('#mark-unread');
+      await until(async () => (await unread(topic))?.id === ids[0], label + ': marked unread here');
+      await p.point('#mark-unread');
+      await until(async () => { const now = await line(p); return !now.read && now.after === ids[1]; }, label + ': Mark read here places the line afresh, up under the newer message');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed again');
+      await still(p, label + ': moved');
+      const moved = await placeOf(p, ids[0]);
+      assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card read is where it was on screen as the line moved up: ' + JSON.stringify({ reading, moved, trail: await p.evaluate('window.roomTrail') }));
+      assert.ok(moved.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(moved));
+      await pushesLeaveRoom(p, label + ' moved up');
+      observations.push({ name: 'new line room keeps the place', engine, size, opened, closed, reading, moved });
+      assert.deepEqual(p.errors, [], label + ': no page errors');
+      await p.close();
     }
   });
 

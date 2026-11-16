@@ -1,4 +1,5 @@
 import { mountFeedFences } from './feed-fence-copy.mjs';
+import { keepLineRoom } from './line-room.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
@@ -2167,6 +2168,7 @@ async function initialize() {
     cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   mountFeedFences($('messages'));
+  keepLineRoom($('main'), $('messages'));
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it

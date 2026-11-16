@@ -15312,6 +15312,141 @@
    }
   },
   {
+   "item": 465,
+   "act": "However little of the page follows it, the New line can be scrolled to the top, the oldest unread message wholly above the window",
+   "break": [
+    [
+     "web/aim.css",
+     "main::after{content:\"\";display:block;height:var(--line-room,0px)}",
+     "main::after{content:\"\";display:block;height:0}"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors the New line sits under the oldest unread message"
+   }
+  },
+  {
+   "item": 465,
+   "act": "A faded New line keeps no room after the Notebook once the person scrolls up: the page ends where what it holds ends",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const shows = line?.getClientRects().length && !line.classList.contains('new-line-read') && win.getComputedStyle(line).visibility !== 'hidden';",
+     "const shows = line?.getClientRects().length;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: a short topic read on the first screen"
+   }
+  },
+  {
+   "item": 465,
+   "act": "When the New line fades, the room keeps what the view reaches past the Notebook, so the message opened from the top of the window is where it was when the Reader closes",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = needed;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "When the New line moves up under a newer message, the room keeps what the view reaches past the Notebook, so the card read from the top of the window stays where it is",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = shows ? needed : Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The room the view held after a faded New line goes as the person scrolls up, leaving no blank window",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "  win.addEventListener('scroll', () => { if (kept() > needed) fit(); }, { passive: true });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The room the view keeps never ends the page short of the view, so the view is not pulled back a pixel at a time",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.floor(win.innerHeight - end)) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "At the page's top no room is kept for the view, so a page scrolled to its top scrolls no further",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, Math.min(kept(), Math.ceil(win.innerHeight - end)));"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "Pushing down at the page's end leaves the room a faded or moved New line kept as it was: what the view reaches only lessens the room, so the page never grows a pixel per push",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "With no room kept, a window resized at the page's end makes none, and pushing down there makes none: no blank window after the Notebook with no New line",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept() || 1, Math.ceil(win.innerHeight - end)) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
    "item": 378,
    "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
    "break": [
