@@ -2621,9 +2621,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(both);
       // The rail scrolled a little, so the second notice would pass under the first where only the first was
       // pinned (Tony's screenshot); scrolled to its end (where a laptop pins its notices); and at its top.
+      // (Where the first is pinned at the rail's top, the second's top would then be at its middle.)
       const partly = await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=0;
         const a=document.getElementById('app-status').getBoundingClientRect(),t=document.getElementById('topic-navigation-status').getBoundingClientRect();
-        return Math.max(1,Math.round(t.top-(a.top+a.height/2)))})()`);
+        return Math.max(1,Math.round(t.top-r.getBoundingClientRect().top-a.height/2))})()`);
       for (const where of ['partly', 'scrolled', 'top']) {
         await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : where === 'partly' ? partly : 'r.scrollHeight'}})()`);
         await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
