@@ -3,16 +3,21 @@
 // in its row, after its words in the document so the row still reads as its
 // words and keys, and refuses an item with no glyph or one nobody draws; a
 // pipeline item's ⋯ gives each of its items the glyph the design page names
-// (tests/menu_glyphs.mjs). The menus as a person sees them, at every width,
+// (tests/menu_glyphs.mjs); and every glyph draws the approved design page's
+// drawing, a borrowed one cloned from the control the design names, as the
+// page's own index.html draws it. The menus as a person sees them, at every width,
 // light and dark, in both engines, are tests/stack_native.mjs,
-// tests/pipeline_native.mjs and tests/notebook_pages_native.mjs.
+// tests/reader_compose_native.mjs, tests/pipeline_native.mjs and
+// tests/notebook_pages_native.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openMessageMenu } from '../web/message-menu.mjs';
 import { PipelinePage } from '../web/pipeline.mjs';
+import { readFileSync } from 'node:fs';
+import { GLYPH_NAMES, glyph } from '../web/glyphs.mjs';
 import { Element, miniDocument } from './fixtures/mini_dom.mjs';
 import { dom } from './fixtures/ui_dom.mjs';
-import { glyphOf } from './menu_glyphs.mjs';
+import { APPROVED, FROM, approved, glyphOf, signature } from './menu_glyphs.mjs';
 
 function page() {
   const doc = miniDocument();
@@ -66,4 +71,62 @@ test('a pipeline item\'s ⋯ gives every item the glyph the design names, in Nex
   const built = { number: 4, section: 'now', version: 1, stage: { name: 'Build' } };
   const underway = rows(page.steerMenu(built, [built], 0, pipeline, true, { id: 'p-1', items: [4], you_set_aside: true }));
   assert.deepEqual(underway, [['Open its record', ['openpage']], ['Set aside to Later…', ['moveto']], ['Drop…', ['drop']]]);
+});
+
+// What a glyph draws, as tests/menu_glyphs.mjs's signature() writes it in the browser: a character by its data-text,
+// a drawing by its viewBox and each shape inside it.
+const shapes = node => node.children.filter(child => typeof child === 'object').flatMap(child => [child, ...shapes(child)]);
+const drawingOf = node => (node.getAttribute('data-text') !== null ? 'text:' + node.getAttribute('data-text')
+  : signature(node.getAttribute('viewBox'), shapes(node).map(shape => [shape.tag, Object.entries(shape.attributes)])));
+// The page's own controls, as web/index.html writes them: the control with an id, and the drawing inside it, read
+// afresh for each clone; a control with no drawing, or no such control, as the page would answer.
+const INDEX = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+function controlDrawing(doc, id) {
+  const at = INDEX.indexOf(`id="${id}"`);
+  if (at < 0) return null;
+  const inside = INDEX.slice(at, INDEX.indexOf('</button>', at)), svg = /<svg\b[\s\S]*?<\/svg>/.exec(inside)?.[0];
+  if (!svg) return null;
+  const read = () => {
+    const [root, ...tags] = [...svg.matchAll(/<(\w+)((?:\s+[\w:-]+="[^"]*")*)\s*\/?>/g)].map(([, tag, attributes]) => {
+      const node = doc.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [, name, value] of attributes.matchAll(/([\w:-]+)="([^"]*)"/g)) node.setAttribute(name, value);
+      return node;
+    });
+    root.append(...tags);
+    return Object.assign(root, { cloneNode: read });
+  };
+  return read();
+}
+function drawingPage() {
+  const doc = miniDocument();
+  doc.getElementById = id => (INDEX.includes(`id="${id}"`) ? { querySelector: selector => (selector === 'svg' ? controlDrawing(doc, id) : null) } : null);
+  return doc;
+}
+
+test('every glyph draws the approved design page\'s drawing, and only the approved glyphs are drawn', () => {
+  assert.deepEqual([...GLYPH_NAMES].sort(), Object.keys(APPROVED).sort(), 'the glyphs drawn are the approved ones, no more and no fewer');
+  const doc = drawingPage();
+  const wrong = GLYPH_NAMES.filter(name => drawingOf(glyph(name, doc)) !== approved(name)).map(name => `${name}: draws ${drawingOf(glyph(name, doc))}, not ${approved(name)}`);
+  assert.deepEqual(wrong, [], 'each glyph as the design page draws it');
+  // The negative: a drawing that differs from the approved one is told apart, so a glyph redrawn or swapped is caught.
+  assert.notEqual(approved('up'), approved('down'));
+  assert.notEqual(drawingOf(glyph('up', doc)), approved('down'), 'Move its stack up does not draw the arrow down');
+});
+
+test('a borrowed glyph is the drawing of the control the design names, cloned, which the control still draws', () => {
+  const doc = drawingPage();
+  for (const [name, at] of Object.entries(FROM)) {
+    const own = controlDrawing(doc, at.slice(1));
+    assert.ok(own, `${at} draws something on the page`);
+    assert.equal(drawingOf(own), approved(name), `${at} draws the approved ${name}`);
+    const drawn = glyph(name, doc);
+    assert.equal(drawingOf(drawn), drawingOf(own), `the ${name} glyph is ${at}'s drawing`);
+    assert.equal(drawn.getAttribute('data-glyph'), name);
+  }
+  // The negative: another control's drawing, as the topic settings gear, is not the pencil.
+  assert.notEqual(drawingOf(controlDrawing(doc, 'settings-open')), approved('pencil'));
+  // A page without the control draws no borrowed glyph: it is refused, not drawn from elsewhere.
+  const bare = miniDocument();
+  bare.getElementById = () => null;
+  assert.throws(() => glyph('pencil', bare), /no #new-message/);
 });

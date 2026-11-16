@@ -245,8 +245,13 @@ and acts are what they were.
   carries a glyph before each item's words, …".
 - `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
   "pipeline menus every item of an item's ⋯ carries its glyph …".
+- Each browser case above also holds what every glyph draws: the approved
+  design page's drawing, ink that shows (Quote selection's ❝ included), and for
+  the pencil and the tray the New message and Reader's archive buttons' own
+  drawings as the page shows them (`misdrawn` in `tests/menu_glyphs.mjs`).
 - `tests/ui_menu_glyphs.test.mjs` (node): the glyph by name, silent and after
-  the words in the document; an item with no glyph opens no menu.
+  the words in the document; an item with no glyph opens no menu; every glyph
+  draws the approved drawing, and a borrowed one is its named control's.
 
 ## Getting something in is quick, never a form
 

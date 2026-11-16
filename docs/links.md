@@ -174,8 +174,11 @@ Move below More shows the Reader's archive tray, and Edit, Edit page and Rename
 the pencil of the topic's New message, and Open its record the box with an
 arrow of the Notebook sheet's Open as a full page. The rest are drawn once, in
 the same style; tests/menu_glyphs.mjs lists the glyph of every item by its
-words, in every state the item has. A menu item that names no glyph, or one
-nothing draws, opens no menu.
+words, in every state the item has, and the approved drawing of every glyph.
+The checks read what each glyph draws, not only its name: a drawing changed or
+swapped with another, a borrowed glyph cloned from any control but the one
+named, and a character such as Quote selection's ❝ that leaves no ink each
+fail. A menu item that names no glyph, or one nothing draws, opens no menu.
 
 ## Clicking outside a pop-up
 

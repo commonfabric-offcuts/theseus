@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ROWS, misglyphed, misplaced } from './menu_glyphs.mjs';
+import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 
 // The pipeline (item 84; docs/pipeline.md) in the real browser against the
 // real server. The outcome page offers Turn on while it is off, and turning it
@@ -690,6 +690,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     }
     // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
     assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
     assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
     assert.deepEqual(wide.filter(([, at]) => at.past || at.scroll), [], 'no menu reaches past the screen, and nothing scrolls sideways');

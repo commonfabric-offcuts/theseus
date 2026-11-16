@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { ROWS, misglyphed, misplaced } from './menu_glyphs.mjs';
+import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
 
@@ -1555,6 +1555,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     }
     // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
     assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
     assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
   });

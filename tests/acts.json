@@ -24675,6 +24675,153 @@
     "native": "reading",
     "case": "reading menus every item of a message"
    }
+  },
+  {
+   "item": 602,
+   "act": "Edit, Edit page and Rename show the topic's New message button's own pencil: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ shows Edit with the New message button's own pencil, on a phone and a laptop, in both engines",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 602,
+   "act": "Rename and Edit in a message's ⋯ and a dossier's menu show the New message button's own pencil",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 601,
+   "act": "Move below More shows the Reader's archive button's own tray: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 601,
+   "act": "In every menu, Move below More shows the Reader's archive button's own tray",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Each glyph draws the approved design page's drawing: Move its stack up an arrow up to a line, Move its stack down an arrow down to one",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In the menus a person opens, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Quote selection's ❝ is drawn: the character the stylesheet puts before its words leaves ink, in Chrome and Safari's engine",
+   "break": [
+    [
+     "web/aim.css",
+     ".glyph[data-text]::before{content:attr(data-text)}",
+     ".glyph[data-text]::before{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
   }
  ]
 }
