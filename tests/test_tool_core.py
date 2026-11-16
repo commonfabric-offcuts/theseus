@@ -210,6 +210,22 @@ class LinksCase(ToolsCase):
         offered = self.view("topic_tools", {"topic_id": "t1"})
         self.assertEqual(([tool["tool_id"] for tool in offered["offered"]], offered["linked"]), (["kite-flyer", "kite-guide"], []))
 
+    def test_a_linked_topic_the_reader_cannot_read_is_counted_never_named_and_so_is_a_home_it_is_not_on(self):
+        self.committed(self.link("kite-flyer"))
+        back = self.committed(self.record(run(**BACK)))["run"]["topic"]
+        self.assertEqual(sorted(topic["topic_id"] for topic in self.view("tool", {"tool_id": "kite-flyer"}, actor="agent-b")["topics"]),
+                         sorted(["t1", back["topic_id"]]), "a reader on the home sees both linked topics")
+        # outsider is on neither outcome but takes part in t1; other-reader reads nothing in w1.
+        self.committed(self.command("participation.set", {"actor_id": "outsider", "present": True}, target={"topic_id": "t1"}))
+        for actor, shown, hidden in (("outsider", ["t1"], 1), ("other-reader", [], 2)):
+            with self.subTest(actor=actor):
+                answer = self.view("tool", {"tool_id": "kite-flyer"}, actor=actor)
+                self.assertEqual(([topic["topic_id"] for topic in answer["topics"]], answer["topics_hidden"]), (shown, hidden))
+                self.assertEqual(answer["tool"]["home"], {"workspace_id": "w1", "title": None, "readable": False})
+                words = json.dumps(answer)
+                self.assertNotIn(back["title"], words)
+                self.assertNotIn("Isolated test", words)
+
     def test_a_link_left_where_the_home_moved_is_still_shown_and_can_be_taken_off(self):
         self.committed(self.link("kite-flyer"))
         moved = tempfile.TemporaryDirectory()

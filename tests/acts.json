@@ -19869,6 +19869,174 @@
    "check": {
     "node": "tests/ui_skills.test.mjs"
    }
+  },
+  {
+   "item": 17,
+   "act": "A tool that goes back gets every path it names at either commit put back: a file only its live record names is put back too, and its items and act rows leave with it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            for records in (live, head):",
+     "            for records in (head,):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Every run is recorded before the checkout moves: a refused record leaves the checkout at the candidate, and a rerun finishes",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        if self.recordable:\n            summary[\"records\"] = self.record(back, head_out, items)\n",
+     "        if head_out != self.head:\n            git(self.root, \"merge\", \"--ff-only\", \"--quiet\", head_out)\n        if self.recordable:\n            summary[\"records\"] = self.record(back, head_out, items)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's page counts a linked topic the reader cannot read, never naming it",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "            topic = self._readable_topic(db, actor, topic_id)",
+     "            topic = db.execute(\"SELECT id,title,workspace_id,state FROM topics WHERE id=?\", (topic_id,)).fetchone()"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's home is named only to a reader on it",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        readable = row is not None and self._may_write_outcome(db, actor, row)",
+     "        readable = row is not None"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-use says the outcome uses the tool, and --off that it no longer does",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "{\"tool_id\": options.tool, \"used\": not options.off}",
+     "{\"tool_id\": options.tool, \"used\": options.off}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-link says a topic is about the tool, and --off that it is not",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "{\"tool_id\": options.tool, \"linked\": not options.off}",
+     "{\"tool_id\": options.tool, \"linked\": options.off}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool-record records a run from its file, once",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "        result = self.command(\"tool.record\", {\"workspace_id\": home}, {\"run\": run})",
+     "        result = {\"recorded\": False, \"run\": {}}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool prints the word its check reads",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "self.out.plain(\"Its check: %s\" % _word(tool[\"word\"]))",
+     "self.out.plain(\"Its check: passed\")"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tool counts the topics about it the reader cannot open",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "        if answer[\"topics_hidden\"]:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "tools prints each tool with the word its check reads",
+   "break": [
+    [
+     "aim_next/cli_tools.py",
+     "_word(item[\"word\"]), where)",
+     "\"Its check passed\", where)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step records each run through the live CLI's tool-record",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        code, answer, said = self._run([\"--json\", \"tool-record\", str(path)])",
+     "        return {}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step reads the live code's views through the live CLI",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "\"view\": {\"name\": name, \"args\": args}}",
+     "\"view\": {\"name\": name, \"args\": {}}}"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_tools.py"
+   }
   }
  ]
 }

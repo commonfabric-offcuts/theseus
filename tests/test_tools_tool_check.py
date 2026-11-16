@@ -363,6 +363,75 @@ class CascadeCase(StepCase):
         self.assertIn("Kite flyer, Spool winder", self.repo.git("log", "-1", "--format=%s", c2))
 
 
+class EitherSideCase(StepCase):
+    """R6: a tool that goes back gets every path it names at either commit put back, and its items and act rows on any
+    of them leave with it; a path neither record names ships as the candidate has it."""
+
+    def test_a_file_only_the_live_record_names_is_put_back_and_its_item_and_act_row_leave_too(self):
+        # Item 561 moves the kite flyer's check to a new file (its live check file is no longer one of its files) and breaks
+        # it; item 562 adds a test and an act row to the file only the live record names; 533 is a colour fix.
+        moved = {"skills/kite-flyer.json": record("kite-flyer", "Kite flyer", ["tools/kite.py", "tests/test_tools_kite_air.py"],
+                                                  {"python": "tests/test_tools_kite_air.py"}),
+                 "tools/kite.py": BROKEN_KITE, "tests/test_tools_kite_air.py": KITE_TESTS}
+        row_562 = {"item": 562, "act": "The kite flies at three", "break": [["tests/test_tools_kite.py", "kite.fly(3), 6", "kite.fly(3), 7"]],
+                   "check": {"python": "test_tools_kite.py"}}
+        added = {"tests/test_tools_kite.py": KITE_TESTS + "\n    def test_doubles_three(self):\n        self.assertEqual(kite.fly(3), 6)\n",
+                 "tests/acts.json": ledger([LIVE_ROW, row_562])}
+        items = [self.item(moved, 561), self.item(added, 562), self.item(ITEM_533, 533)]
+        c0 = self.candidate(dict(moved, **added, **ITEM_533), items)
+        code, summary, said, problems, cli, _ = self.step(items=items)
+        self.assertEqual(code, 0, problems + said)
+        c1 = summary["head_out"]
+        self.assertEqual(self.repo.git("rev-parse", c1 + "^"), c0)
+        self.assertEqual((summary["back"], summary["items_back"]), (["kite-flyer"], [561, 562]))
+        self.assertEqual(summary["restored_paths"], ["skills/kite-flyer.json", "tests/test_tools_kite.py", "tests/test_tools_kite_air.py", "tools/kite.py"])
+        # Every path the live record names is its live bytes again, the path only the new record names is gone, and the
+        # colour fix, which neither names, ships.
+        self.assertEqual(self.repo.git("diff", "--stat", self.live, c1, "--", "skills/kite-flyer.json", "tools/kite.py", "tests/test_tools_kite.py"), "")
+        self.assertNotIn("tests/test_tools_kite_air.py", self.repo.git("ls-tree", "-r", "--name-only", c1).splitlines())
+        self.assertEqual(self.repo.show(c1, "web/aim.css"), ".kite { color: red; }")
+        self.assertEqual(json.loads(self.repo.show(c1, "tests/acts.json"))["acts"], [LIVE_ROW], "562's row on the live check file left with it")
+        self.assertIn("Train-Item: Revert 561, 562", self.repo.git("log", "-1", "--format=%B", c1))
+        self.assertEqual([(run["fate"], run["result"], run["total"]) for run in cli.records()], [("back", "failed", 4), ("live", "passed", 4)])
+        self.assertEqual(cli.records()[0]["items_back"], [561, 562])
+
+
+class RecordFirstCase(StepCase):
+    """Every run is recorded before the checkout moves, so a refused record leaves it where it was and the step,
+    run again from there, records what is missing and moves it."""
+
+    class BusyOnce(CoreCli):
+        """The live CLI answering its second tool-record busy, once, as a store held by another writer does."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.refused = False
+
+        def record(self, path):
+            if len(self.records()) == 1 and not self.refused:
+                self.refused = True
+                return {"recorded": False, "error": {"code": "DATABASE_BUSY", "message": "The database is busy", "retryable": True}}
+            return super().record(path)
+
+    def test_a_refused_record_leaves_the_checkout_at_the_candidate_and_a_rerun_finishes(self):
+        items = [self.item(ITEM_531, 531)]
+        c0 = self.candidate(ITEM_531, items)
+        code, summary, said, problems, cli, _ = self.step(cli=self.BusyOnce(self, self.live), items=items)
+        self.assertEqual(code, 2, problems + said)
+        self.assertEqual(problems.splitlines()[0], "tool_check: refused: recording kite-flyer's live run was refused: DATABASE_BUSY: The database is busy")
+        self.assertEqual((self.repo.git("rev-parse", "HEAD"), self.repo.git("status", "--porcelain")), (c0, ""), "the checkout did not move")
+        self.assertNotIn("the release goes on", said)
+        self.assertEqual(self.sql("SELECT fate FROM tool_runs"), [("back",)], "the back run was recorded before the refusal")
+        # Again from the candidate: the same restore commit, the back run already recorded, the live run recorded now.
+        again, summary, said, problems, cli, _ = self.step(items=items)
+        self.assertEqual(again, 0, problems + said)
+        self.assertEqual(self.repo.git("rev-parse", "HEAD"), summary["head_out"])
+        self.assertEqual(self.repo.git("rev-parse", summary["head_out"] + "^"), c0)
+        self.assertEqual([(receipt["fate"], receipt["recorded"]) for receipt in summary["records"]], [("back", False), ("live", True)])
+        self.assertEqual(self.sql("SELECT fate FROM tool_runs ORDER BY seq"), [("back",), ("live",)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE title LIKE 'Kite flyer%'"), [(1,)])
+
+
 class RefusalsCase(StepCase):
     """Each refusal comes before any check runs or anything is written."""
 
