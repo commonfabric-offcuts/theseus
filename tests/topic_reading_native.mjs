@@ -1957,13 +1957,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // card. shownLit gives each box of the lit characters (a text node's part on a line, as litLines reads them) with
   // the part of the card it can show in: the card's own box, cut to every box between the words and the card that
   // clips what overflows it (a code block or a table that scrolls sideways, a phone's excerpt cut off at a height).
+  // solid: the same, less the edges a box that scrolls fades out where it has more to show (aim.css, .md-scrolls'
+  // mask), where its words and their field fade together.
   const shownLit = (p, id) => p.evaluate(`(c=>{const h=CSS.highlights.get('lit-passage'),range=h&&h.size?[...h][0]:null;if(!range||!c)return null;
     const o=c.getBoundingClientRect(),boxes=[];
-    const shows=n=>{let s={left:o.left,right:o.right,top:o.top,bottom:o.bottom};
+    const fade=2*parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const shows=n=>{let s={left:o.left,right:o.right,top:o.top,bottom:o.bottom},solid={...s};
       for(let e=n.parentElement;e&&e!==c;e=e.parentElement){const st=getComputedStyle(e);if(st.overflowX==='visible'&&st.overflowY==='visible')continue;
-        const r=e.getBoundingClientRect(),l=r.left+e.clientLeft,t=r.top+e.clientTop;
-        s={left:Math.max(s.left,l),right:Math.min(s.right,l+e.clientWidth),top:Math.max(s.top,t),bottom:Math.min(s.bottom,t+e.clientHeight)}}
-      return s};
+        const r=e.getBoundingClientRect(),l=r.left+e.clientLeft,t=r.top+e.clientTop,m=[st.maskImage,st.webkitMaskImage].some(v=>v&&v!=='none')?fade:0;
+        s={left:Math.max(s.left,l),right:Math.min(s.right,l+e.clientWidth),top:Math.max(s.top,t),bottom:Math.min(s.bottom,t+e.clientHeight)};
+        solid={left:Math.max(solid.left,l+m),right:Math.min(solid.right,l+e.clientWidth-m),top:Math.max(solid.top,t),bottom:Math.min(solid.bottom,t+e.clientHeight)}}
+      return {...s,solid}};
     const k=range.commonAncestorContainer,walk=document.createTreeWalker(k.nodeType===1?k:k.parentNode,NodeFilter.SHOW_TEXT);
     for(let n=walk.nextNode();n;n=walk.nextNode()){if(!range.intersectsNode(n)||!n.data.trim())continue;const r=document.createRange();r.selectNodeContents(n);
       if(n===range.startContainer)r.setStart(n,range.startOffset);if(n===range.endContainer)r.setEnd(n,range.endOffset);
@@ -1973,7 +1977,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // a field seen through a code block's faint tint counts): stray counts those on the card outside every place a lit
   // box's field may reach (where the box shows, and over and under it by less than its words' height, which a field's
   // reach always is), at gives the first; bare names each lit box that shows whose rows just over and just under its
-  // words, inside what shows, are not all the field's colour. Only on a card whose own words are not in that colour.
+  // words, inside what shows unfaded (solid), are not all the field's colour. Only on a card whose own words are not in that colour.
   const fieldPaint = async (p, id, color = FIELD) => {
     const lit = await shownLit(p, id);
     assert.ok(lit?.boxes.length, `a passage is lit on ${id}`);
@@ -1995,7 +1999,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
     const bare = [];
     for (const b of lit.boxes) {
-      const left = Math.ceil(Math.max(b.left, b.shows.left)) + 2, right = Math.floor(Math.min(b.right, b.shows.right)) - 2;
+      const left = Math.ceil(Math.max(b.left, b.shows.solid.left)) + 2, right = Math.floor(Math.min(b.right, b.shows.solid.right)) - 2;
       if (right - left < 6) continue;
       for (const y of [Math.floor(b.top) - 2, Math.ceil(b.bottom) + 1]) {
         if (y <= b.shows.top + 1 || y >= b.shows.bottom - 1 || y < 0 || y >= image.height) continue;
