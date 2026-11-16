@@ -242,7 +242,16 @@ async function check(name, action) {
   // evidence written, rather than failing every case left.
   if (fixture.exitCode !== null || fixture.signalCode !== null) throw Error(`The fixture exited during "${full}": ${fixtureErrors()}`);
 }
-const close = async p => { assert.deepEqual(p.errors, [], 'no page errors'); contexts.delete(p.ctx); await p.ctx.close(); };
+// A case closes its page once no save of its writing is on its way to
+// Theseus (each saving sign says so, data-save="saving", until the answer
+// comes): one sent just before the page closed could otherwise reach the
+// fixture after the drafts reset, which skips a draft not yet saved, and land
+// as writing already in the next case's reply.
+const close = async p => {
+  assert.deepEqual(p.errors, [], 'no page errors');
+  await until(p, () => !document.querySelector('[data-save="saving"]'), 'no save of the writing on its way');
+  contexts.delete(p.ctx); await p.ctx.close();
+};
 
 // The selectors of naming someone, in the Reader and the New message sheet.
 const NAMING = {
