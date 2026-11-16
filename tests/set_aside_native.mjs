@@ -318,4 +318,66 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await settles(async () => fields(await draft(s)), { body: '', addressees: [], whisper: false, intent: null }, 'Undo empties every field it filled');
     }
   });
+
+  // Every state of a reply set aside, on a laptop and a phone (320, 375, 390), light and dark: its words kept on its
+  // line with Copy, its image opened there, the Set aside chip once the list closes, and its words back in the writing.
+  // Each act and Open is 44px to touch on a phone, and nothing is wider than the window.
+  await check('rail set aside kept looks right: the kept line with its words and its image opened, the Set aside chip, and the line whose words went back, at 1280, 320, 375 and 390, light and dark', async () => {
+    const touch = (p, selector) => p.evaluate(`[...document.querySelectorAll(${q(selector)})].filter(b=>b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();return {text:b.textContent,width:r.width,height:r.height,name:b.getAttribute('aria-label'),tip:b.title};})`);
+    const wide = p => p.evaluate('({scroll:document.documentElement.scrollWidth,width:innerWidth,dialog:Math.ceil(document.querySelector("#version-review").getBoundingClientRect().right),images:Math.max(0,...[...document.querySelectorAll("#review-content img")].map(i=>Math.ceil(i.getBoundingClientRect().right)))})');
+    const fits = async (p, size) => { const w = await wide(p); assert.ok(w.scroll <= w.width && w.dialog <= w.width && w.images <= w.width, `${size}: nothing wider than the window ${JSON.stringify(w)}`); };
+    const big = (acts, size, phone) => { for (const act of acts) if (phone) assert.ok(act.height >= 44 && act.width >= 44, `${size}: ${act.text} is 44px to touch: ${JSON.stringify(act)}`); };
+    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['w320', 'light'], ['w320', 'dark'], ['w375', 'light'], ['w375', 'dark'], ['w390', 'light'], ['w390', 'dark']]) {
+      const phone = size !== 'laptop';
+      const s = await seed('composer-image');
+      const other = await control({ method: 'agent_message', operation_id: `${s.here}-words`, topic_id: s.here, sender: 'person', unsent: true, body: `Words kept ${size} ${theme}`, source: 'topic' });
+      const t = { ...s, submission: other.submission_id, body: `Words kept ${size} ${theme}` };
+      const p = await open(`aside-kept-look-${size}-${theme}`, `/?topic=${s.here}`, size, theme);
+      await ready(p, s.here);
+      await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
+      await typeInComposer(p, s, 'Mine');
+      await p.point('#inline-pending button');
+      for (const r of [s, t]) {
+        await until(async () => (await cardState(p, r))?.state === 'doubt', 'listed');
+        await p.evaluate(`document.querySelector(${q(card(r) + ' .aside-act')}).scrollIntoView({block:'nearest'})`);
+        await p.point(`${card(r)} .aside-act`);
+        await until(async () => (await cardState(p, r))?.state === 'aside', 'set aside');
+      }
+      await p.evaluate(`document.querySelector(${q(card(s) + ' .attachment-label button')}).scrollIntoView({block:'nearest'})`);
+      big(await touch(p, `${card(s)} .attachment-label button`), size, phone);
+      await p.point(`${card(s)} .attachment-label button`);
+      await until(() => p.evaluate(`(i=>Boolean(i&&i.complete&&i.naturalWidth>0))(document.querySelector(${q(card(s) + ' img')}))`), 'its image shows on its line');
+      assert.deepEqual((await keptLine(p, t)), { state: 'aside', words: t.body, acts: ['Copy', 'Undo'] });
+      big(await touch(p, '#review-content .aside-act'), size, phone);
+      await fits(p, size);
+      if (shot) await shot(p, `set-aside-kept-${size}-${theme}-line`);
+      await closeList(p);
+      await settles(() => reviews(p), ['Set aside 2'], 'the Set aside chip counts both');
+      const [chipped] = await touch(p, '#inline-pending button');
+      assert.ok(chipped.name && chipped.tip, `the chip has its name and a tooltip: ${JSON.stringify(chipped)}`);
+      big([chipped], size, phone);
+      await fits(p, size);
+      if (shot) await shot(p, `set-aside-kept-${size}-${theme}-chip`);
+      // Its words back in the writing: the composer emptied, the reply put back and set aside again.
+      await p.point('#inline-pending button');
+      await until(async () => (await keptLine(p, t))?.state === 'aside', 'the chip opens the list');
+      await p.point(undo(t));
+      await until(async () => (await cardState(p, t))?.state === 'doubt', 'Undo puts it back');
+      await closeList(p);
+      await p.point('#inline-writing-body');
+      await p.evaluate(`document.querySelector('#inline-writing-body').select()`);
+      await p.key('Backspace');
+      await until(async () => (await draft(s))?.body === '', 'the composer is empty and saved so');
+      await p.point('#inline-pending button');
+      await until(async () => (await cardState(p, t))?.state === 'doubt', 'listed again');
+      await p.point(`${card(t)} .aside-act`);
+      await until(async () => (await cardState(p, t))?.state === 'aside' && /back in your writing/.test(await p.evaluate(`document.querySelector(${q(card(t))}).textContent`)), 'its words went back');
+      big(await touch(p, `${card(t)} .aside-act`), size, phone);
+      await fits(p, size);
+      if (shot) await shot(p, `set-aside-kept-${size}-${theme}-back`);
+      await closeList(p);
+      assert.equal(await p.evaluate(`document.querySelector('#inline-writing-body').value`), t.body, 'its words are the writing');
+      await settles(() => reviews(p), ['Set aside 1'], 'the image kept on its line keeps the chip');
+    }
+  });
 }
