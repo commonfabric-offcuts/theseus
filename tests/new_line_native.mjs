@@ -88,21 +88,21 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   const scrollPage = (p, to) => p.evaluate(`new Promise(r=>{const y=${to === 'end' ? 'Math.max(0,document.scrollingElement.scrollHeight-innerHeight)' : '0'};
     if(Math.abs(y-scrollY)<1)return r();addEventListener('scroll',()=>requestAnimationFrame(()=>requestAnimationFrame(r)),{once:true});scrollTo({top:y,behavior:'instant'})})`);
   // Pushes the view down toward the page's end count times, as a wheel or a finger keeps doing there, and gives the
-  // room the page keeps after each push. Each push waits on the scroll it makes being heard and drawn, or, when the
-  // view is at the page's end and does not move, on the frames after it. The room only ever keeps what the view
-  // reaches, never more, so pushing at the end leaves it as it was: it does not grow a pixel per push (B6).
+  // room the page keeps after each push. Each push waits two frames: a scroll it makes is heard in the first frame's
+  // rendering, before its frame callbacks, and the room that sets is drawn by the second. The room only ever keeps
+  // what the view reaches, never more, so pushing at the end leaves it as it was: it does not grow a pixel per push.
   const pushDown = (p, count) => p.evaluate(`(async()=>{const m=document.querySelector('main'),rooms=[];
     const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    for(let n=0;n<${count};n++){const y=scrollY,done=new AbortController(),heard=new Promise(r=>addEventListener('scroll',r,{once:true,signal:done.signal}));
-      scrollBy({top:innerHeight,behavior:'instant'});if(scrollY!==y)await heard;done.abort();await frames();
+    for(let n=0;n<${count};n++){scrollBy({top:innerHeight,behavior:'instant'});await frames();await frames();
       rooms.push(m.style.getPropertyValue('--line-room')||'0px')}
     return rooms})()`);
   const roomNow = p => p.evaluate("document.querySelector('main').style.getPropertyValue('--line-room')||'0px'");
-  // Changes the window's height and waits on the window's resize being heard and drawn.
+  // Changes the window's size and waits two frames, in whose rendering the resize is heard; says the window's
+  // height then and whether a resize was heard, so a window that did not change cannot pass for one that did.
   const resizeTo = async (p, metrics) => {
-    await p.evaluate("window.resized=new Promise(r=>addEventListener('resize',()=>requestAnimationFrame(()=>requestAnimationFrame(r)),{once:true}))");
+    await p.evaluate("window.resizesHeard=0,addEventListener('resize',()=>window.resizesHeard++)");
     await p.send('Emulation.setDeviceMetricsOverride', metrics);
-    await p.evaluate('window.resized');
+    return p.evaluate("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>r({height:innerHeight,heard:window.resizesHeard>0})))))");
   };
   // Reads until nothing is unread, bringing the oldest unread card into view,
   // and waits until the page has had the answer that says so and has drawn it.
@@ -193,8 +193,8 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
       // At the page's end with no room, the window shrinks and grows back: measured again where the view ends a
       // fraction past what the page holds, no room is made, and pushing down there makes none.
-      await resizeTo(p, { ...metrics, height: metrics.height - 120 });
-      await resizeTo(p, metrics);
+      assert.deepEqual(await resizeTo(p, { ...metrics, height: metrics.height - 120 }), { height: metrics.height - 120, heard: true }, label + ': the window is shorter');
+      assert.deepEqual(await resizeTo(p, metrics), { height: metrics.height, heard: true }, label + ': and grows back at the page\'s end');
       assert.deepEqual([await roomNow(p), ...await pushDown(p, 8)], Array(9).fill('0px'), label + ': no room, the window resized and pushed down at the end, none is made');
       assert.equal(await blankBelow(p), 0, label + ': and the page ends where what it holds ends');
       // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
