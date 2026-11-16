@@ -7,9 +7,11 @@
 // its module except those skipped below with their reason. docs/device-evidence.md
 // says what each mode covers and what only a real phone can show. The
 // --new-line mode's checks hold a read or lose an answer with Playwright's own
-// request routing, which they are written for (new_line_native.mjs).
+// request routing, which they are written for (new_line_native.mjs). The
+// --invite mode holds or loses an answer for the Chrome harness's intercept,
+// release and fail with the same routing (team_invite_native.mjs).
 //
-// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading [case filter]
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
@@ -29,10 +31,11 @@ import { railChecks } from './outcome_rail_native.mjs';
 import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
+import { teamInviteChecks } from './team_invite_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
-assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite'].includes(mode), `a WebKit mode, not ${mode}`);
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
 assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
@@ -88,6 +91,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
+  'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
@@ -104,12 +108,14 @@ try {
   version = browser.version();
   // A WebKit context has touch, and with it no hover and a coarse pointer, from its start. The device
   // mode runs as a phone does; the others run as a desktop until a check turns touch on, and then
-  // the page moves to a touch context at the same address, size and colour scheme.
+  // the page moves to a touch context at the same address, size and colour scheme. The invite mode
+  // runs with touch from the start too: its checks measure each state on a phone and then on a
+  // laptop, and a page cannot leave a touch context without loading again, which would lose the state.
   const contexts = {};
   const contextWith = async hasTouch => contexts[hasTouch] ??= await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch });
   const page = async (suffix, hint, connected = false, setup = {}) => {
     assert.equal(connected, true, 'WebKit runs connected pages only');
-    let touch = mode === '--device', scheme = null;
+    let touch = ['--device', '--invite'].includes(mode), scheme = null;
     const initScripts = [];
     const errors = [], calls = [], events = [];
     const attach = opened => {
@@ -135,6 +141,16 @@ try {
       return opened;
     };
     let pw = attach(await (await contextWith(touch)).newPage());
+    // The Chrome harness's intercept, release and fail, for the invite mode: a request the handler picks reaches the
+    // server, and its answer is held from the page (a response-stage hold), then given to it or lost as a reset connection.
+    let intercept = null;
+    const held = [];
+    if (mode === '--invite') await pw.route(facts.origin + '/api/**', async route => {
+      let payload; try { payload = JSON.parse(route.request().postData() ?? 'null'); } catch { payload = null; }
+      if (!(intercept && await intercept(payload))) return route.continue();
+      const response = await route.fetch();
+      held.push({ payload, route, response });
+    });
     const evaluate = expression => pw.evaluate(`(async()=>(${expression}))()`);
     let touchAt = null;
     // The CDP calls the listed checks make, each done with WebKit's own input.
@@ -182,6 +198,10 @@ try {
         return {};
       }
       if (method === 'Emulation.setTouchEmulationEnabled') {
+        if (!params.enabled && mode === '--invite') {
+          qualifications.add('touch stays on for the laptop width: WebKit cannot turn touch off for an open page, so the laptop layout is measured in a touch window');
+          return {};
+        }
         assert.equal(params.enabled, true, 'touch is turned on, never off');
         if (touch) return {};
         const at = pw.url(), size = pw.viewportSize();
@@ -298,7 +318,10 @@ try {
         await until(() => evaluate(`!document.querySelector(${JSON.stringify(earlierRow)})`), `${selector} shows whole from its earlier message's row`);
       }
     };
-    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held: [], network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
+    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
+      intercept: handler => { assert.equal(mode, '--invite', 'intercept is offered in the invite mode'); intercept = handler; },
+      release: entry => entry.route.fulfill({ response: entry.response }),
+      fail: entry => entry.route.abort('connectionreset'),
       open: async index => {
         for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
           const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
@@ -402,6 +425,8 @@ try {
     const known = () => browser.contexts().flatMap(context => context.pages()).filter(opened => !opened.isClosed()).map(opened => { if (!ids.has(opened)) ids.set(opened, String(++next)); return [ids.get(opened), opened]; });
     const windows = { list: async () => new Map(known().map(([id, opened]) => [id, opened.url()])), close: async id => { for (const [at, opened] of known()) if (at === id) await opened.close(); } };
     await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
+  } else if (mode === '--invite') {
+    await teamInviteChecks({ check, page, until, control, view, facts, shot });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }

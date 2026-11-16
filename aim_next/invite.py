@@ -9,10 +9,22 @@ then writes the agent's sign-in file beside its own profile, with private
 permissions, and hands back the prompt to copy into the agent. The file is
 written only after Core has recorded the act, so a refused invitation leaves
 no file; a sign-in that could not be written is written by sending the same
-request again, which Core answers with its recorded receipt."""
+request again, which Core answers with its recorded receipt.
 
-import re
+Item 525: the page keeps a request only while it is open, so after a reload, or
+on another device, the same name is typed again as a new request. Core
+remembers who invited each agent into which outcome (agent_invitations), and
+gives the agent back to the person who invited it, in the same outcome, while it
+is still on the team: nothing is registered or added again, and the adapter
+writes its sign-in file if it is missing or was cut short."""
+
+import hashlib
+import json
+import os
 from pathlib import Path
+import re
+import stat
+import unicodedata
 
 from .contract import LIMITS, Refusal, organises, _body, _identifier, _revision
 
@@ -23,29 +35,92 @@ NAME_MAX = 60
 ID_MAX = 40
 CODE_ROOT = Path(__file__).resolve().parents[1]
 KIND = "workspace.agent_invite"
+# Who invited each agent into which outcome (version 43), so the same person typing the same name there again gets that
+# agent back. Stepping back is refused once anyone has been invited, since version 42 cannot say who invited them.
+INVITATIONS_SCHEMA = [
+    "CREATE TABLE agent_invitations (agent_id TEXT PRIMARY KEY REFERENCES actors(id), "
+    "workspace_id TEXT NOT NULL REFERENCES workspaces(id), inviter_id TEXT NOT NULL REFERENCES actors(id))",
+]
+INVITATIONS_DOWN = ["DROP TABLE agent_invitations"]
+INVITATIONS_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM agent_invitations)"
+
+
+def _invitations_backfill(db):
+    """Agents invited from the page before version 43 (item 324, live in release 81) have their committed receipts among
+    the operations: each says who invited which agent, as registered, into which outcome. A refusal registered no one."""
+    for inviter, outcome in db.execute("SELECT actor_id,outcome FROM operations WHERE kind=? ORDER BY rowid", (KIND,)).fetchall():
+        receipt = json.loads(outcome)
+        if receipt["status"] == "committed":
+            db.execute("INSERT INTO agent_invitations VALUES (?,?,?)",
+                       (receipt["result"]["agent"]["id"], receipt["result"]["workspace_id"], inviter))
+
+
+INVITATIONS_BACKFILL = [_invitations_backfill]
+
+
+# Latin letters Unicode leaves whole that are written with letters of their own, by their Unicode names.
+SPELLED = {"SHARP S": "ss", "THORN": "th", "ETH": "d", "ENG": "ng", "SCHWA": "e", "EZH": "z", "ESH": "sh", "GAMMA": "g",
+           "KRA": "q", "YOGH": "gh", "WYNN": "w"}
+# The rest are named as a letter with a mark: "LATIN SMALL LETTER O WITH STROKE" is o, "LATIN CAPITAL LIGATURE OE" is oe.
+LATIN = re.compile(r"LATIN (?:SMALL |CAPITAL )?(?:LETTER|LIGATURE) (?:SMALL CAPITAL |DOTLESS |TURNED |REVERSED |OPEN |AFRICAN )?"
+                   r"(.+?)(?: WITH .*| DIGRAPH)?")
 
 
 def agent_id(name):
-    """The ID an agent is known and addressed by, from its name: its ASCII letters and digits, lower case, in words joined by hyphens."""
-    return "-".join(re.findall(r"[a-z0-9]+", name.lower()))[:ID_MAX].strip("-")
+    """The ID an agent is known and addressed by, from its name: its Latin letters and digits, lower case, in words
+    joined by hyphens. Accents are taken off (ë is e, ç is c), and a letter Unicode leaves whole is written as the letters it
+    stands for (ø is o, ł is l, æ is ae, þ is th, ß is ss). An ID longer than ID_MAX keeps its start and ends with eight
+    characters of a digest of the whole, so names that differ only past the cut get IDs of their own."""
+    whole = "-".join(re.findall(r"[a-z0-9]+", "".join(_spelled(c) for c in _unaccented(name))))
+    if len(whole) <= ID_MAX:
+        return whole
+    return "%s-%s" % (whole[:ID_MAX - 9].rstrip("-"), hashlib.sha256(whole.encode("ascii")).hexdigest()[:8])
+
+
+def _unaccented(text):
+    """text in compatibility form (NFKD) without its combining marks: Zoë is Zoe, Ça is Ca, ﬁ is fi."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def _spelled(c):
+    """c in ASCII, lower case: a Latin letter as the letters it stands for; anything else not ASCII is a space."""
+    if c.isascii():
+        return c.lower()
+    latin = LATIN.fullmatch(unicodedata.name(c, ""))
+    letter = latin.group(1) if latin else ""
+    return SPELLED.get(letter) or (letter.lower() if re.fullmatch(r"[A-Z]{1,2}", letter) else " ")
 
 
 def _name(value):
     return " ".join(_body(value).split())
 
 
-def _taken(db, name, agent):
-    """Whether an actor, enabled or not, already has this ID or this name (ignoring case)."""
-    return bool(db.execute("SELECT 1 FROM actors WHERE id=? OR name=? COLLATE NOCASE LIMIT 1", (agent, name)).fetchone())
+def _holders(db, name, agent):
+    """The actors, enabled or not, who already have this ID or this name (ignoring case), those with the name first."""
+    return db.execute("SELECT id,name,enabled FROM actors WHERE id=? OR name=? COLLATE NOCASE ORDER BY name=? COLLATE NOCASE DESC, id",
+                      (agent, name, name)).fetchall()
 
 
 def _free(db, name):
     """The first of "NAME 2", "NAME 3", ... that is free, for the refusal to suggest."""
     for number in range(2, 100):
         candidate = "%s %d" % (name[:NAME_MAX - 3], number)
-        if not _taken(db, candidate, agent_id(candidate)):
+        if not _holders(db, candidate, agent_id(candidate)):
             return candidate
     return None
+
+
+def _given_back(db, workspace, actor, name):
+    """The agent this actor's own invitation put on this outcome's team under this name, found through its invitation
+    whatever rule made its ID (item 324's made Søren s-ren), while it is enabled, on the team and the one with the name."""
+    holders = db.execute("SELECT id,name,enabled FROM actors WHERE name=? COLLATE NOCASE", (name,)).fetchall()
+    if len(holders) != 1 or not holders[0]["enabled"]:
+        return None
+    agent = holders[0]["id"]
+    invited = db.execute("SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?",
+                         (agent, workspace, actor)).fetchone()
+    member = db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace, agent)).fetchone()
+    return holders[0] if invited and member else None
 
 
 class Invites:
@@ -67,14 +142,21 @@ class Invites:
         agent = agent_id(name)
         if not agent:
             raise Refusal("NAME_UNUSABLE", "An agent's name needs a letter from a to z or a digit, for the name people address it by.")
-        if _taken(db, name, agent):
+        given = _given_back(db, workspace["id"], actor, name)
+        if given is not None:
+            # The same invitation asked again as a new request: its agent, as recorded, and nothing changes.
+            return {"workspace_id": workspace["id"], "title": workspace["title"], "version": workspace["version"],
+                    "harness": args["harness"], "agent": {"id": given["id"], "name": given["name"], "kind": "agent"}}, []
+        holders = _holders(db, name, agent)
+        if holders:
             other = _free(db, name)
             raise Refusal("NAME_TAKEN", "There is already someone called %s here. Choose another name%s." % (
-                name, ", such as %s" % other if other else ""))
+                holders[0]["name"], ", such as %s" % other if other else ""))
         if db.execute("SELECT count(*) FROM workspace_members WHERE workspace_id=?", (workspace["id"],)).fetchone()[0] >= LIMITS["workspace_members"]:
-            raise Refusal("TOO_MANY_WORKSPACE_MEMBERS", "Workspace team limit includes its owner")
+            raise Refusal("TOO_MANY_WORKSPACE_MEMBERS", "This outcome's team is full: it has %d members, its owner included." % LIMITS["workspace_members"])
         db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (agent, "agent", name))
         db.execute("INSERT INTO workspace_members VALUES (?,?)", (workspace["id"], agent))
+        db.execute("INSERT INTO agent_invitations VALUES (?,?,?)", (agent, workspace["id"], actor))
         version = workspace["version"] + 1
         db.execute("UPDATE workspaces SET version=? WHERE id=?", (version, workspace["id"]))
         # The conversation's people follow the team (standing_conversation.py).
@@ -85,21 +167,64 @@ class Invites:
                 "agent": {"id": agent, "name": name, "kind": "agent"}}, [
             {"kind": "workspace", "id": workspace["id"], "version": version}]
 
+    def invitation_place(self, actor, envelope):
+        """The ID of the agent this request would answer with, read before Core is asked to take it: the agent a
+        recorded receipt of this same request names, else the one its inviter is given back, else the name's own ID."""
+        place = self._execute_command(actor, envelope, preflight=self._invitation_place)
+        if isinstance(place, str):
+            return place
+        if place.get("status") == "committed" and place.get("kind") == KIND:
+            return place["result"]["agent"]["id"]
+        # A request Core would refuse is checked at its name's own place, as it always was.
+        args = envelope.get("args") if isinstance(envelope, dict) else None
+        name = args.get("name") if isinstance(args, dict) else None
+        return agent_id(" ".join(name.split())) if isinstance(name, str) else ""
+
+    def _invitation_place(self, db, actor, envelope):
+        name = _name(envelope["args"].get("name"))
+        given = _given_back(db, _identifier(envelope["target"].get("workspace_id"), "workspace_id"), actor, name)
+        return given["id"] if given is not None else agent_id(name)
+
 
 def sign_in_path(folder, agent):
     return Path(folder) / ("%s.profile.json" % agent)
 
 
-def _binds(path, store, agent):
-    """True when path is a sign-in file for agent in this instance, False when it is something else, None when nothing is there."""
-    from .profile import ProfileError, read_binding
+MINE, CUT_SHORT, OTHER = "mine", "cut short", "other"
+
+
+def _held(path, store, agent):
+    """What is at path: None when nothing is there; MINE when it is agent's sign-in file in this instance; CUT_SHORT when
+    it holds the beginning of exactly that file, or nothing, as a write cut short leaves it (a full disk after the
+    file was created); OTHER for anything else, which is someone else's and is never written over."""
+    from .profile import ProfileError, profile_bytes, read_binding
     if not path.exists() and not path.is_symlink():
         return None
     try:
         held = read_binding(path)
     except ProfileError:
+        return CUT_SHORT if _begins(path, profile_bytes(store.path, store.instance_id, agent, store.binding)) else OTHER
+    return MINE if (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding) else OTHER
+
+
+def _begins(path, whole):
+    """Whether path is a private regular file of this user's holding fewer bytes than whole, and only its first ones."""
+    try:
+        fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
         return False
-    return (held.actor_id, held.db_path, held.instance_id, held.binding) == (agent, store.path, store.instance_id, store.binding)
+    try:
+        # Looked at before it is read: a folder cannot be opened as a file, and a pipe has no beginning to compare.
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            return False
+        with os.fdopen(fd, "rb") as source:
+            fd = None
+            part = source.read(len(whole))
+    finally:
+        if fd is not None:
+            os.close(fd)
+    return len(part) < len(whole) and whole.startswith(part)
 
 
 def _refused(envelope, code, message):
@@ -136,17 +261,18 @@ def invite(store, actor, envelope, folder):
     Returns Core's receipt, with sign_in added to a committed one: {written, path, prompt} or {written: False, path,
     message}. A refusal before Core is asked (no sign-in folder, or a file in the agent's place) is an unrecorded
     receipt. Sending the same request again after a lost answer, or after the file could not be written, writes the
-    file Core's recorded receipt names, and nothing else is repeated."""
+    file Core's recorded receipt names, and nothing else is repeated. A file cut short for this same agent is written
+    again; one that is someone else's never is. The same name typed again as a new request, by whoever invited it, in
+    the same outcome, gets the same agent back from Core, and its file is written the same way."""
     if not isinstance(envelope, dict):
         envelope = {}
     if folder is None:
         return _refused(envelope, "NO_SIGN_IN_FOLDER", "This server keeps no folder for sign-in files, so it cannot invite an agent.")
     folder = Path(folder)
-    args = envelope.get("args")
-    name = args.get("name") if isinstance(args, dict) else None
-    agent = agent_id(" ".join(name.split())) if isinstance(name, str) else ""
+    # The place is the agent's Core would answer with: one invited under an older ID rule keeps its own (item 525).
+    agent = store.invitation_place(actor, envelope)
     # A file already in the new agent's place, for anyone else, is never overwritten or adopted.
-    if agent and _binds(sign_in_path(folder, agent), store, agent) is False:
+    if agent and _held(sign_in_path(folder, agent), store, agent) == OTHER:
         return _refused(envelope, "SIGN_IN_TAKEN", "A sign-in file named %s is already in this instance's folder, for someone else. "
                         "Choose another name." % sign_in_path(folder, agent).name)
     receipt = store.command(actor, envelope)
@@ -156,12 +282,17 @@ def invite(store, actor, envelope, folder):
     result = receipt["result"]
     path = sign_in_path(folder, result["agent"]["id"])
     try:
-        if _binds(path, store, result["agent"]["id"]) is None:
+        held = _held(path, store, result["agent"]["id"])
+        if held == CUT_SHORT:
+            # This agent's own file, cut short by a write that failed: it goes, and is written whole.
+            path.unlink()
+            held = None
+        if held is None:
             write_profile(path, store.path, store.instance_id, result["agent"]["id"], binding=store.binding)
-    except ProfileError:
+    except (ProfileError, OSError):
         # Written at the same moment by the same request sent twice is written.
         pass
-    if _binds(path, store, result["agent"]["id"]) is not True:
+    if _held(path, store, result["agent"]["id"]) != MINE:
         return dict(receipt, sign_in={"written": False, "path": str(path), "message": (
             "%s is on the team, but its sign-in file could not be written in %s. Try again: the same invitation "
             "writes it, and nothing else is repeated." % (result["agent"]["name"], folder))})
