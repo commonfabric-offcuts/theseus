@@ -77,6 +77,12 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'nothing is moving');
     await p.point('#inline-writing-body');
   };
+  // The composer given the keys as the page gives them, where what a case looks at is the Review list, not the press
+  // (as "rail set aside looks right" does): on a phone in WebKit the field can move under a press.
+  const focusWriting = async p => {
+    await p.evaluate(`document.querySelector('#inline-writing-body').focus()`);
+    await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the composer has the keys');
+  };
   const card = s => `#review-content [data-id="${s.submission}"]`;
   const cardState = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,title:c.querySelector('h3').textContent,acts:[...c.querySelectorAll('.aside-act')].map(b=>({text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title}))})(document.querySelector(${q(card(s))}))`);
   const openReader = async (p, s) => {
@@ -217,8 +223,8 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const chip = p => p.evaluate(`(b=>b&&{text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title})(document.querySelector('#inline-pending button'))`);
   const keptLine = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,words:c.querySelector('pre')?.textContent??null,acts:[...c.querySelectorAll('.aside-act')].map(b=>b.textContent)})(document.querySelector(${q(card(s))}))`);
   const undo = s => `${card(s)} .aside-act[aria-label^="Undo"]`;
-  const typeInComposer = async (p, s, text) => {
-    await pressWriting(p); await p.send('Input.insertText', { text });
+  const typeInComposer = async (p, s, text, reach = pressWriting) => {
+    await reach(p); await p.send('Input.insertText', { text });
     await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value===${q(text)}`), 'typed');
     await until(async () => (await draft(s))?.body === text, 'the typed words are saved as the draft');
   };
@@ -349,7 +355,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       const p = await open(`aside-kept-look-${size}-${theme}`, `/?topic=${s.here}`, size, theme);
       await ready(p, s.here);
       await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
-      await typeInComposer(p, s, 'Mine');
+      await typeInComposer(p, s, 'Mine', focusWriting);
       await p.point('#inline-pending button');
       for (const r of [s, t]) {
         await until(async () => (await cardState(p, r))?.state === 'doubt', 'listed');
@@ -378,7 +384,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await p.point(undo(t));
       await until(async () => (await cardState(p, t))?.state === 'doubt', 'Undo puts it back');
       await closeList(p);
-      await pressWriting(p);
+      await focusWriting(p);
       await p.evaluate(`document.querySelector('#inline-writing-body').select()`);
       await p.key('Backspace');
       await until(async () => (await draft(s))?.body === '', 'the composer is empty and saved so');
