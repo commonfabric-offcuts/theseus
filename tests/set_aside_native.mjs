@@ -28,21 +28,27 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   } });
   let serial = 0;
   // A topic with the shape's reply in doubt, and another topic to leave for.
-  const seed = async shape => {
+  // composer-image is an image-only reply from the topic's composer; extra adds to the reply (who it goes to, how).
+  const seed = async (shape, extra = {}) => {
     const n = ++serial, here = `aside-${shape}-${n}`, away = `aside-away-${shape}-${n}`;
     await control({ method: 'navigation_topics', topics: [{ id: here, title: `Set aside ${shape} ${n}` }, { id: away, title: `Away ${shape} ${n}` }] });
     let replyTo = null, source = { kind: 'topic', id: here };
-    if (shape !== 'composer') {
+    if (extra.addressees) {
+      // The agent the reply names writes in the topic first, as one of it.
+      await control({ method: 'agent_message', operation_id: `${here}-agent`, topic_id: here, join: true, whole_topic: true, body: `The agent in ${shape} ${n}` });
+    }
+    if (!shape.startsWith('composer')) {
       const incoming = await control({ method: 'agent_message', operation_id: `${here}-incoming`, topic_id: here, member: true, body: `Incoming for ${shape} ${n}` });
       replyTo = incoming.result.message_id; source = { kind: 'message', id: replyTo };
     }
-    const body = shape === 'attachment' ? '' : `Words kept for ${shape} ${n}`;
+    const image = shape === 'attachment' || shape === 'composer-image';
+    const body = image ? '' : `Words kept for ${shape} ${n}`;
     const prepared = await control({ method: 'agent_message', operation_id: `${here}-reply`, topic_id: here, sender: 'person', unsent: true, body,
       ...(replyTo ? { reply_to: replyTo } : { source: 'topic' }),
-      ...(shape === 'attachment' ? { attachments: [{ name: 'kept.png', image: 'one.png' }] } : {}) });
+      ...(image ? { attachments: [{ name: 'kept.png', image: 'one.png' }] } : {}), ...extra });
     const words = await view('submission', { submission_id: prepared.submission_id });
     assert.equal(words.send_receipt, null, 'the send was never made');
-    return { here, away, replyTo, source, body, submission: prepared.submission_id, attachments: words.attachments };
+    return { here, away, replyTo, source, body, submission: prepared.submission_id, attachments: words.attachments, words };
   };
   const unsent = async s => (await view('submissions', { source_ref: s.source, topic_id: s.here, limit: 20, unsent: true })).items.map(item => item.id);
   const draft = async s => (await view('editor_state', { source_ref: s.source, topic_id: s.here })).draft;
@@ -189,4 +195,122 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       assert.doesNotMatch(await notice(again), /Review|confirmed sent/, 'the guard names no reply in doubt');
     });
   }
+
+  // A reply set aside while its writing holds words keeps them on its line in the Review list (docs/replies-in-doubt.md),
+  // and the line stays in reach once the list closes, after a reload too: a light Set aside chip opens it.
+  // The page's own clipboard: what Copy hands it is kept on the page, and the Mac's pasteboard is never touched.
+  const clipboard = p => p.evaluate(`(()=>{window.copied=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,
+    value:async text=>{window.copied.push(text)}});return true})()`);
+  const copied = p => p.evaluate('window.copied');
+  const chip = p => p.evaluate(`(b=>b&&{text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title})(document.querySelector('#inline-pending button'))`);
+  const keptLine = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,words:c.querySelector('pre')?.textContent??null,acts:[...c.querySelectorAll('.aside-act')].map(b=>b.textContent)})(document.querySelector(${q(card(s))}))`);
+  const undo = s => `${card(s)} .aside-act[aria-label^="Undo"]`;
+  const typeInComposer = async (p, s, text) => {
+    await p.point('#inline-writing-body'); await p.send('Input.insertText', { text });
+    await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value===${q(text)}`), 'typed');
+    await until(async () => (await draft(s))?.body === text, 'the typed words are saved as the draft');
+  };
+  const closeList = async p => { await p.point('#review-close'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'the Review list closes'); };
+  // Waits for what read() answers to be expected, and fails showing what it was instead.
+  const settles = async (read, expected, label) => {
+    try { await until(async () => JSON.stringify(await read()) === JSON.stringify(expected), label); }
+    catch (error) { assert.deepEqual(await read(), expected, label); throw error; }
+  };
+
+  await check('rail set aside kept words: set aside while the composer holds writing, its words stay readable with Copy after the Review list closes and after a reload, Copy hands over exactly them, and Undo from there puts it back in doubt with the writing as typed', async () => {
+    const s = await seed('composer');
+    const p = await open('aside-kept', `/?topic=${s.here}`);
+    await ready(p, s.here);
+    await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
+    await typeInComposer(p, s, 'Mine, typed here');
+    await clipboard(p);
+    await p.point('#inline-pending button');
+    await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
+    await p.point(`${card(s)} .aside-act`);
+    await until(async () => (await keptLine(p, s))?.state === 'aside', 'set aside');
+    assert.deepEqual(await keptLine(p, s), { state: 'aside', words: s.body, acts: ['Copy', 'Undo'] }, 'its words on its line, with Copy and Undo');
+    await p.point(`${card(s)} .aside-act`);
+    await until(async () => (await copied(p)).length === 1, 'Copy hands the words over');
+    assert.deepEqual(await copied(p), [s.body], 'Copy hands over exactly the reply\'s words');
+    await closeList(p);
+    assert.equal(await p.evaluate(`document.querySelector('#inline-writing-body').value`), 'Mine, typed here', 'the composer is as typed');
+    await settles(() => reviews(p), ['Set aside 1'], 'with the list closed, the reply set aside has a Set aside chip, and nothing is in doubt');
+    const named = await chip(p);
+    assert.ok(named.name && named.tip, `the chip has its name and a tooltip: ${JSON.stringify(named)}`);
+    await p.point('#inline-pending button');
+    await until(async () => (await keptLine(p, s))?.words === s.body, 'the chip opens the list on its words');
+    assert.deepEqual((await keptLine(p, s)).acts, ['Copy', 'Undo']);
+    await closeList(p);
+    // Nothing is in doubt, so the press on another topic goes on the first try.
+    await pressRow(p, s.away);
+    await arrive(p, s.away);
+    // After a reload the words are still readable there, with Copy.
+    const again = await open('aside-kept-again', `/?topic=${s.here}`);
+    await ready(again, s.here);
+    await settles(() => reviews(again), ['Set aside 1'], 'after a reload the chip is there');
+    await clipboard(again);
+    await again.point('#inline-pending button');
+    await until(async () => (await keptLine(again, s))?.words === s.body, 'after a reload its words are readable on its line');
+    await again.point(`${card(s)} .aside-act`);
+    await until(async () => (await copied(again)).length === 1, 'Copy after a reload');
+    assert.deepEqual(await copied(again), [s.body]);
+    // Undo from there: in doubt again, and the writing stays as typed.
+    await again.point(undo(s));
+    await until(async () => (await keptLine(again, s))?.state === 'doubt', 'Undo puts the reply back in doubt');
+    await settles(() => reviews(again), ['Review 1 reply'], 'in doubt again, its Review button is back');
+    assert.deepEqual(await unsent(s), [s.submission], 'Core lists it again');
+    assert.equal(await again.evaluate(`document.querySelector('#inline-writing-body').value`), 'Mine, typed here', 'Undo leaves the writing as typed');
+    assert.equal((await draft(s)).body, 'Mine, typed here');
+  });
+
+  await check('rail set aside kept image: an image-only reply set aside while the composer holds writing keeps its image on its line, opened there, after a reload too, and the writing gains no image', async () => {
+    const s = await seed('composer-image');
+    assert.equal(s.attachments.length, 1);
+    const p = await open('aside-kept-image', `/?topic=${s.here}`);
+    await ready(p, s.here);
+    await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
+    await typeInComposer(p, s, 'Mine, with no image');
+    await p.point('#inline-pending button');
+    await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
+    await p.point(`${card(s)} .aside-act`);
+    await until(async () => (await keptLine(p, s))?.state === 'aside', 'set aside');
+    assert.deepEqual((await keptLine(p, s)).acts, ['Undo'], 'no words to copy, so only Undo');
+    const opened = async page => {
+      await until(() => page.evaluate(`Boolean(document.querySelector(${q(card(s) + ' .attachment-label button')}))`), 'its image is offered on its line');
+      await page.point(`${card(s)} .attachment-label button`);
+      await until(() => page.evaluate(`(i=>Boolean(i&&i.complete&&i.naturalWidth>0))(document.querySelector(${q(card(s) + ' img')}))`), 'its image shows on its line');
+    };
+    await opened(p);
+    await closeList(p);
+    await settles(() => reviews(p), ['Set aside 1'], 'with the list closed, the reply set aside has a Set aside chip');
+    assert.deepEqual(wordsOf(await draft(s)), { body: 'Mine, with no image', attachments: [] }, 'the writing gains no image');
+    const again = await open('aside-kept-image-again', `/?topic=${s.here}`);
+    await ready(again, s.here);
+    await settles(() => reviews(again), ['Set aside 1'], 'after a reload the chip is there');
+    await again.point('#inline-pending button');
+    await opened(again);
+  });
+
+  await check('rail set aside whisper: a whisper set aside into the empty composer comes back as the same whisper to the same agent, an ask as the same ask, and Undo empties every field it filled', async () => {
+    const agent = 'fixture-notebook-agent';
+    const fields = d => ({ body: d?.body ?? '', addressees: d?.addressees ?? [], whisper: d?.whisper === true, intent: d?.intent ?? null });
+    for (const [kind, extra] of [['whisper', { addressees: [agent], whisper: true }], ['ask', { addressees: [agent], intent: 'ask' }]]) {
+      const s = await seed('composer', extra);
+      const expected = fields(s.words);
+      assert.deepEqual(expected, { body: s.body, addressees: [agent], whisper: kind === 'whisper', intent: kind === 'ask' ? 'ask' : null }, `the ${kind} as prepared`);
+      const p = await open(`aside-${kind}`, `/?topic=${s.here}`);
+      await ready(p, s.here);
+      await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply is in doubt');
+      await p.point('#inline-pending button');
+      await until(async () => (await cardState(p, s))?.state === 'doubt', 'the Review list shows the reply');
+      await p.point(`${card(s)} .aside-act`);
+      await until(async () => (await cardState(p, s))?.state === 'aside', 'set aside');
+      await settles(async () => fields(await draft(s)), expected, `the draft is the same ${kind}, to the same agent`);
+      const pressed = await p.evaluate(`Object.fromEntries([...document.querySelectorAll('#inline-intent-row button[data-intent]')].map(c=>[c.dataset.intent,c.getAttribute('aria-pressed')==='true']))`);
+      assert.equal(pressed[kind], true, `the composer shows it as a ${kind}: ${JSON.stringify(pressed)}`);
+      await p.point(undo(s));
+      await until(async () => (await cardState(p, s))?.state === 'doubt', 'Undo puts the reply back in doubt');
+      await settles(async () => fields(await draft(s)), { body: '', addressees: [], whisper: false, intent: null }, 'Undo empties every field it filled');
+    }
+  });
 }
