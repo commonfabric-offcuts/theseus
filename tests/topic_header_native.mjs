@@ -1163,6 +1163,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     const waiters = ['fixture-planning-agent', 'fixture-reviewing-agent', 'fixture-writing-agent'];
     await control({ method: 'navigation_topics', topics: [{ id: 'header-short-team', title: 'A short Team' }, { id: 'header-long-team', title: 'A long Team' }] });
     for (const id of ['header-short-team', 'header-long-team']) await control({ method: 'agent_message', operation_id: `${id}-join`, topic_id: id, source: 'topic', join: true, body: 'The first message here.' });
+    await setState('header-short-team-state', { state: 'active', note: NOTE }, 'header-short-team');
     await control({ method: 'topic_state', operation_id: 'header-long-team-state', topic_id: 'header-long-team', participants: waiters,
       args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
     // The title row's grid and its gap, the Team's and the subtitle's boxes, the state's, and the pills' tops.
