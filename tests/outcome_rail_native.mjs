@@ -2532,6 +2532,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // Item 547: requests the check picks, held at the network to drop, let through or answer: in Chrome with the
   // harness's interception, in Safari's engine with Playwright's routing. before: held before Core sees them.
   // always(test, status, body): each request test picks is answered so at once, until always(null).
+  // after(): from now on what is held is held once Core has answered it.
   const network547 = async (p, before = false) => {
     const take = (list, entry) => list.splice(list.indexOf(entry), 1);
     let test = null, auto = null;
@@ -2545,6 +2546,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       });
       for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry);
       return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; },
+        after: () => p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] }),
         held: () => { for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry); return p.held; },
         drop: entry => { take(p.held, entry); return p.fail(entry); },
         pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
@@ -2558,6 +2560,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       held.push({ payload, route, response: before ? null : await route.fetch() });
     });
     return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; }, held: () => held,
+      after: () => { before = false; },
       drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
       pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
       answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
@@ -2665,7 +2668,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(faults, [], 'every size and theme');
   });
 
-  await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back', async () => {
+  await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back; one Core took, its answer lost, is settled on coming back by its own send, never by its words', async () => {
     const [topic, other] = ['rail-doubt-t', 'rail-doubt-u'];
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Doubt topic' }, { id: other, title: 'Elsewhere topic' }] });
     const p = await open('rail-doubt', '/?topic=' + topic);
@@ -2691,8 +2694,27 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.evaluate('history.back()');
     await arrived(p, '?topic=' + topic, 'Doubt topic', 'back');
     await until(async () => (await review()).includes('Review 1 reply'), 'the reply is kept: its Review button is there on coming back');
-    const posted = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.some(item => item.body === 'A reply whose send is lost');
-    assert.equal(posted, false, 'and it was not sent');
+    const said = async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.filter(item => item.body === 'A reply whose send is lost').length;
+    assert.equal(await said(), 0, 'and it was not sent');
+    // The same words again, sent: Core takes this one, and its answer is lost.
+    await net.after(); net.hold(sends);
+    await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})"); await p.point('#inline-writing-body');
+    await p.send('Input.insertText', { text: 'A reply whose send is lost' });
+    await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
+    const lost = await until(() => net.held().find(entry => sends(entry.payload)), 'Core took the second send; its answer is held');
+    assert.equal(await said(), 1, 'Core holds it');
+    await net.drop(lost); net.hold(null);
+    await until(async () => (await review()).includes('Review 2 replies'), 'both are in doubt now');
+    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+    await p.point(row);
+    await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page again');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=' + topic, 'Doubt topic', 'back again');
+    // Read again, the one Core took is settled by its own send; the one with the same words that never went is not.
+    await until(async () => { const now = await review(); return now.includes('Review 1 reply') && !now.includes('Review 2 replies'); }, 'the one Core took is settled; the other, word for word the same, stays in doubt')
+      .catch(async error => { throw Error(`${error.message}: ${JSON.stringify(await review())}`); });
+    assert.equal(await said(), 1, 'sent once, never again');
+    assert.equal(p.calls.filter(call => sends(call.payload) && call.payload.operation_id === lost.payload.operation_id).length, 1, 'its send went once');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

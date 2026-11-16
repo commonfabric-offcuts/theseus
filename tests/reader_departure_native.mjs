@@ -208,10 +208,6 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.fail(held);
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
     await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has a Review button');
-    // A reply in doubt holds no move (item 547): the first choice leaves, with nothing said, and the button is there on coming back.
-    await choose(p);await ready(p,'t2');assert.equal(await notice(p),'','the first choice leaves, and says nothing');
-    await choose(p,'t1');await ready(p,'t1');await reveal(p,'t2');
-    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'on coming back the reply is still in doubt, with its Review button');
     await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
