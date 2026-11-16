@@ -1341,6 +1341,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await earlierPage(p, device);
       await becomes(() => shipyardLook(p, ids), { head: 'old', fold: 'open', button: '3 earlier messages', messages: ['old:tab', ...SEVEN, 'n1:card'], placed: null, loaded: ['old'], sideways: false },
         `${at}: the older reply loaded heads the dossier, which stays open with the same seven shown`);
+      await centre(p, card(ids.a2));
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-earlier-${device}-${width}-older-${theme}`); }
       await dossierTheme(p, 'light');
       // The row opened shows the earlier ones as rows; Earlier messages again loads the first message, which heads the
@@ -1351,6 +1352,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await earlierPage(p, device);
       await becomes(() => shipyardLook(p, ids), { head: 'root', fold: 'open', button: null, messages: ['root:row', 'old:row', 'a1:row', 'b1:row', ...SEVEN, 'n1:card'], placed: null, loaded: ['old', 'root'], sideways: false },
         `${at}: the first message loaded heads the dossier, open, its earlier ones still rows and the seven whole`);
+      await centre(p, card(ids.a2));
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-earlier-${device}-${width}-first-${theme}`); }
       await dossierTheme(p, 'light');
       // The negative: the chevron still folds it, and it shows latest and unread, its own state for this visit.
@@ -1417,6 +1419,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           `phone ${width}px, ${step}: the placed dossier is on top under ${head}, with its place line`);
         const line = await q.evaluate(`(r=>({left:r.left,right:r.right}))(document.querySelector(${JSON.stringify(card(more.a2))}).closest('.reply-stack').querySelector(':scope > .stack-placed-line').getBoundingClientRect())`);
         assert.ok(line.left >= 0 && line.right <= width, `phone ${width}px: the place line fits the screen: ${JSON.stringify(line)}`);
+        await q.evaluate('scrollTo(0, 0)');
         for (const theme of ['light', 'dark']) { await dossierTheme(q, theme); await shot(q, `stack-dossier-place-phone-${width}-${head}-${theme}`); }
         await dossierTheme(q, 'light');
       }
