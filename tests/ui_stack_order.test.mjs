@@ -402,6 +402,11 @@ test('the branches of one dossier whose fork sits above the loaded page are one 
   // The first message loaded and the fork not (two runs of the page with a gap between): m15 goes into m1's stack.
   const gap = stacksOf([root, ...branches]);
   assert.deepEqual(gap.map(stack => [stack.head.id, ids(stack.replies)]), [['m1', ['m10', 'm11', 'm12', 'm13', 'm14', 'm15']]], 'the root loaded, the fork not: one stack');
+  // A branch older than the loaded first message (a stack joined into a message of the dossier above the page) goes
+  // under that first message, which heads the dossier and names it.
+  const older = stacksOf([message(3, { acts: { joined: { into: 'm4', by: 'owner' } }, stack_position: at('m5', null) }),
+    message(5, { acts: { name: { text: 'Oar racks', by: 'owner', at_ms: 1 } }, stack_position: at('m5', null) }), message(6, { reply_to: 'm5', stack_position: at('m5', null) })]);
+  assert.deepEqual(older.map(stack => [stack.head.id, ids(stack.replies), headOf(stack).name]), [['m5', ['m3', 'm6'], 'Oar racks']], 'the first message heads it, though a branch is older');
   // The reader's own reply under the dossier's first message does not lift it, as in any stack.
   const mine = ordered(gather([...branches, message(25), message(30, lantern({ reply_to: 'm1', author_id: 'owner' }))], { viewer: 'owner' }));
   assert.deepEqual(mine.map(stack => [stack.head.id, stack.replies.length]), [['m25', 0], ['m10', 6]], 'the reader\'s own reply joins the dossier and leaves it where it was');

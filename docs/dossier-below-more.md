@@ -5,8 +5,8 @@ puts the whole dossier below More messages for this reader. Swiping another
 message uses the existing personal fold. The menu offers Move below More and
 Bring back; Command-Z reverses the act. More works even with no older page.
 The Reader offers the same act as an archive button beside the message's star,
-labelled with the count of the messages that move with it, every stack the page
-draws of the dossier counted (item 378,
+labelled with the count of the messages that move with it, the page's one stack
+of the dossier, its first message loaded or not (items 378 and 550,
 docs/reader.md). The page's New message composer at rest sits between the last
 dossier above More and the More line (item 465).
 
@@ -29,9 +29,11 @@ fencing prevents a late Undo from reversing another device's change.
 
 `stack_positions`, args `{topic_id, message_ids:[up to 100 ids]}`, returns
 `items:[{message_id, stack_position}]`. Topic-message pages also carry
-`stack_position: {root_id, through, aside_revision, below, name, name_revision, at:{messages,acts}}`,
+`stack_position: {root_id, through, aside_revision, below, name, name_revision, join_revision, at:{messages,acts}}`,
 where `name` and `name_revision` are the dossier's short name as its first
-message holds it (docs/reply-stacks.md), so a page holding only replies shows it.
+message holds it (docs/reply-stacks.md), so a page holding only replies shows it,
+and `join_revision` is its first message's join revision, so such a page joins
+the whole dossier fenced as Core holds it (item 550).
 Membership follows the latest shared join, otherwise same-topic reply ancestry,
 including ancestors outside the loaded page; inaccessible ancestors terminate
 it. Joined dossiers use the destination root's choice. Splitting restores the

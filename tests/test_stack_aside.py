@@ -71,6 +71,20 @@ class AsideCase(StackCase):
         self.assertFalse(self.position(new)['below'])
         self.assertTrue(self.position(first)['below'], 'reply left with the split source')
 
+    def test_a_position_carries_its_first_messages_join_revision_so_a_page_of_replies_joins_the_dossier(self):
+        # Item 550: a page holding only a dossier's replies joins the whole dossier by its first message, fenced on
+        # the join revision Core holds for it, which the position carries; a dossier never joined says 0.
+        lantern, ferry = self.post('Lantern dossier'), self.post('Ferry dossier')
+        answer = self.post('An answer under the lantern dossier', reply_to=lantern)
+        self.assertEqual(self.position(answer)['join_revision'], 0)
+        self.committed(self.join(lantern, ferry))
+        self.committed(self.join(lantern, None, revision=1))
+        self.assertEqual((self.position(answer)['root_id'], self.position(answer)['join_revision']), (lantern, 2), 'joined and split back: 2')
+        self.rejected(self.join(lantern, ferry, revision=0), 'REVISION_CONFLICT')
+        self.committed(self.join(lantern, ferry, revision=self.position(answer)['join_revision']))
+        self.assertEqual(self.position(answer)['root_id'], ferry, 'the whole dossier joined')
+        self.assertEqual(self.position(answer)['join_revision'], 0, 'its position is now the ferry dossier\'s')
+
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
         first = self.aside(root, self.latest(), op='put-aside-once')

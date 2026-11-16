@@ -144,8 +144,9 @@ order and folds, and the one file that sets the look. In short:
 - Open, a dossier of more than seven messages shows its newest seven and one
   row for the rest, "8 earlier messages", which shows them all as rows in
   place for this visit, recording nothing (item 476).
-- A message whose parent is not loaded heads its own stack until the parent
-  loads.
+- A message whose parent is not loaded heads a stack until the parent
+  loads, and every such stack of one dossier is one stack (item 550,
+  docs/reply-stacks.md, "Gathering"): its name shows once.
 - The conversation page stacks its replies by the same rule. There a folded
   stack also keeps in view an item nothing has settled and an ask waiting
   on the reader, so a card's New tag and "Asks you" are never folded away

@@ -330,7 +330,8 @@ def stack_positions(db, actor, items):
     """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
-    the dossier, so a page of earlier messages reads the same however the topic grows."""
+    the dossier, so a page of earlier messages reads the same however the topic grows. `name_revision` and
+    `join_revision` are its first message's, the fences a page holding only replies names and joins it on."""
     roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
     for item in items:
         topic = item["topic_id"]
@@ -342,7 +343,7 @@ def stack_positions(db, actor, items):
             through = acts["aside"]
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
-                               "name": acts["name"], "name_revision": acts["name_revision"],
+                               "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]

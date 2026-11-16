@@ -1205,6 +1205,72 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 550: a dossier whose first message is above the page is one stack of its branches, and it joins as a whole,
+  // as it is named and put aside: ⇧⌘↑ sends the join for that first message, every loaded message of it shows in the
+  // stack above at once, while the join waits for its answer, and Core joins the whole dossier; ⌘Z puts it back as it
+  // was. A branch someone joined on its own and splits back out shows apart at once, under its own first line and not
+  // the name of the dossier it left, and once Core answers it is one stack with its dossier's other branch again.
+  await check('reading stacks a dossier whose first message is above the page joins as a whole: ⇧⌘↑ shows every loaded message of it in the stack above at once and Core joins its first message, ⌘Z puts it back; a branch split back out shows apart at once (item 550)', async () => {
+    const HOLD = `(()=>{window.heldActs=[];const f=window.fetch;window.fetch=function(input,init){let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
+      if(b&&b.kind&&(window.holdKinds||[]).includes(b.kind))return new Promise(go=>window.heldActs.push(go)).then(()=>f.call(this,input,init));
+      return f.call(this,input,init)};window.letActs=()=>{window.holdKinds=null;for(const go of window.heldActs.splice(0))go()}})()`;
+    const topic = 'stack-join-dossier';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Where should the rowing club keep its oars?', { join: true })]];
+    for (let n = 0; n < 30; n++) said.push(['f' + n, say(other, `Boathouse note ${n}, a message of its own.`)]);
+    said.push(['a1', say(other, 'The long rack by the slipway has room.', { reply_to: 'root' })],
+      ['b1', say('aim-ux', 'The loft stays dry in winter.', { reply_to: 'root' })],
+      ['a2', say('aim-ux', 'The rack it is, then.', { reply_to: 'a1' })],
+      ['top', say(other, 'Who mends the cox box before Saturday?')],
+      ['top1', say('aim-ux', 'I can mend it on Friday.', { reply_to: 'top' })]);
+    const ids = await seed(topic, said);
+    await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.top, operation_id: `${topic}-top-name`, args: { name: 'Cox box repair' } });
+    const p = await open(topic, 'laptop', topic, ids.top1, HOLD);
+    const shown = async () => (await stacks(p, ids)).slice(0, 2);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the first message is outside the loaded page');
+    await becomes(shown, ['top', 'a1'], 'the cox box stack, then the oars dossier as one stack of its two branches');
+    const joinedInto = async id => (await actsOf(topic, id, other))?.joined?.into ?? null;
+    // ⇧⌘↑ from the oars dossier, its answer held: every loaded message of it shows in the stack above at once.
+    await p.evaluate(`window.holdKinds = ['stack.join']`);
+    await keyTo(p, ids.a2);
+    await p.key('ArrowUp', 12);
+    await becomes(async () => (await look(p, ids, 'top'))?.rows, ['a1', 'b1', 'a2', 'top1'], '⇧⌘↑ shows every loaded message of the dossier in the stack above at once, oldest first');
+    assert.deepEqual(await shown(), ['top', 'f29'], 'and no stack of it is left');
+    assert.equal(await p.evaluate('window.heldActs.length'), 1, 'one join waits for its answer');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.root)) === ids.top, 'Core joins the dossier\'s first message, for everyone');
+    assert.deepEqual([await joinedInto(ids.a1), await joinedInto(ids.b1)], [null, null], 'and no branch on its own');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the join\'s answer and the positions read after it land');
+    assert.deepEqual([await shown(), (await look(p, ids, 'top')).rows], [['top', 'f29'], ['a1', 'b1', 'a2', 'top1']], 'answered, the page reads the same');
+    // ⌘Z puts it back as it was, at once.
+    await p.evaluate(`window.holdKinds = ['stack.join']`);
+    await p.key('z', 4);
+    await becomes(shown, ['top', 'a1'], '⌘Z shows the dossier back as its own stack at once');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.root)) === null, 'and Core splits its first message back out');
+    // A branch someone joined on its own (here a1, into the cox box stack), then split back out, its answer held: the
+    // positions it carries name the cox box dossier until Core answers, so it shows apart under its own first line.
+    await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.a1, operation_id: `${topic}-a1-join`, args: { into: ids.top } });
+    const q = await open(`${topic}-branch`, 'laptop', topic, ids.top1, HOLD);
+    await becomes(async () => (await stacks(q, ids)).slice(0, 2), ['top', 'b1'], 'the branch joined on its own is in the cox box stack');
+    await dossierOpen(q, 'laptop', ids.top);
+    await becomes(async () => (await look(q, ids, 'top'))?.rows.filter(row => !row.startsWith('join')), ['a1', 'a2', 'top1'], 'under its join line, with its reply');
+    await q.evaluate(`window.holdKinds = ['stack.join']`);
+    const split = '#messages .stack-join-line .stack-split';
+    await centre(q, split); await q.point(split);
+    const apart = () => q.evaluate(`(()=>{const ids=${JSON.stringify(ids)},stackOf=k=>{const e=document.querySelector('#messages [data-id="'+ids[k]+'"]');return e?.closest('.reply-stack')?.dataset.stack??ids[k]};
+      const name=k=>document.querySelector('#messages .reply-stack[data-stack="'+stackOf(k)+'"] .stack-name')?.textContent??null;
+      return {a1:stackOf('a1')===ids.a1,a2:stackOf('a2')===ids.a1,top:stackOf('top1')===ids.top,name:name('a1'),b1:stackOf('b1')===ids.b1}})()`);
+    await becomes(apart, { a1: true, a2: true, top: true, name: 'The long rack by the slipway has room.', b1: true },
+      'Split back out shows the branch apart at once, under its own first line and not the cox box dossier\'s name, the cox box stack without it');
+    await q.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.a1)) === null, 'Core splits it');
+    await becomes(async () => (await stacks(q, ids)).slice(0, 2), ['top', 'a1'], 'answered, the branch is one stack with its dossier\'s other branch again');
+    await shot(q, 'stack-join-dossier');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await q.close(); await p.close();
+  });
+
   // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
   // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
   // With the button hidden, a phone's header keeps one row: the title row beside ✕, not on a row of its own under it.

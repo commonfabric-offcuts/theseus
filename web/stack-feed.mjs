@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
+import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
@@ -191,7 +191,7 @@ export class StackFeed {
   // not yet answered over it. known: the message when the page has not loaded it.
   actsOf(id, known = null) {
     let acts = (this.messages().get(id) ?? known)?.acts ?? {};
-    for (const shown of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
+    for (const { stack_position, ...shown } of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
     return acts;
   }
   // The loaded messages as the stacks draw them, each with its acts as shown.
@@ -202,12 +202,16 @@ export class StackFeed {
       if (!item) return item;
       const acts = this.actsOf(id);
       this.drawn.set(id, JSON.stringify(acts));
+      // Where a join of its dossier is not yet answered, the message shows where that act puts it (join).
       let stack_position = item.stack_position;
+      for (const mark of this.pending.get(id) ?? []) if ('stack_position' in mark) stack_position = mark.stack_position;
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
       }
-      return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position } : item;
+      // A join or split not yet answered: the positions Core sent name the dossier it left (stack-order.mjs, positionOf).
+      const moving = (this.pending.get(id) ?? []).some(mark => 'joined' in mark);
+      return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position, ...(moving ? { moving } : {}) } : item;
     } };
   }
   arrange() {
@@ -545,10 +549,16 @@ export class StackFeed {
     const side = this.sideOf(found), shows = joinShown(side.stacks, side.index, way, entry.dataset.id);
     if (!shows) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
     const state = this.state, was = state.levels.get(shows.open);
-    const item = this.messages().get(shows.act.id), before = this.actsOf(item.id).joined?.into ?? null;
-    this.act('stack.join', item, { into: shows.act.into });
+    // A dossier joins as a whole, as it is named and put aside (item 550): one whose first message the page has
+    // not loaded is one stack of its branches here, and the join is sent for that first message, its loaded
+    // messages shown at once where the stack it joins is, and back where they were at ⌘Z.
+    const from = side.stacks[side.index], position = positionOf(from), root = position && position.root_id !== from.id ? this.rootOf(from) : null;
+    const item = root?.item ?? this.messages().get(shows.act.id), before = this.actsOf(item.id, item).joined?.into ?? null;
+    const members = root ? [from.head, ...from.replies].map(each => [each.id, this.messages().get(each.id)?.stack_position ?? null]) : [];
+    const into = root && positionOf(joinOf(side.stacks, side.index, way));
+    this.act('stack.join', item, { into: shows.act.into }, into ? members.map(([id]) => [id, { stack_position: into }]) : []);
     this.remember(() => {
-      this.act('stack.join', item, { into: before });
+      this.act('stack.join', item, { into: before }, members.map(([id, was]) => [id, { stack_position: was }]));
       if (was === undefined) state.levels.delete(shows.open); else state.levels.set(shows.open, was);
       this.arrange(); this.focusOn(item.id);
     });
@@ -643,24 +653,24 @@ export class StackFeed {
     if (!position) return null;
     if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
     const item = this.messages().get(root) ?? this.standIns.get(root);
+    // A stand-in also holds the revision its join is fenced on (item 550): a dossier's first message is joined by it.
     item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
-      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
+      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}),
+      ...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {}) });
     return { item, position };
   }
   // What the Reader's archive button offers for the dossier a message is in
   // (item 378): Move below More, or Bring back once it is there, the same act
   // as ⋯'s (setAside), with how many of the page's messages go with it. The
-  // act moves Core's whole dossier, which the page draws as more than one
-  // stack where its first message is not loaded (two replies to it are two
-  // stacks), so the count is of every stack drawn from that dossier. Null
-  // where ⋯ offers neither: no stack drawn holds the message, or Core sent no
-  // position for it.
+  // act moves Core's whole dossier, which the page draws as one stack, its
+  // first message loaded or not (item 550), so the count is that stack's
+  // messages. Null where ⋯ offers neither: no stack drawn holds the message,
+  // or Core sent no position for it.
   asideOffer(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     const position = stack && positionOf(stack);
     if (!position) return null;
-    const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
-    return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
+    return { stack, below: position.below, count: 1 + stack.replies.length };
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.
