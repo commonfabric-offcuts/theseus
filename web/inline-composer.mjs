@@ -30,7 +30,11 @@ export class InlineComposer {
     // (aim.css), so it is never one more row of buttons.
     this.sheet = document.querySelector('#new-message-sheet');
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
-    document.querySelector('#new-message-close')?.addEventListener('click', () => this.sheet?.close());
+    // Put back by the person (✕, Escape, a press outside), the composer folds to its line while still up, so it
+    // comes back into its place at the height its holder kept there, and no card behind it moves (item 589).
+    const putBack = () => { this.bar.fold(); this.sheet?.close(); };
+    document.querySelector('#new-message-close')?.addEventListener('click', putBack);
+    this.sheet?.addEventListener('cancel', event => { if (!event.defaultPrevented) this.bar.fold(); });
     // Every close of the sheet folds the composer back to its line. The focus
     // goes to New message only when the sheet closing is the one New message
     // popped up: a Notebook page in the sheet (notebook-sheet.mjs) gave the
@@ -44,7 +48,7 @@ export class InlineComposer {
     // Only a press that starts and ends on the sheet's backdrop puts it back.
     let outside = false;
     this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
-    this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) this.sheet.close(); outside = false; });
+    this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) putBack(); outside = false; });
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();this.images?.update();}});
     // #img lists the topic's recent images under the writing (image-pick.mjs).

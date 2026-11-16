@@ -23682,6 +23682,21 @@
    }
   },
   {
+   "item": 589,
+   "act": "Escape puts the popped New message composer back folded to its line, so it returns at the height its holder kept and no card behind it moves, in Safari's engine too",
+   "break": [
+    [
+     "web/inline-composer.mjs",
+     "    this.sheet?.addEventListener('cancel', event => { if (!event.defaultPrevented) this.bar.fold(); });\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the New message composer popped up"
+   }
+  },
+  {
    "item": 363,
    "act": "With the To line under the who chip and a long reply, a phone with the keyboard up still shows 7 lines of the message",
    "break": [
