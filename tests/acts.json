@@ -22283,6 +22283,21 @@
    }
   },
   {
+   "item": 547,
+   "act": "On a phone with the rail folded, the page's notices show where the person reads: why a move stayed, with Reload, and a page that could not open",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail:not(.open)>:not(.notice,.page-notices){display:none!important}",
+     ".rail:not(.open)>:not(.notice){display:none!important}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "edit build a move that finds another build"
+   }
+  },
+  {
    "item": 418,
    "act": "In the WebKit harness, a read out when its page navigates is \"not yet\": until() waits for the page it went to and reads it, instead of throwing \"Execution context was destroyed\"",
    "break": [
