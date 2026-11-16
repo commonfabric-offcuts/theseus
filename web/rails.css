@@ -116,6 +116,11 @@ a.things-name[href]{color:var(--accent)}
 .things-list li{margin:.1rem 0}
 .things-list a.row,.things-list span.row{display:block;padding:.4rem .5rem;border-radius:.45rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.88rem}
 .things-list a.row:hover{background:var(--soft)}
+/* A Build topic's row (item 297) carries what the outline's row would, and marks the topic being read as the outline does. */
+.things-list a.row[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650}
+.pipe-builds a.row .sub{font-weight:400}
+.things-list a.row:is(:hover,[aria-current=page]) .topic-state:not(.mine):not([data-state=review]){border-color:var(--muted);color:var(--ink)}
+@media(max-width:760px),(pointer:coarse){.pipe-builds .things-list a.row{min-height:2.75rem;padding-block:.6rem}}
 .things-list .sub,.things-list .wait-state{display:block;font-size:.76rem;color:var(--muted);margin-top:.1rem}
 .things-list .sub b{color:var(--ink);font-weight:650}
 .pipe-label{margin:.5rem 0 .1rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
@@ -136,7 +141,8 @@ a.things-name[href]{color:var(--accent)}
 /* Middle widths and phones: the things open from the header's "Pipeline & pages". */
 @media(max-width:1180px){
   /* The outcome's name takes what room is left, down to none; where even then "☰ Outcomes", one gap and "Pipeline &
-     pages" are wider than the row (320, with the light and a count), "Pipeline & pages" goes under, inside the screen. */
+     pages" are wider than the row (320, with the light and a count, or "Pipeline & pages" counting new Build topics),
+     "Pipeline & pages" goes under, inside the screen. */
   [data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;min-width:0}
   [data-rails] #main .eyebrow-row .eyebrow{flex:1 1 0;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   [data-rails] #things-open{display:inline-flex;align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;border-radius:1.4rem;font-size:.85rem;color:var(--accent);-webkit-tap-highlight-color:transparent}
@@ -155,7 +161,7 @@ a.things-name[href]{color:var(--accent)}
   [data-rails] .things{inset:auto 0 0 0;max-height:82dvh;border-top:1px solid var(--line);border-radius:1rem 1rem 0 0;padding-bottom:max(1rem,env(safe-area-inset-bottom));transform:translateY(100%)}
   [data-rails][data-things-open] .things{transform:none;transition:transform .16s ease-out}
   /* "☰ Outcomes" carries the total and the light; the line under the header says what is new elsewhere. */
-  [data-rails] #rail-open .unread-count[hidden],[data-rails] #rail-open .outcome-light[hidden]{display:none}
+  [data-rails] #rail-open .unread-count[hidden],[data-rails] #rail-open .outcome-light[hidden],[data-rails] #things-open .unread-count[hidden]{display:none}
   [data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}
   /* After "☰ Outcomes" the name's place costs nothing beyond the one gap between the pills: it reaches back over the gap
      before it and starts its words that far in, so at no width it adds no second gap, and "Pipeline & pages" stays on

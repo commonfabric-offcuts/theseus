@@ -116,7 +116,7 @@ VIEWS = {
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit", "reached"},
     "outcome_light": {"workspace_id"},
-    "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
+    "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids"}, "source": {"source_ref", "kind", "id", "revision"},
     "topic_images": {"topic_id", "limit"},
     "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"},
