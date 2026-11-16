@@ -57,6 +57,13 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   // The Review buttons the page shows, wherever they are.
   const reviews = p => p.evaluate(`[...document.querySelectorAll('#inline-pending button,#topic-pending button,#pending-submissions button')].filter(b=>b.getClientRects().length).map(b=>b.textContent)`);
   const topicRow = id => `#outline a[data-topic-id="${id}"]`;
+  // A press on another topic's row in the outline, scrolled into view as a person scrolls to it: earlier
+  // cases add topics, so the row can sit below the window.
+  const pressRow = async (p, id) => {
+    await until(() => p.evaluate(`Boolean(document.querySelector(${q(topicRow(id))}))`), 'the other topic is in the outline');
+    await p.evaluate(`document.querySelector(${q(topicRow(id))}).scrollIntoView({block:'center',inline:'nearest'})`);
+    await p.point(topicRow(id));
+  };
   const card = s => `#review-content [data-id="${s.submission}"]`;
   const cardState = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,title:c.querySelector('h3').textContent,acts:[...c.querySelectorAll('.aside-act')].map(b=>({text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title}))})(document.querySelector(${q(card(s))}))`);
   const openReader = async (p, s) => {
@@ -131,8 +138,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       const button = s.replyTo ? '#topic-pending button' : '#inline-pending button';
       await until(async () => (await reviews(p)).join() === 'Review 1 reply', 'the reply in doubt has its one Review button');
       // The guard holds a press on another topic and names the button.
-      await until(() => p.evaluate(`Boolean(document.querySelector(${q(topicRow(s.away))}))`), 'the other topic is in the outline');
-      await p.point(topicRow(s.away));
+      await pressRow(p, s.away);
       await until(async () => /Review 1 reply/.test(await notice(p)), 'the guard holds the press and names the Review button');
       assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'), s.here, 'the press was held');
       // Set aside, from the Review list.
@@ -165,7 +171,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'the Review list closes');
       assert.equal(await shownWriting(p, s), s.body, 'the writing shows its words');
       await until(async () => JSON.stringify(wordsOf(await draft(s))) === JSON.stringify({ body: s.body, attachments: s.attachments.map(ref => ref.id) }), 'saved as the draft');
-      await p.point(topicRow(s.away));
+      await pressRow(p, s.away);
       await arrive(p, s.away);
       // After a reload nothing is in doubt and the words are still the draft.
       const again = await open(`aside-${shape}-again`, `/?topic=${s.here}`);
@@ -173,8 +179,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       if (s.replyTo) { await openReader(again, s); await closeReader(again); }
       assert.deepEqual(await reviews(again), [], 'after a reload no Review button');
       assert.equal(await shownWriting(again, s), s.body, 'after a reload the words are the writing');
-      await until(() => again.evaluate(`Boolean(document.querySelector(${q(topicRow(s.away))}))`), 'the other topic is in the outline');
-      await again.point(topicRow(s.away));
+      await pressRow(again, s.away);
       if (shape !== 'attachment') { await arrive(again, s.away); return; }
       // An image a page kept on this device asks to be checked after a reload
       // (the image-copy rule, docs/images.md), whatever reply it belongs to;

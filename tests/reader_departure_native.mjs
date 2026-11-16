@@ -209,7 +209,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
     await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'unconfirmed choice notice names the Review button');
     await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has the Review button the notice names');
-    await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
+    await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button:not(.aside-act)`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
     await point(p,'#review-close');await choose(p);await ready(p,'t2');await exact(p,held,unknown);
