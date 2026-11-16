@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks a sent reply is held alone"
+ ],
+ "label": "x8-base-native-reading-8e352290-5",
+ "snapshot": "8dd6a40f5767f76a8992917db0643440c0169f3b"
+}
