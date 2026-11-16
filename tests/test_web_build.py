@@ -22,6 +22,8 @@ from aim_next.server import create_server  # noqa: E402
 REPO_WEB = Path(__file__).resolve().parents[1] / "web"
 INDEX = ('<meta name="aim-next-session" content="__AIM_SESSION_TOKEN__">\n'
          '<script type="module" src="/app.mjs"></script>\n')
+BOOT = "addEventListener('error', () => {}, true);\n"
+hash_of = lambda text: "sha256-" + base64.b64encode(hashlib.sha256(text.encode()).digest()).decode()
 
 
 class WebBuildTests(unittest.TestCase):
@@ -34,6 +36,7 @@ class WebBuildTests(unittest.TestCase):
         (self.web / "app.mjs").write_text("import { ready } from './lines.mjs';\n")
         (self.web / "lines.mjs").write_text("export const ready = true;\n")
         (self.web / "aim.css").write_text("body{}\n")
+        (self.web / "boot.js").write_text(BOOT)
         (self.web / "notes.txt").write_text("not the page's\n")
 
     def test_the_stamp_names_exactly_the_bytes_served(self):
@@ -67,7 +70,7 @@ class WebBuildTests(unittest.TestCase):
         self.assertEqual(build.asset("/"), build.index)
         self.assertEqual(build.asset("/index.html"), build.index)
 
-    def test_the_page_names_its_entry_under_its_build_with_an_import_map_whose_hash_the_policy_allows(self):
+    def test_the_page_names_its_entry_under_its_build_after_its_boot_and_an_import_map_whose_hashes_the_policy_allows(self):
         build = web_build.load(self.web)
         index = build.index.decode()
         self.assertNotIn('src="/app.mjs"', index, "the entry is no longer outside a build")
@@ -76,14 +79,24 @@ class WebBuildTests(unittest.TestCase):
         self.assertIsNotNone(found)
         self.assertLess(index.index("importmap"), index.index('type="module"'), "the import map comes before any module")
         self.assertEqual(json.loads(found.group(1)), {"imports": {"/": "/b/%s/" % build.stamp, "/b/": "/b/"}})
-        digest = "sha256-" + base64.b64encode(hashlib.sha256(found.group(1).encode()).digest()).decode()
-        self.assertEqual(build.script_hash, digest)
-        # A page with no entry script (a fixture's) has no import map and needs no hash.
+        # The boot is written inline, word for word, before the import map and the entry: it needs no request of its own.
+        self.assertIn("<script>%s</script>" % BOOT, index)
+        self.assertLess(index.index("<script>" + BOOT), index.index("importmap"))
+        self.assertEqual(build.script_hashes, (hash_of(BOOT), hash_of(found.group(1))))
+        # A page with no entry script (a fixture's) has no inline scripts and needs no hash.
         (self.web / "index.html").write_text('<meta content="__AIM_SESSION_TOKEN__">')
         bare = web_build.load(self.web)
-        self.assertEqual((bare.index, bare.script_hash), (b'<meta content="__AIM_SESSION_TOKEN__">', None))
+        self.assertEqual((bare.index, bare.script_hashes), (b'<meta content="__AIM_SESSION_TOKEN__">', ()))
         (self.web / "index.html").write_text(INDEX + INDEX)
         with self.assertRaises(ValueError):
+            web_build.load(self.web)
+
+    def test_a_page_with_an_entry_needs_its_boot_written_whole(self):
+        (self.web / "boot.js").unlink()
+        with self.assertRaisesRegex(ValueError, "boot.js"):
+            web_build.load(self.web)
+        (self.web / "boot.js").write_text("document.write('</SCRIPT>');\n")
+        with self.assertRaisesRegex(ValueError, "</script"):
             web_build.load(self.web)
 
     def test_the_real_page_is_served_under_its_build(self):
@@ -92,7 +105,8 @@ class WebBuildTests(unittest.TestCase):
         self.assertEqual((REPO_WEB / "index.html").read_bytes().count(web_build.ENTRY), 1)
         build = web_build.load(REPO_WEB)
         self.assertIn(("/b/%s/app.mjs" % build.stamp).encode(), build.index)
-        self.assertIsNotNone(build.script_hash)
+        self.assertIn(b"<script>" + (REPO_WEB / "boot.js").read_bytes() + b"</script>", build.index, "the real boot, inline")
+        self.assertEqual(len(build.script_hashes), 2)
         # Every module's own imports are relative, so each resolves under the build its importer came from.
         for name, data in build.files.items():
             if name.endswith(".mjs"):
@@ -110,6 +124,7 @@ class ServedBuildTests(unittest.TestCase):
         self.web = Path(self.tmp.name)
         (self.web / "index.html").write_text(INDEX)
         (self.web / "app.mjs").write_text("export const ready = true;\n")
+        (self.web / "boot.js").write_text(BOOT)
         self.server = create_server(lambda: None, "new-test", "test-owner", self.web, token="test-session")
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": .01}, daemon=True)
         self.thread.start()
@@ -138,7 +153,8 @@ class ServedBuildTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(('src="/b/%s/app.mjs"' % stamp).encode(), raw)
         self.assertIn(b'content="test-session"', raw)
-        self.assertIn("script-src 'self' '%s';" % self.server.build.script_hash, headers["Content-Security-Policy"])
+        self.assertIn("script-src 'self' '%s' '%s';" % self.server.build.script_hashes, headers["Content-Security-Policy"])
+        self.assertIn(("<script>%s</script>" % BOOT).encode(), raw, "the boot the policy allows is the page's")
         status, headers, raw = self.get("/b/%s/app.mjs?place=2" % stamp)
         self.assertEqual((status, raw), (200, b"export const ready = true;\n"))
         self.assertIn("javascript", headers["Content-Type"])

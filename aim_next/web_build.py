@@ -15,6 +15,12 @@ the build it was opened on, the dynamic import of a move in place included
 import('/api.mjs'), goes through the import map written beside the entry, to the
 same build's address. An address under another build is refused, so no
 document can assemble its modules from two builds.
+
+The page's boot (web/boot.js) is written inline before them all, so it needs no
+request of its own: a page whose index.html came from one server and whose
+modules are asked for of the next one (a deploy between the two), or of none
+(the server restarting), loads afresh on the build served, or says so, rather
+than stay blank.
 """
 
 import base64
@@ -22,7 +28,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 # What the server serves from web/ (index.html, and these suffixes): the page and what it loads.
 PUBLIC = frozenset((".js", ".mjs", ".css", ".svg", ".png", ".ico", ".woff", ".woff2"))
@@ -30,6 +36,8 @@ MODULES = frozenset((".js", ".mjs"))
 # The entry script as index.html writes it, and the prefix every module of a build is served under.
 ENTRY = b'<script type="module" src="/app.mjs"></script>'
 PREFIX = "/b/"
+# The page's boot, written into index.html as an inline script ahead of the entry.
+BOOT = "boot.js"
 
 
 def public(name: str) -> bool:
@@ -42,8 +50,8 @@ class Build:
     files: Dict[str, bytes]
     # index.html with its entry under the build and the import map before it; None when web/ has none.
     index: Optional[bytes]
-    # The import map's hash for the page's Content-Security-Policy (an import map is an inline script), or None.
-    script_hash: Optional[str] = field(default=None)
+    # The hashes of the page's inline scripts (the boot, the import map) for its Content-Security-Policy; none without an entry.
+    script_hashes: Tuple[str, ...] = field(default=())
 
     def asset(self, path: str, query: str = "") -> Optional[bytes]:
         """The bytes for a request's path and query, or None when this build has nothing at that address.
@@ -88,15 +96,20 @@ def load(web_root) -> Build:
         data = files[name]
         digest.update(name.encode("utf-8") + b"\0" + str(len(data)).encode("ascii") + b"\0" + data)
     stamp = digest.hexdigest()[:20]
-    index, script_hash = files.get("index.html"), None
+    index, script_hashes = files.get("index.html"), ()
     if index is not None and ENTRY in index:
         if index.count(ENTRY) != 1:
             raise ValueError("index.html names its entry script more than once")
+        if BOOT not in files:
+            raise ValueError("index.html names its entry script and web/ has no %s to load the page afresh when its build is gone" % BOOT)
+        boot = files[BOOT].decode("utf-8")
+        if "</script" in boot.lower():
+            raise ValueError("%s cannot be written inline: it holds </script" % BOOT)
         # An absolute address outside a build ("/api.mjs") is this build's ("/b/<stamp>/api.mjs"); one that
         # names a build already (a module's relative import, "/b/<stamp>/lines.mjs") stays as it is.
         text = json.dumps({"imports": {"/": PREFIX + stamp + "/", PREFIX: PREFIX}}, separators=(",", ":"), sort_keys=True)
-        script_hash = "sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii")
-        entry = ('<script type="importmap">%s</script><script type="module" src="%s%s/app.mjs"></script>'
-                 % (text, PREFIX, stamp)).encode("utf-8")
+        script_hashes = tuple("sha256-" + base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii") for script in (boot, text))
+        entry = ('<script>%s</script><script type="importmap">%s</script><script type="module" src="%s%s/app.mjs"></script>'
+                 % (boot, text, PREFIX, stamp)).encode("utf-8")
         index = index.replace(ENTRY, entry)
-    return Build(stamp=stamp, files=files, index=index, script_hash=script_hash)
+    return Build(stamp=stamp, files=files, index=index, script_hashes=script_hashes)
