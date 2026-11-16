@@ -1278,6 +1278,38 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await q.close(); await p.close();
   });
 
+  // REVIEW 550: a stack someone joined into one branch of a dossier whose first message is above the page keeps its
+  // join line, and Split back out, once that branch is gathered into the dossier's one stack. Fictional orchard fixture.
+  await check('reading stacks review550 a stack joined into a branch of a dossier above the page keeps its join line and Split back out in the one stack', async () => {
+    const topic = 'rv550-joined-branch';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'When do we prune the pear trees?', { join: true })]];
+    for (let n = 0; n < 30; n++) said.push(['f' + n, say(other, `Orchard note ${n}, a message of its own.`)]);
+    said.push(['a1', say('aim-ux', 'Late February, before the buds.', { join: true, reply_to: 'root' })],
+      ['b1', say(other, 'The old tree by the gate needs it most.', { reply_to: 'root' })],
+      ['x', say(other, 'Who has the long ladder?')],
+      ['x1', say('aim-ux', 'It is in the barn.', { reply_to: 'x' })],
+      ['a2', say(other, 'February suits me.', { reply_to: 'a1' })],
+      ['top', say(other, 'Is the cider press cleaned?')],
+      ['top1', say('aim-ux', 'Cleaned on Sunday.', { reply_to: 'top' })]);
+    const ids = await seed(topic, said);
+    const joined = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.x, operation_id: `${topic}-x-join`, args: { into: ids.b1 } });
+    assert.equal(joined.status, 'committed', 'the ladder stack is joined into the gate tree branch');
+    const p = await open(topic, 'laptop', topic, ids.top1);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the first message is outside the loaded page');
+    await becomes(async () => (await stacks(p, ids)).slice(0, 2), ['top', 'a1'], 'the pruning dossier is one stack under a1');
+    await dossierOpen(p, 'laptop', ids.a1);
+    await becomes(async () => (await look(p, ids, 'a1'))?.rows.map(row => row.startsWith('join') ? 'join' : row), ['b1', 'join', 'x', 'x1', 'a2'],
+      'the ladder stack shows under its join line inside the one stack, oldest first');
+    const split = '#messages .stack-join-line .stack-split';
+    await centre(p, split); await p.point(split);
+    const pageSaid = () => p.evaluate(`[...document.querySelectorAll('[role=status],[aria-live],.status-line')].map(e=>e.textContent.trim()).filter(Boolean).join(' | ')`);
+    try { await until(async () => ((await actsOf(topic, ids.x))?.joined?.into ?? null) === null, 'Split back out reaches Core'); }
+    catch (error) { throw new Error(`${error.message}; acts ${JSON.stringify(await actsOf(topic, ids.x))}; page said: ${await pageSaid()}`); }
+    await becomes(async () => (await stacks(p, ids)).includes('x'), true, 'the ladder stack shows apart again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
   // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
   // With the button hidden, a phone's header keeps one row: the title row beside ✕, not on a row of its own under it.
