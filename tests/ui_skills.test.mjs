@@ -90,7 +90,7 @@ test('the tool page: kind, name and summary at the top, then Home, Its check, Us
   assert.deepEqual([header.eyebrow.textContent, header.title.textContent, header.description.textContent], ['Tool', 'Spool winder', 'Spool winder does one thing']);
   const lines = texts(host, '.tool-line');
   assert.equal(lines[0], 'Home: Kite club');
-  assert.match(lines[1], /^Its check: Its check passed: 12 of 12 · .+/, 'the pass with its count and its time');
+  assert.match(lines[1], /^Its check passed: 12 of 12 · .+/, 'the pass with its count and its time');
   assert.equal(lines[2], 'Used by: Wind watch and 1 outcome you cannot open');
   assert.deepEqual(h.reads[0], ['tool', { tool_id: 'spool', limit: 5 }], 'five went-back versions at a time');
   assert.equal(host.querySelector('.tool-went-back'), null, 'Went back shows only when a version went back');
@@ -113,7 +113,7 @@ test('a tool with no check reads "Not evaluated yet" on its page, never a pass, 
   const page = new ToolPage({ host, header: { eyebrow: h.dom.host(), title: h.dom.host(), description: h.dom.host() }, toolId: 'spool', instanceId: 'i', read: h.read, send: h.send, open: h.open, doc: h.doc });
   await page.load();
   const lines = texts(host, '.tool-line');
-  assert.deepEqual(lines.slice(0, 3), ['Home: an outcome you are not on', 'Its check: Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.']);
+  assert.deepEqual(lines.slice(0, 3), ['Home: an outcome you are not on', 'Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.']);
   assert.ok(!/passed|0 of 0|not run/.test(lines[1]));
   assert.equal(host.querySelector('.finder-open'), null, 'no Link a topic');
   assert.ok(texts(host, 'p').includes('No topics about it yet.'));

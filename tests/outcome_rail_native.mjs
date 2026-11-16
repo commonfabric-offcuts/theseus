@@ -3600,7 +3600,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const seen = await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.lines.length === 3);
       assert.deepEqual([seen.eyebrow, seen.title, seen.description], ['Tool', 'Spool winder', 'Winds a kite line back without a tangle'], at + ': the word Tool, its name and its summary');
       assert.equal(seen.lines[0], 'Home: Kite club', at);
-      assert.match(seen.lines[1], /^Its check: Its check passed: 12 of 12 · \S/, at + ': the pass with its count and its time');
+      assert.match(seen.lines[1], /^Its check passed: 12 of 12 · \S/, at + ': the pass with its count and its time');
       assert.equal(seen.timed, true, at + ': its time is a time');
       assert.equal(seen.lines[2], 'Used by: No outcome says it uses this yet.', at);
       assert.equal(seen.went.length, 1, at + ': the one version that went back');
@@ -3629,14 +3629,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const e = await sized(`tools-empty-${width}-${theme}`, '/?workspace=kites&tool=knot-guide', width, theme);
       const empty = await toolUp(e, at + ': the skill\'s page is up', drawn => drawn.ready && drawn.lines.length === 3);
       assert.deepEqual([empty.eyebrow, empty.title], ['Skill', 'Knot guide'], at);
-      assert.deepEqual(empty.lines, ['Home: Kite club', 'Its check: Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.'], at + ': Not evaluated yet, never a pass');
+      assert.deepEqual(empty.lines, ['Home: Kite club', 'Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.'], at + ': Not evaluated yet, never a pass');
       assert.deepEqual([empty.went, empty.topics, empty.empty, empty.timed], [[], [], ['No topics about it yet.'], false], at + ': nothing went back and no topic is about it, said');
       assert.deepEqual([empty.small, empty.scroll], [[], true], at);
       await shot(e, `tools-empty-${width}-${theme}`);
       assert.deepEqual(e.errors, []); await e.close();
       const r = await sized(`tools-outside-${width}-${theme}`, '/?workspace=gliders&tool=glide-timer', width, theme);
       const outside = await toolUp(r, at + ': the page of a tool homed outside the reader\'s outcomes is up', drawn => drawn.ready && drawn.lines.length === 3);
-      assert.deepEqual(outside.lines, ['Home: an outcome you are not on', 'Its check: Its check has not run on this version yet', 'Used by: No outcome says it uses this yet.'], at + ': its home unnamed; not run, never a pass');
+      assert.deepEqual(outside.lines, ['Home: an outcome you are not on', 'Its check has not run on this version yet', 'Used by: No outcome says it uses this yet.'], at + ': its home unnamed; not run, never a pass');
       assert.deepEqual([outside.link, outside.rail, outside.brandIn, outside.home], [false, false, 'main', true], at + ': no Link a topic and no rail; the logo block and ← Outcomes head the page');
       assert.deepEqual([outside.small, outside.scroll], [[], true], at);
       await shot(r, `tools-outside-${width}-${theme}`);

@@ -94,6 +94,15 @@ export function paintParts(node, parts, doc = node.ownerDocument) {
   return node;
 }
 
+// Whether what a painter would draw is what it drew last: a read that brings nothing new (a commit elsewhere, the live
+// feed) replaces no node, so a press already under way on one of its buttons is not lost.
+function same(painter, ...state) {
+  const key = JSON.stringify(state);
+  if (painter.drawn === key) return true;
+  painter.drawn = key;
+  return false;
+}
+
 // Put focus back where it was after a repaint replaced the node holding it.
 function keepFocus(host, paint, doc = host.ownerDocument) {
   const active = host.contains(doc.activeElement) ? doc.activeElement : null;
@@ -272,13 +281,15 @@ export class ToolPage {
   }
   paint() {
     const doc = this.doc, answer = this.answer, tool = answer.tool, home = tool.home;
+    if (same(this, answer, [...this.unlinking], this.limit)) return;
     this.paintHeader(tool);
     const homeLine = el(doc, 'p', { className: 'tool-line' }, el(doc, 'span', { className: 'tool-label', textContent: 'Home: ' }),
       home.readable ? placeLink(doc, routeHref({ kind: 'workspace', id: home.workspace_id }), home.title, () => this.open({ kind: 'workspace', id: home.workspace_id }, home.title))
         : 'an outcome you are not on');
     const word = paintParts(el(doc, 'span', { className: 'tool-word' }), wordParts(tool.word), doc);
     word.setAttribute('data-state', tool.word.state);
-    const checkLine = el(doc, 'p', { className: 'tool-line' }, el(doc, 'span', { className: 'tool-label', textContent: 'Its check: ' }), word);
+    // Its check's word says what it is about ("Its check passed: …", "Not evaluated yet: it has no check"), so it needs no label.
+    const checkLine = el(doc, 'p', { className: 'tool-line' }, word);
     const used = usedByWords(answer.used_by, answer.used_by_hidden);
     const usedLine = el(doc, 'p', { className: 'tool-line tool-used' }, el(doc, 'span', { className: 'tool-label', textContent: 'Used by: ' }));
     if (used.none) usedLine.append(used.none);
@@ -299,8 +310,8 @@ export class ToolPage {
       parts.push(this.section('tool-went-back-heading', 'Went back', list, more));
     }
     const topics = el(doc, 'ul', { className: 'tool-topics' }, ...answer.topics.map(topic => {
-      const row = el(doc, 'li', { className: 'tool-topic' }, placeLink(doc, routeHref({ kind: 'topic', id: topic.topic_id }), topic.title,
-        () => this.open({ kind: 'topic', id: topic.topic_id }, topic.title)), el(doc, 'span', { className: 'muted', textContent: ` · ${stateWords(topic.state)}` }));
+      const row = el(doc, 'li', { className: 'tool-topic' }, el(doc, 'span', { className: 'tool-topic-words' }, placeLink(doc, routeHref({ kind: 'topic', id: topic.topic_id }), topic.title,
+        () => this.open({ kind: 'topic', id: topic.topic_id }, topic.title)), el(doc, 'span', { className: 'muted', textContent: ` · ${stateWords(topic.state)}` })));
       if (topic.reader_may_unlink) {
         const unlink = glyph(doc, '×', `Take ${topic.title} off this tool`, () => this.unlink(topic));
         unlink.setAttribute('data-focus-key', `unlink:${topic.topic_id}`);
@@ -351,11 +362,13 @@ export class OutcomeTools {
     catch (error) {
       // The section keeps what it showed; it says why it could not read.
       this.say(error.message || FAILED);
-      if (!this.answer) { this.host.replaceChildren(el(this.doc, 'h2', { id: 'tools-heading', textContent: 'Skills and tools' }), this.status); this.host.hidden = false; }
+      if (!this.answer) { this.host.replaceChildren(this.heading(), this.status); this.host.hidden = false; }
       return false;
     }
   }
   say(text) { this.status.textContent = text; this.status.hidden = !text; }
+  // Headed as the outcome page's other sections are.
+  heading() { return el(this.doc, 'div', { className: 'rail-heading' }, el(this.doc, 'h2', { id: 'tools-heading', textContent: 'Skills and tools' })); }
   async use(toolId, used) {
     await sent(this.send('tool.use', { workspace_id: this.workspace }, { tool_id: toolId, used }));
     this.say('');
@@ -373,6 +386,7 @@ export class OutcomeTools {
   }
   paint() {
     const doc = this.doc, answer = this.answer;
+    if (same(this, answer, [...this.leaving])) return;
     const shown = answer.own.length || answer.used.length || answer.reader_may_use;
     if (!shown) { this.host.hidden = true; this.host.replaceChildren(); return; }
     const own = answer.own.length ? el(doc, 'ul', { className: 'tool-rows' }, ...answer.own.map(item => row(doc, item, this.open))) : null;
@@ -381,7 +395,7 @@ export class OutcomeTools {
       if (off) { off.setAttribute('data-focus-key', `unuse:${item.tool_id}`); off.disabled = this.leaving.has(item.tool_id); }
       return row(doc, item, this.open, off);
     }))] : [];
-    keepFocus(this.host, () => this.host.replaceChildren(el(doc, 'h2', { id: 'tools-heading', textContent: 'Skills and tools' }), this.status, own, ...used,
+    keepFocus(this.host, () => this.host.replaceChildren(this.heading(), this.status, own, ...used,
       answer.reader_may_use ? this.finder.node : null), doc);
     this.host.hidden = false;
   }
@@ -440,6 +454,7 @@ export class TopicTools {
   }
   paint() {
     const doc = this.doc, chips = this.chips();
+    if (same(this, chips, [...this.pending])) return;
     if (!chips.length) { this.host.hidden = true; this.host.replaceChildren(); return; }
     const group = el(doc, 'div', { className: 'state-chips tool-chips' }, ...chips.map(tool => {
       const chip = el(doc, 'button', { type: 'button', className: 'choice-chip tool-chip', textContent: tool.name });
