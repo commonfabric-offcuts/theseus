@@ -1995,7 +1995,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
     const bare = [];
     for (const b of lit.boxes) {
-      const left = Math.ceil(Math.max(b.left, b.shows.left)) + 1, right = Math.floor(Math.min(b.right, b.shows.right)) - 1;
+      const left = Math.ceil(Math.max(b.left, b.shows.left)) + 2, right = Math.floor(Math.min(b.right, b.shows.right)) - 2;
       if (right - left < 6) continue;
       for (const y of [Math.floor(b.top) - 2, Math.ceil(b.bottom) + 1]) {
         if (y <= b.shows.top + 1 || y >= b.shows.bottom - 1 || y < 0 || y >= image.height) continue;

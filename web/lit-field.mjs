@@ -50,8 +50,20 @@ export function clipBox(node, stop) {
   return stop;
 }
 
+// The block a text node's words flow in: the nearest element holding them that
+// is not laid out inline (a paragraph, a list item, a table's cell, a code
+// block). Its words on one line run on from each other, as the Reader's field
+// runs on behind them; a table's cells side by side are blocks apart, with no
+// words between them.
+const blockOf = node => {
+  const win = node.ownerDocument.defaultView;
+  let block = node.parentElement;
+  while (['inline', 'contents'].includes(win.getComputedStyle(block).display)) block = block.parentElement;
+  return block;
+};
+
 // The lines a range's words are drawn on, each the box of its characters (left,
-// right, top and bottom on screen), the boxes on one line in one box joined,
+// right, top and bottom on screen), the boxes on one line of one block joined,
 // and the box they show in (clipBox, below stop): what a field is painted
 // behind, and on. Elements a range holds whole give boxes of their own (a
 // paragraph's spans every line it has), so only characters are read.
@@ -60,16 +72,16 @@ export function wordLines(range, stop) {
   const walk = doc.createTreeWalker(common.nodeType === 1 ? common : common.parentNode, 4), boxes = [];
   for (let node = walk.nextNode(); node; node = walk.nextNode()) {
     if (!range.intersectsNode(node) || !node.data.trim()) continue;
-    const part = doc.createRange(), box = clipBox(node, stop);
+    const part = doc.createRange(), box = clipBox(node, stop), block = blockOf(node);
     part.selectNodeContents(node);
     if (node === range.startContainer) part.setStart(node, range.startOffset);
     if (node === range.endContainer) part.setEnd(node, range.endOffset);
-    for (const rect of part.getClientRects()) if (rect.width > 0 && rect.height > 0) boxes.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, box });
+    for (const rect of part.getClientRects()) if (rect.width > 0 && rect.height > 0) boxes.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, box, block });
   }
   boxes.sort((a, b) => a.top - b.top);
   const lines = [];
   for (const rect of boxes) {
-    const line = lines.find(other => other.box === rect.box && Math.min(other.bottom, rect.bottom) - Math.max(other.top, rect.top) > (rect.bottom - rect.top) / 2);
+    const line = lines.find(other => other.block === rect.block && Math.min(other.bottom, rect.bottom) - Math.max(other.top, rect.top) > (rect.bottom - rect.top) / 2);
     if (line) Object.assign(line, { left: Math.min(line.left, rect.left), right: Math.max(line.right, rect.right), top: Math.min(line.top, rect.top), bottom: Math.max(line.bottom, rect.bottom) });
     else lines.push(rect);
   }

@@ -82,6 +82,9 @@ block or a table that scrolls sideways, a phone's excerpt cut off at a height),
 scrolled with its content (`background-attachment: local`). So the field shows
 only where its words show, as the Reader's inline field is clipped by the same
 boxes, and moves with them as the box, or a card reading on in place, scrolls.
+A line's layer joins the words of one block on that line (a paragraph, a list
+item, a table's cell), so a lit table's field lies behind each cell's words and
+not across the gaps between cells side by side.
 As the words wrap anew (the window or the card resized) the layers are laid
 again behind the lines they now hold. The Reader's field
 height is read from a hidden copy of its text box (`.reading-pane.passage-probe`,

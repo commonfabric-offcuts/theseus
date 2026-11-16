@@ -16350,6 +16350,36 @@
    }
   },
   {
+   "item": 527,
+   "act": "A lit table's field on a card lies behind each cell's words, not across the gaps between the cells side by side",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    const line = lines.find(other => other.block === rect.block && Math.min",
+     "    const line = lines.find(other => true && Math.min"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "paints its field only where its words show"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit table's field on a card lies behind each cell's words, not across the gaps between the cells side by side",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    const line = lines.find(other => other.block === rect.block && Math.min",
+     "    const line = lines.find(other => true && Math.min"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "paints its field only where its words show"
+   }
+  },
+  {
    "item": 434,
    "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
    "break": [
