@@ -1683,12 +1683,14 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // A page loaded across a deploy (item 523, docs/rails.md, "One build per document"): its index.html from one server
   // and its modules asked for once the next one has started, or while none is up. The page's boot (web/boot.js) loads
   // afresh on the build the server serves, or says it could not open the page, with Reload; it never stays blank.
-  // Each document this page loads counts itself (sessionStorage.loads), so a load the boot asked for is counted.
-  const LOADS = `(()=>{try{sessionStorage.loads=String(Number(sessionStorage.loads||0)+1)}catch(e){}})()`;
+  // Each document this page loads counts itself (sessionStorage.loads), so a load the boot asked for is counted, and
+  // counts its reads of the build (window.buildReads), answered or not: a read that got no answer leaves no resource entry in WebKit.
+  const LOADS = `(()=>{try{sessionStorage.loads=String(Number(sessionStorage.loads||0)+1)}catch(e){}
+    window.buildReads=0;const f=window.fetch;window.fetch=function(input,init){if(new URL(String(input instanceof Request?input.url:input),location.href).pathname==='/api/build')window.buildReads++;return f.call(this,input,init)}})()`;
   const loads = p => p.evaluate('Number(sessionStorage.loads)');
   // What the document loaded: its modules' addresses, whether it read the build, and what its status line says.
   const loaded = p => p.evaluate(`({ modules: performance.getEntriesByType('resource').map(e => new URL(e.name)).filter(u => /\\.m?js$/.test(u.pathname)).map(u => u.pathname),
-    readBuild: performance.getEntriesByType('resource').some(e => new URL(e.name).pathname === '/api/build'),
+    readBuild: window.buildReads > 0,
     status: document.querySelector('#app-status').hidden ? '' : document.querySelector('#app-status').textContent, ready: document.body?.dataset.ready ?? null })`).catch(() => null);
   // Every module the page asks for under a build is held unsent, as a slow connection holds it: step() sends on those
   // asked so far and holds the next, let(lose) sends on every one held, or loses it (a dropped connection), and holds no more.
