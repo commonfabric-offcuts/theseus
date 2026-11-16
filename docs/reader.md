@@ -316,8 +316,10 @@ feed, one line until written in, just above More: under the last dossier shown
 above More and over the More line (item 465). It is never moved while it is up,
 and a holder of its height keeps its place there, so no dossier behind the
 backdrop moves, in Chrome or Safari's engine, by ✎ or by ⌘Return; the holder is
-drawn only while the sheet is up, so the place comes back the moment it closes
-(`web/sheet-holder.mjs`, which a Notebook page in the sheet shares). It takes
+drawn only while the sheet is up, as the sheet's own open state says, read by
+one rule in `web/aim.css` and taken away by no script, so the place comes back
+the moment it closes, before any close event is heard (`web/sheet-holder.mjs`,
+which a Notebook page in the sheet shares). It takes
 that place again as it is put back (`home` in `web/reply-stacks.mjs`);
 where the feed is not drawn (an outcome's page, Health, a topic the reader can
 no longer read), a dialog in it would show nothing, so it rests at the page's

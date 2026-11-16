@@ -21,7 +21,7 @@
 // there, and its way back goes back to this page of Theseus, the feed where it
 // was and the page over it with its card box open. One sheet, never a pile.
 import { paintChanges } from './page-changes.mjs';
-import { holdPlace, releasePlace } from './sheet-holder.mjs';
+import { holdPlace } from './sheet-holder.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
@@ -270,7 +270,6 @@ export class NotebookSheet {
   }
   closed() {
     if (!this.showing) return;
-    releasePlace(this.dialog);
     this.still?.abort();
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }
