@@ -1595,6 +1595,30 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks an act Core refuses is said as not saved, in words of its act and card, never as unknown or a lost connection; the card shows what Core holds, and the line goes at the next act Core takes', async () => {
+    const topic = 'stack-refused';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded on another device.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const held = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    // Meanwhile the reader folds it on another device: this page's fold is fenced on a revision gone by.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.a, operation_id: topic + '-elsewhere', args: { folded: true } });
+    net.hold(null); await net.pass(held);
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card folded on another device.” was not saved: it changed on another tab or device. The card shows what Theseus holds.' },
+      'the line says the fold was not saved, and why, in words of its act and card');
+    assert.doesNotMatch((await statusLine(p)).text, /Not known|Connection interrupted/, 'a refusal is an answer: neither unknown nor a lost connection');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds, made on the other device');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds the other device\'s fold alone');
+    // The reader's next act that Core takes ends what was said.
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Star for me');
+    await until(async () => (await actsOf(topic, ids.a))?.starred === true, 'Core takes the star');
+    await until(async () => !(await statusLine(p)).shown, 'and the line goes');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks two acts not settled each say their own card; a read or an ask that fails clears neither, and Core\'s answer to one leaves the other said until its own answer', async () => {
     const topic = 'stack-two-lost';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'First card lost.' }],
