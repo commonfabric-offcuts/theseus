@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -14,10 +15,12 @@ from aim_next import admin, conversation, migrations, recovery_io
 from aim_next import standing_conversation as standing
 from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
-from aim_next.contract import StoreError
+from aim_next.contract import StoreError, _json
+from aim_next.invite import invite
 from aim_next.migrations import MigrationError, migrate
 from aim_next.profile import load_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
+from aim_next.validation import _command_envelope
 import test_store as fixtures
 
 
@@ -3839,6 +3842,77 @@ class InviteStepCase(MigrationCase):
         receipt = self.command("workspace.agent_invite", {"name": name, "harness": "codex"}, {"workspace_id": "w1"}, {"workspace_revision": version})
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
+
+    def recorded_at_42(self, actor, op, envelope, receipt):
+        """A receipt among the operations as release 81's Store.command records it, under its request's fingerprint."""
+        fingerprint = hashlib.sha256(_json(_command_envelope(envelope)).encode("utf-8")).hexdigest()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op, fingerprint, envelope["kind"], _json(receipt)))
+
+    def envelope(self, name, op):
+        version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        return {"v": 1, "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite",
+                "target": {"workspace_id": "w1"}, "expected": {"workspace_revision": version, "authority": dict(self.pin)},
+                "args": {"name": name, "harness": "codex"}}
+
+    def invited_at_42(self, name, agent, op="invite-at-42"):
+        """The owner invites an agent from the page as release 81 does it (item 324): the agent registered under the ID
+        324's rule gave it, on w1's team, the outcome's version advanced and the committed receipt recorded, and no
+        invitation row, since version 42 keeps none. Returns the request, for sending again."""
+        envelope = self.envelope(name, op)
+        version = envelope["expected"]["workspace_revision"] + 1
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (agent, "agent", name))
+            db.execute("INSERT INTO workspace_members VALUES ('w1',?)", (agent,))
+            db.execute("UPDATE workspaces SET version=? WHERE id='w1'", (version,))
+        self.recorded_at_42("owner", op, envelope, {
+            "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite", "status": "committed",
+            "recorded": True, "result": {"workspace_id": "w1", "title": "Isolated test", "version": version, "harness": "codex",
+                                         "agent": {"id": agent, "name": name, "kind": "agent"}},
+            "affected": [{"kind": "workspace", "id": "w1", "version": version}]})
+        return envelope
+
+    def refused_at_42(self, actor, name, op, code):
+        """A refused invitation as release 81 records it: no result, nothing registered."""
+        envelope = self.envelope(name, op)
+        self.recorded_at_42(actor, op, envelope, {
+            "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite", "status": "rejected",
+            "recorded": True, "result": None, "affected": [], "error": {"code": code, "message": "Refused.", "retryable": False}})
+
+    def folder(self):
+        folder = Path(self.temp.name).resolve() / "profiles"
+        folder.mkdir(mode=0o700, exist_ok=True)
+        return folder
+
+    def test_an_agent_invited_at_42_is_given_back_to_its_inviter_after_the_upgrade_with_its_sign_in(self):
+        # 324 live: the owner invites Late scribe; the answer is lost, or the sign-in file is not written; a reload forgets
+        # the request. Release 81 refuses the name typed again (NAME_TAKEN) and no sign-in file exists. After the upgrade
+        # the same person typing it in the same outcome gets that agent back, and its sign-in file is written.
+        self.invited_at_42("Late scribe", "late-scribe")
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        folder, actors = self.folder(), self.sql("SELECT * FROM actors ORDER BY id")
+        receipt = invite(self.store, "owner", self.envelope("Late scribe", "retyped"), folder)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")],
+                         "the upgrade filled the invitation from its receipt")
+        self.assertEqual(receipt["result"]["agent"], {"id": "late-scribe", "name": "Late scribe", "kind": "agent"})
+        self.assertTrue(receipt["sign_in"]["written"], receipt)
+        self.assertEqual(load_profile(folder / "late-scribe.profile.json").actor_id, "late-scribe")
+        self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
+        # Anyone else typing that name is still refused: the coordinator, though it organises the outcome.
+        refused = invite(self.store, "agent-a", self.envelope("Late scribe", "coordinator-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        self.assertEqual(sorted(os.listdir(folder)), ["late-scribe.profile.json"])
+
+    def test_a_receipt_that_never_committed_fills_no_invitation_and_the_step_keeps_every_row(self):
+        self.refused_at_42("agent-b", "Sneaky helper", "refused-forbidden", "FORBIDDEN")
+        self.refused_at_42("owner", "agent-a", "refused-taken", "NAME_TAKEN")
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade()["migrated"], True)
+        after = everything(self.path)
+        self.assertEqual(after.pop("agent_invitations"), [], "a refusal registered no one, so it invited no one")
+        self.assertEqual(after, stored, "every row of every table is kept")
 
     def test_the_step_follows_the_judgments_and_the_head_is_its_version(self):
         steps = [step[:2] for step in migrations.STEPS]
