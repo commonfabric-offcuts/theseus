@@ -337,9 +337,12 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.point('#inline-writing-body'); await p.key('e', 2); await p.key('ArrowLeft');
     const writingPosition = () => p.evaluate(`(()=>{const f=document.querySelector('#inline-writing-body'),b=f.getBoundingClientRect();return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,top:b.top,bottom:b.bottom,height:innerHeight}})()`);
     // What the page draws above the writing: the message list's own height,
-    // without any room it keeps at its end, and that room, the space between
-    // its last entry and its end.
-    const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),b=l.getBoundingClientRect(),last=l.lastElementChild?.getBoundingClientRect();return {drawn:b.height-parseFloat(s.paddingTop)-parseFloat(s.paddingBottom),room:last?Math.round(b.bottom-last.bottom):0}})()`);
+    // without the room it keeps at its end, and that room.
+    const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),room=parseFloat(s.paddingBottom);return {drawn:l.getBoundingClientRect().height-parseFloat(s.paddingTop)-room,room}})()`);
+    // The writing low on the screen, a little above its foot: the page is
+    // scrolled no further than that, so what the reply below takes away
+    // above it is more than any scroll can give back.
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"end"}); scrollBy(0, 8)');
     const beforeArrival = await writingPosition(), aboveBefore = await above(), scrolledBefore = await p.evaluate('scrollY');
     assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
     const holds = (after, what) => {
@@ -372,7 +375,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.ok(aboveGrown.drawn > aboveAfter.drawn, 'the topic message drew more above the writing ' + JSON.stringify({ aboveAfter, aboveGrown }));
     holds(afterGrowth, 'a message growing what is above');
     assert.ok(Math.abs(afterGrowth.top - beforeArrival.top) <= 2, 'a message growing what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterGrowth, aboveGrown, stacks: await stacks() }));
-    assert.ok(Math.abs(aboveGrown.room - aboveBefore.room) <= 1, 'no room is kept above the writing once the page can hold it by scrolling ' + JSON.stringify({ aboveBefore, aboveAfter, aboveGrown }));
+    assert.deepEqual([aboveBefore.room, aboveGrown.room], [0, 0], 'no room is kept above the writing once the page can hold it by scrolling ' + JSON.stringify({ aboveBefore, aboveAfter, aboveGrown }));
     observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
     await shot(p, 'inline-before-send'); noSend();
 
