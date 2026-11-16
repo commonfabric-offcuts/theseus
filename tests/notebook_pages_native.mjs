@@ -395,7 +395,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         await until(async () => (await section(p)).rows === all, 'Return on More brings the rest');
         await until(() => p.evaluate(`document.activeElement?.textContent==='Rail page 21'`), 'the focus lands on the first page More brought');
         const walk = [];
-        for (let n = 0; n < 4; n++) { await p.key('ArrowDown'); walk.push(await p.evaluate(`(e=>e.closest('.things-sec')?.dataset.key+':'+(e.matches('summary')?'section':e.textContent.trim()))(document.activeElement)`)); }
+        for (let n = 0; n < 3; n++) { await p.key('ArrowDown'); walk.push(await p.evaluate(`(e=>e.closest('.things-sec')?.dataset.key+':'+(e.matches('summary')?'section':e.textContent.trim()))(document.activeElement)`)); }
         assert.deepEqual(walk.slice(0, 2), ['notebook:Rail page 22', 'notebook:Rail page 23'], '↓ goes on through the pages More brought');
         assert.notEqual(walk[2], 'notebook:More pages', 'and never to the More that went');
         assert.match(walk[2], /:section$/, 'past the last page, the next section');
