@@ -558,7 +558,7 @@ export class StackFeed {
     const into = root && positionOf(joinOf(side.stacks, side.index, way));
     this.act('stack.join', item, { into: shows.act.into }, into ? members.map(([id]) => [id, { stack_position: into }]) : []);
     this.remember(() => {
-      this.act('stack.join', item, { into: before }, members.map(([id, was]) => [id, { stack_position: was }]));
+      this.act('stack.join', item, { into: before });
       if (was === undefined) state.levels.delete(shows.open); else state.levels.set(shows.open, was);
       this.arrange(); this.focusOn(item.id);
     });
