@@ -434,11 +434,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(problems, [], `${device}: every button of the bar in the window, in one row`);
       assert.equal(await readerOn(p), null, `${device}: nothing opened`);
       // Both asks are answered, so no topic is left waiting on the reader: the rail's waiting light it would leave lit
-      // widens the rail's first row for every check after this one.
-      for (const id of [ids.short, ids.long]) {
+      // widens the rail's first row for every check after this one. Each answer is a reply, which folds its ask into its
+      // stack's head row and moves the cards: the page shows the reply and the bar's ✅ holds its place across two
+      // frames before the next press.
+      for (const id of [ids.long, ids.short]) {
+        const name = id === ids.long ? 'long' : 'short';
         if (!(await lit(p)).includes(id)) await light(p, device, id);
+        await until(() => p.evaluate(`new Promise(done=>{const at=()=>JSON.stringify(document.querySelector('${BAR} [data-act=yes]')?.getBoundingClientRect()??null),first=at();requestAnimationFrame(()=>requestAnimationFrame(()=>done(first!=='null'&&first===at())))})`), `${device}: the ${name} ask's ✅ holds its place`);
         await press(p, device, `${BAR} [data-act=yes]`);
-        await until(async () => (await reactions(id)).answers.some(a => a.actor_id === facts.actor && a.answer === 'yes'), `${device}: Core holds ✅ on the ${id === ids.long ? 'long' : 'short'} ask`);
+        await until(async () => (await reactions(id)).answers.some(a => a.actor_id === facts.actor && a.answer === 'yes'), `${device}: Core holds ✅ on the ${name} ask`);
+        const reply = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 10 })).items.find(item => item.reply_to === id && item.author_id === facts.actor)?.id, `${device}: the ${name} ask's answer is a reply`);
+        await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${reply}"]')) && window.fetchesOut === 0`), `${device}: the page shows the ${name} ask's answer`);
       }
       assert.deepEqual(p.errors, []);
       await p.close();
