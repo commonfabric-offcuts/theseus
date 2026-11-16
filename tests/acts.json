@@ -14115,12 +14115,40 @@
    "break": [
     [
      "aim_next/topic_reading.py",
-     "\"(SELECT COUNT(*) FROM submissions s WHERE s.actor_id=? AND s.source_key=? AND \" + SENT + \")\"",
-     "\"(SELECT COUNT(*) FROM submissions s WHERE s.actor_id=? AND s.source_key=? AND 0)\""
+     "\"(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND \" + SENT + \")\"",
+     "\"(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND 0)\""
     ]
    ],
    "check": {
     "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A page reads the reader's prepared replies by its own messages, so its cost does not grow with their send history",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "\"SELECT s.source_key,%s AS sent FROM submissions s INDEXED BY editor_submissions \"",
+     "\"SELECT s.source_key,%s AS sent FROM submissions s \""
+    ]
+   ],
+   "check": {
+    "python": "test_reader_bounds.py"
+   }
+  },
+  {
+   "item": 127,
+   "act": "A save's version counts the writer's sent replies from that message alone, so its cost does not grow with their send history",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "submissions s INDEXED BY editor_submissions WHERE",
+     "submissions s INDEXED BY actor_submissions WHERE"
+    ]
+   ],
+   "check": {
+    "python": "test_reader_bounds.py"
    }
   },
   {
