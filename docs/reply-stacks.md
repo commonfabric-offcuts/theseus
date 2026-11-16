@@ -49,7 +49,7 @@ message, even one unfolded since.
 | deal | `message.deal` | `{"dealt": true}` | the reader's own |
 | fold | `message.fold` | `{"folded": true}` | the reader's own |
 | place | `stack.place` | `{"key": 1.5}` or `{"key": null}` | the reader's own |
-| name | `stack.name` | `{"name": "Cabin week"}` (empty gives back its first message's line) | the topic's |
+| name | `stack.name` | `{"name": "Cabin week"}` (empty gives back its first message's line), or an agent's `{"name": "Cabin week plan", "minted": true}` (below, "Minted names") | the topic's |
 | join | `stack.join` | `{"into": "m-…"}` or `{"into": null}` (split back out) | the topic's |
 
 Each act names one message, `target: {"message_id": "m-…"}`, and is fenced on
@@ -78,6 +78,10 @@ These rules refuse an act:
   the position of each message in the dossier (docs/dossier-below-more.md).
 - `OUTCOME_REACHED` for a name or a join once the topic's outcome is reached;
   a star, a deal, a fold or a place is still the reader's to make.
+- For a minted name: `INVALID_ARGUMENT` unless it is two to five words and
+  `minted` is `true`; `ALREADY_NAMED` once anyone ever named the dossier, a
+  mint included; `NOT_THE_NAMER` from anyone but its namer, or before a reply
+  on the record has landed in it. Each is checked after the revision fence.
 
 Who hears of an act depends on whose it is. A personal act reaches only its
 reader. A shared act reaches everyone who reads the message, so a whisper's
@@ -89,7 +93,8 @@ changes.
 Reads:
 
 - Each `topic_messages` item carries `acts`: `starred`, `dealt`, `folded`,
-  `placed`, `name` (`{text, by, at_ms}` or null) and `joined`
+  `placed`, `name` (`{text, by, at_ms}`, with `minted: true` for a minted
+  name, or null) and `joined`
   (`{into, by, at_ms}` or null), each with its revision.
 - `message_acts {topic_id, cursor?, limit?}` pages the topic's messages that
   have any act, newest first, with `version`, the newest act the reader hears
@@ -97,6 +102,60 @@ Reads:
 - `stars {cursor?, limit?}` lists the reader's starred messages in every
   place they read, newest star first. The right rail's Starred is drawn from
   it.
+- `stack_namer {message_id}` says who names the dossier a message is in:
+  `root_id`, `name`, `name_revision` (the fence a mint is sent on), `namer`
+  (an actor or null) and `why` (below).
+
+## Minted names (479)
+
+When the first reply on the record lands in a dossier nobody has named, its
+namer writes a short name for it, two to five words for what it is about, as a
+`stack.name` act with `minted: true`. The namer is the outcome's coordinator
+when Core sends it the dossier's replies: an agent, enabled, taking part in
+the dossier's topic. Otherwise (no coordinator, a person coordinating, a
+coordinator switched off, or one outside the topic, as in one started with
+`start OUTCOME --with`) it is the first agent that replied, whose own reply
+tells it. With no agent reply the dossier keeps its first line. A name a
+person types wins and is never replaced: once anyone has named a dossier, even if they cleared the
+name since, it is never minted, and a dossier is minted once, so a second
+reply mints nothing more. A whisper counts as no reply, since a name is
+everyone's, and a dossier whose first message is a whisper is never minted.
+A minted name is a deliberate act of its agent, never a side effect of
+showing a dossier: Core stores nothing else for it.
+
+Core decides it all (`dossier_namer` in `aim_next/stacks.py`): `why` is
+`named`, `unreplied`, `coordinator`, `first_agent` or `no_agent`, and a mint
+from anyone but the namer is refused as above. A mint is fenced on the name
+revision its agent read when it was told to name the dossier, so a person's
+rename that lands while the agent is choosing its words refuses the mint
+(`REVISION_CONFLICT`), and the person's name stays on the dossier's first
+message; sent again on the new revision, it is `ALREADY_NAMED`. A mint names
+the dossier's first message only (`STACK_CHANGED` otherwise), as any name does.
+Names stored before minting existed carry no `minted` and read exactly as they
+did. The schema is unchanged.
+
+The agent harness produces the mint. A delivery of a reply to an agent that
+names its dossier carries `name_it: {root_id, name_revision}` (the dossier's
+first message's own delivery leaves it to its replies', and with an agent
+coordinating, finding the namer reads two rows, not the dossier), so the hosted
+notice adds to that delivery's line `its dossier has no name and you name it:
+mint ROOT --expected N "two to five words"`, and `inbox` and `watch` add
+`[you name its dossier: mint …]`, `inbox` and the notice once per dossier
+(`aim_next/hosted_notice.py`, `aim_next/cli.py`). A coordinator is told on
+the first reply it is sent. An agent whose own `reply` makes it the namer is
+told the same after `posted …`. The agent runs `mint MESSAGE --expected N
+WORDS` (docs/agent-cli.md), whose words its model writes. The checks drive this
+with a fake coordinator that reads the notice and mints fixed words through the
+CLI (`tests/test_dossier_names.py`, `FakeCoordinator`), so no live model is
+needed.
+
+On the page the tab's second line says "Named by" and the agent, after who
+began the dossier (`.stack-named`), whole at every width down to 320 pixels:
+short of room the count gives way first. The name's tooltip says it was named
+when the first reply landed. Renaming starts from the minted name; a name the
+person types replaces it and the mark goes, and their name says who typed it
+in its tooltip, as any typed name does. ⌘Z after such a rename gives the
+dossier back the minted words as the person's own name: only its agent mints.
 
 ## Display order
 
@@ -213,8 +272,8 @@ their acts.
   who began the stack, "New" when the message itself is new, ★ if starred,
   how many replied and who, and how many replies are new. On a phone the
   count, who replied and what is new sit on a second short line. The short name is the
-  one someone typed for the dossier, or else the first message's line (One line
-  of a message, below). A page that holds only some of a dossier's replies
+  one someone typed for the dossier, or minted for it (Minted names, above),
+  or else the first message's line (One line of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.
   Renaming starts from the name shown, and Return on it unchanged names
   nothing. Pressing
@@ -421,7 +480,7 @@ the semantic colour tokens of `web/aim.css` and only the names that
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
-    `.stack-who`, `.stack-new`, `.stack-star`, `.stack-meta` (with
+    `.stack-who`, `.stack-named` (a minted name's "Named by"), `.stack-new`, `.stack-star`, `.stack-meta` (with
     `.stack-repliers` and `.stack-fresh`) and `.stack-hide`.
   - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
   - `.stack-toggle`, the header's native expand/collapse button, a sibling of
@@ -523,6 +582,9 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | a link followed again after another device's Bring back and Move below More | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks below More: on a laptop/phone, the link followed again …" |
 | a scroll carrying on with the page at a long message's edge | `tests/topic_reading_native.mjs`, "reading a cut-off message scrolls in place …" |
 | the star in a message's header: an outline while lit, filled once starred, for the reader alone, opening nothing | `tests/stack_native.mjs`, "reading stacks a star in a message's header …", in Chrome and Safari's engine |
+| a minted name, in Core: the coordinator once the first reply lands, two to five words, minted once, never over a typed name (cleared or not), a person's rename while the agent prepares its mint, not the coordinator's agent, the first agent with no coordinator, a whisper, a message that is not the first, an old name read unchanged | `tests/test_dossier_names.py` (`CoreCase`) |
+| the harness: `name_it` on the namer's delivery alone, the notice and `inbox` saying the mint once, a fake coordinator minting through `mint`, the hint after `reply`, a coordinator switched off told nothing while the first agent to reply is told and mints through the notice, `mint` refused after a person's rename | `tests/test_dossier_names.py` (`HarnessCase`, `NoticeCase`) |
+| the head says who minted its name | `tests/ui_stack_order.test.mjs` (`mintedBy`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a minted name says Named by …", at 320, 375 and 390 pixels and on a laptop, light and dark, folded and open |
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
