@@ -91,7 +91,9 @@ class RecordCase(ToolVerbCase):
         path = self.run_file(run(**BACK))
         code, out, err = self.run_cli("tool-record", str(path))
         self.assertEqual((code, err), (0, ""))
-        [(topic,)] = self.sql("SELECT topic_id FROM tool_runs")
+        topics = self.sql("SELECT topic_id FROM tool_runs")
+        self.assertEqual(len(topics), 1, "one run recorded")
+        topic = topics[0][0]
         self.assertIsNotNone(topic)
         self.assertEqual(out, "kite-flyer back recorded (topic %s)\n" % topic)
         self.assertEqual(self.sql("SELECT title,workspace_id FROM topics WHERE id=?", (topic,)), [("Kite flyer went back to its live version", "w1")])
@@ -175,25 +177,29 @@ class LiveCliCase(ToolVerbCase):
     def live(self, actor="agent-a"):
         return tool_check.LiveCli(self.cli, self.profiles[actor], python=sys.executable)
 
+    # Each answer is compared whole or read with .get, so a bridge that answers nothing fails an assertion, not a lookup.
+
     def test_it_reads_the_actor_and_views_and_records_a_run_through_the_cli(self):
         cli = self.live()
         self.assertEqual(cli.actor(), "agent-a")
-        self.assertEqual(cli.view("capabilities", {})["actor_kind"], "agent")
-        self.assertEqual(cli.view("tool", {"tool_id": "kite-flyer"})["tool"]["word"]["state"], "not_run")
-        self.assertEqual(cli.view("tool", {"tool_id": "no-such-tool"})["error"]["code"], "TOOL_NOT_FOUND")
+        self.assertEqual(cli.view("capabilities", {}).get("actor_kind"), "agent")
+        tool = cli.view("tool", {"tool_id": "kite-flyer"})
+        self.assertEqual(((tool.get("tool") or {}).get("tool_id"), ((tool.get("tool") or {}).get("word") or {}).get("state")), ("kite-flyer", "not_run"), tool)
+        self.assertEqual((cli.view("tool", {"tool_id": "no-such-tool"}).get("error") or {}).get("code"), "TOOL_NOT_FOUND")
         receipt = cli.record(self.run_file(run(**BACK)))
-        self.assertEqual((receipt.get("status"), receipt["result"]["recorded"]), ("committed", True), receipt)
-        [(topic,)] = self.sql("SELECT topic_id FROM tool_runs")
-        self.assertEqual(receipt["result"]["run"]["topic"]["topic_id"], topic)
+        result = receipt.get("result") or {}
+        self.assertEqual((receipt.get("status"), result.get("recorded")), ("committed", True), receipt)
+        topics = self.sql("SELECT topic_id FROM tool_runs")
+        self.assertEqual(len(topics), 1)
+        self.assertEqual(((result.get("run") or {}).get("topic") or {}).get("topic_id"), topics[0][0])
         again = cli.record(self.run_file(run(**BACK)))
-        self.assertEqual((again.get("status"), again["result"]["recorded"]), ("committed", False))
+        self.assertEqual((again.get("status"), (again.get("result") or {}).get("recorded")), ("committed", False), again)
         self.assertEqual(self.sql("SELECT count(*) FROM tool_runs"), [(1,)])
 
     def test_a_refused_record_comes_back_as_its_error_and_records_nothing(self):
         receipt = self.live("outsider").record(self.run_file(run(**BACK)))
-        self.assertEqual(receipt["error"]["code"], "FORBIDDEN", receipt)
+        self.assertEqual((receipt.get("error") or {}).get("code"), "FORBIDDEN", receipt)
         self.assertEqual(self.sql("SELECT count(*) FROM tool_runs"), [(0,)])
-
 
 if __name__ == "__main__":
     unittest.main()
