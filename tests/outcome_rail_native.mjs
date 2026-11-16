@@ -2670,6 +2670,53 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(faults, [], 'every size and theme');
   });
 
+  await check('rail a thumbs-up Theseus was too busy to take is said with its card in the rail at a laptop\'s width and in the drawer at 320 375 and 390, light and dark, never as a lost connection, and goes once its reactions read again land', async () => {
+    const topic = 'rail-thumb-busy-t';
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Busy thumbs-up topic' }] });
+    const faults = [];
+    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop';
+      const message = (await control({ method: 'agent_message', operation_id: `${topic}-${size}-${theme}`, topic_id: topic, join: true, addressees: [facts.actor], body: `A card whose thumbs-up was not taken (${at}).` })).result.message_id;
+      const p = await page('rail-thumb-busy-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', SIZES[size]);
+        if (SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const card = `#messages .message-card[data-id="${message}"]`, words = card + ' > .message-preview', thumb = '.message-bar [data-act=thumb]';
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), at + ': the card is up');
+      const net = await network547(p, true), thumbs = payload => payload?.kind === 'message.thumb';
+      const reactions = payload => payload?.name === 'reactions' && payload.args?.message_id === message;
+      net.hold(payload => thumbs(payload) || reactions(payload));
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(thumb)})?.getClientRects().length > 0`), at + ': the card is lit, with its bar\'s 👍');
+      if (laptop) await p.point(thumb); else await tap(p, thumb);
+      // The server's own answer when its command lane is full (aim_next/server.py), as when the reader's own reply holds it.
+      await net.answer(await until(() => net.held().find(entry => thumbs(entry.payload)), at + ': the thumbs-up is on its way'), 503,
+        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+      const read = await until(() => net.held().find(entry => reactions(entry.payload)), at + ': its reactions are read again; that read is held');
+      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.length>0)(document.getElementById('app-status'))"), at + ': the status line says what became of the thumbs-up');
+      if (!laptop) await openDrawer547(p, at);
+      await p.evaluate("(()=>{document.getElementById('rail').scrollTop=0})()");
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      await shot(p, `rail-thumb-busy-${size}-${theme}`);
+      const seen = await notices547(p), said = await p.evaluate("document.getElementById('app-status').textContent");
+      const fault = check => { try { check(); } catch (error) { faults.push(error.message); } };
+      fault(() => {
+        assert.match(said, /^The thumbs-up on “A card whose thumbs-up was not taken[^”]*” was not saved: Theseus was busy\. Press again: Core keeps one of each\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection: ${said}`);
+        assert.deepEqual(seen.shown.map(item => item.id), ['app-status'], `${at}: the status line shows: ${JSON.stringify(seen)}`);
+        assert.ok(seen.shown[0].inRail && seen.shown[0].ownMiddle, `${at}: in sight in the rail, nothing over it: ${JSON.stringify(seen)}`);
+        assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
+      });
+      net.hold(null); await net.pass(read);
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once the reactions read again land, the status line goes').catch(error => faults.push(error.message));
+      await shot(p, `rail-thumb-busy-${size}-${theme}-gone`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    assert.deepEqual(faults, [], 'every size and theme');
+  });
+
   await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back; one Core took, its answer lost, is settled on coming back by its own send, never by its words', async () => {
     const [topic, other] = ['rail-doubt-t', 'rail-doubt-u'];
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Doubt topic' }, { id: other, title: 'Elsewhere topic' }] });
