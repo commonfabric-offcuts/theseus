@@ -97,21 +97,33 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       rooms.push(m.style.getPropertyValue('--line-room')||'0px')}
     return {rooms,gap:innerHeight-${END}-parseFloat(rooms.at(-1))}})()`);
   // What the page holds ends at a fraction of a pixel, as a card's lines often make it: main's padding below grows
-  // by what puts the end 0.73px past a whole pixel, and the page has measured and drawn its room again (the change
-  // of main's size heard at one frame, measured at the next, drawn at the third). The page's length is rounded to a
-  // whole pixel, here up, so at its end the view reaches 0.27px past what it holds: where a room that took that as a
-  // pixel more grew a pixel with every push (B6).
-  const endAtFraction = p => p.evaluate(`(async()=>{const m=document.querySelector('main'),end=${END}+scrollY;
-    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1.73-end%1)%1)+'px';
+  // by what puts the end that far past a whole pixel, and the page has measured and drawn its room again (the change
+  // of main's size heard at one frame, measured at the next, drawn at the third).
+  const endAtFraction = (p, fraction) => p.evaluate(`(async()=>{const m=document.querySelector('main'),end=${END}+scrollY;
+    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1+${fraction}-end%1)%1)+'px';
     for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()`);
-  // With what the page holds ending at a fraction, pushing down at the page's end leaves the room as it was.
-  const pushesLeaveRoom = async (p, label) => {
-    await endAtFraction(p);
-    const before = await roomNow(p);
-    const { rooms, gap } = await pushDown(p);
-    assert.ok(gap > 0 && gap < 1, label + ': at the page\'s end the view reaches a fraction past what the page holds: ' + gap);
-    assert.deepEqual(rooms, Array(8).fill(before), label + ': pushing down at the page\'s end leaves the room as it was');
-    return before;
+  // The page's length is a whole number of pixels, so at its end the view reaches past what the page holds, or
+  // stops short of it, by a fraction; where it reaches past, a room that took that fraction as a pixel more grew a
+  // pixel with every push (B6). With what the page holds ending at each tenth of a pixel in turn, and the window
+  // resized at the page's end first when resize is given, pushing down there leaves the room as it was (or as none,
+  // when none is given). At one fraction at least the view reaches past what the page holds, so the pushes test
+  // what B6 grew from.
+  const pushesLeaveRoom = async (p, label, { resize = null, none = false } = {}) => {
+    const gaps = [];
+    for (const fraction of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      const at = `${label} (the end ${fraction}px past a pixel)`;
+      await endAtFraction(p, fraction);
+      if (resize) {
+        assert.deepEqual(await resizeTo(p, { ...resize, height: resize.height - 120 }), { height: resize.height - 120, heard: true }, at + ': the window is shorter');
+        assert.deepEqual(await resizeTo(p, resize), { height: resize.height, heard: true }, at + ': and grows back at the page\'s end');
+      }
+      const before = await roomNow(p);
+      if (none) assert.equal(before, '0px', at + ': no room is made');
+      const { rooms, gap } = await pushDown(p);
+      gaps.push(gap);
+      assert.deepEqual(rooms, Array(8).fill(before), at + ': pushing down at the page\'s end leaves the room as it was');
+    }
+    assert.ok(gaps.some(gap => gap > 0 && gap < 1), label + ': at some fraction the view reaches past what the page holds at its end: ' + gaps);
   };
   const roomNow = p => p.evaluate("document.querySelector('main').style.getPropertyValue('--line-room')||'0px'");
   // Changes the window's size and waits two frames, in whose rendering the resize is heard; says the window's
@@ -206,15 +218,9 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       assert.equal(await blankBelow(p), 0, label + ': scrolled to the top, the room has gone');
       await scrollPage(p, 'end');
       assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
-      // At the page's end with no room, what the page holds ends at a fraction and the window shrinks and grows back:
-      // measured again where the view reaches a fraction past what the page holds, no room is made, and pushing down
-      // there makes none.
-      await endAtFraction(p);
-      assert.deepEqual(await resizeTo(p, { ...metrics, height: metrics.height - 120 }), { height: metrics.height - 120, heard: true }, label + ': the window is shorter');
-      assert.deepEqual(await resizeTo(p, metrics), { height: metrics.height, heard: true }, label + ': and grows back at the page\'s end');
-      const resized = await roomNow(p), pushed = await pushDown(p);
-      assert.ok(pushed.gap > 0 && pushed.gap < 1, label + ': no room, at the page\'s end the view reaches a fraction past what the page holds: ' + pushed.gap);
-      assert.deepEqual([resized, ...pushed.rooms], Array(9).fill('0px'), label + ': no room, the window resized and pushed down at the end, none is made');
+      // At the page's end with no room, the window shrinks and grows back: measured again where the view reaches a
+      // fraction past what the page holds, no room is made, and pushing down there makes none.
+      await pushesLeaveRoom(p, label + ' no room, the window resized at the end', { resize: metrics, none: true });
       assert.equal(await blankBelow(p), 0, label + ': and the page ends where what it holds ends');
       // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
       // room. The older card at the top of the window again, it is opened in the Reader, which reads it while the
