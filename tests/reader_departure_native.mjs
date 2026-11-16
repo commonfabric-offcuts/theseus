@@ -315,6 +315,54 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     assert.equal(await onAck(),false,'↑ from the acknowledgement goes on');
     assert.deepEqual([up.inDialog,up.that],[true,true],'to a control above it in the dialog: '+JSON.stringify(up));
     assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,'and the arrows left it ticked');
+    // Three versions taller than the review's box leave the acknowledgement and Prepare this reply again out of sight
+    // below, in a box that takes no focus of its own: the arrows from the header and the footer still reach them, the
+    // box scrolling toward them a step at a time, at a laptop's width and a phone's (item 301; docs/interaction.md).
+    const PREPARE='Prepare this reply again';
+    const where=()=>p.evaluate(`(e=>({at:e===document.querySelector('${ACK}')?'the acknowledgement':e.id||e.textContent.trim().slice(0,40)||e.tagName,
+      top:Math.round(document.getElementById('review-content').scrollTop),inDialog:Boolean(e.closest('#version-review'))}))(document.activeElement)`);
+    // Presses key until neither the focus nor the box moves, and answers each landing.
+    const walk=async(key,trail)=>{
+      for(let n=0;n<60;n++){
+        const was=await where();await p.key(key);const now=await where();
+        trail.push(key.slice(5,6)+':'+now.at+'@'+now.top);
+        assert.ok(now.inDialog,'the arrows keep the focus in the review: '+trail.join(' '));
+        if(now.at===was.at&&now.top===was.top)return;
+      }
+      assert.fail(key+' never came to rest: '+trail.join(' '));
+    };
+    const texts=await p.evaluate(`[...document.querySelectorAll('#review-content pre')].map(e=>e.textContent)`);
+    assert.equal(texts.length,3,'the correction review shows its three versions');
+    await p.evaluate(`document.querySelectorAll('#review-content pre').forEach(e=>{e.textContent=Array.from({length:14},(_,i)=>'Line '+i+' of this version, a sentence of ordinary length').join('\\n')})`);
+    for(const [width,height,mobile] of [[1440,900,false],[390,844,true],[375,667,true],[320,568,true]]){
+      await p.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
+      await until(()=>p.evaluate(`innerWidth===${width}`),width+': the window is drawn at its width');
+      const hidden=await p.evaluate(`(c=>{c.scrollTop=0;const k=c.getBoundingClientRect(),a=document.querySelector('${ACK}').getBoundingClientRect();return a.top>=k.bottom&&getComputedStyle(c).overflowY==='auto'&&c.tabIndex<0})(document.getElementById('review-content'))`);
+      assert.equal(hidden,true,width+': the acknowledgement starts out of sight below, in a box that takes no focus');
+      const starts=await p.evaluate(`['review-title',...[...document.querySelectorAll('#version-review>header button,#version-review>footer button')].filter(e=>e.checkVisibility()&&!e.disabled).map(e=>e.id)]`);
+      assert.ok(starts.includes('review-close')&&starts.includes('review-keep'),width+': the header\'s ✕ and the footer\'s Keep both for now show: '+starts.join(', '));
+      for(const start of starts){
+        await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('${start}').focus())`);
+        const trail=[start];await walk('ArrowDown',trail);await walk('ArrowUp',trail);
+        assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
+      }
+      await p.evaluate(`document.getElementById('review-content').scrollTop=0`);
+      const trail=['the acknowledgement'];await p.evaluate(`document.querySelector('${ACK}').focus({preventScroll:true})`);await walk('ArrowDown',trail);
+      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ↓ from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
+      assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
+      // The focus where ↑ from the footer brought it, for the evidence, in light and dark.
+      await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
+      await walk('ArrowDown',[]);await p.key('ArrowUp');
+      for(const theme of ['light','dark']){
+        await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+        await until(()=>p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`),width+': drawn '+theme);
+        await shot(p,`review-arrows-acknowledgement-${width}-${theme}`);
+      }
+      await p.send('Emulation.setEmulatedMedia',{features:[]});
+    }
+    await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    await until(()=>p.evaluate('innerWidth===1440'),'the window is back at a laptop\'s width');
+    await p.evaluate(`((t)=>document.querySelectorAll('#review-content pre').forEach((e,i)=>{e.textContent=t[i]}))(${JSON.stringify(texts)})`);
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');
