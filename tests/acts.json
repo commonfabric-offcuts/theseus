@@ -19482,8 +19482,8 @@
    "break": [
     [
      "web/app.mjs",
-     "  list.style.paddingBottom = `${short}px`;\n",
-     ""
+     "  list.style.paddingBottom = `${short}px`; roomy = list;\n",
+     "  roomy = list;\n"
     ]
    ],
    "check": {
@@ -19497,7 +19497,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  // Room an earlier hold kept is given back first; the hold measures without it.\n  list.style.paddingBottom = '';\n",
+     "  // Room an earlier hold kept is given back first; the hold measures without it.\n  if (roomy) { roomy.style.paddingBottom = ''; roomy = null; }\n",
      ""
     ]
    ],
