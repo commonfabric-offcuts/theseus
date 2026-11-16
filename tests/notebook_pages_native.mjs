@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
 
@@ -282,13 +283,20 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       }
       await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelector(${JSON.stringify(button)})?.checkVisibility()===true`), 'the Notebook pencil is available');
       // Beside the rail's Notebook heading, one pencil showing, and none in the page between the rails or in the side rail.
-      const placed = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}),r=b.getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
-        return {heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:r.top>=h.top-1&&r.bottom<=h.bottom+1&&r.right<=h.right+1,
+      // raw: the boxes the measure was taken from, in the same frame, printed only when it fails (item 606: a rare WebKit
+      // phone failure, beside false, whose geometry no probe has caught yet): the pencil's and its heading's boxes, the
+      // drawer's transform and scroll, the Notebook sections and pencils drawn, and whether the rail is still reading.
+      const { placed, raw } = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}),r=b.getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
+        const box=e=>{const x=e.getBoundingClientRect();return [x.left,x.top,x.width,x.height].map(v=>Math.round(v*10)/10)},things=document.querySelector('#things');
+        return {placed:{heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:r.top>=h.top-1&&r.bottom<=h.bottom+1&&r.right<=h.right+1,
           inMain:document.querySelectorAll('#main .notebook-create').length,inRail:[...document.querySelectorAll('#things .notebook-create')].filter(e=>e.checkVisibility()).length,
           inSide:document.querySelectorAll('#rail .notebook-create, #rail #outcome-references').length,name:[b.getAttribute('aria-label'),b.title],
-          touch:Math.round(r.width)>=44&&Math.round(r.height)>=44}})()`);
+          touch:Math.round(r.width)>=44&&Math.round(r.height)>=44},
+          raw:{pencil:box(b),heading:box(document.querySelector(${JSON.stringify(host + ' > summary')})),drawer:things&&{transform:getComputedStyle(things).transform,scrollTop:things.scrollTop,box:box(things)},
+            sections:document.querySelectorAll('.things-sec[data-key="notebook"]').length,pencils:[...document.querySelectorAll('.notebook-create')].filter(e=>e.checkVisibility()).map(box),
+            busy:document.querySelector('.things-sections')?.getAttribute('aria-busy')??null,viewport:[innerWidth,innerHeight]}}})()`);
       assert.deepEqual(placed, {heading:'Notebook',beside:true,inMain:0,inRail:1,inSide:0,name:['New Notebook page','New Notebook page'],touch:true},
-        `the ${scope.kind === 'topic' ? 'topic' : 'outcome'} pencil is beside the right rail's Notebook heading, and the side rail has none`);
+        `the ${scope.kind === 'topic' ? 'topic' : 'outcome'} pencil is beside the right rail's Notebook heading, and the side rail has none ${JSON.stringify(raw)}`);
       if (empty.includes(scope.id)) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(host + ' .things-body')}).textContent`), 'No pages yet.', 'an empty topic Notebook keeps its heading');
       await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
       await press(button);
@@ -495,7 +503,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // The Reader's ⋯ at a revision copies its links and offers no Edit page.
       p = await opened('nb-reader-menu-' + label, `${facts.origin}/?topic=${read.topic_id}&page=${theirs}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Their page'`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Copy Link to Revision 1'), 'the ⋯ opens');
       assert.equal((await menuItems(p)).includes('Edit page'), false, 'no Edit page for a reader Core does not let write');
@@ -527,7 +535,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       // And the Reader's ⋯ offers its owner Edit page.
       p = await opened('nb-owner-menu-' + label, `${facts.origin}/?topic=${own.topic_id}&page=${made.id}&revision=1`, phone);
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(name)}`), 'the Reader shows the page');
-      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
       await press(p, '#reader-menu', phone);
       await until(async () => (await menuItems(p)).includes('Edit page'), 'Edit page for the topic\'s owner');
       assert.deepEqual(p.errors, []); await p.close();
@@ -1521,6 +1529,46 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   });
   // A page in the composer over the feed (item 396), in a module of its own.
   await notebookSheetChecks({ check, page, until, control, view, facts, shot });
+  // Items 602 and 601 (tests/menu_glyphs.mjs): the Reader's ⋯ on a Notebook page, as on a message, shows each item's
+  // glyph before its words, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark.
+  await check('notebook menus the Reader\'s ⋯ on a Notebook page carries a glyph before each item\'s words, 18px and on their middle: Copy Link, Copy Link to Revision 1 and Edit page, at 320, 375, 390 and a laptop, light and dark', async () => {
+    const own = await control({ method: 'own_topic', operation_id: 'nb-glyphs', title: 'Fence notes' });
+    assert.equal((await control({ method: 'agent_page', operation_id: 'nb-glyphs-page', item_id: 'nb-glyphs-page', topic_id: own.topic_id, title: 'Fence plan', body: '## Posts\n\nSix posts, set in gravel.\n' })).status, 'committed');
+    const WIDTHS = [['320', { width: 320, height: 720, deviceScaleFactor: 1, mobile: true }], ['375', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true }],
+      ['390', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }], ['laptop', null]];
+    const seen = [], aligned = [];
+    for (const [width, metrics] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const p = await page(`nb-glyphs-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=${own.topic_id}&page=nb-glyphs-page&revision=1`, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        if (!metrics) return;
+        await q.send('Emulation.setDeviceMetricsOverride', metrics);
+        await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Fence plan'`), `${width} ${theme}: the Reader shows the page`);
+      // Settled as the Reader's other cases read it: the topic's opening is the person's own message, which waits for a
+      // reply under three dots that pulse for as long as it waits (item 475), so an endless animation is not one to wait out.
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
+      if (metrics) {
+        const b = await p.box('#reader-menu');
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else await p.point('#reader-menu');
+      await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].some(b=>b.textContent==='Edit page')`), `${width} ${theme}: the ⋯ opens`);
+      const rows = await p.evaluate(ROWS);
+      await shot(p, `nb-glyphs-${width}-${theme}`);
+      seen.push(...rows.map(row => ({ ...row, at: `${width} ${theme}` })));
+      const lefts = rows.map(row => row.words?.left ?? NaN);
+      aligned.push([`${width} ${theme}`, Math.max(...lefts) - Math.min(...lefts)]);
+      assert.deepEqual(rows.map(row => row.label).filter(label => label !== 'Wide layout'), ['Copy Link', 'Copy Link to Revision 1', 'Edit page'], `${width} ${theme}: the same items, in the same order (and Wide layout where the window can choose)`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+  });
+
   // Images in a card (item 321), in a module of its own.
   await cardImageChecks({ check, page, until, control, view, facts, shot });
 }

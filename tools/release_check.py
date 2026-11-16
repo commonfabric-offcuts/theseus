@@ -53,7 +53,7 @@ NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
 PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
 WEBKIT = "tests/webkit_native.mjs"
-WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "health")
+WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "health", "targets")
 # The Reader's composer, in Chrome for Testing and Safari's engine (docs/reader.md).
 COMPOSE = "tests/reader_compose_native.mjs"
 # The harnesses that load playwright-core, and so are handed its directory.
@@ -100,6 +100,7 @@ UNIT_MODULE = re.compile(r"tests/(test_[^/]+\.py|[^/]+\.test\.mjs)")
 # doc), and the nine of a merged set of touches is a feature's run.
 SMALL_FIX_FILES = 6
 SMALL_FIX_NEVER = ("tools/", ".github/", "bin/", "aim_next/migrations.py")
+COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
 class Refused(Exception):
@@ -729,7 +730,23 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
     return summary
 
 
-def judge_summary(path, commit, basis=None, scope=None):
+def same_tree(git, judged, commit):
+    """Item 588: the tree judged and commit share, read from git(*args); Refused when their trees differ, or when git
+    cannot read either one's: a tree that could not be read is never taken as the same tree."""
+    trees = []
+    for each in (judged, commit):
+        found = git("rev-parse", "--verify", each + "^{tree}")
+        tree = found.stdout.strip() if found.returncode == 0 else ""
+        if not COMMIT.fullmatch(tree):
+            raise Refused("the tree of %s could not be read (git exited %s): %s"
+                          % (each, found.returncode, (found.stderr or found.stdout or "").strip()[:300]))
+        trees.append(tree)
+    if trees[0] != trees[1]:
+        raise Refused("its tree %s is not %s's tree %s" % (trees[0], commit, trees[1]))
+    return trees[0]
+
+
+def judge_summary(path, commit, basis=None, scope=None, tree=None):
     """(foreign, unpassed): reasons a summary does not describe a run at exactly this commit (unreadable, not a
     summary, another commit, a tree that changed while it ran, steps it skipped that basis does not confirm it could
     skip, a scope that scope does not confirm), and reasons that run did not pass (a required step failed or is
@@ -740,7 +757,10 @@ def judge_summary(path, commit, basis=None, scope=None):
     live commit, the paths changed since it, the native steps they touch at commit), read and chosen by the caller itself
     (scope()), or Refused; without it a scoped run is never taken. It is taken only when that live commit is the one the
     summary was scoped beside, the change is a small fix (small_fix_problems), and every step chosen ran whole, once;
-    the units, the deploy's refusals and the wake replay stay required, and only the browser steps not chosen are not."""
+    the units, the deploy's refusals and the wake replay stay required, and only the browser steps not chosen are not.
+    tree: only for a summary of another full commit (item 588), tree(that commit) reads, by the caller itself, the tree
+    it shares with commit (same_tree), or raises Refused; such a summary describes commit's tree, and is judged as one
+    of commit is. Without it a summary of another commit is never taken."""
     try:
         summary = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
@@ -750,8 +770,17 @@ def judge_summary(path, commit, basis=None, scope=None):
     foreign, reasons = [], []
     if summary.get("only"):
         foreign.append("the release check ran only %s, so it does not describe %s" % (", ".join(summary["only"]), commit))
-    if summary.get("commit") != commit:
-        foreign.append("the release check ran on %s, not %s" % (summary.get("commit"), commit))
+    judged = summary.get("commit")
+    if judged != commit:
+        said = "the release check ran on %s, not %s" % (judged, commit)
+        # Only a full commit is asked of git: a name it resolves (HEAD, a branch) could read commit's own tree.
+        if tree is None or not isinstance(judged, str) or not COMMIT.fullmatch(judged):
+            foreign.append(said)
+        else:
+            try:
+                tree(judged)
+            except Refused as refusal:
+                foreign.append("%s, and %s" % (said, refusal))
     if summary.get("tree_unchanged") is not True:
         foreign.append("the checkout changed while the release check ran")
     listed = [step for step in summary.get("steps") or [] if isinstance(step, dict)]

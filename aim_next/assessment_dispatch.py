@@ -63,9 +63,12 @@ class Core:
         record = found['assessment']
         if record['assessor_id'] != self.profile.actor_id:
             raise DispatchError('wrong_assessor')
-        # A reached outcome is final (D42): no native context or model turn starts for it.
+        # A reached outcome is final (D42), and an archived or completed one kept to read (item 404): no native context
+        # or model turn starts for it.
         if open_outcome and found['outcome_reached'] is not False:
             raise DispatchError('OUTCOME_REACHED')
+        if open_outcome and found['outcome_closed'] is not False:
+            raise DispatchError('OUTCOME_CLOSED')
         return record
 
     def command(self, identity, action, args):

@@ -11,13 +11,21 @@ lower bound, initially omitted or `""`. Limit defaults to 50, with a maximum of
 carries `order`, the reader's own order of their outcomes, which the page
 places them in (docs/outline-order.md).
 
+A reached outcome is left out, and listed alone with `reached: true`; an
+outcome its owner archived or completed is left out too, and listed alone with
+`ended: true` (docs/targets.md, "Archived and completed"). Asking for both is
+refused. Every page carries `reached_count` and `ended_count`, how many of the
+reader's outcomes each line holds, whatever the page lists. Each item carries
+`end`: `{state: archived | completed, by, ms}`, or `null` while it is open.
+
 ```json
 {
   "instance_id": "I",
   "items": [
     {"id": "W", "owner_id": "A", "title": "Outcome", "title_truncated": false, "version": 1,
-     "conversation_id": "T", "unread": 4, "addressed": 1, "build": {"unread": 3, "addressed": 1}}
+     "conversation_id": "T", "unread": 4, "addressed": 1, "build": {"unread": 3, "addressed": 1}, "end": null}
   ],
+  "reached_count": 0, "ended_count": 0,
   "next_cursor": null
 }
 ```

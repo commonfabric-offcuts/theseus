@@ -52,7 +52,15 @@ while Core has it; a refusal puts it back unpressed and the page says why. A
 phone's header has no room for ←, the title with its star and this button,
 ↑ ↓, ⋯ and ✕ in one row of 44 pixel targets, so there (480 pixels wide or
 less) the title, its star and the archive button take a second row, and who
-wrote the message and when stays in the first, beside ←.
+wrote the message and when stays in the first, beside ←. The title stays
+whole there. The two rows cost the message no more than their 44 pixel
+targets (item 593): the header keeps no padding above or below them, and the
+message starts right under it, with no gap of the pane's own above it, so
+with a long reply and the keyboard up a phone still shows 7 lines of the
+message. The access notice, when the pane shows it above the message, keeps
+the pane's gap under the header in each of its states, and the message keeps
+its own room after its end, under ↑ Previous · ↓ Next. A laptop's header, and
+a phone's of one row, keep their room as before.
 
 The message's own acts are in the Reader's ⋯, beside Copy Link: Quote
 selection (only while words are selected or a passage is lit), Mark unread,

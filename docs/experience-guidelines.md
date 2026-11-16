@@ -31,7 +31,13 @@ maximum, and on a phone never reach past the screen.
   of the message, writing with the keyboard up at least 7, …" and "laptop
   stacked …: … at least 17 lines while writing", each with a long reply and
   the To line under the who chip ([reader.md](reader.md), "Naming who a
-  message is to").
+  message is to"); "header …: on a phone at 320, 375 and 390 the Reader's
+  title is whole on the header's second row, … the two rows no taller than
+  their targets and the message right under them, its end keeping its room; a
+  laptop's header, stacked and wide, keeps one row and its room" and "access
+  notice …: on a phone at 320, 375 and 390 the notice keeps the room under the
+  Reader's two-row header, …", one case for each of the notice's states
+  ([reader.md](reader.md), the archive button's two-row phone header).
 - `tests/reader_native.mjs` (`native-reader-finished`): "finished the save
   status is one line whatever it says: …".
 - Gap: no check measures how much of a phone screen the message keeps while the
@@ -226,6 +232,33 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
+## One meaning, one glyph
+
+Every menu item shows a glyph before its words, and an act keeps one glyph in
+every menu: the glyph of the button that does the same thing, where there is
+one ([links.md](links.md), "A message's menu"). The words, their order, keys
+and acts are what they were.
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading menus every item of a message's ⋯, a right-click, a dossier's menu
+  and the phone's sheets carries its glyph before its words, …", at 320, 375
+  and 390 points and a laptop, light and dark, in each state an item has.
+- `tests/reader_compose_native.mjs` (`native-compose`, Chrome and Safari's
+  engine): "menus phone-320: …" to "menus stacked: every item of the
+  Reader's ⋯ carries its glyph …".
+- `tests/notebook_pages_native.mjs` (`native-notebook`,
+  `native-webkit-notebook`): "notebook menus the Reader's ⋯ on a Notebook page
+  carries a glyph before each item's words, …".
+- `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
+  "pipeline menus every item of an item's ⋯ carries its glyph …".
+- Each browser case above also holds what every glyph draws: the approved
+  design page's drawing, ink that shows (Quote selection's ❝ included), and for
+  the pencil and the tray the New message and Reader's archive buttons' own
+  drawings as the page shows them (`misdrawn` in `tests/menu_glyphs.mjs`).
+- `tests/ui_menu_glyphs.test.mjs` (node): the glyph by name, silent and after
+  the words in the document; an item with no glyph opens no menu; every glyph
+  draws the approved drawing, and a borrowed one is its named control's.
+
 ## Getting something in is quick, never a form
 
 One line or one tap comes first: type, press Return, and it is in. Details are
@@ -296,6 +329,10 @@ Everything is reachable by touch on a phone. Touch targets are big enough,
 nothing scrolls sideways, and nothing depends on hover.
 
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks touch targets, partial fences and visible clipboard refusals at 320, 375 and 390 pixels in both themes.
+- `tests/targets_native.mjs` (`native-targets`, `native-webkit-targets`):
+  "targets the owner's Complete · Archive, and Bring back on the page, the home
+  and a topic, are 44px tall at 320, 375 and 390 …", and "targets the owner
+  archives by touch …" (archived by a tap, brought back by the keys).
 - `tests/reader_navigation_native.mjs` (`native-navigation`): "navigation
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch

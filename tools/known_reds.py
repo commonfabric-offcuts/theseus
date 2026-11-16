@@ -8,7 +8,8 @@ at the live commit, never the candidate's copy, loaded and matched as tools/ci_k
 the pull request's event base: the case's identity and its failure's fingerprint, Admissions), or a release-check
 summary of the live commit
 shows that same case failing in a run of the same step that ended as it should. Nothing is run again: both runs are
-read from the evidence each summary keeps beside it. The cases stay failures: the deploy records them as known reds,
+read from the evidence each summary keeps beside it, or, for the Checks workflow's whole-run summary, in the shard of
+its run that ran the step (item 588, step_evidence). The cases stay failures: the deploy records them as known reds,
 never as passes. docs/tools.md ("Known reds") is the contract.
 
 FILE: {"live_commit": FULL_SHA,
@@ -58,6 +59,9 @@ SAID = {"policy": "known red: {step} {case!r} failed; " + POLICY + " at {short} 
         "not_needed": "known red not needed: {step} {case!r} did not fail",
         "not_run": "known red not run: {step} {case!r}: the scoped run did not run {step}, which no changed path touches; "
                    "its full run follows"}
+# Item 588: a shard the Checks workflow's whole-run summary was folded from, as its combine job names it in combined_from
+# (.github/workflows/checks.yml), relative to the folder `gh run download RUN_ID -D DIR` keeps each artifact in.
+SHARD = re.compile(r"check-[0-9]+/summary\.json")
 
 
 class Refused(Exception):
@@ -165,6 +169,37 @@ def ended_cases(out, result, whose, before_end_record=False):
     return {case: results[names.index(case)] for case in failed}
 
 
+def step_evidence(summary, folder, result, said):
+    """The folder holding the evidence of one step's run, result its entry in summary, read from folder: folder itself for
+    a release check's own summary; for the Checks workflow's whole-run summary (item 588: it names the shards it was
+    folded from in combined_from, and keeps no evidence of its own), the folder of the one shard that ran the step as
+    summary has it, whose summary names summary's commit. `gh run download RUN_ID -D DIR` keeps the whole-run summary
+    in DIR/release-check/ and each shard in DIR/check-N/, so a shard is read beside folder. Refused otherwise."""
+    shards = summary.get("combined_from")
+    if shards is None:
+        return folder
+    if not isinstance(shards, list) or not shards:
+        raise Refused("%s: its run names no shards, %r" % (said, shards))
+    holding = []
+    for shard in shards:
+        if not isinstance(shard, str) or not SHARD.fullmatch(shard):
+            raise Refused("%s: its run names the shard %r, not check-N/summary.json" % (said, shard))
+        path = folder.parent / shard
+        try:
+            ran = json.loads(path.read_text())
+        except (OSError, ValueError) as error:
+            raise Refused("%s has no readable evidence: its run's shard %s cannot be read beside %s (%s); download every "
+                          "artifact of the run, `gh run download RUN_ID -D DIR`" % (said, shard, folder, error))
+        if not isinstance(ran, dict) or ran.get("commit") != summary.get("commit"):
+            raise Refused("%s: its run's shard %s ran on %s, not %s"
+                          % (said, shard, ran.get("commit") if isinstance(ran, dict) else None, summary.get("commit")))
+        if isinstance(ran.get("steps"), list) and result in ran["steps"]:
+            holding.append(path.parent)
+    if len(holding) != 1:
+        raise Refused("%s: %d of its run's shards hold the step as the summary has it, not one" % (said, len(holding)))
+    return holding[0]
+
+
 def _compose_ended(report, said):
     """Refused unless the composer's native.json says every planned phase ran and its fixture exited 0, no signal."""
     code, signal = report.get("fixtureExitCode"), report.get("fixtureExitSignal", "none recorded")
@@ -211,7 +246,8 @@ def candidate_failures(summary, out):
     for step in failed:
         if step.get("name") not in NATIVE:
             raise Refused("%s failed; only a browser step's failed cases can be known reds" % step.get("name"))
-    return {step["name"]: ended_cases(out, step, "the candidate's") for step in failed}
+    return {step["name"]: ended_cases(step_evidence(summary, out, step, "the candidate's %s" % step["name"]), step,
+                                      "the candidate's") for step in failed}
 
 
 def owner_accepted(acceptance, red, said):
@@ -254,7 +290,8 @@ def live_cases(red, live_commit):
     found = [step for step in steps if isinstance(step, dict) and step.get("name") == red["step"]]
     if len(found) != 1:
         raise Refused("%s did not run %s once" % (said, red["step"]))
-    return ended_cases(path.parent, found[0], "the live", before_end_record=True), None
+    return ended_cases(step_evidence(summary, path.parent, found[0], "the live %s" % red["step"]), found[0], "the live",
+                       before_end_record=True), None
 
 
 # Item 553: what a commit's own tools/release_check.py names, printed by a Python of its own run on a copy of that

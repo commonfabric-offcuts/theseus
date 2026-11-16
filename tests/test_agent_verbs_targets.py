@@ -43,6 +43,39 @@ class OutcomeKindVerbCase(AgentVerbCase):
         self.assertIn(outcome, self.run_cli("outcomes", "--reached")[1])
 
 
+class OutcomeEndVerbCase(OutcomeKindVerbCase):
+    """outcome-end and outcomes --ended (item 404, docs/agent-cli.md): the owner archives, completes and brings back."""
+
+    def test_the_owner_archives_completes_and_brings_back_and_the_lists_say_so(self):
+        outcome = self.new_outcome()
+        self.assertEqual(self.run_cli("outcome-end", outcome, "archived"), (0, "archived Agent outcome (1 topic)\n", ""),
+                         "its Conversation is its one topic, and the count includes it")
+        self.assertEqual(self.run_cli("outcome-end", outcome, "archived"), (0, "Agent outcome is already archived (no change)\n", ""))
+        self.assertEqual(self.run_cli("outcome-end", outcome, "completed"), (0, "completed Agent outcome (topics carried)\n", ""))
+        code, out, err = self.run_cli("outcomes")
+        self.assertEqual((code, err), (0, ""))
+        self.assertNotIn(outcome, out)
+        self.assertIn("archived or completed (1): outcomes --ended\n", out)
+        code, out, err = self.run_cli("outcomes", "--ended")
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^%s  Agent outcome  \(owner agent-a, to keep\)  completed [A-Z][a-z]{2} \d{1,2} by agent-a\n$" % outcome)
+        self.assertEqual(self.run_cli("outcome-end", outcome, "open"), (0, "brought back Agent outcome (1 topic)\n", ""))
+        code, out, _ = self.run_cli("outcomes")
+        self.assertIn(outcome, out)
+        self.assertNotIn("archived or completed", out)
+        self.assertEqual(self.run_cli("outcomes", "--ended"), (0, "no archived or completed outcomes\n", ""))
+
+    def test_only_the_owner_may_and_the_lists_are_asked_for_one_at_a_time(self):
+        code, out, err = self.run_cli("outcome-end", "w1", "archived")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("FORBIDDEN", err)
+        self.assertEqual(self.sql("SELECT count(*) FROM outcome_ends"), [(0,)])
+        code, out, err = self.run_cli("outcome-end", "w1", "finished")
+        self.assertEqual((code, out), (2, ""))
+        code, out, err = self.run_cli("outcomes", "--reached", "--ended")
+        self.assertEqual((code, out), (2, ""))
+
+
 class TargetVerbCase(AgentVerbCase):
     def test_the_coordinator_writes_the_first_words_and_asks_the_owner_with_later_ones(self):
         self.assertEqual(self.run_cli("target", "w1", "Every topic keeps its place."), (0, "target revision 1 is current\n", ""))

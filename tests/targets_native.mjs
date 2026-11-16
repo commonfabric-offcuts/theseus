@@ -12,7 +12,18 @@ import assert from 'node:assert/strict';
 // it anyway and Say it is reached, across a commit elsewhere or one that changes the panel itself (web/repaint.mjs). Each page fits 1280 and
 // 390, light and dark, with no sideways scroll. Run by reader_persistence_native.mjs with --targets; screenshots
 // are kept as targets-*.png for review.
-const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
+const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true },
+  phone320: { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, phone375: { width: 375, height: 812, deviceScaleFactor: 2, mobile: true } };
+// Item 404: each control and the box it sits in, measured where it is drawn. An "edge" is a left border unlike the
+// right one, or an inset shadow: the coloured left edge or bar no card or line may carry (docs/experience-guidelines.md).
+const MEASURE = `(selectors => selectors.map(selector => {
+  const e = document.querySelector(selector);
+  if (!e || !e.getClientRects().length) return { selector, missing: true };
+  const b = e.getBoundingClientRect(), boxes = [e, e.closest('.tg-end, .standing-last, .ended-row, .ended-outcomes, .outcome-kept')].filter(Boolean);
+  const edge = boxes.some(x => { const c = getComputedStyle(x);
+    return (c.borderLeftStyle !== 'none' && parseFloat(c.borderLeftWidth) > 0 && (c.borderLeftWidth !== c.borderRightWidth || c.borderRightStyle === 'none')) || /inset/.test(c.boxShadow); });
+  return { selector, height: b.height, inside: b.left >= -0.5 && b.right <= innerWidth + 0.5, edge, text: e.textContent };
+}))`;
 const COMMIT = 'a'.repeat(40);
 
 export async function targetsChecks({ check, page, until, control, view, facts, shot }) {
@@ -264,4 +275,251 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await shot(home, 'targets-home-reached');
     assert.deepEqual([...p.errors, ...home.errors], []);
   });
+
+  // Item 404 (docs/targets.md, "Archived and completed"): the owner archives or completes an outcome with one press,
+  // and brings it back with one press, from its page, the Outcomes home's "Archived (N)" line or a topic of it.
+  const tapAt = async (p, selector) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    const b = await p.box(selector); assert.ok(b && b.width > 0 && b.height > 0, `visible ${selector}`);
+    const at = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${at.x},${at.y}))`), true, `${selector} is not covered where it is tapped`);
+    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
+    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const keyOn = async (p, selector, name) => {
+    await p.evaluate(`(e=>{e.scrollIntoView({block:'center'});e.focus()})(document.querySelector(${JSON.stringify(selector)}))`);
+    assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`), true, `${selector} takes the keys`);
+    await p.key(name);
+  };
+  const shown = (p, selector) => p.evaluate(`(e=>Boolean(e)&&e.getClientRects().length>0)(document.querySelector(${JSON.stringify(selector)}))`).catch(() => false);
+  const standing = p => p.evaluate(`document.getElementById('outcome-standing')?.textContent ?? ''`);
+  const ended = async workspace => (await checks(workspace)).end?.state ?? 'open';
+  const homeIds = p => p.evaluate(`[...document.querySelectorAll('#workspaces a[data-workspace-id]')].map(a=>a.dataset.workspaceId)`);
+  const endedCount = async () => (await view('workspaces', { limit: 20 })).ended_count;
+  const origin = p => p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+  const openArchived = async (p, workspace, by = 'press') => {
+    await until(() => shown(p, '.ended-outcomes summary'), 'the Archived line shows');
+    if (!await p.evaluate(`document.querySelector('.ended-outcomes').open`)) {
+      if (by === 'keys') await keyOn(p, '.ended-outcomes summary', 'Enter'); else await tap(p, '.ended-outcomes summary');
+    }
+    await until(() => shown(p, `.ended-row[data-workspace-id="${workspace}"]`), 'opening the line lists it');
+  };
+  // A page in the background is told of commits only once it is in front again (web/freshness.mjs), as a person's is.
+  const front = p => p.send('Page.bringToFront');
+  // Every selector is drawn inside the window with no edge; the buttons among them (not the Archived line's summary,
+  // which is a line like Reached's) are 44px or taller at a phone's width.
+  const sized = async (p, selectors, size) => {
+    const seen = await p.evaluate(`(${MEASURE})(${JSON.stringify(selectors)})`);
+    for (const one of seen) {
+      assert.ok(!one.missing, `${one.selector} is drawn (${size})`);
+      if (size !== 'laptop' && !one.selector.endsWith('summary')) assert.ok(one.height >= 44, `${one.selector} is 44px or taller at ${SIZES[size].width} (${one.height}px)`);
+      assert.ok(one.inside, `${one.selector} is inside the window at ${SIZES[size].width}`);
+      assert.equal(one.edge, false, `${one.selector} carries no coloured edge or bar`);
+    }
+    assert.ok(await sideways(p) <= 0, `no sideways scroll at ${SIZES[size].width}`);
+    return seen;
+  };
+
+  await check('targets the owner\'s Complete · Archive, and Bring back on the page, the home and a topic, are 44px tall at 320, 375 and 390 and fit a laptop, light and dark, with no sideways scroll and no edge', async () => {
+    await control({ method: 'light_outcome', outcome: 'tg-shed', title: 'Garden shed', topic: { id: 'tg-shed-plan', title: 'Shed plan' } });
+    const pages = [];
+    const each = async (name, url, wait, selectors, before = async () => {}) => {
+      for (const size of ['phone320', 'phone375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+        const p = await open(`targets-end-${name}-${size}-${theme}`, url, size, theme);
+        pages.push(p);
+        await ready(p);
+        await before(p);
+        await until(() => shown(p, wait), `${wait} shows (${name}, ${size}, ${theme})`);
+        await sized(p, selectors, size);
+        await p.evaluate(`document.querySelector(${JSON.stringify(selectors[0])}).scrollIntoView({block:'center'})`);
+        await shot(p, `targets-end-${name}-${size === 'phone' ? 'phone390' : size}-${theme}`);
+        await p.close?.();
+      }
+    };
+    await each('open', '/?workspace=tg-shed', '#target-panel .tg-end', ['[data-key="end:completed"]', '[data-key="end:archived"]']);
+    assert.equal(await ended('tg-shed'), 'open', 'measuring sends nothing');
+    await act('outcome.end_set', { state: 'archived' }, { workspace_id: 'tg-shed' });
+    await each('page-archived', '/?workspace=tg-shed', '#outcome-standing [data-hold="bring-back"]', ['#outcome-standing [data-hold="bring-back"]']);
+    await each('home-archived', '/', '.ended-outcomes summary', ['.ended-outcomes summary', '[data-key="bring-back:tg-shed"]'], p => openArchived(p, 'tg-shed'));
+    await each('topic-archived', '/?topic=tg-shed-plan', '#outcome-kept [data-key="bring-back"]', ['#outcome-kept [data-key="bring-back"]']);
+    await act('outcome.end_set', { state: 'completed' }, { workspace_id: 'tg-shed' });
+    await each('page-completed', '/?workspace=tg-shed', '#outcome-standing [data-hold="bring-back"]', ['#outcome-standing [data-hold="bring-back"]']);
+    await act('outcome.end_set', { state: 'open' }, { workspace_id: 'tg-shed' });
+    assert.deepEqual(pages.flatMap(p => p.errors), []);
+  });
+
+  await check('targets the owner archives by touch and the outcome leaves the home live; Archived (1) opens to its row, and Bring back by keys returns it to its place with the keys on its row; on the page Return and Space archive, complete and bring back, the keys landing each time', async () => {
+    await control({ method: 'light_outcome', outcome: 'tg-round', title: 'Round trip', topic: { id: 'tg-round-plan', title: 'Round plan' } });
+    const home = await open('targets-end-home', '/');
+    await ready(home);
+    const before = await until(async () => { const ids = await homeIds(home); return ids.includes('tg-round') && ids; }, 'the outcome is on the home');
+    const homeLoaded = await origin(home);
+    const p = await open('targets-end-round', '/?workspace=tg-round', 'phone', 'light');
+    await ready(p);
+    const pageLoaded = await origin(p);
+    await until(() => shown(p, '[data-key="end:archived"]'), 'the owner is offered Archive');
+    const sent = p.calls?.length ?? 0;
+    await front(p);
+    await tapAt(p, '[data-key="end:archived"]');
+    await until(async () => (await ended('tg-round')) === 'archived', 'one tap archives it, with no confirm step');
+    await until(async () => /^Where it standsi?Archived · .*archived it ?Bring back/.test(await standing(p)), 'Where it stands says it is archived, with Bring back');
+    await until(async () => (await focusedKey(p)) === 'bring-back', 'the keys move to Bring back');
+    assert.equal(await shown(p, '#target-panel .tg-end'), false, 'Complete · Archive goes');
+    assert.equal(await shown(p, '[data-key="say-reached"]'), false, '"Say it is reached" is not offered');
+    if (p.calls) assert.equal(p.calls.slice(sent).filter(call => call.payload?.kind === 'outcome.end_set').length, 1, 'one tap sends once');
+    await shot(p, 'targets-end-round-archived');
+
+    // A second page, the home, sees it leave with no reload.
+    await front(home);
+    await until(async () => !(await homeIds(home)).includes('tg-round'), 'the home sees it leave, live');
+    const count = await endedCount();
+    await until(() => home.evaluate(`document.querySelector('.ended-outcomes summary')?.textContent`).then(text => text === `Archived (${count})`), `the Archived line says Archived (${count})`);
+    const placed = await home.evaluate(`(()=>{const a=document.querySelector('.ended-outcomes'),r=a.nextElementSibling;return r?.classList.contains('reached-outcomes')&&!r.classList.contains('ended-outcomes')})()`);
+    assert.equal(placed, true, 'directly above Reached (N)');
+    await openArchived(home, 'tg-round', 'keys');
+    const row = await home.evaluate(`(()=>{const r=document.querySelector('.ended-row[data-workspace-id="tg-round"]'),a=r.querySelector('a'),[name,when]=[a.querySelector('span'),a.querySelector('small')];
+      return {name:name.textContent,when:when.textContent,below:when.getBoundingClientRect().top>=name.getBoundingClientRect().bottom-1,outside:!a.contains(r.querySelector('button'))}})()`);
+    assert.equal(row.name, 'Round trip');
+    assert.match(row.when, /^Archived [A-Z][a-z]{2} \d{1,2}$/, 'it says Archived and the date, with no dot');
+    assert.ok(row.below, 'the date sits on its own line under the name');
+    assert.ok(row.outside, 'Bring back sits outside the link');
+    await shot(home, 'targets-end-home-archived');
+    await keyOn(home, '.ended-row[data-workspace-id="tg-round"] a', 'Tab');
+    await until(async () => (await focusedKey(home)) === 'bring-back:tg-round', 'Tab reaches Bring back');
+    const ring = await home.evaluate(`(c=>c.outlineStyle!=='none'&&parseFloat(c.outlineWidth)>0)(getComputedStyle(document.activeElement))`);
+    assert.equal(ring, true, 'its focus ring shows');
+    await home.key('Enter');
+    await until(async () => JSON.stringify(await homeIds(home)) === JSON.stringify(before), 'Return brings it back to its place in the list');
+    await until(() => home.evaluate(`document.activeElement?.dataset?.workspaceId==='tg-round'&&document.activeElement.closest('#workspaces')!==null`), 'and the keys land on its row');
+    assert.equal(await endedCount(), count - 1);
+    assert.equal(await origin(home), homeLoaded, 'the home never reloaded');
+    // The outcome page sees it come back with no reload.
+    await front(p);
+    await until(() => shown(p, '#target-panel .tg-end'), 'the page sees it come back, live');
+    assert.equal(await origin(p), pageLoaded, 'the page never reloaded');
+
+    // By keys on the page: Return archives, Return brings back to Archive; Space completes, Space brings back to Complete.
+    await keyOn(p, '[data-key="end:archived"]', 'Enter');
+    await until(async () => (await ended('tg-round')) === 'archived', 'Return archives it');
+    await until(async () => (await focusedKey(p)) === 'bring-back', 'the keys move to Bring back');
+    await front(home);
+    await until(async () => !(await homeIds(home)).includes('tg-round'), 'the home sees it leave again');
+    await front(p);
+    await p.key('Enter');
+    await until(async () => (await ended('tg-round')) === 'open', 'Return brings it back');
+    await until(async () => (await focusedKey(p)) === 'end:archived', 'the keys go to Archive, which ended it');
+    await front(home);
+    await until(async () => (await homeIds(home)).includes('tg-round'), 'the home sees it come back');
+    await front(p);
+    await keyOn(p, '[data-key="end:completed"]', ' ');
+    await until(async () => (await ended('tg-round')) === 'completed', 'Space completes it');
+    await until(async () => /Done · completed .*completed it ?Bring back/.test(await standing(p)), 'Where it stands says Done · completed');
+    await until(async () => (await focusedKey(p)) === 'bring-back', 'the keys move to Bring back');
+    assert.equal((await checks('tg-round')).reached, null, 'completing records no Reached');
+    await shot(p, 'targets-end-round-completed');
+    await p.key(' ');
+    await until(async () => (await ended('tg-round')) === 'open', 'Space brings it back');
+    await until(async () => (await focusedKey(p)) === 'end:completed', 'the keys go to Complete, which ended it');
+    await front(home);
+    await until(async () => JSON.stringify(await homeIds(home)) === JSON.stringify(before), 'the home has it in its place again');
+    assert.deepEqual([...p.errors, ...home.errors], []);
+  });
+
+  await check('targets someone on the team who does not own the outcome sees no Complete, Archive or Bring back, on its page or on the home', async () => {
+    await control({ method: 'team_outcome', operation_id: 'targets-end-member', workspace_id: 'tg-member', title: 'Borrowed boat', team: [facts.agent], owner: facts.agent });
+    const p = await open('targets-end-member', '/?workspace=tg-member');
+    await ready(p);
+    await until(async () => (await panel(p)).shown, 'the target panel shows');
+    await until(() => p.evaluate(`document.getElementById('outcome-standing')?.textContent.length > 0`), 'Where it stands shows');
+    assert.equal(await p.evaluate(`document.querySelectorAll('.tg-end, [data-key^="end:"], [data-hold="bring-back"]').length`), 0, 'no control while it is open');
+    await act('outcome.end_set', { state: 'archived' }, { workspace_id: 'tg-member', sender: facts.agent });
+    await until(async () => /Archived · .*archived it/.test(await standing(p)), 'the page sees its owner archive it, live');
+    assert.equal(await p.evaluate(`document.querySelectorAll('.tg-end, [data-key^="end:"], [data-hold="bring-back"]').length`), 0, 'and offers nobody but its owner Bring back');
+    const home = await open('targets-end-member-home', '/');
+    await ready(home);
+    await openArchived(home, 'tg-member');
+    assert.equal(await home.evaluate(`document.querySelectorAll('.ended-row[data-workspace-id="tg-member"] button').length`), 0, 'its row has no Bring back');
+    await shot(home, 'targets-end-member-home');
+    await act('outcome.end_set', { state: 'open' }, { workspace_id: 'tg-member', sender: facts.agent });
+    await front(home);
+    await until(async () => !(await shown(home, '.ended-row[data-workspace-id="tg-member"]')), 'its owner brings it back, and the open line drops its row, live');
+    assert.deepEqual([...p.errors, ...home.errors], []);
+  });
+
+  await check('targets a message into an archived outcome is refused in Core\'s words with its writing kept for review; the topic says it is kept to read, and after Bring back by keys a message sends', async () => {
+    // An outcome of its own, lit here, so the case runs alone as well as after the others.
+    await control({ method: 'light_outcome', outcome: 'tg-door', title: 'Door frame', topic: { id: 'tg-door-plan', title: 'Door plan' } });
+    await act('outcome.end_set', { state: 'archived' }, { workspace_id: 'tg-door' });
+    const p = await open('targets-end-topic', '/?topic=tg-door-plan', 'phone', 'dark');
+    await ready(p);
+    const line = await until(() => p.evaluate(`(h=>h&&!h.hidden&&h.getClientRects().length?h.textContent:null)(document.getElementById('outcome-kept'))`), 'the line shows in the header');
+    assert.equal(line, 'This outcome is archived; its topics are kept to read Bring back');
+    const messages = async () => JSON.stringify((await view('topic_messages', { topic_id: 'tg-door-plan', direction: 'before', limit: 30 })).items);
+    const write = async words => {
+      await p.evaluate(`document.getElementById('inline-writing-body').scrollIntoView({block:'center'})`);
+      await p.point('#inline-writing-body');
+      await p.send('Input.insertText', { text: words });
+      await p.evaluate(`document.getElementById('inline-send').scrollIntoView({block:'center'})`);
+      await p.point('#inline-send');
+    };
+    const words = 'Measured the shed door twice.';
+    await write(words);
+    // The send is refused whole: nothing lands, and the reply's line says it did not send, with the writing kept.
+    await until(() => shown(p, '#inline-pending button'), 'the reply\'s line offers its review');
+    assert.ok(!(await messages()).includes(words), 'nothing was sent');
+    await p.point('#inline-pending button');
+    const card = await until(() => p.evaluate(`(()=>{const c=[...document.querySelectorAll('#review-content .pending-card')].find(c=>c.querySelector('pre')?.textContent===${JSON.stringify(words)});
+      const why=c?.querySelector('[data-refusal]');return c&&why&&!why.hidden?{head:c.querySelector('h3').textContent,why:why.textContent}:null})()`), 'the review shows the writing and why');
+    assert.deepEqual(card, { head: 'Not sent — writing kept', why: 'Door frame is archived; bring it back to change anything in it.' }, 'in Core\'s words, which say who brings it back');
+    assert.ok(await sideways(p) <= 0, 'no sideways scroll at 390');
+    await shot(p, 'targets-end-topic-refused');
+    await p.key('Escape');
+    await until(async () => !(await p.evaluate(`document.getElementById('version-review').open`)), 'the review closes');
+    await keyOn(p, '#outcome-kept [data-key="bring-back"]', 'Enter');
+    await until(async () => (await ended('tg-door')) === 'open', 'Return on Bring back brings it back');
+    await until(async () => !(await shown(p, '#outcome-kept')), 'the line goes');
+    await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the keys go to the writing');
+    await write('The door is 81 cm.');
+    await until(async () => (await messages()).includes('The door is 81 cm.'), 'a message sends now');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('targets a person\'s own message offers Edit in its ⋯ while its outcome is open, and no Edit once the outcome is archived or completed', async () => {
+    await control({ method: 'light_outcome', outcome: 'tg-quill', title: 'Quill pens', topic: { id: 'tg-quill-notes', title: 'Quill notes' } });
+    const mine = (await control({ method: 'agent_message', operation_id: `targets-quill-${++serial}`, topic_id: 'tg-quill-notes', source: 'topic',
+      sender: 'person', body: 'Trimmed the goose feathers.' })).result.message_id;
+    const words = `#messages .message-card[data-id="${mine}"] > .message-preview`;
+    // The ⋯ of the person's own message, from the bar its words light under the pointer: its items' words.
+    const menu = async p => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(words)}).scrollIntoView({block:'center'})`);
+      await p.point(words, 'move');
+      await until(() => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].some(e=>e.dataset.id===${JSON.stringify(mine)})
+        && Boolean(document.querySelector('.message-bar:not([hidden]) [data-act=more]')?.getClientRects().length)`), 'the message lights with its bar');
+      await p.point('.message-bar [data-act=more]');
+      await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'its ⋯ opens');
+      const items = await p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].map(b=>b.firstChild.textContent)`);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'Escape closes it');
+      return items;
+    };
+    const kept = p => until(() => p.evaluate(`(h=>h&&!h.hidden&&h.getClientRects().length?h.textContent:null)(document.getElementById('outcome-kept'))`), 'the topic says it is kept to read');
+    const first = await open('targets-edit-open', '/?topic=tg-quill-notes');
+    await ready(first);
+    assert.ok((await menu(first)).includes('Edit'), 'open, the person\'s own message offers Edit');
+    for (const [state, theme] of [['archived', 'light'], ['completed', 'dark']]) {
+      await act('outcome.end_set', { state }, { workspace_id: 'tg-quill' });
+      const p = await open(`targets-edit-${state}`, '/?topic=tg-quill-notes', 'laptop', theme);
+      await ready(p);
+      // The line shows once the page has read the outcome's light, which is also what tells the page it is kept to read.
+      assert.match(await kept(p), state === 'archived' ? /^This outcome is archived; its topics are kept to read/ : /^This outcome was completed/);
+      const items = await menu(p);
+      assert.ok(items.includes('Copy Link'), `${state}: the ⋯ opens with its other items: ${items.join(', ')}`);
+      assert.equal(items.includes('Edit'), false, `${state}: the person\'s own message offers no Edit: ${items.join(', ')}`);
+      await shot(p, `targets-edit-${state}-laptop-${theme}`);
+      assert.deepEqual(p.errors, []);
+      await act('outcome.end_set', { state: 'open' }, { workspace_id: 'tg-quill' });
+    }
+    assert.deepEqual(first.errors, []);
+  });
 }
+

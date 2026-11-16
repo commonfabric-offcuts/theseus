@@ -25,6 +25,13 @@ In this order, the first that holds:
 3. **Done**: for an outcome to keep, every check passes (On target) and, with
    its pipeline on, everything in it shipped; for an outcome to reach, only
    when its owner said it was Reached. "Done", "Done · reached yesterday".
+An outcome its owner archived or completed (docs/targets.md, "Archived and
+completed") says only that, ahead of all four: completed is **Done**, "Done ·
+completed Nov 15"; archived is **Quiet**, "Archived · Nov 15" (today, its time).
+"Where it stands" says "tony archived it" or "tony completed it" under it, and
+what it is made of is the one sentence "tony archived Garden shed, yesterday at
+3:15 PM.".
+
 4. **Quiet**: none of the above. It always says since when something was last
    seen ("Quiet since yesterday 3:15 PM"), or "No topics yet". It never says
    nobody is working; what the light is made of (behind the ⓘ on the outcome's
@@ -77,11 +84,13 @@ A state and a time, and one line naming the newest thing; nothing more.
   facts could not be read (`unreadable: true`). `short` is
   `{kind: asks, count}` (with `blocking: "release" | "piece"` when a question
   holds work; a page that knows no `blocking` says Waiting on you as before), `{kind: seen, ms}`, `{kind: checks_pass}`,
-  `{kind: reached, ms}`, `{kind: talk, ms, how, since_ms}`,
+  `{kind: reached, ms}`, `{kind: completed, ms}`, `{kind: archived, ms}`,
+  `{kind: talk, ms, how, since_ms}`,
   `{kind: since, ms}` (ms null: no time is known) or `{kind: no_topics}`.
 - `outcome_light {workspace_id}` gives the whole of it, for the peek and the
   outcome page: `light`, `lead` (one kind: `asks`, `now_work`, `topics_work`,
-  `done`, `reached`, `topics_quiet`, `now_quiet`, `now_quiet_talk`,
+  `done`, `reached`, `completed`, `archived` (with `by` and `ms`, and no facts
+  or also-lines), `topics_quiet`, `now_quiet`, `now_quiet_talk`,
   `no_topics`, `unreadable`), `facts` (`ask`, `item_work`, `topic_work`,
   `more_items`, `all_shipped`, `checks_pass`, `last_activity` (with its
   `topic_id` and `title_truncated`, for the Last line's link),

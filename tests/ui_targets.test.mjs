@@ -291,3 +291,79 @@ test('a fold the reader opened stays open across a repaint that lands before its
   assert.equal(group.open, false);
   assert.equal(accept.open, true, 'while his own choice stays');
 });
+
+// Item 404: Complete · Archive, two quiet words for the owner of an outcome neither reached nor ended; one press each,
+// with no confirm step; Bring back gives the keys to the word that ended it.
+function endPage(t, answer, { refuse = null } = {}) {
+  const dom = installDocument(t);
+  const hosts = { target: dom.host(), loop: dom.host(), problems: dom.host() };
+  const sent = [], changes = [];
+  let current = answer, release = null;
+  const targets = new OutcomeTargets({
+    hosts, workspace: 'w1', reader: 'tony', read: async () => current,
+    send: (kind, target, args, expected) => { sent.push({ kind, target, args, expected }); return new Promise(resolve => { release = () => resolve(refuse ? { status: 'rejected', error: { message: refuse } } : { status: 'committed', result: {} }); }); },
+    changed: async change => { changes.push(change); },
+  });
+  return { hosts, targets, sent, changes, set: value => { current = value; }, release: () => release() };
+}
+
+test('the owner sees Complete · Archive as two quiet named words in the kind block; a press sends once, reads Completing… and a second press sends nothing', async t => {
+  const f = endPage(t, view({ kind: { kind: 'reach', started_by: 'tony', started_ms: null, you_change: true } }));
+  await f.targets.load();
+  const line = f.hosts.target.querySelector('.tg-end');
+  assert.ok(line, 'the line is there for the owner');
+  const complete = named(f.hosts.target, 'end:completed'), archive = named(f.hosts.target, 'end:archived');
+  assert.deepEqual([complete.textContent, archive.textContent], ['Complete', 'Archive']);
+  assert.equal(line.textContent, 'Complete · Archive');
+  for (const [button, title] of [[complete, 'Complete this outcome: it leaves your outcomes, and you can bring it back'],
+    [archive, 'Archive this outcome: you’re not pursuing it; it leaves your outcomes, and you can bring it back']]) {
+    assert.deepEqual([button.getAttribute('type'), button.getAttribute('title'), button.getAttribute('aria-label')], ['button', title, title]);
+    assert.ok(button.className.split(' ').includes('link-button'), 'a quiet word, not a boxed button');
+  }
+  const kindBlock = f.hosts.target.querySelector('.tg-kind').parent;
+  assert.ok(kindBlock.contains(line) && kindBlock.children.indexOf(line) > kindBlock.children.indexOf(f.hosts.target.querySelector('.tg-kind')),
+    'after the kind chips and "Say it is reached"');
+  complete.click(); await drain();
+  assert.deepEqual(f.sent, [{ kind: 'outcome.end_set', target: { workspace_id: 'w1' }, args: { state: 'completed' }, expected: { workspace_revision: 7 } }],
+    'one press does it: no confirm step, no words to type');
+  assert.equal(named(f.hosts.target, 'end:completed').textContent, 'Completing…');
+  named(f.hosts.target, 'end:completed').click(); named(f.hosts.target, 'end:archived').click(); await drain();
+  assert.equal(f.sent.length, 1, 'a second press sends nothing');
+  f.set(view({ kind: { kind: 'reach', started_by: 'tony', started_ms: null, you_change: false }, end: { state: 'completed', by: 'tony', ms: 1 } }));
+  f.release(); await drain(); await drain(); await drain();
+  assert.deepEqual(f.changes, [{ state: 'completed', refused: false }], 'the page reads again, so Where it stands says it');
+  assert.equal(f.hosts.target.querySelector('.tg-end'), null, 'once completed, the line goes');
+  assert.equal(named(f.hosts.target, 'say-reached'), null, '"Say it is reached" is not offered');
+  assert.equal(f.hosts.target.querySelector('.tg-kind').textContent, kindWords('reach'), 'the kind in words only');
+  assert.equal(named(f.hosts.target, 'write-open'), null, 'no new words are offered while it is kept to read');
+});
+
+test('Core\'s refusal shows in the card\'s notice and the card reads again; nobody but the owner, and no reached outcome, is offered the line', async t => {
+  const f = endPage(t, view(), { refuse: 'Only tony, this outcome\'s owner, archives, completes or brings it back' });
+  await f.targets.load();
+  named(f.hosts.target, 'end:archived').click(); await drain();
+  f.release(); await drain(); await drain(); await drain();
+  assert.equal(f.hosts.target.querySelector('.notice').textContent, 'Only tony, this outcome\'s owner, archives, completes or brings it back');
+  assert.deepEqual(f.changes, [{ state: 'archived', refused: true }], 'a refused press reads the page again too, as a stale one must');
+  assert.equal(named(f.hosts.target, 'end:archived').textContent, 'Archive', 'no longer busy');
+  for (const answer of [view({ you_own: false, kind: { kind: 'keep', started_by: 'tony', started_ms: null, you_change: false } }),
+    view({ kind: { kind: 'reach', started_by: 'tony', started_ms: null, you_change: false }, reached: { ms: 1, by: 'tony', words: 'Sent', unmet: [] } })]) {
+    const g = endPage(t, answer);
+    await g.targets.load();
+    assert.equal(g.hosts.target.querySelector('.tg-end'), null);
+    assert.equal(named(g.hosts.target, 'end:completed'), null);
+  }
+});
+
+test('Bring back sends open with the page\'s revision, and the keys land on the word that ended it', async t => {
+  const f = endPage(t, view({ kind: { kind: 'keep', started_by: 'tony', started_ms: null, you_change: false }, end: { state: 'archived', by: 'tony', ms: 1 } }));
+  await f.targets.load();
+  const back = f.targets.bringBack(); await drain();
+  assert.deepEqual(f.sent, [{ kind: 'outcome.end_set', target: { workspace_id: 'w1' }, args: { state: 'open' }, expected: { workspace_revision: 7 } }]);
+  f.targets.bringBack(); await drain();
+  assert.equal(f.sent.length, 1, 'a second press sends nothing');
+  f.set(view());
+  f.release(); await back;
+  assert.deepEqual(f.changes, [{ state: 'open', refused: false }]);
+  assert.equal(document.activeElement, named(f.hosts.target, 'end:archived'), 'the keys go to Archive, which ended it');
+});
