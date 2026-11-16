@@ -340,6 +340,42 @@ async function run() {
       await shot(p, 'plus-panel');
       await close(p);
     });
+    // Item 593: the phone's two-row header (item 378) costs the message no more
+    // than its rows of 44px targets, and keeps the whole title; a laptop's
+    // header and the message's room under it are as they were.
+    await check(`header ${scheme}: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them; a laptop's header, stacked and wide, keeps one row and its room`, async () => {
+      for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) {
+        const p = await page(shape, scheme);
+        await open(p, second);
+        const at = await p.evaluate(() => {
+          const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), row = rect('.reader-title-row'), close = rect('#reader-close');
+          const title = document.querySelector('#reader-title'), article = document.querySelector('#source-body');
+          const controls = [...document.querySelectorAll('#reader .reader-header button')].filter(e => e.getClientRects().length && e.getBoundingClientRect().width >= 1 && !e.closest('h2'));
+          const over = [];
+          for (const [i, e] of controls.entries()) for (const f of controls.slice(i + 1)) {
+            const x = e.getBoundingClientRect(), y = f.getBoundingClientRect();
+            if (!(x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5)) over.push(`${e.id}/${f.id}`);
+          }
+          const top = Math.min(...controls.map(e => e.getBoundingClientRect().top)), border = parseFloat(getComputedStyle(document.querySelector('.reader-header')).borderBottomWidth);
+          return { title: title.textContent, whole: title.scrollWidth <= title.clientWidth + 1, twoRows: row.top >= close.bottom - 0.5, over,
+            small: controls.map(e => [e.id, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]).filter(([, w, h]) => w < 44 || h < 44),
+            above: Math.round((top - header.top) * 10) / 10, below: Math.round((header.bottom - border - row.bottom) * 10) / 10, gap: Math.round((article.getBoundingClientRect().top - header.bottom) * 10) / 10,
+            room: ['.reader-header', '.reading-pane', '#source-body'].map(s => getComputedStyle(document.querySelector(s))).map((c, i) => i === 2 ? c.paddingBottom : `${c.paddingTop} ${c.paddingBottom}`),
+            sideways: document.documentElement.scrollWidth > innerWidth };
+        });
+        measured.push({ engine, shape, scheme, state: 'header', ...at });
+        await shot(p, 'header');
+        if (shape.startsWith('phone')) {
+          assert.deepEqual([at.title, at.whole, at.twoRows], ['Read here', true, true], `${shape}: the whole title on the header's second row: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.above, at.below, at.gap], [0, 0, 0], `${shape}: the two rows are no taller than their targets, and the message starts right under them: ${JSON.stringify(at)}`);
+        } else {
+          // A laptop's room, as before item 593: the header's .4rem, the pane's .9rem above the message and the message's own .9rem after its end.
+          assert.deepEqual([at.twoRows, at.room], [false, ['6.4px 6.4px', '14.4px 0px', '14.4px']], `${shape}: the laptop's header keeps one row and its room: ${JSON.stringify(at)}`);
+        }
+        await close(p);
+      }
+    });
     for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {
       const p = await page(shape, scheme);
       await open(p, second);
