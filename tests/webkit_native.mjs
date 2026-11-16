@@ -11,7 +11,7 @@
 // --invite mode holds or loses an answer for the Chrome harness's intercept,
 // release and fail with the same routing (team_invite_native.mjs).
 //
-// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite [case filter]
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite|--health [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
@@ -33,10 +33,11 @@ import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
 import { teamInviteChecks } from './team_invite_native.mjs';
+import { healthChecks } from './health_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
-assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite', '--health'].includes(mode), `a WebKit mode, not ${mode}`);
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
 assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
@@ -215,6 +216,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
+  'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
@@ -560,6 +562,8 @@ try {
     await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else if (mode === '--invite') {
     await teamInviteChecks({ check, page, until, control, view, facts, shot });
+  } else if (mode === '--health') {
+    await healthChecks({ check, page, until, control, view, facts, shot });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }
