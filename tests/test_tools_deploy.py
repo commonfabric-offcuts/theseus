@@ -1792,7 +1792,7 @@ class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase)
         self.assertIn("known red: %s %r failed; %s at %s admits it (review m-admitted)" % (RED_STEP, RED_CASE, POLICY, self.live[:12]),
                       out)
         # Item 553: a candidate of the policy's own steps adds none beyond it, and the record says nothing of any.
-        self.assertEqual(self.evidence_of("00-release-check")["known_reds"]["steps_beyond_policy"], [])
+        self.assertEqual(self.evidence_of("00-release-check")["known_reds"].get("steps_beyond_policy"), [])
         self.assertNotIn("steps_beyond_policy", self.evidence_of("02-release")["record"]["measurements"])
         self.assertNotIn("did not review", out)
         policy_reads = [argv for argv in host.calls if any(POLICY in part for part in argv)]
@@ -2076,8 +2076,8 @@ class DeployRefusesKnownRedsPolicyOfFewerSteps(PolicyRepository, KnownRedsFiles,
         known = self.evidence_of("00-release-check")["known_reds"]
         self.assertEqual([(red["step"], red["taken_by"], red["live_summary"]) for red in known["accepted"]],
                          [(self.ADDED, "owner_acceptance", str(accepted)), (RED_STEP, "live", str(live))])
-        self.assertEqual(known["steps_beyond_policy"], [self.ADDED])
-        self.assertEqual(self.evidence_of("02-release")["record"]["measurements"]["steps_beyond_policy"], [self.ADDED])
+        self.assertEqual(known.get("steps_beyond_policy"), [self.ADDED])
+        self.assertEqual(self.evidence_of("02-release")["record"]["measurements"].get("steps_beyond_policy"), [self.ADDED])
         self.assertIn("the release check runs %s, which %s at %s did not review; the next policy covers it"
                       % (self.ADDED, POLICY, self.live[:12]), out)
         self.assertNotIn("admits it", out)
