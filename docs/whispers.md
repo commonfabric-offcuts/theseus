@@ -6,7 +6,7 @@ counts for:
 
 - A person's whisper counts as their Tell. The agent acts on it as on a Tell
   from them, and it does what a Tell does in the topic: it is writing there,
-  answers what the agent it goes to asked of them, reopens a done topic, and
+  answers the question of the agent it goes to that it replies to, reopens a done topic, and
   may be where a topic, a pipeline item or a problem came from, Notebook
   evidence, or the owner's word a move is made on. Only who can read it stays
   private.
@@ -61,12 +61,19 @@ A person's whisper then does what their Tell would, and others see only the
 effect, never the whisper:
 
 - Its writer has written in the topic, so they may say where it stands.
-- It answers the asks waiting on its writer from the agent it goes to, the one
-  who can read the answer. When the topic's wait on them is from that agent's
-  ask, it moves to their oldest ask that nothing has answered, or ends; an ask
-  from anyone else keeps waiting, and so does an ask an open record holds
-  (a proposed target, an owner-gated stage). In an outcome's conversation, a
-  whisper replying to an ask answers it when it goes to whoever asked.
+- A whisper replying to an ask to its writer, sent to the agent that asked it,
+  the one who can read the answer, answers that ask alone, as the person's 👍
+  on it would (item 307): the ask stops waiting on them and "Waiting on you"
+  goes out. When the topic's wait on them is from that ask, it moves to their
+  oldest ask that nothing has answered, or ends; when it is from an older
+  ask, it stays there, and the answered ask is passed over when the wait
+  moves on. A whisper that replies to nothing, or to a message that is not an
+  ask to its writer, answers nothing, even sent to an agent that asked them
+  something, and so does one replying to an ask but sent to anyone other
+  than whoever asked. An ask an open record holds (a proposed target, an
+  owner-gated stage) keeps waiting, as it does after a reply on the record.
+  In an outcome's conversation, a whisper replying to an ask answers it when
+  it goes to whoever asked, by the same rule.
 - It reopens a done topic and moves the topic up the list. The topic's version
   moves, and whoever stopped waiting gets a `waiting` change. Its two people
   read the whisper's id in the topic's `state_message_id`; everyone else reads

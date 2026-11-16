@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # A stand-in for node: `--test` prints a TAP summary; a harness writes its
 # results file into the evidence directory. STUB_FAIL names a step to fail;
-# "exit-only-<name>" writes passing results and still exits non-zero.
+# "exit-only-<name>" writes passing results and still exits non-zero. The persistence harness's stand-in writes
+# each case's two lines on its log, as the harness does.
 STUB_NODE = r'''#!%s
 import json, os, sys
 args = sys.argv[1:]
@@ -44,6 +45,10 @@ if harness.endswith("reader_native.mjs"):
 else:
     report = {"browserClosed": True, "results": [{"name": "case", "passed": not bad}]}
     path = "native.json"
+    if harness.endswith("reader_persistence_native.mjs"):
+        # Its case lines on the step's log (tests/native-calls.mjs stamps; release_check.case_lines).
+        print(json.dumps({"case": "case", "started": "2026-11-15T01:00:00.000Z"}))
+        print(json.dumps(dict(report["results"][0], started="2026-11-15T01:00:00.000Z", finished="2026-11-15T01:00:01.000Z")))
 if fail != "no-results-" + name:
     open(os.path.join(evidence, path), "w").write(json.dumps(report))
 sys.exit(int(bad or fail == "exit-only-" + name))
@@ -64,7 +69,7 @@ if "tools/wake_replay.py" in " ".join(args):
         "median": median, "wakes": 3, "lost": [1200] if lost else [], "delays": [median] * 3}}}))
     open(os.path.join(os.path.dirname(os.path.dirname(out)), "replay-order.txt"), "a").write(os.path.basename(out) + " " + args[args.index("--code") + 1] + "\n")
     sys.exit(1 if lost else 0)
-step = "deploy-refusals" if "DeployRefuses" in args else "python-units"
+step = "deploy-refusals" if any("DeployRefuses" in arg for arg in args) else "python-units"
 if os.environ.get("STUB_FAIL") == step:
     print("Ran 3 tests in 0.1s\n\nFAILED (failures=1)")
     sys.exit(1)
@@ -270,12 +275,50 @@ class ReleaseCheckMeasures(FakeCheckout):
         self.assertIn(release_check.DEPLOY_REFUSALS, release_check.REQUIRED)
         [step] = [s for s in summary["steps"] if s["name"] == release_check.DEPLOY_REFUSALS] or [None]
         self.assertIsNotNone(step, "the release check runs the deploy's refusals")
-        self.assertIn("DeployRefuses", step["argv"])
+        self.assertIn("test_tools_deploy.DeployRefuses", step["argv"])
         self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), ["deploy-refusals failed (exit 1)"])
         without = json.loads((self.out / "summary.json").read_text())
         without["steps"] = [s for s in without["steps"] if s["name"] != release_check.DEPLOY_REFUSALS]
         (self.out / "summary.json").write_text(json.dumps(without))
         self.assertIn("the release check did not run deploy-refusals", release_check.verify_summary(self.out / "summary.json", self.commit))
+
+    def test_the_deploys_refusals_step_runs_the_train_refusals_and_only_the_deploys_refusals(self):
+        # B9: the step the release check records is run here by unittest's own argument parser against this checkout's
+        # tests, collecting what it would run: every test of tests/test_tools_train.py and every DeployRefuses class of
+        # tests/test_tools_deploy.py, and nothing else (no full deploy, no other file's tests).
+        import test_tools_deploy
+        import test_tools_train
+        [step] = [s for s in self.run_check()["steps"] if s["name"] == release_check.DEPLOY_REFUSALS]
+        argv = list(step["argv"])
+        self.assertEqual(argv[1:4], ["-m", "unittest", "discover"])
+        argv[argv.index("-s") + 1] = str(ROOT / argv[argv.index("-s") + 1])
+
+        class Collected:
+            ids = []
+
+            def run(self, test):
+                for found in test:
+                    if isinstance(found, unittest.TestSuite):
+                        self.run(found)
+                    else:
+                        self.ids.append(found.id())
+                return unittest.TestResult()
+
+        collected = Collected()
+        unittest.main(module=None, argv=["unittest"] + argv[3:], testRunner=collected, exit=False)
+
+        def ids(module, keep=lambda name: True):
+            suite = unittest.TestLoader().loadTestsFromModule(module)
+            return {test.id() for group in suite for test in group if keep(test.id().split(".")[1])}
+        train = ids(test_tools_train)
+        refusals = ids(test_tools_deploy, lambda name: name.startswith("DeployRefuses"))
+        self.assertTrue(train and refusals)
+        self.assertTrue({"DeployRefusesTrain", "DeployRefusesJudgedFirst", "GuardedPaths"}
+                        <= {name.split(".")[1] for name in train})
+        self.assertEqual(sorted(set(collected.ids) - train - refusals), [], "the step runs nothing but these")
+        self.assertEqual(sorted(train - set(collected.ids)), [], "every test of tests/test_tools_train.py runs")
+        self.assertEqual(sorted(refusals - set(collected.ids)), [], "every DeployRefuses test of tests/test_tools_deploy.py runs")
+        self.assertEqual(len(collected.ids), len(set(collected.ids)), "each runs once")
 
     def test_the_wake_replay_runs_repeats_times_and_a_lost_wake_fails_it(self):
         summary = self.run_check(repeats=3)
@@ -684,6 +727,45 @@ class Parsers(unittest.TestCase):
                                       ([{"name": "m", "expectedFailure": True, "passed": True}], False)):
                 (evidence / "results.json").write_text(json.dumps({"closed": True, "results": results}))
                 self.assertEqual(release_check.native_counts(reader, evidence)[1], expected, results)
+
+
+    def test_a_persistence_step_passes_only_when_its_log_holds_each_case_s_two_lines(self):
+        # tests/native-calls.mjs stamps: a start line before each case runs, its result with both times after cleanup.
+        persistence = release_check.NATIVE_STEPS[0]
+        self.assertEqual(persistence.harness, release_check.PERSISTENCE)
+        reader = [s for s in release_check.NATIVE_STEPS if s.harness != release_check.PERSISTENCE][0]
+        results = [{"name": "a", "passed": True}, {"name": "b", "passed": True, "cleanupRefused": ["closing page ghost: x"]}]
+        start = lambda name, at: json.dumps({"case": name, "started": at})
+        end = lambda result, at, done: json.dumps(dict(result, started=at, finished=done))
+        good = [start("a", "2026-11-15T01:00:00.000Z"), end(results[0], "2026-11-15T01:00:00.000Z", "2026-11-15T01:00:04.000Z"),
+                "a line of the harness's own that is not a case's", start("b", "2026-11-15T01:00:04.000Z"),
+                end(results[1], "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:05.000Z")]
+        logs = {
+            "no start lines (the base harness)": [json.dumps(results[0]), json.dumps(results[1])],
+            "a start line but the base result line": [good[0], json.dumps(results[0])] + good[3:],
+            "a result line written before cleanup, without what cleanup added": good[:3] + [good[3], end({"name": "b", "passed": True}, "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:05.000Z")],
+            "a case that crashed out after its result was kept": good[:4],
+            "a result line naming another start": good[:3] + [good[3], end(results[1], "2026-11-15T01:00:00.000Z", "2026-11-15T01:00:05.000Z")],
+            "finished before it started": good[:4] + [end(results[1], "2026-11-15T01:00:04.000Z", "2026-11-15T01:00:03.000Z")],
+            "a start the results file does not hold": good + [start("c", "2026-11-15T01:00:05.000Z")],
+            "cases out of order": good[3:] + good[:2],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            evidence = Path(tmp)
+            (evidence / "native.json").write_text(json.dumps({"browserClosed": True, "results": results}))
+            self.assertEqual(release_check.native_counts(persistence, evidence, "\n".join(good) + "\n"),
+                             ({"tests": 2, "pass": 2, "fail": 0, "failed": [], "browser_closed": True}, True))
+            self.assertTrue(release_check.native_counts(persistence, evidence)[1], "without its log, the results file alone")
+            for why, log in logs.items():
+                with self.subTest(why):
+                    counts, passed = release_check.native_counts(persistence, evidence, "\n".join(log) + "\n")
+                    self.assertFalse(passed)
+                    self.assertEqual(len(counts["case_lines"]), 1, counts)
+            counts, _ = release_check.native_counts(persistence, evidence, "\n".join(logs["no start lines (the base harness)"]))
+            self.assertEqual(counts["case_lines"], ["case 'a': no start line in the step's log where it began (found %s)" % json.dumps(results[0])])
+            # Another harness writes no case lines, and is not held to them.
+            (evidence / reader.results).write_text(json.dumps({"browserClosed": True, "closed": True, "results": [{"name": "a", "passed": True}]}))
+            self.assertTrue(release_check.native_counts(reader, evidence, "")[1])
 
 
 class Environment(unittest.TestCase):

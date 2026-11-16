@@ -325,24 +325,31 @@ class TopicThumbCase(ThumbAnswerCase):
 
     def test_a_whisper_to_another_agent_answers_no_ask_so_a_thumb_still_answers_and_taking_it_back_restores(self):
         ask = self.ask()
-        self.whisper("Is the copy final?", to="agent-b")
-        self.assertEqual(self.asks(), [("owner", ask)], "a whisper to someone else answers no ask")
+        self.whisper("Is the copy final?", to="agent-b", reply_to=ask)
+        self.assertEqual(self.asks(), [("owner", ask)], "a whisper to someone else answers no ask, even replying to it")
         self.assertTrue(self.thumb(ask).get("answered"), "so the thumb answers it")
         self.assertEqual(self.asks(), [])
-        self.whisper("And the date?", to="agent-b")
+        self.whisper("And the date?", to="agent-b", reply_to=ask)
         self.thumb(ask, on=False)
         self.assertEqual(self.asks(), [("owner", ask)], "and taking it back puts the wait back")
 
-    def test_a_whisper_to_whoever_asked_is_writing_that_answers_the_ask(self):
+    def test_a_whisper_replying_to_the_ask_to_whoever_asked_answers_it_and_one_replying_to_nothing_does_not(self):
+        # Item 307: a person's whisper answers the ask it replies to, as their reply in the topic would; a whisper
+        # to the asker that replies to no ask answers nothing, so a thumb still answers and taking it back restores.
         ask = self.ask()
-        self.whisper("Take it.")
-        self.assertEqual(self.asks(), [], "the whisper to the asker answered it")
+        self.whisper("About the copy.")
+        self.assertEqual(self.asks(), [("owner", ask)], "a whisper replying to no ask answers nothing")
+        self.whisper("Take it.", reply_to=ask)
+        self.assertEqual(self.asks(), [], "the whispered reply to the asker answered it")
         again = self.ask("And the images?")
         self.thumb(again)
-        self.whisper("Those too.")
+        self.whisper("Those, I mean.")
         self.thumb(again, on=False)
-        self.assertEqual(self.asks(), [], "taking the thumb back after a whispered answer puts nothing back")
-        self.assertNotIn(ask, [message for _, message in self.asks()])
+        self.assertEqual(self.asks(), [("owner", again)], "a whisper replying to nothing answered nothing, so the wait comes back")
+        self.thumb(again)
+        self.whisper("Those too.", reply_to=again)
+        self.thumb(again, on=False)
+        self.assertEqual(self.asks(), [], "taking the thumb back after a whispered reply to the ask puts nothing back")
 
     def test_only_the_asked_persons_own_writing_after_the_ask_answers_it(self):
         self.post("Before the ask.", actor="owner")
@@ -547,6 +554,20 @@ class StageThumbCase(test_pipeline_steering.PipelineCase):
         thumb(False)
         self.assertFalse(thumb(True).get("answered"), "nor once the stage is left")
         self.assertIn(("owner", ask), waiting())
+
+    def test_a_gated_stages_open_ask_is_never_answered_by_a_whispered_reply(self):
+        # Item 307: a whisper replying to an ask answers it as a reply in the topic would, and a reply never answers what
+        # an open record still needs: the owner's word is leaving the stage.
+        piece = self.committed(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": "t1", "stage_id": "build"},
+                                            {"workspace_id": "w1"}))["piece_id"]
+        ask = self.post("@owner would you read 1?", addressees=["owner"], intent="ask")
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "tony-reads", "left_outcome": "approved", "ask_message_id": ask},
+                                    {"piece_id": piece}, actor="agent-a"))
+        told = lambda: self.sql("SELECT count(*) FROM changes WHERE scope_kind='actor' AND scope_id='owner' AND resource_kind='waiting'")[0][0]
+        before = told()
+        self.post("Read it: looks right.", actor="owner", addressees=["agent-a"], whisper=True, reply_to=ask)
+        self.assertEqual(self.sql("SELECT actor_id,ask_message_id FROM topic_waiting WHERE topic_id='t1'"), [("owner", ask)])
+        self.assertEqual(told(), before, "and the owner is not told a wait moved")
 
 
 if __name__ == "__main__":

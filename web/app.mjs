@@ -30,6 +30,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
+import { AgentInvite, Invitation } from './agent-invite.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
@@ -1159,10 +1160,12 @@ function paintReaderThumb$() {
   paintReaderReactions($('reader-reactions'), item, bootstrap.actor);
 }
 // Reply, or Return, on a lit message: the Reader opens on it with the cursor
-// in the reply, and nothing quoted until the reader selects a passage.
-async function replyMessage(id, card) {
+// in the reply, and nothing quoted until the reader selects a passage. Return
+// on a passage lit on its card, or words selected there (chosen), quotes them.
+async function replyMessage(id, card, chosen = null) {
   await openSource({ kind: 'message', id }, card, marks.capture(id));
-  if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
+  if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) return;
+  if (chosen) reader.quoteFrom({ kind: 'message', id }, chosen); else reader.reply({ kind: 'message', id });
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -2015,13 +2018,16 @@ async function initialize() {
   // copy reads it as the person's act, never behind the background lane).
   // Nothing is said when it is copied, as in the Reader; a refusal says how
   // else to copy.
-  const copyMessage = item => {
+  const copyMessage = (item, words) => {
+    // A passage lit on the card: its words, as Return would quote them.
+    if (words !== undefined) { copyText(words).then(done => { if (!done) status(COPY_REFUSED); }); return; }
     const known = item.preview ? cardScroll.known(item.id) : item.body;
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     thumb: (item, on) => act(thumbMessage(item, on).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })), answer: (item, answer) => act(reactions.answer(item, answer)),
     more: openMessageMore, copy: copyMessage,
@@ -2472,7 +2478,7 @@ async function openDestination(target, title, from = null) {
   const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   // A press on a rail row whose move went nowhere (the place being read, or a
-  // move the guard refused) leaves the row no focus to ring (in-place-navigation.mjs).
+  // move the guard refused) lands as a move does (in-place-navigation.mjs).
   try { const moved = await pending; if (!moved) shell.stayed(); return moved; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;
@@ -2786,7 +2792,7 @@ function outcomePages(workspace,recorded) {
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
-let teamPanel=null,purposeLine=null;
+let teamPanel=null,purposeLine=null,teamInvite=null;
 async function paintTeam(workspace,refresh) {
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
@@ -2801,6 +2807,13 @@ async function paintTeam(workspace,refresh) {
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
+  // Inviting a new agent, beside "+ Add" (agent-invite.mjs): a new outcome starts it afresh.
+  if(teamInvite?.outcome!==workspace.id){
+    teamInvite=new AgentInvite({host:$('team-invite'),invitation:new Invitation({api,bootstrap}),workspace:()=>teamInvite.current,invited:()=>run(refresh)});
+    teamInvite.outcome=workspace.id;
+  }
+  teamInvite.current={id:workspace.id,version:workspace.version};
+  teamInvite.paint(organises(workspace,bootstrap.actor));
   $('outcome-team').hidden=false;
 }
 // New topic is one title line in the topic list: Return starts the topic with

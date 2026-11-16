@@ -91,6 +91,8 @@ const PAGE_PART = '[data-page-part]';
 // The rails, where the focus a move leaves behind would otherwise stay.
 const RAILS = '#rail, #things';
 const inRails = el => Boolean(el?.closest?.(RAILS));
+// The outline, where a press on a row keeps the keys on it (key-tree.mjs).
+const inOutline = el => Boolean(el?.closest?.('#outline'));
 // The keys that only change another key: pressed alone, they say nothing of how the person moves.
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn']);
 const selectorOf = node => node.nodeType === 1 ? [...HOLDERS, ...KEPT, BRAND].find(selector => node.matches(selector)) ?? null : null;
@@ -160,10 +162,12 @@ export class Shell {
     // What was asked while no run was up to take it (a back, a forward, a
     // place chosen): the run on its way takes it up as soon as it is up.
     this.owed = null; this.begun = null; this.placeOfRun = 0; this.up = null;
-    // How the person last acted ('pointer' or 'keys'), and how the move under
-    // way lands: 'keys' leaves the focus in the rail it began in, 'page' puts it
-    // on the page reached, as a load does (land).
-    this.by = null; this.landing = null;
+    // How the person last acted ('pointer' or 'keys'), what a press was last
+    // on, and how the move under way lands: 'keys' leaves the focus in the
+    // rail it began in, 'page' puts it on the page reached, as a load does (land).
+    this.by = null; this.pressed = null; this.landing = null;
+    // The phone's drawer opening puts the focus where the outline keeps its place (rails.mjs), answering whether it did.
+    this.drawerFocus = null;
     // ⌘Return on another place (write): the place asked, and whether the move
     // under way is to it, so its New message box opens once its run is up.
     this.writeTo = null; this.writing = false;
@@ -202,10 +206,10 @@ export class Shell {
     };
     this.places = new Places(this.win.history);
     listen(this.win, 'popstate', event => this.popstate(event));
-    listen(doc, 'pointerdown', () => { this.by = 'pointer'; }, true);
+    listen(doc, 'pointerdown', event => { this.by = 'pointer'; this.pressed = event.target; }, true);
     listen(doc, 'keydown', event => { if (!MODIFIERS.has(event.key)) this.by = 'keys'; }, true);
     this.heed();
-    this.drawer = railDrawer(doc, this.win, listen);
+    this.drawer = railDrawer(doc, this.win, listen, () => Boolean(this.drawerFocus?.()));
     for (const make of this.makers) make(doc, this.win);
   }
   // A run of app.mjs starts: from here, what it adds is its own. The place it
@@ -287,10 +291,17 @@ export class Shell {
     if (!heading.hasAttribute('tabindex')) heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
   }
+  // Whether the person's last act was a press on a row of the outline that
+  // selected it as the keys would (key-tree.mjs), so the keys stay on it,
+  // ringed: not in the phone's drawer, which closes as the page moves and
+  // shows none of its rows then.
+  keptByPress(at) { return this.by === 'pointer' && inOutline(this.pressed) && inOutline(at) && !this.drawer?.isOpen(); }
   // A press on a row whose move went nowhere (the place already being read,
-  // or a move the guard refused) lands as a move does, so the row keeps no
-  // focus for the next key to ring. Return on it keeps the keys there.
-  stayed() { if (this.handles && !this.moving && this.by === 'pointer') this.land(); }
+  // or a move the guard refused) lands as a move does: on a row of the
+  // outline the keys stay there, ringed; elsewhere (the right rail) the
+  // focus is on the page's heading, so the row keeps none for the next key
+  // to ring. Return on it keeps the keys there.
+  stayed() { if (this.handles && !this.moving && this.by === 'pointer' && !this.keptByPress(this.doc.activeElement)) this.land(); }
   // ⌘Return (panes.mjs): a new message in the place named, or in the page's
   // own, in the box New message opens, with the cursor in it. Another place
   // is opened first, through the page's guard, and its box opens once its
@@ -316,7 +327,8 @@ export class Shell {
   // A message was edited (docs/message-edit.md): an edit moves no topic's version, so what a rail keeps of a
   // topic by its version is read again where it holds the message.
   messageEdited(id) { if (this.handles) for (const listener of this.listeners) listener.messageEdited?.(id); }
-  // listener: { begin(feed, route), ready(handles), topicChanged(), messageEdited(id) }; each hears every run.
+  // listener: { begin(feed, route), ready(handles), topicChanged(), messageEdited(id), leaving(from) }; each hears
+  // every run, and leaving(from) every move in place as it begins, from what began it (null for back and forward).
   follow(listener) {
     this.listeners.add(listener);
     if (this.handles) listener.ready?.(this.handles);
@@ -334,12 +346,17 @@ export class Shell {
     if (!this.installed || !this.page || this.moving || !movesInPlace(from, target)) return false;
     if (!this.handles) { this.owe({ go: target }); return true; }
     if (!popped) this.places.push(routeHref(target));
-    // Return on a row (the keys, in a rail) keeps the keys there. A press or a
-    // tap, a link in the page, back and forward land on the page reached: the
-    // rail lets the focus go now (its tree no longer holds it), so a key meanwhile
+    // Return on a row (the keys, in a rail) keeps the keys there, and so does
+    // a click or a tap on a row of the outline, which selected it as the keys
+    // would. A press on a row of the right rail, a link in the page, a tap in
+    // the phone's drawer, back and forward land on the page reached: the rail
+    // lets the focus go now (its tree no longer holds it), so a key meanwhile
     // rings nothing there, and the phone's drawer, closing, hands it to no button.
     const at = this.doc?.activeElement ?? null;
-    this.landing = !popped && this.by === 'keys' && inRails(at) ? 'keys' : 'page';
+    // Where the move began, for what the shell keeps (the outline's drawer opens on the row chosen only while that stands).
+    const began = popped ? null : this.by === 'keys' ? at : this.pressed;
+    for (const listener of this.listeners) listener.leaving?.(began);
+    this.landing = !popped && ((this.by === 'keys' && inRails(at)) || this.keptByPress(at)) ? 'keys' : 'page';
     this.writing = !popped && this.writeTo === routeKey(target);
     if (this.landing === 'page' && inRails(at)) at.blur();
     this.move();

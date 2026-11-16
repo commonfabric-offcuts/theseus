@@ -10,10 +10,19 @@
 // is the row they were last on, kept by what it stands for (its key), not by
 // its element: a row drawn again (the page's topic list after a move in place)
 // takes the place back, and the focus with it when the focus was in the pane
-// and went with the old element.
+// and went with the old element, wearing the ring the row that went wore:
+// the keys' ring after the keys or a press that selected the row (the
+// outline's), and none after a press that rang nothing (the right rail's).
+//
+// A pane may choose that a press on a row (a click or a tap) selects it as the
+// keys would (selectOnPress, the outline's, item 462): the row becomes the
+// pane's place and holds the focus with the keys' ring, so ↑ ↓ and → go on
+// from it; the row's own act then runs as it always did.
 import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 
+// What a press lands on that has an act of its own: a row is one, and so is a control inside a row.
+const CONTROLS = 'a[href], button, summary, input, select, textarea, [contenteditable], [role=treeitem]';
 const shown = el => el.isConnected && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 
 export class KeyTree {
@@ -22,20 +31,27 @@ export class KeyTree {
   // false, or undefined for a row that does not open) }. act(action, row,
   // rows): what the pane does for a key the tree does not answer itself. The
   // tree speaks through a polite status of its own (say).
-  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument }) {
+  constructor({ root, rows, act = () => false, label = null, doc = root.ownerDocument, selectOnPress = false }) {
     Object.assign(this, { root, rows, act, doc });
     this.current = null; this.currentKey = null; this.wanted = false; this.queued = false; this.chosen = false; this.placing = false;
+    // ringed: whether the focus in the pane wears a ring. standing: whether
+    // the row chosen is still the person's last choice (away, show).
+    this.ringed = false; this.standing = false;
     root.setAttribute('role', 'tree');
     if (label) root.setAttribute('aria-label', label);
     this.status = doc.createElement('span');
     this.status.className = 'sr-only'; this.status.setAttribute('role', 'status');
     root.after(this.status);
     root.addEventListener('keydown', event => this.key(event));
+    // Before the row's own act, so the act finds the row selected (the shell keeps the keys on it).
+    if (selectOnPress) root.addEventListener('click', event => this.pressed(event), true);
     root.addEventListener('focusin', event => {
-      const row = this.rowOf(event.target);
+      const at = event.target, row = this.rowOf(at);
       this.wanted = true;
       // A row the person moved to; not one the tree put the focus on while the row it keeps is away.
-      if (row && !this.placing) { this.chosen = true; this.visit(row); }
+      if (row && !this.placing) { this.chosen = true; this.standing = true; this.visit(row); }
+      // Whether the focus wears a ring, read once it has landed: what a row drawn in its place wears (refresh).
+      queueMicrotask(() => { if (this.doc.activeElement === at) this.ringed = at.matches(':focus-visible'); });
     });
     root.addEventListener('focusout', event => {
       // Focus that leaves for somewhere else in the page is gone from the
@@ -84,10 +100,14 @@ export class KeyTree {
     const place = (!this.chosen && reading) || kept || rows.find(row => row.el === this.current) || reading || rows[0] || null;
     if (!place) return;
     this.visit(place, this.chosen && !kept);
-    // The focus was on the row that went, or on the one standing in for it: it goes to the row in its place.
+    // The focus was on the row that went, or on the one standing in for it: it
+    // goes to the row in its place, wearing the ring the row that went wore. A
+    // browser rings no focus a script gives after a press unless asked to (the
+    // outline's row pressed); a press that rang nothing (an Unstar in the right
+    // rail) leaves the browser's own way, which rings nothing then.
     if (place.el !== before && this.wanted && (!focused || focused === this.doc.body || focused === before || !focused.isConnected || !shown(focused) || focused.closest('[inert]'))) {
       this.placing = true;
-      try { place.el.focus({ preventScroll: true }); } finally { this.placing = false; }
+      try { place.el.focus(this.ringed ? { preventScroll: true, focusVisible: true } : { preventScroll: true }); } finally { this.placing = false; }
     }
   }
   // Puts the keys on the pane: on the first row prefer(row) chooses, when
@@ -97,6 +117,41 @@ export class KeyTree {
     const rows = this.list(), row = (prefer && rows.find(prefer)) ?? rows.find(each => each.el === this.current) ?? rows[0];
     if (!row) return false;
     this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el);
+    return true;
+  }
+  // A press on a row: the main button, no modifier, made by the pointer or a
+  // finger (a click the keys made, Return on a link, is theirs already), and
+  // on the row itself, not on a control inside it, which keeps its own way.
+  pressed(event) {
+    if (event.button !== 0 || event.detail === 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const row = this.rowOf(event.target.closest?.(CONTROLS));
+    if (row) this.ring(row.el);
+  }
+  // The focus on a row, wearing the keys' ring. A browser rings no focus a
+  // press gave (Chrome's, on its mousedown), nor one a script gives while a
+  // press was the person's last act, unless asked to, and not then for an
+  // element that already has the focus.
+  ring(el) {
+    if (this.doc.activeElement === el) el.blur();
+    el.focus({ preventScroll: true, focusVisible: true });
+  }
+  // A move begun elsewhere (back, forward, a link in the page, the right
+  // rail): the row chosen is no longer the person's last choice (show).
+  away() { this.standing = false; }
+  // The pane comes into view (the phone's drawer opening): the focus on the
+  // row the person chose there (the keys or a press), ringed, while that is
+  // still their last choice; else on the row of the place being read with no
+  // ring, as a fresh page has it, which is no choice and becomes the pane's
+  // place. Answers whether a row took the focus.
+  show() {
+    this.refresh();
+    const rows = this.list(), chosen = this.chosen && this.standing && rows.find(each => each.el === this.current);
+    if (chosen) { this.ring(chosen.el); return true; }
+    const row = rows.find(each => each.el.getAttribute('aria-current') === 'page') ?? rows.find(each => each.el === this.current);
+    if (!row) return false;
+    this.visit(row);
+    this.placing = true;
+    try { row.el.focus({ preventScroll: true }); } finally { this.placing = false; }
     return true;
   }
   go(row) { if (!row) return; this.visit(row); row.el.focus({ preventScroll: true }); revealSelection(row.el); }
