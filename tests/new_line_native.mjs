@@ -87,15 +87,32 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   // Scrolls the page to its top, or its end, at once, and waits for the scroll it makes to be heard and drawn.
   const scrollPage = (p, to) => p.evaluate(`new Promise(r=>{const y=${to === 'end' ? 'Math.max(0,document.scrollingElement.scrollHeight-innerHeight)' : '0'};
     if(Math.abs(y-scrollY)<1)return r();addEventListener('scroll',()=>requestAnimationFrame(()=>requestAnimationFrame(r)),{once:true});scrollTo({top:y,behavior:'instant'})})`);
-  // Pushes the view down toward the page's end count times, as a wheel or a finger keeps doing there, and gives the
-  // room the page keeps after each push. Each push waits two frames: a scroll it makes is heard in the first frame's
-  // rendering, before its frame callbacks, and the room that sets is drawn by the second. The room only ever keeps
-  // what the view reaches, never more, so pushing at the end leaves it as it was: it does not grow a pixel per push.
-  const pushDown = (p, count) => p.evaluate(`(async()=>{const m=document.querySelector('main'),rooms=[];
+  // Pushes the view down toward the page's end eight times, as a wheel or a finger keeps doing there, and gives the
+  // room the page keeps after each push, and how far past what the page holds the view reaches at the end, beyond
+  // the room. Each push waits two frames: a scroll it makes is heard in the first frame's rendering, before its
+  // frame callbacks, and the room that sets is drawn by the second.
+  const pushDown = p => p.evaluate(`(async()=>{const m=document.querySelector('main'),rooms=[];
     const frames=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    for(let n=0;n<${count};n++){scrollBy({top:innerHeight,behavior:'instant'});await frames();await frames();
+    for(let n=0;n<8;n++){scrollBy({top:innerHeight,behavior:'instant'});await frames();await frames();
       rooms.push(m.style.getPropertyValue('--line-room')||'0px')}
-    return rooms})()`);
+    return {rooms,gap:innerHeight-${END}-parseFloat(rooms.at(-1))}})()`);
+  // What the page holds ends at a fraction of a pixel, as a card's lines often make it: main's padding below grows
+  // by what puts the end 0.27px past a whole pixel, and the page has measured and drawn its room again (the change
+  // of main's size heard at one frame, measured at the next, drawn at the third). The page scrolls in whole pixels,
+  // so at its end the view reaches that fraction past what it holds: where a room that took it as a pixel more
+  // grew a pixel with every push (B6).
+  const endAtFraction = p => p.evaluate(`(async()=>{const m=document.querySelector('main'),end=${END}+scrollY;
+    m.style.paddingBottom=(parseFloat(getComputedStyle(m).paddingBottom)+(1.27-end%1)%1)+'px';
+    for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()`);
+  // With what the page holds ending at a fraction, pushing down at the page's end leaves the room as it was.
+  const pushesLeaveRoom = async (p, label) => {
+    await endAtFraction(p);
+    const before = await roomNow(p);
+    const { rooms, gap } = await pushDown(p);
+    assert.ok(gap > 0 && gap < 1, label + ': at the page\'s end the view reaches a fraction past what the page holds: ' + gap);
+    assert.deepEqual(rooms, Array(8).fill(before), label + ': pushing down at the page\'s end leaves the room as it was');
+    return before;
+  };
   const roomNow = p => p.evaluate("document.querySelector('main').style.getPropertyValue('--line-room')||'0px'");
   // Changes the window's size and waits two frames, in whose rendering the resize is heard; says the window's
   // height then and whether a resize was heard, so a window that did not change cannot pass for one that did.
@@ -169,8 +186,7 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       const p = await open(url, metrics, id);
       await readOnScreen(p, topic, label);
       assert.deepEqual(await line(p), { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] }, label + ': the line shows under the oldest message');
-      const needed = await roomNow(p);
-      assert.deepEqual(await pushDown(p, 8), Array(8).fill(needed), label + ': the line showing, pushing down at the page\'s end leaves its room as it was');
+      await pushesLeaveRoom(p, label + ' the line showing');
       await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[0]))}).scrollIntoView({block:'start'})`);
       await frames(p);
       const opened = await placeOf(p, ids[0]);
@@ -185,17 +201,20 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       assert.ok(Math.abs(closed.top - opened.top) <= 1, label + ': the card opened is where it was on screen as the line faded: ' + JSON.stringify({ opened, closed }));
       assert.ok(closed.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(closed));
       await shot(p, `new-line-room-faded-${engine}-${size}`);
-      const faded = await roomNow(p);
-      assert.deepEqual(await pushDown(p, 8), Array(8).fill(faded), label + ': faded, pushing down at the page\'s end does not grow the room the view keeps');
+      await pushesLeaveRoom(p, label + ' faded');
       await scrollPage(p, 'top');
       assert.equal(await blankBelow(p), 0, label + ': scrolled to the top, the room has gone');
       await scrollPage(p, 'end');
       assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
-      // At the page's end with no room, the window shrinks and grows back: measured again where the view ends a
-      // fraction past what the page holds, no room is made, and pushing down there makes none.
+      // At the page's end with no room, what the page holds ends at a fraction and the window shrinks and grows back:
+      // measured again where the view reaches a fraction past what the page holds, no room is made, and pushing down
+      // there makes none.
+      await endAtFraction(p);
       assert.deepEqual(await resizeTo(p, { ...metrics, height: metrics.height - 120 }), { height: metrics.height - 120, heard: true }, label + ': the window is shorter');
       assert.deepEqual(await resizeTo(p, metrics), { height: metrics.height, heard: true }, label + ': and grows back at the page\'s end');
-      assert.deepEqual([await roomNow(p), ...await pushDown(p, 8)], Array(9).fill('0px'), label + ': no room, the window resized and pushed down at the end, none is made');
+      const resized = await roomNow(p), pushed = await pushDown(p);
+      assert.ok(pushed.gap > 0 && pushed.gap < 1, label + ': no room, at the page\'s end the view reaches a fraction past what the page holds: ' + pushed.gap);
+      assert.deepEqual([resized, ...pushed.rooms], Array(9).fill('0px'), label + ': no room, the window resized and pushed down at the end, none is made');
       assert.equal(await blankBelow(p), 0, label + ': and the page ends where what it holds ends');
       // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
       // room. The older card at the top of the window again, it is opened in the Reader, which reads it while the
@@ -225,8 +244,7 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       const moved = await placeOf(p, ids[0]);
       assert.ok(Math.abs(moved.top - reading.top) <= 1, label + ': the card read is where it was on screen as the line moved up: ' + JSON.stringify({ reading, moved, trail: await p.evaluate('window.roomTrail') }));
       assert.ok(moved.blank <= 1, label + ': the page ends no further than the view reaches: ' + JSON.stringify(moved));
-      const movedRoom = await roomNow(p);
-      assert.deepEqual(await pushDown(p, 8), Array(8).fill(movedRoom), label + ': moved up, pushing down at the page\'s end does not grow the room the view keeps');
+      await pushesLeaveRoom(p, label + ' moved up');
       observations.push({ name: 'new line room keeps the place', engine, size, opened, closed, reading, moved });
       assert.deepEqual(p.errors, [], label + ': no page errors');
       await p.close();
