@@ -226,6 +226,10 @@ nothing scrolls sideways, and nothing depends on hover.
 - Safari's engine at phone width, with touch: `native-webkit-whispers`,
   `native-webkit-notebook`, `native-webkit-rail`, `native-webkit-pipeline` and
   `native-webkit-colors` ([device-evidence.md](device-evidence.md)).
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
+  dossier look a folded excerpt draws only its row, by touch at 390, 375 and 320
+  and on a laptop, …": a message the reader folded draws only its row by touch,
+  and no card's words paint outside its own box.
 - `tests/device_native.mjs` (`native-webkit-device`): "device at a phone's width
   every phone check control is in reach by touch and nothing scrolls sideways".
 - A real phone: the phone check records what Tony's phone did with the names

@@ -166,7 +166,9 @@ their acts.
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
   and on its own, it is one row: who wrote it, its line (One line of a
-  message, below), a 👍, and "Folded". The 👍 is the message's thumbs-up,
+  message, below), a 👍, and "Folded". The row is all of the card that draws,
+  on a phone by touch as on a laptop: nothing of its words, a cut-off message's
+  excerpt and its cue included, shows past it (item 546). The 👍 is the message's thumbs-up,
   as its bar's: pressed once given, with the count once anyone has, and a press gives or takes it back
   without unfolding the message (none on the reader's own message). It is a
   button named "Thumbs up" or "Remove thumbs up" (with the count), with that

@@ -152,7 +152,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const ids = await seed(topic, [
         ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: LONG }],
         ['cut', { sender: 'aim-ux', addressees: [facts.actor], body: excerpt(facts.actor, 'what is left in the shed?') }],
-        ['root', { sender: facts.actor, body: 'How should the garden notes read?' }],
+        ['root', { sender: facts.actor, body: fill('How should the garden notes read, bed by bed?', GARDEN, 1100) }],
         ['r1', { sender: other, join: true, reply_to: 'root', addressees: [facts.actor], body: fill('Notes read best as one line a bed.', GARDEN, 889) }],
         ['r2', { sender: facts.actor, reply_to: 'r1', addressees: [other], body: '> one line a bed\n\n' + fill('Then say which beds wait on the weather.', GARDEN, 760) }],
         ['r3', { sender: other, reply_to: 'r2', addressees: [facts.actor], body: '> which beds wait on the weather\n\n' + fill('The herb rows and the far trellis.', GARDEN, 470) }],
@@ -169,7 +169,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const items = async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 30 })).items;
       const seeded = await items(), item = id => seeded.find(each => each.id === id);
       await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.asideRoot, operation_id: `${topic}-aside`, args: { through: item(ids.aside).seq } });
-      for (const id of [ids.cut, ids.folded, ids.alone, ids.aside]) assert.equal(item(id).preview, true, `${device}: ${id} is a cut-off message, an excerpt`);
+      for (const id of [ids.cut, ids.root, ids.folded, ids.alone, ids.aside]) assert.equal(item(id).preview, true, `${device}: ${id} is a cut-off message, an excerpt`);
       assert.equal(item(ids.long).preview, false, `${device}: the long card is whole`);
       assert.deepEqual([ids.folded, ids.alone, ids.aside, ids.r1, ids.r3].map(id => item(id).acts.folded), [true, true, true, true, true], `${device}: the reader's 👍 and replies folded what they answered`);
       const foldedInCore = async (id, on) => (await items()).find(each => each.id === id).acts.folded === on;
@@ -204,7 +204,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const whole=id=>{const e=c(id),w=e.querySelector(':scope > .message-preview'),cue=e.querySelector(':scope > .message-preview-cue'),cb=box(e),wb=box(w);
           return {folded:e.dataset.folded==='true',words:w.getClientRects().length>0,wordsHeight:Math.round(wb.height),inside:wb.top>=cb.top-1&&wb.bottom<=cb.bottom+1,
             cue:Boolean(cue?.getClientRects().length),height:Math.round(cb.height),window:innerHeight}};
-        return {spills,folded:fold(ids.folded),alone:fold(ids.alone),aside:fold(ids.aside),long:whole(ids.long),cut:whole(ids.cut)}})()`;
+        // The dossier's first message, itself an excerpt, shown as its tab alone: nothing of its card draws.
+        const head=c(ids.root),stack=head.closest('.reply-stack');
+        return {spills,folded:fold(ids.folded),alone:fold(ids.alone),aside:fold(ids.aside),long:whole(ids.long),cut:whole(ids.cut),
+          head:{open:stack.dataset.headOpen,rest:[...head.children].filter(k=>!k.classList.contains('stack-head')&&k.getClientRects().length).map(k=>k.className)}}})()`;
       const look = () => p.evaluate(LOOK);
       // Where each card above the folded one stands on the page, scrolling aside.
       const above = () => p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(card(ids.folded))});
@@ -239,6 +242,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           rowOnly(`${at} ${theme}: the folded excerpt in a dossier`, seen.folded, true);
           rowOnly(`${at} ${theme}: the folded excerpt on its own`, seen.alone, false);
           expect(!seen.aside.shown, `${at} ${theme}: the dossier below More draws nothing`, seen.aside);
+          expect(seen.head.open === 'false' && seen.head.rest.length === 0, `${at} ${theme}: the dossier's first message, an excerpt, shows as its tab alone`, seen.head);
           expect(seen.long.words && seen.long.inside && !seen.long.cue, `${at} ${theme}: the long unfolded card shows all its words inside its box`, seen.long);
           expect(seen.cut.words && seen.cut.cue && seen.cut.inside && (!coarse || seen.cut.wordsHeight <= seen.cut.window * .6 + 1),
             `${at} ${theme}: the unfolded excerpt reads with its cue${coarse ? ', no taller than 60% of the window' : ''}`, seen.cut);

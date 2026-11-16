@@ -16003,6 +16003,36 @@
     "native": "compose",
     "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
+  },
+  {
+   "item": 546,
+   "act": "A message the reader folded draws only its row by touch too: a cut-off message's excerpt never paints past its folded card, in Chrome",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".message-card[data-folded=true]>:not(.message-folded){display:none!important}",
+     ".message-card[data-folded=true]>:not(.message-folded){display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading dossier look a folded excerpt draws only its row"
+   }
+  },
+  {
+   "item": 546,
+   "act": "A message the reader folded draws only its row by touch too: a cut-off message's excerpt never paints past its folded card, in Safari's engine",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".message-card[data-folded=true]>:not(.message-folded){display:none!important}",
+     ".message-card[data-folded=true]>:not(.message-folded){display:none}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading dossier look a folded excerpt draws only its row"
+   }
   }
  ]
 }
