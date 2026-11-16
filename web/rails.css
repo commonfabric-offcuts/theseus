@@ -128,8 +128,10 @@ a.things-name[href]{color:var(--accent)}
 }
 /* Middle widths and phones: the things open from the header's "Pipeline & pages". */
 @media(max-width:1180px){
-  [data-rails] #main .eyebrow-row{display:flex;align-items:center;gap:.6rem;min-width:0}
-  [data-rails] #main .eyebrow-row .eyebrow{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* The outcome's name takes what room is left, down to none; where even then "☰ Outcomes", one gap and "Pipeline &
+     pages" are wider than the row (320, with the light and a count), "Pipeline & pages" goes under, inside the screen. */
+  [data-rails] #main .eyebrow-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;min-width:0}
+  [data-rails] #main .eyebrow-row .eyebrow{flex:1 1 0;margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   [data-rails] #things-open{display:inline-flex;align-items:center;flex:none;margin-left:auto;padding:.3rem .8rem;border-radius:1.4rem;font-size:.85rem;color:var(--accent);-webkit-tap-highlight-color:transparent}
   /* It slides in as it opens, and is gone at once as it closes: hidden by no clock, so a closed panel
      never stands over the page while an animation waits (a page in the background runs none). */
@@ -148,6 +150,10 @@ a.things-name[href]{color:var(--accent)}
   /* "☰ Outcomes" carries the total and the light; the line under the header says what is new elsewhere. */
   [data-rails] #rail-open .unread-count[hidden],[data-rails] #rail-open .outcome-light[hidden]{display:none}
   [data-rails] #rail-open .outcome-light{margin:0 0 0 .4rem}
+  /* After "☰ Outcomes" the name's place costs nothing beyond the one gap between the pills: it reaches back over the gap
+     before it and starts its words that far in, so at no width it adds no second gap, and "Pipeline & pages" stays on
+     the line whenever the two pills fit with one gap between them. */
+  [data-rails] .workspace-layout:not(:has(>.rail[hidden])) #rail-open+.eyebrow{margin-left:-.6rem;text-indent:.6rem}
   [data-rails] #outline-elsewhere:not([hidden]){display:flex;align-items:center;gap:.4rem;width:100%;min-height:2.5rem;margin:-.4rem 0 .8rem;padding:.3rem .7rem;border-color:var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);font-size:.85rem;text-align:left;white-space:normal}
   [data-rails] #outline-elsewhere .outcome-light[hidden]{display:none}
   [data-rails] #outline-elsewhere .ol-go{margin-left:auto;color:var(--muted)}

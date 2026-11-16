@@ -2435,6 +2435,170 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     if (SIZE_464[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   } });
 
+  // The header's pills in each state "☰ Outcomes" has (item 516), its count hidden or shown and its waiting light off or
+  // on: nothing new and nothing waiting, a one-digit count, a one-digit count with the light, a two-digit count with the
+  // light, a two-digit count without it, and the light alone (the question read and not yet answered). Every state is
+  // measured at 320, 375, 390, a narrow laptop and a laptop, light and dark. On a phone the header row holds "☰ Outcomes",
+  // the outcome's name and "Pipeline & pages". The name gives up its room first, down to none, and its place then costs
+  // nothing beyond the one gap between the pills; so "Pipeline & pages" goes under, on the row's second line, whole and
+  // inside the screen, exactly when "☰ Outcomes", one gap and "Pipeline & pages" are wider than the row (at 320, the light
+  // with a count of one or two digits), and otherwise the two share the first line with the name between them, its
+  // words a gap from each pill, clipped only when they are longer than the room left. At a narrow laptop (1024) the
+  // outline is beside the page, so only "Pipeline & pages" shows, on the name's line; on a laptop both rails are beside
+  // the page and neither pill shows. Nothing scrolls sideways: no element's box, where no box around it clips it, ends
+  // past the right edge of the screen the page was opened at. (A page wider than a phone's screen widens Chromium's
+  // layout viewport with it, so scrollWidth against innerWidth grows with the page and is no measure on its own.)
+  await check('rail the header at 320, 375, 390, a narrow laptop and a laptop, light and dark, in each state of "☰ Outcomes" (nothing, a count, a count and the light, two digits with and without the light, the light alone): "Pipeline & pages" goes under "☰ Outcomes" only when the two pills and one gap do not fit the row, otherwise the outcome\'s name gives up its room and the two share one line, and nothing scrolls sideways', async () => {
+    const news = async (from, to) => { for (let n = from; n < to; n++) await control({ method: 'agent_message', operation_id: `rail-head-${n}`, body: `News ${n} for the header`, topic_id: 'rail-head-t' }); };
+    const SIZE_HEAD = { ...SIZE_464, 1024: { width: 1024, height: 768, deviceScaleFactor: 1, mobile: false } };
+    const openHead = (name, size, theme) => page(name, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+      await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+      await q.send('Emulation.setDeviceMetricsOverride', SIZE_HEAD[size]);
+      if (SIZE_HEAD[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    } });
+    // Earlier checks leave news and questions in other outcomes, and "☰ Outcomes" totals every outcome the outline has
+    // read; so the case starts by having the person read them. Each open topic with news, and then the Conversation of
+    // an outcome that still has some, gets a post from the person that reads it through (and answers its asks). Then
+    // each question an outcome's light still names, one at a time: an ask gets the person's reply (a Conversation's
+    // next ask then waits), and a wait someone said is said otherwise. Each question is handled once; one that comes
+    // back fails the case, naming it.
+    const asks = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? item.light.short.count : 0;
+    const busy = async () => { const listed = await view('workspaces', { limit: 100 });
+      assert.equal(listed.next_cursor ?? null, null, 'every outcome is on one page of the list');
+      return listed.items.filter(item => item.unread > 0 || asks(item) > 0); };
+    const settle = async () => {
+      const read = topic => control({ method: 'agent_message', operation_id: `rail-head-read-${topic}`, sender: 'person', topic_id: topic, whole_topic: true, read: true, body: 'Read, thanks.' });
+      for (const item of await busy()) for (const topic of (await view('workspace_topics', { workspace_id: item.id, limit: 100 })).items)
+        if (topic.unread > 0) await read(topic.id);
+      for (const item of await busy()) if (item.unread > 0) await read((await view('conversation', { workspace_id: item.id })).conversation.topic_id);
+      const handled = new Set();
+      for (let [item] = await busy(); item; [item] = await busy()) {
+        const question = (await view('outcome_light', { workspace_id: item.id })).facts.find(fact => fact.kind === 'ask');
+        assert.ok(question, `${item.id} has nothing new and nothing waiting once read (${JSON.stringify(item)})`);
+        const key = question.message_id ?? `said ${question.topic_id}`;
+        assert.ok(!handled.has(key), `${item.id}: the question ${key} still waits once handled`);
+        handled.add(key);
+        if (question.message_id) await control({ method: 'agent_message', operation_id: `rail-head-answer-${question.message_id}`, sender: 'person', topic_id: question.topic_id, reply_to: question.message_id, read: true, body: 'Answered.' });
+        else await control({ method: 'topic_state', operation_id: `rail-head-active-${question.topic_id}`, topic_id: question.topic_id, args: { state: 'active' } });
+      }
+    };
+    // Each part of the header row as drawn, or null where it takes no room: its box (unrounded widths, so a fit is
+    // judged as layout judges it), whether its content is wider than its box (clipped), and how many lines its words
+    // take (text boxes whose middles are within 8px are a line). For the name, also where its words start and how wide
+    // its words are when nothing clips them (measured in its own font); for the row, its top, its content width and the
+    // gap between its parts.
+    const header = p => p.evaluate(`(()=>{const el=id=>document.getElementById(id),c=el('rail-open'),row=document.querySelector('#main .eyebrow-row');
+      const lines=e=>{const mids=[];const walk=document.createTreeWalker(e,NodeFilter.SHOW_TEXT);for(let n=walk.nextNode();n;n=walk.nextNode()){
+        if(!n.textContent.trim())continue;const r=document.createRange();r.selectNodeContents(n);for(const b of r.getClientRects())if(b.width>0)mids.push(b.top+b.height/2);}
+        mids.sort((a,b)=>a-b);return mids.filter((m,i)=>i===0||m-mids[i-1]>8).length;};
+      const part=e=>{if(!e||!e.getClientRects().length)return null;const b=e.getBoundingClientRect();
+        return {left:b.left,right:b.right,top:Math.round(b.top),bottom:Math.round(b.bottom),mid:Math.round(b.top+b.height/2),
+          width:b.width,half:b.height/2,clipped:e.scrollWidth>e.clientWidth+1,lines:lines(e)};};
+      const words=e=>{const t=document.createTreeWalker(e,NodeFilter.SHOW_TEXT).nextNode();if(!t)return null;const r=document.createRange();r.selectNodeContents(t);return r.getClientRects()[0]?.left??null;};
+      const natural=e=>{const s=getComputedStyle(e),g=document.createElement('canvas').getContext('2d');g.font=[s.fontStyle,s.fontWeight,s.fontSize,s.fontFamily].join(' ');return g.measureText(e.textContent).width;};
+      const s=getComputedStyle(row);
+      return {count:Number(c.querySelector('.unread-count:not([hidden])')?.textContent??0),light:Boolean(c.querySelector('.outcome-light:not([hidden])')),
+        rows:[...document.querySelectorAll('#outline .ol-outcome')].map(li=>li.dataset.workspaceId),
+        outcomes:part(c),pages:part(el('things-open')),name:part(el('workspace-name')),words:words(el('workspace-name')),natural:natural(el('workspace-name')),
+        row:row.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),rowTop:Math.round(row.getBoundingClientRect().top+parseFloat(s.paddingTop)),gap:parseFloat(s.columnGap)||0,
+        scroll:document.documentElement.scrollWidth,width:innerWidth};})()`);
+    // The element whose box ends furthest right, each box cut at the right edge of every box around it (below the
+    // body) that clips its overflow, as it is drawn.
+    const rightmost = p => p.evaluate(`(()=>{const cut=e=>{let r=Infinity;for(let a=e.parentElement;a&&a!==document.body;a=a.parentElement)
+        if(getComputedStyle(a).overflowX!=='visible')r=Math.min(r,a.getBoundingClientRect().right);return r;};
+      let far={right:-Infinity,what:null};for(const e of document.body.querySelectorAll('*')){
+        if(!e.getClientRects().length||getComputedStyle(e).visibility==='hidden')continue;const right=Math.min(e.getBoundingClientRect().right,cut(e));
+        if(right>far.right)far={right,what:e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+(e.classList[0]?'.'+e.classList[0]:'')};}
+      return far;})()`);
+    const sameLine = (a, b) => Math.abs(a.mid - b.mid) < Math.min(a.half, b.half);
+    // Every measurement's first failed assertion, so one run says which states and widths fail, and the names seen
+    // whole and clipped between the two pills.
+    const failed = [], names = { whole: [], clipped: [] };
+    // state: its words, which counts and light it is, and at 320 whether the two pills and one gap fit the row
+    // ("Pipeline & pages" shares the line). Both engines give the same answer at 320 in every state; at 375 and 390
+    // they fit in every state.
+    // rows: the outcomes the outline must have drawn, so the total is read from them and not before they are read.
+    const measure = async ({ state, is, fitsAt320, rows = ['w1', 'rail-head-o'] }) => {
+      assert.equal(typeof fitsAt320, 'boolean', `${state}: the case says whether the two pills fit at 320`);
+      for (const size of [320, 375, 390, 1024, 'laptop']) for (const theme of ['light', 'dark']) {
+        const at = `${state}, ${size} ${theme}`, phone = SIZE_HEAD[size].mobile;
+        const p = await openHead(`rail-head-${state.replace(/\W+/g, '-')}-${size}-${theme}`, size, theme);
+        // The count and the light on "☰ Outcomes" are painted at every width (it only shows on a phone), and on a
+        // middle or phone width "Pipeline & pages" is in the header before the row is measured.
+        let last = null;
+        const seen = await until(async () => { const h = last = await header(p); return is(h) && rows.every(id => h.rows.includes(id)) && (size === 'laptop' || h.pages) && h; }, `${at}: "☰ Outcomes" shows ${state}, and the header is drawn`)
+          .catch(error => { throw Error(`${error.message} (last drawn: ${JSON.stringify(last)})`); });
+        const far = await rightmost(p);
+        const drawn = JSON.stringify({ ...seen, far }), screen = SIZE_HEAD[size].width;
+        try {
+          assert.ok(far.right <= screen + 0.5, `${at}: nothing scrolls sideways: ${far.what} ends at ${far.right}, past the right edge of the ${screen}px screen (scrollWidth ${seen.scroll}, innerWidth ${seen.width}) (${drawn})`);
+          assert.ok(seen.scroll <= screen && seen.width <= screen, `${at}: no sideways scroll (${seen.scroll}, ${seen.width}, ${screen})`);
+          if (phone) {
+            const { outcomes, pages, name, row, gap } = seen;
+            assert.ok(outcomes && pages, `${at}: both pills show (${drawn})`);
+            for (const [pill, what] of [[outcomes, '"☰ Outcomes"'], [pages, '"Pipeline & pages"']]) {
+              assert.ok(pill.left >= 0 && pill.right <= screen, `${at}: ${what} is inside the screen (${drawn})`);
+              assert.ok(!pill.clipped && pill.lines === 1, `${at}: ${what} is whole, on one line of its own words (${drawn})`);
+            }
+            const fits = outcomes.width + gap + pages.width <= row;
+            assert.equal(fits, size === 320 ? fitsAt320 : true, `${at}: the two pills and one gap ${size === 320 && !fitsAt320 ? 'do not fit' : 'fit'} the row (${drawn})`);
+            // The row's lines: "☰ Outcomes" starts the first; the name stays on it; "Pipeline & pages" is on the first
+            // when the two pills fit with one gap, and wholly under "☰ Outcomes", on the second, when they do not.
+            const line = part => !part ? 'none' : sameLine(part, outcomes) ? 1 : part.top >= outcomes.bottom ? 2 : 'neither';
+            assert.ok(Math.abs(outcomes.top - seen.rowTop) <= 1, `${at}: "☰ Outcomes" starts the header row's first line (${drawn})`);
+            assert.deepEqual({ outcomes: 1, name: line(name), pages: line(pages) }, { outcomes: 1, name: 1, pages: fits ? 1 : 2 },
+              `${at}: the line each is on: "☰ Outcomes" and the name the first, "Pipeline & pages" the ${fits ? 'first' : 'second'} (${drawn})`);
+            assert.ok(seen.words >= outcomes.right + gap - 1, `${at}: the outcome's name starts a gap after "☰ Outcomes" (${drawn})`);
+            if (fits) {
+              assert.ok(name.left >= outcomes.right - 1 && name.right <= pages.left - gap + 1, `${at}: the outcome's name gives up its room, between the two pills, a gap before "Pipeline & pages" (${drawn})`);
+              // Judged where its words and the room differ by more than 2px: scrollWidth is a whole number of pixels
+              // and the words are measured apart from the line they are laid out on.
+              const room = name.right - seen.words, longer = seen.natural > room;
+              if (Math.abs(seen.natural - room) > 2) {
+                assert.equal(name.clipped, longer, `${at}: the outcome's name is clipped exactly when its words (${seen.natural}px) are longer than the room left between the pills (${room}px) (${drawn})`);
+                names[longer ? 'clipped' : 'whole'].push(at);
+              }
+            } else {
+              assert.ok(name.right <= outcomes.left + row + 1, `${at}: the outcome's name ends inside the row (${drawn})`);
+            }
+          } else if (size === 1024) {
+            assert.equal(seen.outcomes, null, `${at}: no "☰ Outcomes" with the outline beside the page (${drawn})`);
+            assert.ok(seen.pages.right <= screen && !seen.pages.clipped && seen.pages.lines === 1 && sameLine(seen.pages, seen.name), `${at}: "Pipeline & pages" is whole on the name's line (${drawn})`);
+            assert.equal(seen.name.clipped, false, `${at}: with room, the outcome's name is whole (${drawn})`);
+          } else {
+            assert.deepEqual([seen.outcomes, seen.pages], [null, null], `${at}: neither pill with both rails beside the page (${drawn})`);
+            assert.equal(seen.name.clipped, false, `${at}: the outcome's name is whole (${drawn})`);
+          }
+          assert.ok(seen.name && seen.name.width > 0, `${at}: the outcome's name keeps a place in the header (${drawn})`);
+          assert.deepEqual(p.errors, [], `${at}: no page errors`);
+        } catch (error) {
+          if (!(error instanceof assert.AssertionError)) throw error;
+          failed.push(error.message);
+        }
+        await shot(p, `rail-head-${state.replace(/\W+/g, '-')}-${size}-${theme}`);
+        await p.close();
+      }
+    };
+    await settle();
+    await measure({ state: 'nothing', is: h => h.count === 0 && !h.light, fitsAt320: true, rows: ['w1'] });
+    await control({ method: 'light_outcome', outcome: 'rail-head-o', title: 'Header outcome', topic: { id: 'rail-head-t', title: 'Header topic' } });
+    await news(0, 3);
+    await measure({ state: 'a count', is: h => h.count >= 1 && h.count <= 9 && !h.light, fitsAt320: true });
+    await control({ method: 'agent_message', operation_id: 'rail-head-ask', body: 'Which header do we keep?', topic_id: 'rail-head-t', addressees: [facts.actor], intent: 'ask' });
+    await measure({ state: 'a count and the light', is: h => h.count >= 1 && h.count <= 9 && h.light, fitsAt320: false });
+    await news(3, 10);
+    await measure({ state: 'two digits and the light', is: h => h.count >= 10 && h.count <= 99 && h.light, fitsAt320: false });
+    await control({ method: 'agent_message', operation_id: 'rail-head-answer', sender: 'person', topic_id: 'rail-head-t', whole_topic: true, body: 'This one.' });
+    await measure({ state: 'two digits without the light', is: h => h.count >= 10 && h.count <= 99 && !h.light, fitsAt320: true });
+    // A second question, which the person reads through and has not answered: the light with the count hidden.
+    await control({ method: 'agent_message', operation_id: 'rail-head-ask-read', body: 'And which footer?', topic_id: 'rail-head-t', addressees: [facts.actor], intent: 'ask', read: true });
+    await measure({ state: 'the light alone', is: h => h.count === 0 && h.light, fitsAt320: true });
+    // It is answered, so the checks after this one start with nothing new and no light this one lit.
+    await control({ method: 'agent_message', operation_id: 'rail-head-answer-read', sender: 'person', topic_id: 'rail-head-t', whole_topic: true, body: 'The short one.' });
+    assert.equal(failed.length, 0, `${failed.length} of 60 measurements failed:\n${failed.join('\n')}`);
+    assert.ok(names.whole.length && names.clipped.length, `the case sees the outcome's name both whole and clipped between the two pills (whole: ${names.whole.join('; ')}; clipped: ${names.clipped.join('; ')})`);
+  });
+
   await check('rail the side rail shows no Outcome Notebook on a topic, a Conversation, a pipeline page or the outcome\'s page, with pages or none, at 320 375 390 and a laptop, light and dark', async () => {
     await notebookOutcomes();
     await control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: 'rail-nb-pipeline', target: { workspace_id: 'rail-nb-o' }, workspace_id: 'rail-nb-o', args: { enabled: true } });
