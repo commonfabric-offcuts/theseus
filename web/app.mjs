@@ -977,7 +977,7 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet') });
   return stackFeed;
 }
 // The topic's feed, its Notebook and its Team, drawn or not, with any other
@@ -1275,6 +1275,18 @@ function paintReaderAside() {
   button.querySelector('.aside-count').textContent = String(offer.count);
   button.setAttribute('aria-pressed', String(offer.below));
   button.setAttribute('aria-label', words); button.title = words;
+}
+// The Reader's title names the dossier its message is in (item 561), as the
+// dossier's tab does (StackFeed.dossierName): only for a message of this topic
+// the page's stacks hold; another topic's message, a Notebook page and a message
+// opened alone keep their own titles. Painted again when the stacks are.
+function readerDossierName(source) {
+  const ref = source?.source_ref;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
+}
+function paintReaderTitle() {
+  const p = registry?.current;
+  if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
 }
 function asideFromReader() {
   const offer = readerAside();
@@ -2147,6 +2159,7 @@ async function initialize() {
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
+    dossierName: source => readerDossierName(source),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
