@@ -178,20 +178,30 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await until(async () => JSON.stringify(wordsOf(await draft(s))) === JSON.stringify({ body: s.body, attachments: s.attachments.map(ref => ref.id) }), 'saved as the draft');
       await pressRow(p, s.away);
       await arrive(p, s.away);
-      // After a reload nothing is in doubt and the words are still the draft.
+      // Back on the topic and the page reloaded, as a person reloads it: nothing is in doubt, the words are still
+      // the writing, and once the person has opened that writing (a message's, in the Reader) and closed it, a press
+      // on another topic goes on the first try. The image a reply set aside put back is in the draft as any image
+      // the person chose is, so it holds nothing (item 548, review B4).
+      await pressRow(p, s.here);
+      await arrive(p, s.here);
+      // The reload is waited for by a timeOrigin kept on the window; while the old document gives way to the new
+      // one a read of it can fail, which is not yet the new document.
+      const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+      await p.send('Page.reload', {});
+      await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready==='true' && (window.documentOrigin??=performance.timeOrigin) !== ${loaded} && new URL(location.href).searchParams.get('topic')===${q(s.here)}`); } catch { return false; } }, 'the page loads again on the topic');
+      if (s.replyTo) { await openReader(p, s); await closeReader(p); }
+      assert.deepEqual(await reviews(p), [], 'after a reload no Review button');
+      assert.equal(await shownWriting(p, s), s.body, 'after a reload the words are the writing');
+      await pressRow(p, s.away);
+      await arrive(p, s.away);
+      // And in another tab of the same browser, opened on the topic while this one stays open.
       const again = await open(`aside-${shape}-again`, `/?topic=${s.here}`);
       await ready(again, s.here);
       if (s.replyTo) { await openReader(again, s); await closeReader(again); }
-      assert.deepEqual(await reviews(again), [], 'after a reload no Review button');
-      assert.equal(await shownWriting(again, s), s.body, 'after a reload the words are the writing');
+      assert.deepEqual(await reviews(again), [], 'in another tab no Review button');
+      assert.equal(await shownWriting(again, s), s.body, 'in another tab the words are the writing');
       await pressRow(again, s.away);
-      if (shape !== 'attachment') { await arrive(again, s.away); return; }
-      // An image a page kept on this device asks to be checked after a reload
-      // (the image-copy rule, docs/images.md), whatever reply it belongs to;
-      // what this item answers is that the guard no longer names a reply in doubt.
-      await until(async () => await again.evaluate('new URL(location.href).searchParams.get("topic")') === s.away || /image/.test(await notice(again)),
-        'the press goes, or is held only for the image kept on this device');
-      assert.doesNotMatch(await notice(again), /Review|confirmed sent/, 'the guard names no reply in doubt');
+      await arrive(again, s.away);
     });
   }
 }
