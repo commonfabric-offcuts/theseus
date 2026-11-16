@@ -19466,6 +19466,20 @@
   },
   {
    "item": 567,
+   "act": "Two pieces started in the same millisecond keep the order they were made in",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "e.left_ms IS NULL ORDER BY p.rowid\"",
+     "e.left_ms IS NULL ORDER BY p.rowid DESC\""
+    ]
+   ],
+   "check": {
+    "python": "test_now_order.py"
+   }
+  },
+  {
+   "item": 567,
    "act": "The pipeline view hands every reader of Now its pieces in that order (Core)",
    "break": [
     [

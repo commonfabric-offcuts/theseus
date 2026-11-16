@@ -69,8 +69,9 @@ The `pipeline` view sorts the pieces once (`outcome_rules.now_order`), and every
 reader of Now takes that order: the page's piece cards, the right rail's Now
 group where the reader has not placed its topics (docs/rails.md), the head's
 Being built line, and the CLI's `pipeline` listing, which prints Now as the page
-draws it: the release's items, each piece's items in the view's order, then the
-items in Now not in a piece. Those keep their placed order after the pieces, as
+draws it: the release's items, each piece's items in the view's order (a piece's
+own in the order it holds them, as its card names them), then the items in Now
+not in a piece. Those keep their placed order after the pieces, as
 Next, Later and Candidates keep theirs; the order of Now's pieces is read, never
 stored, so an older store reads the same way.
 

@@ -107,6 +107,12 @@ class NowOrderCase(PipelineCase):
         self.assertEqual(self.section("next"), [8, 6, 7])
         self.assertEqual(self.section("later"), [10, 9])
 
+    def test_two_pieces_started_in_the_same_millisecond_keep_the_order_they_were_made_in(self):
+        # The later item is started first, so the order made is neither the items' numbers nor their placed order.
+        later = self.at(1, lambda: self.start(3, "t3"))["piece_id"]
+        earlier = self.at(1, lambda: self.start(1, "t1"))["piece_id"]
+        self.assertEqual([piece["id"] for piece in self.now()["pieces"]], [later, earlier])
+
 
 if __name__ == "__main__":
     unittest.main()
