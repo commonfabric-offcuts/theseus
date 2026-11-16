@@ -7118,7 +7118,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.asideReply))})?.getClientRects().length)`), 'More shows the dossier below it');
       has(await of(ids.asideReply, 'below-more', true), ['Bring back above More'], 'a dossier below More'); await away();
       // The pencil and the tray the menus borrow stay on their own buttons; the feed and the bar carry no menu glyph.
-      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]').length]`)]);
+      // The bars' own controls show glyphs of their own (item 473): a dossier's title bar's and the message bar's
+      // buttons; a glyph anywhere else in the feed or on the bar is counted.
+      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,
+        [...document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]')].filter(g=>!g.parentElement.matches('#messages .reply-stack > .stack-tools > .stack-tool, .message-bar > button')).length]`)]);
       assert.deepEqual(p.errors, []); await p.close();
     }
     // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
@@ -7126,7 +7129,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
     assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
-    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
+    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar but on the bars\' own controls');
   });
 
   // Item 473: a dossier's title bar shows, at its right, Reply to its first message, Move below More (Bring back
