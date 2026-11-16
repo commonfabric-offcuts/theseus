@@ -19480,6 +19480,51 @@
     "native": "webkit-notebook",
     "case": "notebook harness until still times out at its own bound"
    }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, a page that closes while until() waits for the page a read went to ends the wait at once with the closed page's own error, not a timeout at the wait's bound",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "      opened.on('close', arrived);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until ends at once when its page closes"
+   }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, until()'s wait for the page a read went to has only what is left of the wait's own bound, not a fixed bound of its own",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "if (!await within(error.navigation, deadline - Date.now()))",
+     "if (!await within(error.navigation, 8000))"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until still times out at its own bound"
+   }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, until() begins no read once its own bound has passed, and times out there",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "  while (Date.now() < deadline) {\n",
+     "  while (Date.now() < deadline + 8000) {\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until still times out at its own bound"
+   }
   }
  ]
 }

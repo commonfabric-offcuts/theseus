@@ -63,17 +63,18 @@ const SKIPPED = {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 // A read out when its page navigates has no page left to answer it: Playwright ends it with "Execution context was
-// destroyed". Each page's documents are counted as each one's DOMContentLoaded arrives (attach()), so such a read is
-// thrown carrying the arrival of the next document after the one it was sent to (item 418). until() takes that as
-// "not yet": it waits on that arrival, within its own bound, and reads again. Any other error ends the wait at once.
+// destroyed". Each page's documents are counted as each one's DOMContentLoaded arrives, and its closing counts as one
+// too (attach()), so such a read is thrown carrying the arrival of the next document after the one it was sent to
+// (item 418). until() takes that as "not yet": it waits on that arrival, within its own bound, and reads again. Any
+// other error ends the wait at once, and so does a closed page's: the read after its closing meets the close.
 const DESTROYED = /Execution context was destroyed/;
 const documents = new WeakMap();
 const nextDocument = (opened, seen) => new Promise(resolve => {
   const known = documents.get(opened);
-  if (!known || known.count > seen || opened.isClosed()) resolve(); else known.waiting.push(resolve);
+  if (known.count > seen) resolve(); else known.waiting.push(resolve);
 });
 const read = async (opened, expression) => {
-  const seen = documents.get(opened)?.count ?? 0;
+  const seen = documents.get(opened).count;
   try { return await opened.evaluate(expression); }
   catch (error) { throw DESTROYED.test(error.message) ? Object.assign(error, { navigation: nextDocument(opened, seen) }) : error; }
 };
@@ -149,7 +150,8 @@ const untilChecks = async ({ check, page }) => {
     }, description, bound), 30000, `until on ${description}`), refused);
     const took = Date.now() - started, last = reads.at(-1);
     assert.ok(took >= bound, `not before its bound of ${bound} ms: ended at ${took} ms`);
-    assert.ok(reads.every(read => read.began < bound + LATE), `no read begins after its bound of ${bound} ms: ${JSON.stringify(reads)}`);
+    const late = reads.filter(read => read.began >= bound + LATE);
+    assert.equal(late.length, 0, `no read begins after its bound of ${bound} ms: ${late.length} of ${reads.length} did, from ${JSON.stringify(late[0])}`);
     assert.ok(took <= Math.max(bound, last.answered) + LATE, `ends at its bound of ${bound} ms, or its last read's answer: ended at ${took} ms, reads ${JSON.stringify(reads)}`);
     return reads;
   };
@@ -248,9 +250,10 @@ try {
       let leaving = false;
       const known = { count: 0, waiting: [] }, arrived = () => { known.count += 1; for (const resolve of known.waiting.splice(0)) resolve(); };
       documents.set(opened, known);
-      // A new document of the main frame has parsed (Playwright tells this of the main frame only); a closed page will have none.
+      // A new document of the main frame has parsed (Playwright tells this of the main frame only). A closed page will have
+      // none, so its closing counts as one: a wait on its next document ends, and the read after it meets the close.
       opened.on('domcontentloaded', arrived);
-      opened.on('close', () => { for (const resolve of known.waiting.splice(0)) resolve(); });
+      opened.on('close', arrived);
       opened.on('request', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = true; });
       opened.on('framenavigated', frame => { if (frame === opened.mainFrame()) leaving = false; });
       opened.on('requestfailed', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = false; });

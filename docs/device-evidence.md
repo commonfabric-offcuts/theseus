@@ -67,12 +67,17 @@ Chrome, and how the harness handled it.
   Playwright ends it with "Execution context was destroyed". The harness's
   wait, `until()`, takes that as "not yet": it waits for the page it went to
   to have its document (its DOMContentLoaded), within the wait's own bound,
-  and then reads again. Any other error still ends the wait at once. The
-  Notebook mode holds this on a real page with three checks of its own,
-  `notebook harness until …`: a read whose page navigates while it is out,
-  a read the page refuses and a read of a closed page (each read once), and a
+  and then reads again. Any other error still ends the wait at once, and so
+  does a page closing while the wait is out for the page a read went to: the
+  wait reads once more and meets the closed page's own error. The Notebook
+  mode holds this on a real page with four checks of its own,
+  `notebook harness until …`: a read whose page navigates while it is out;
+  a read the page refuses and a read of a closed page (each read once); a
   condition that never holds and a page gone to a document that never loads
-  (each timing out at its bound, the second with no read again).
+  (each timing out at its own bound and no later: no read begins after it,
+  and the wait ends within a second of it, or of its last read's answer; the
+  second with no read again); and a page that closes while the wait is out
+  for the page a read went to.
 
 Running these modes in WebKit found two faults, and both are fixed:
 
