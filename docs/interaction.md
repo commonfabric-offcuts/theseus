@@ -399,7 +399,19 @@ page painted. Its checks, by rule:
   card's words opens it in a new window …": a Shift-click on the card's
   words grows the light and opens nothing; one on a link in them is left to
   the browser, one new window opens at the link's address, and the link grows
-  no light. That the passages are the
+  no light, from words selected in the passage before it or from the passage
+  lit. "reading a card's passage light at 390px with a pointer …" (and 375,
+  320): none off the words, lit, kept off the words, grown with Shift, out at
+  a control of the message, and quoted by Return. "reading a reply's card drawn
+  again with its own words …": a reply's card drawn again with the same words,
+  as the message it answers is edited elsewhere, keeps its light, which Return
+  quotes. "reading a card's lit passage goes out as the message's ⋯ menu takes
+  the focus …", from the bar's ⋯ or a right-click; "reading Tab off a lit
+  passage on a dossier's card puts the light out …" empties
+  `CSS.highlights`' `lit-passage`. "reading Return on a card still showing an
+  older revision …" quotes the card's words and names the card's revision
+  (docs/message-edit.md "Quotes"). The field behind a card's lit passage is
+  the Reader's height (docs/reading-colors.md). That the passages are the
   Reader's, over exactly their characters on a card's blocks:
   `tests/ui_message_format.test.mjs`.
 - ⌘C: "reading ⌘C with nothing selected copies the lit message's words …",

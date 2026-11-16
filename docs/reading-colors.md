@@ -66,6 +66,28 @@ those existing boxes; it adds no padding, children or input behavior. Own cards
 receive a class from the current actor comparison and use black with light body,
 time and excerpt text. Their border changes on hover; native focus stays visible.
 
+### The field on a card (item 527)
+
+A passage lit on a topic's or a dossier's card (`web/feed-passages.mjs`) has the
+same field as in the Reader: per line, as tall as the Reader's field for the
+same words, within a pixel (Tony, Mez en place #5287). The card lights its words
+through the CSS highlight `lit-passage`, which paints only their own height, so
+the rest is painted behind them as a background layer per line on the card, in
+`--lit-field` (black, and on the person's own black card the light words'
+colour), never as padding: the card's lines stay where they were, it is as tall,
+and they keep their own height, 1.5 times their words' size. The Reader's field
+height is read from a hidden copy of its text box (`.reading-pane.passage-probe`,
+`web/lit-field.mjs`), so a card knows it before the Reader first opens, at the
+Reader's phone size as at a laptop's; both use the same `overhang`.
+
+"reading a passage lit on a topic's card and a dossier's at … has a dark field
+as tall as the Reader's …" (`native-reading`, `native-webkit-reading`) measures
+the painted rows of each line's field in the screenshot on a topic's, a
+dossier's and the person's own card and in the Reader, at a laptop's width and
+at 390, 375 and 320 pixels with a pointer, in light and dark, and the card's
+line positions and height lit and after; its mutants (no field, padding while
+lit, the Reader's line height on a card, a black field on the own card) fail.
+
 `tests/reader_colors_native.mjs` adds one focused check, run by the existing
 native fixture with `--colors`. It covers initial paint and automatic WebSocket
 arrival, own/other cards at rest and hover, native Tab focus, dark/light contrast,

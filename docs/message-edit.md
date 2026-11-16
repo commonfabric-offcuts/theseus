@@ -324,7 +324,11 @@ views already show the words but the deliveries stay held.
 
 A quote of a message names, in its `source`, the revision it quoted:
 `{kind: "message", id, revision}`; the Reader names the revision it showed when
-the words were selected. A revision that is not an integer, is a boolean, or
+the words were selected. Words chosen on a topic's or a dossier's card, a lit
+passage or words selected there, which Return quotes in the Reader, name the
+revision the card shows, whose words they are, even where the Reader opens on a
+newer one the card has not drawn yet ("reading Return on a card still showing
+an older revision quotes that revision's words and names it …"). A revision that is not an integer, is a boolean, or
 is not one of the message's revisions (revision 1 is the message's own words),
 or one whose words lack the excerpt, is refused `INVALID_QUOTE`. The quote is
 stored with the revision it named, even when a later revision has the same

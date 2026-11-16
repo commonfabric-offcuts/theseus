@@ -58,8 +58,10 @@ never promises a quote that Return would not make.
   arrives …" and "reading an edit arriving under a card's lit passage puts
   the light out …" (a card drawn again with other words lights none of them
   until the pointer moves, so Return and ⌘C act on no words that were not
-  lit), and "reading Shift-click on a link in a card's words opens it in a new
-  window …".
+  lit), "reading Shift-click on a link in a card's words opens it in a new
+  window …", "reading a card's lit passage goes out as the message's ⋯ menu
+  takes the focus …" and "reading Tab off a lit passage on a dossier's card
+  puts the light out …".
 
 ## Every input works
 

@@ -43,7 +43,8 @@ the message a new topic answers. `web/links.mjs` draws them.
 - Clicking a link only follows it: it does not open the card it sits on, fold
   or unfold a message, or light a passage in the Reader to quote. A
   Shift-click on a link in a card's words is the browser's, which opens it in
-  a new window; it does not grow the card's lit passage.
+  a new window; it does not grow the card's lit passage, from the passage lit
+  or from words selected before the link.
 - A link written as `[words](address)` shows the words and goes to the
   address as written, whole: brackets that close inside it (as in
   `https://en.wikipedia.org/wiki/Markdown_(disambiguation)`), quote marks and
