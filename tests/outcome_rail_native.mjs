@@ -2671,8 +2671,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const review = () => p.evaluate("[...document.querySelectorAll('#inline-pending button, #topic-pending button')].map(b=>b.textContent)");
     await until(async () => (await review()).includes('Review 1 reply'), 'the reply is in doubt: its Review button shows');
     net.hold(null);
-    await p.send('Page.reload');
-    await until(async () => (await placeOf(p)).ready && (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
+    await reloaded(p, 'the page loads again');
+    await until(async () => (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
     const row = `#outline a[data-topic-id="${other}"]`;
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the outline is up again');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
