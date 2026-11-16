@@ -1155,4 +1155,40 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
+
+  // Item 465, a long Team on a laptop: the Team takes at most half the title row's width, its pills wrapping, and the
+  // subtitle keeps the rest, so the topic's state stays a line of words, not a column one letter wide. A short Team is
+  // the negative: it keeps its own width, its pills on one line. At 1280 and 1440, in light and dark.
+  await check('header a long Team takes at most half the row, and the subtitle keeps the rest', async () => {
+    const waiters = ['fixture-planning-agent', 'fixture-reviewing-agent', 'fixture-writing-agent'];
+    await control({ method: 'navigation_topics', topics: [{ id: 'header-short-team', title: 'A short Team' }, { id: 'header-long-team', title: 'A long Team' }] });
+    for (const id of ['header-short-team', 'header-long-team']) await control({ method: 'agent_message', operation_id: `${id}-join`, topic_id: id, source: 'topic', join: true, body: 'The first message here.' });
+    await control({ method: 'topic_state', operation_id: 'header-long-team-state', topic_id: 'header-long-team', participants: waiters,
+      args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
+    // The title row's grid and its gap, the Team's and the subtitle's boxes, the state's, and the pills' tops.
+    const measure = p => p.evaluate(`(()=>{const row=document.querySelector('.topic-header>div'),style=getComputedStyle(row),team=document.querySelector('#topic-people').getBoundingClientRect(),
+      sub=document.querySelector('#topic-description').getBoundingClientRect(),state=document.querySelector('#topic-description .topic-state')?.getBoundingClientRect();
+      return {row:Math.round(row.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)),gap:parseFloat(style.columnGap),team:Math.round(team.width),sub:Math.round(sub.width),
+        state:state&&[Math.round(state.width),Math.round(state.height)],pillRows:new Set([...document.querySelectorAll('#topic-people .person-pill')].map(pill=>Math.round(pill.getBoundingClientRect().top))).size,
+        pills:document.querySelectorAll('#topic-people .person-pill').length,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    for (const width of [1280, 1440]) for (const theme of ['light', 'dark']) {
+      const size = q => q.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      const seen = {};
+      for (const [id, pills] of [['header-short-team', 2], ['header-long-team', 5]]) {
+        const p = await page(`header-team-width-${id}-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=${id}`, beforeNavigate: both(size, scheme(theme)) });
+        await until(() => p.evaluate(`document.querySelectorAll('#topic-people .person-pill').length >= ${pills} && Boolean(document.querySelector('#topic-description').textContent)`), `${width} ${theme}: ${id} painted with its Team`);
+        await p.evaluate('scrollTo(0, 0)');
+        seen[id] = await measure(p);
+        if (id === 'header-long-team') await shot(p, `header-long-team-${width}-${theme}`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+      const { 'header-short-team': short, 'header-long-team': long } = seen, at = `${width} ${theme}: ${JSON.stringify(seen)}`;
+      assert.equal(short.pillRows, 1, `a short Team keeps its pills on one line: ${at}`);
+      assert.ok(short.team < short.row / 2, `a short Team keeps its own width, under half the row: ${at}`);
+      assert.ok(long.team <= long.row / 2 + 1, `a long Team takes at most half the row: ${at}`);
+      assert.ok(long.sub >= long.row / 2 - long.gap - 1, `the subtitle keeps the rest of the row: ${at}`);
+      assert.ok(long.state && long.state[1] < long.state[0], `the topic's state is a line of words, wider than it is tall: ${at}`);
+      assert.equal(long.sideways, false, `nothing goes sideways: ${at}`);
+    }
+  });
 }
