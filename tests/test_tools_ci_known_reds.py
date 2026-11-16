@@ -472,6 +472,26 @@ class Evidence(unittest.TestCase):
         self.heal_inline()
         self.refused('no complete matching plan')
 
+    def test_carried_admission_frames_must_resolve_at_the_plans_source(self):
+        """Item 575: a plan carries an admission only where each of its frames (text, count, index) is at the plan's
+        own source_commit, for the base plan and for each transition plan, so a pass is never reported healed against
+        a plan whose source no longer holds the admitted failing line."""
+        path = self.repo / 'tests/reader_inline_native.mjs'
+        self.assertEqual(ci.load_policy(self.candidate_plan(), self.repo)['reds'], [self.red])
+        for helper, why in (('// stand-in source\nawait helper();\n', 'assertion removed'),
+                            (self.CARRIED_HELPER + 'assert.equal(actual, expected);\n', 'assertion duplicated')):
+            path.write_text(helper)
+            self.advance_candidate(why + ' after the admission was reviewed')
+            plan = self.candidate_plan()
+            refusal = "admission native-inline 'case'.* at plan %s" % plan['source_commit']
+            with self.assertRaisesRegex(ci.Refused, refusal):
+                ci.load_policy(plan, self.repo)
+            with self.assertRaisesRegex(ci.Refused, refusal):
+                ci.load_policy(dict(self.policy, transitions=[{'review': 'separate-review', 'plan': plan}]), self.repo)
+        self.install_trusted_policy(plan)
+        self.heal_inline()
+        self.refused(refusal)
+
     def test_carried_admission_candidate_policy_copy_never_counts(self):
         path = self.carry_admission_to_a_later_policy()
         path.write_text(self.CARRIED_HELPER + 'export const candidateEdit = true;\n')
