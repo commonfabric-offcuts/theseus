@@ -22,8 +22,8 @@ CHECKS = {"python": re.compile(r"tests/test_[^/]+\.py"), "node": re.compile(r"te
 # guards each by tests/test_tool_records.py, so a file that starts being guarded there is named here or that test fails.
 # tools/train.py's DEPLOY_TOOL and MIGRATIONS (its CONTROLLER, .github/, is outside ROOTS):
 DEPLOY_OWN = ("aim_next/migrations.py", "tools/checks.py", "tools/ci-input-reads.json", "tools/ci_input_reads.py",
-              "tools/ci_known_reds.py", "tools/deploy.py", "tools/known_reds.py", "tools/release_check.py",
-              "tools/releases.py", "tools/train.py")
+              "tools/ci_known_reds.py", "tools/deploy.py", "tools/known_reds.py", "tools/quarantine.py",
+              "tools/release_check.py", "tools/releases.py", "tools/train.py")
 # tools/release_check.py and every file it runs besides the unit modules: release_check.harnesses(), the native harnesses
 # with the wake replay, its stand-in and its traffic.
 RELEASE_CHECK_OWN = ("tests/card_marks_native.mjs", "tests/fence_copy_native.mjs", "tests/fixtures/replay/wake-2026-11-05.json",
