@@ -888,7 +888,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   /* Stacked, the reply is never taller than what the header leaves (its row's minimum is the pane's, 0): past that it scrolls inside itself, as it can here, where its panels open in its flow rather than over the message; as the keyboard comes up it scrolls the field back into view (compose-bar.mjs), so no part of it goes past the screen and the Reader itself never scrolls. */
   #reader:not([data-layout=wide]) .writing-pane{overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
   .composer{padding-left:.6rem;padding-right:.6rem;column-gap:.35rem}
-  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.3rem;padding-bottom:calc(.35rem + env(safe-area-inset-bottom))}
+  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){--composer-end:.35rem;padding-top:.3rem;padding-bottom:calc(var(--composer-end) + env(safe-area-inset-bottom))}
   .composer textarea{max-height:calc(3 * 1.5em + 1.1rem)}
   .compose-send>[aria-hidden=true]{display:none}
   .compose-send{padding:.3rem .9rem}
@@ -896,7 +896,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .composer[data-compose=writing] .taller-field{display:inline-grid;place-items:center}
   .composer[data-tall][data-compose=writing] textarea{max-height:calc(var(--vv-height,100dvh) * .5)}
   /* A panel takes the keyboard's place, at the keyboard's height. */
-  .composer>.compose-panel{position:static;grid-area:auto;grid-row:7;grid-column:1/-1;width:auto;max-width:none;height:var(--keyboard,min(45dvh,22rem));max-height:none;margin:.55rem -.6rem calc(-.55rem - env(safe-area-inset-bottom));padding:.85rem 1rem calc(1rem + env(safe-area-inset-bottom));border-width:1px 0 0;border-radius:0;box-shadow:none}
+  .composer>.compose-panel{position:static;grid-area:auto;grid-row:7;grid-column:1/-1;width:auto;max-width:none;height:var(--keyboard,min(45dvh,22rem));max-height:none;margin:.55rem -.6rem calc(-1 * var(--composer-end,.55rem) - env(safe-area-inset-bottom));padding:.85rem 1rem calc(1rem + env(safe-area-inset-bottom));border-width:1px 0 0;border-radius:0;box-shadow:none}
   /* Naming someone, step 1: who is named, each with its ×, on one line that scrolls sideways, then + Someone; never the whole team, so the panel is the same size however big it is. Step 2 is the naming sheet (below). */
   .who-panel .audience{display:flex;flex-wrap:nowrap;align-items:center;gap:.4rem}
   .who-panel .named-chips{display:flex;flex:0 1 auto;gap:.35rem;min-width:0;overflow-x:auto;scrollbar-width:none}

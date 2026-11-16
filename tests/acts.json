@@ -19442,7 +19442,7 @@
    "break": [
     [
      "web/aim.css",
-     "  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.3rem;padding-bottom:calc(.35rem + env(safe-area-inset-bottom))}\n",
+     "  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){--composer-end:.35rem;padding-top:.3rem;padding-bottom:calc(var(--composer-end) + env(safe-area-inset-bottom))}\n",
      ""
     ]
    ],
