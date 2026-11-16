@@ -282,6 +282,38 @@ class PipelineVerbCase(AgentVerbCase):
                               "`stages w1` lists them.\n" % operation)
         self.assertEqual(self.ok("stages", "w1"), "1 Build (build, split): \n")
 
+    def test_now_lists_the_items_of_its_pieces_nearest_to_live_first_then_what_is_not_started(self):
+        # Item 567: the pipeline view's order of Now's pieces, as the page draws it: Waits to combine, then Review,
+        # then Build, and after them the items in Now not in a piece, in their placed order. The clock is held, so
+        # the pieces' starts are exact.
+        clock = [1_800_000_000_000]
+        patch = mock.patch("aim_next.pipeline._now_ms", side_effect=lambda: clock[0])
+        patch.start()
+        self.addCleanup(patch.stop)
+        for topic in ("t2", "t3"):
+            source = {"kind": "new_topic", "id": "opening-" + topic, "workspace_id": "w1"}
+            self.committed(self.save_draft("draft-" + topic, source, topic, "Opening " + topic,
+                                           opening={"workspace_id": "w1", "title": "Topic " + topic, "participants": ["agent-a"]}))
+            self.committed(self.prepare("draft-" + topic, topic, submission="sub-" + topic, send_op="open-" + topic))
+            self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic}, target={"topic_id": topic}, op="open-" + topic))
+        self.ok("pipeline-on", "w1")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}, {"stage_id": "review", "name": "Review"},
+                                      {"stage_id": "wait", "name": "Waits to combine"}]))
+        self.ok("stages", "w1", "--set", str(stages), actor="owner")
+        for title in ("Not started", "Built", "Waits", "Reviewed"):
+            self.ok("add", "w1", "--title", title, "--section", "now", "--size", "small", "--note", "n", "-")
+        for minute, (number, topic, stage) in enumerate((("2", "t1", "build"), ("3", "t2", "wait"), ("4", "t3", "review")), 1):
+            clock[0] += minute * 60000
+            self.ok("piece", "w1", number, "--topic", topic, "--stage", stage)
+        listed = self.ok("pipeline", "w1", "--section", "now")
+        self.assertEqual([line.split()[0] for line in listed.splitlines() if line[:1].isdigit()], ["3", "4", "2", "1"], listed)
+        # Next keeps its placed order.
+        for title in ("Next 5", "Next 6"):
+            self.ok("add", "w1", "--title", title, "--section", "next", "--note", "n", "-")
+        self.ok("move", "w1", "6", "--above", "5")
+        self.assertEqual([line.split()[0] for line in self.ok("pipeline", "w1", "--section", "next").splitlines() if line[:1].isdigit()], ["6", "5"])
+
     def test_combining_into_a_release_stage_on_the_owners_word_takes_an_ask(self):
         self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
         self.ok("pipeline-on", "w1", "--releases", actor="owner")
