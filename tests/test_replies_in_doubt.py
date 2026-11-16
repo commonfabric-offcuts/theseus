@@ -44,9 +44,10 @@ class RepliesInDoubt(ReaderCase):
         self.assertEqual(everything["through"], seqs[-1])
 
     def test_through_is_the_last_reply_a_read_could_see(self):
-        self.assertEqual(self.page(unsent=True), {"instance_id": "test-instance", "items": [], "next_cursor": None, "through": 0})
+        # aside: the writing's replies set aside, none here (item 548).
+        self.assertEqual(self.page(unsent=True), {"instance_id": "test-instance", "items": [], "next_cursor": None, "through": 0, "aside": []})
         first = self.reply(0).get("seq")
-        self.assertEqual(self.page(unsent=True), {"instance_id": "test-instance", "items": [], "next_cursor": None, "through": first},
+        self.assertEqual(self.page(unsent=True), {"instance_id": "test-instance", "items": [], "next_cursor": None, "through": first, "aside": []},
                          "a reply that went is not listed, and the read could see it")
         second = self.reply(1, sent=False).get("seq")
         page = self.page(unsent=True)
