@@ -1393,7 +1393,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await earlierPage(p, 'laptop');
     await becomes(async () => [(await shipyardLook(p, ids)).head, await top(p)], ['old', true], 'and Earlier messages leaves it there');
     // Let new replies move it: the place goes from the first message, and the dossier sorts by its newest reply.
-    await p.point(`#messages .reply-stack[data-stack="${ids.old}"] .stack-unplace`);
+    const unplace = `#messages .reply-stack[data-stack="${ids.old}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
     await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['near', 's1', 'old'], 'Let new replies move it: it goes where its newest reply puts it');
     await until(async () => (await actsOf(topic, ids.root))?.placed === null, 'and Core holds none on its first message');
     await shot(p, 'stack-dossier-place-laptop');
