@@ -19673,6 +19673,34 @@
    "check": {
     "python": "test_tools_deploy.py"
    }
+  },
+  {
+   "item": 575,
+   "act": "Every file read a test makes is declared, or GitHub's classifier refuses every plan that holds it",
+   "break": [
+    [
+     "tools/ci-input-reads.json",
+     "\"1fcb1d763209312ccbfc1a710a79ef259ae599d8611cff000537ae2cf9a4556a\": {",
+     "\"0fcb1d763209312ccbfc1a710a79ef259ae599d8611cff000537ae2cf9a4556a\": {"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
+  },
+  {
+   "item": 575,
+   "act": "python-units runs each check once, as a reviewed inventory names it",
+   "break": [
+    [
+     "tests/test_releases.py",
+     "del _case, _name\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
   }
  ]
 }

@@ -128,6 +128,30 @@ old admission. All referenced source commits must be available in the checked
 out Git history. Required-step protocol changes need a coordinated verifier
 update; source transitions do not add support for an unknown harness mode.
 
+A release check that adds a required step leaves every policy reviewed before
+it short: at a base that runs the step, the classifier refuses the policy
+outright ('incomplete reviewed steps'), and each deploy names the step in its
+record's steps_beyond_policy. The next policy takes as its source_commit a
+release-branch commit that runs the step. Its required steps and harnesses are
+that commit's tools/release_check.py, its source_hashes the blobs there of every
+frozen definition, and its inventory each step's checks in that commit's
+complete hosted push run (the native results files, and the verbose
+python-units, node-units and deploy-refusals logs, each identity once). An
+earlier admission is kept, unchanged, only where that run shows its case still
+failing on its target profile with exactly its fingerprint; every other is
+retired, and so is every transition, since each plan is checked against the one
+step list. A new or changed admission is still a separate reviewed baseline PR.
+Item 575's policy was made so at 932e5c3 (train 22, release/live73), from push
+run 43814035864, when train 21 added native-card-marks and native-webkit-invite.
+
+Two properties of the checkout keep any policy loadable and its inventory
+satisfiable, and `tests/test_tools_ci_known_reds.py` checks both: every file read
+a test makes is declared in `tools/ci-input-reads.json` (an undeclared read
+refuses every plan that holds it, the policy's own source commit included), and
+python-units runs each check once (a test module that leaves a TestCase bound to
+a second module name, such as a loop variable, runs its checks twice, and a
+reviewed inventory names each check once).
+
 For a legitimate feature test edit: keep the feature pending, independently
 review its exact new test definition/inventory, then merge a separate base-policy
 PR containing that complete snapshot and review reference alongside the old
