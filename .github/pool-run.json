@@ -1,0 +1,8 @@
+{
+ "step": "webkit-reading",
+ "cases": [
+  "review550 a dossier opened"
+ ],
+ "label": "rv-open-base-webkit-reading-8e352290-1",
+ "snapshot": "447cd39bbd3c1904ef5b9d5ecf363071175a237b"
+}
