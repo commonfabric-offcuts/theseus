@@ -297,7 +297,11 @@ class PolicyFromTheBase(Fixture):
         for name, body, expected in (("pull_request", {"pull_request": {"base": {"sha": "a" * 40}}}, "a" * 40),
                                      ("push", {"before": "b" * 40, "after": "c" * 40}, "b" * 40)):
             event.write_text(json.dumps(body))
-            self.assertEqual(quarantine.event_base({"GITHUB_EVENT_NAME": name, "GITHUB_EVENT_PATH": str(event)}), expected)
+            try:
+                base = quarantine.event_base({"GITHUB_EVENT_NAME": name, "GITHUB_EVENT_PATH": str(event)})
+            except quarantine.Refused as refusal:
+                self.fail("a %s event naming its base was refused: %s" % (name, refusal))
+            self.assertEqual(base, expected)
         for name, body, words in (("push", {"before": "0" * 40}, "does not name the commit the push moved the branch from"),
                                   ("pull_request", {"pull_request": {}}, "does not name the pull request's base"),
                                   ("workflow_dispatch", {"before": "b" * 40}, "a workflow_dispatch run has no event base")):

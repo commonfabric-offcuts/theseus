@@ -16521,6 +16521,20 @@
    "check": {
     "python": "test_tools_quarantine.py"
    }
+  },
+  {
+   "item": 549,
+   "act": "A pull request's event base is its base, never its head",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "((event.get(\"pull_request\") or {}).get(\"base\") or {}).get(\"sha\")",
+     "((event.get(\"pull_request\") or {}).get(\"head\") or {}).get(\"sha\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
   }
  ]
 }
