@@ -336,26 +336,43 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');
     await p.point('#inline-writing-body'); await p.key('e', 2); await p.key('ArrowLeft');
     const writingPosition = () => p.evaluate(`(()=>{const f=document.querySelector('#inline-writing-body'),b=f.getBoundingClientRect();return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,top:b.top,bottom:b.bottom,height:innerHeight}})()`);
-    const pageHeight = () => p.evaluate('document.documentElement.scrollHeight');
-    const beforeArrival = await writingPosition(), heightBefore = await pageHeight();
+    // What the page draws above the writing: the message list's own height,
+    // without any room it keeps at its end, and that room, the space between
+    // its last entry and its end.
+    const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),b=l.getBoundingClientRect(),last=l.lastElementChild?.getBoundingClientRect();return {drawn:b.height-parseFloat(s.paddingTop)-parseFloat(s.paddingBottom),room:last?Math.round(b.bottom-last.bottom):0}})()`);
+    const beforeArrival = await writingPosition(), aboveBefore = await above(), scrolledBefore = await p.evaluate('scrollY');
     assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
-    // The arrival is a message of its own to the topic, written from the topic
-    // (no message it answers), so it is a stack of its own drawn at the top of
-    // the newest-first page, above the writing: the page grows above what is
-    // being written, which holds its place. A reply into the stack on screen
-    // would instead take the place of its read latest reply
-    // (docs/reply-stacks.md, "Folding", item 342), which can leave the page
-    // shorter than the window, where no place can be held.
+    const held = (after, what) => {
+      assert.deepEqual({ ...after, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, what + ' preserves body, caret and focus');
+      assert.ok(after.top >= 0 && after.bottom <= after.height, what + ' keeps the writing area in view');
+    };
+    const stacks = () => p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`);
+    // A fixture agent's reply to the person's own first message, while they
+    // write a new message at the topic page's end: it takes the place of the
+    // stack's read latest reply (docs/reply-stacks.md, "Folding", item 342),
+    // a shorter card for a taller one, so what is drawn above the writing
+    // shrinks, by more than the page is scrolled. The writing stays where it
+    // was all the same (docs/experience-guidelines.md, "Your place holds").
     const arrival = 'An independent automatic arrival while writing inline';
-    const received = await control({ method: 'agent_message', operation_id: 'inline-native-automatic-arrival', body: arrival, topic_id: facts.topic_id, source: 'topic', addressees: [] });
+    const received = await control({ method: 'agent_message', operation_id: 'inline-native-automatic-arrival', body: arrival, topic_id: facts.topic_id, addressees: [] });
     assert.equal(received.status, 'committed');
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(arrival)})`), 'automatic incoming render without Refresh');
-    const afterArrival = await writingPosition();
-    const arrived = await p.evaluate(`(()=>{const c=[...document.querySelectorAll('#messages .message-card')].find(c=>c.textContent.includes(${JSON.stringify(arrival)}));return {above:Boolean(c)&&Boolean(c.compareDocumentPosition(document.querySelector('#inline-writing-body'))&Node.DOCUMENT_POSITION_FOLLOWING),shown:Boolean(c?.getClientRects().length)}})()`);
-    assert.deepEqual({ ...arrived, grew: await pageHeight() > heightBefore }, { above: true, shown: true, grew: true }, 'the arrival is drawn above the writing and the page grows by it');
-    assert.deepEqual({ ...afterArrival, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, 'arrival preserves body, caret and focus');
-    assert.ok(afterArrival.top >= 0 && afterArrival.bottom <= afterArrival.height, 'arrival keeps the writing area in view');
-    assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));
+    const afterArrival = await writingPosition(), aboveAfter = await above();
+    assert.ok(aboveBefore.drawn - aboveAfter.drawn > scrolledBefore, 'the reply shrank what is above the writing by more than the page was scrolled, so no scroll alone can hold it ' + JSON.stringify({ scrolledBefore, aboveBefore, aboveAfter, stacks: await stacks() }));
+    held(afterArrival, 'a reply shrinking what is above');
+    assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'a reply shrinking what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, aboveBefore, aboveAfter, stacks: await stacks() }));
+    // A message of its own to the topic then arrives: a stack of its own at
+    // the top of the newest-first page, so the page grows above the writing.
+    // The writing holds by the page's own scroll, and the room the list kept
+    // for the reply is given back: none is left that nothing needs.
+    const topicArrival = 'A message of its own to the topic while writing inline';
+    assert.equal((await control({ method: 'agent_message', operation_id: 'inline-native-topic-arrival', body: topicArrival, topic_id: facts.topic_id, source: 'topic', addressees: [] })).status, 'committed');
+    await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(topicArrival)})`), 'the topic message renders without Refresh');
+    const afterGrowth = await writingPosition(), aboveGrown = await above();
+    assert.ok(aboveGrown.drawn > aboveAfter.drawn, 'the topic message drew more above the writing ' + JSON.stringify({ aboveAfter, aboveGrown }));
+    held(afterGrowth, 'a message growing what is above');
+    assert.ok(Math.abs(afterGrowth.top - beforeArrival.top) <= 2, 'a message growing what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterGrowth, aboveGrown, stacks: await stacks() }));
+    assert.ok(Math.abs(aboveGrown.room - aboveBefore.room) <= 1, 'no room is kept above the writing once the page can hold it by scrolling ' + JSON.stringify({ aboveBefore, aboveAfter, aboveGrown }));
     observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
     await shot(p, 'inline-before-send'); noSend();
 
