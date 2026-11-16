@@ -109,11 +109,33 @@ export function ordered(stacks) {
 // dossier begins (docs/reply-stacks.md, 359), never a step back to.
 export const LEVELS = ['folded', 'open'];
 
+// Item 476: an open dossier shows its newest RECENT messages, and one row for
+// the rest. The messages that row stands for, top to bottom as the stack reads
+// (its first message, then its replies oldest first): all but the last RECENT,
+// at the open level only; none in a dossier of RECENT or fewer, and none at
+// latest plus unread, which shows what it always did. A way of showing the
+// dossier, never recorded: every message stays in it, where it sits.
+// held: the id of the first message the dossier showed when the page drew it
+// open (reply-stacks.mjs), so the seven are counted once: a message arriving
+// after that hides nothing (docs/experience-guidelines.md, "Your place holds"),
+// and one loaded from before goes behind the row. Held gone from the dossier,
+// they are counted afresh.
+export const RECENT = 7;
+export function earlierOf(stack, level, { held = null } = {}) {
+  const all = [stack.head, ...stack.replies];
+  if (level !== 'open') return [];
+  const at = held === null ? -1 : all.findIndex(item => item.id === held);
+  if (at >= 0) return all.slice(0, at);
+  return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];
+}
+
 // Whether a reply shows at the stack's level. A reader's stars stay visible;
 // kept(item) holds replies that were unread or starred when this partial view
 // drew them (reply-stacks.mjs). A fold never decides this:
-// a folded reply shows where it would, as its one-line row (rowFolded).
-export function shown(stack, item, { level = 'folded', kept = () => false } = {}) {
+// a folded reply shows where it would, as its one-line row (rowFolded). Open,
+// an earlier reply (earlierOf, held) shows once its row was opened (earlier).
+export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
+  if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
   return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
@@ -130,19 +152,22 @@ export function rowFolded(item, { peeked = () => false } = {}) {
 const newestReply = stack => stack.replies.reduce((most, item) => Math.max(most, item.seq), 0);
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
+const messages = n => (n === 1 ? 'message' : 'messages');
 // What a stack shows under its head, top to bottom: { kind: 'reply', item },
 // { kind: 'join', item, join } just before a joined stack's first message, and
 // { kind: 'fold', items, words, fresh } for each run of replies folded away
-// where it sits, so a reply kept in view never reads as inside the fold. Open
-// with replies the fold would take, a { kind: 'fold-all', count } line comes
-// first. unread(item): whether a folded reply counts as new on its line. A
-// reply row says whether it reads as its one-line row (folded, rowFolded).
-export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false } = {}) {
-  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept });
-  if (level === 'open') {
-    const would = all.filter(item => !shown(stack, item, { level: 'folded', kept })).length;
-    if (would) rows.push({ kind: 'fold-all', count: would, words: `Fold ${would} earlier ${replies(would)}` });
-  }
+// where it sits, so a reply kept in view never reads as inside the fold.
+// unread(item): whether a folded reply counts as new on its line. A reply row
+// says whether it reads as its one-line row (folded, rowFolded). Open, a
+// dossier of more than RECENT messages begins with { kind: 'earlier', items,
+// words, fresh }, one row for its earlier messages (earlierOf, the first
+// message among them, held as earlierOf takes it), and their replies are
+// drawn only once it is opened (earlier), each { kind: 'reply', item,
+// earlier: true } in its place.
+export function rowsOf(stack, { level = 'folded', kept, unread = () => false, peeked = () => false, earlier = false, held = null } = {}) {
+  const rows = [], all = stack.replies, show = item => shown(stack, item, { level, kept, earlier, held });
+  const earliest = earlierOf(stack, level, { held });
+  if (earliest.length && !earlier) rows.push({ kind: 'earlier', items: earliest, words: `${earliest.length} earlier ${messages(earliest.length)}`, fresh: earliest.filter(unread).length });
   let run = [], before = true;
   const flush = () => {
     if (!run.length) return;
@@ -152,10 +177,11 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
     run = [];
   };
   for (const item of all) {
-    if (!show(item)) { run.push(item); continue; }
+    if (!show(item)) { if (!earliest.includes(item)) run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
     rows.push({ kind: 'reply', item, folded: rowFolded(item, { peeked }) });
+    if (earliest.includes(item)) rows[rows.length - 1].earlier = true;
   }
   flush();
   return rows;

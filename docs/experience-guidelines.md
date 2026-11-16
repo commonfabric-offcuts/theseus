@@ -137,7 +137,10 @@ where they were asked for.
   "live with no card on the screen, a message arriving scrolls nothing".
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   "reading Show full message on a card scrolled inside keeps the words being
-  read where they were".
+  read where they were"; `tests/stack_native.mjs` (the same steps): "reading
+  stacks a message arriving in an open dossier hides nothing being read: …",
+  the newest seven counted when the dossier opened, so a reply arriving never
+  puts the card or row being read behind the earlier-messages row.
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads
   continue through retries, resyncs and failures, and a "caught up" state is
   claimed only after a pass of reads has run to its end

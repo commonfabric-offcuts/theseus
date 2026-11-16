@@ -23,13 +23,17 @@ export function imageQuery(value, caret) {
 // Theseus reads one image at a time and refuses a second read while one is
 // under way, so this page's image reads take turns: each starts when the one
 // before it has finished. A read the person is waiting on (a picked image)
-// goes ahead of thumbnails not yet started.
+// goes ahead of thumbnails not yet started. A read that can wait (later: a
+// topic card's thumbnail, card-images.mjs) waits behind every other read, so
+// the composer's own thumbnails, the Reader's and the right rail's never
+// queue behind a topic's cards.
 const reads = [];
 let reading = false;
-export function readInTurn(read, { first = false } = {}) {
+export function readInTurn(read, { first = false, later = false } = {}) {
   return new Promise((resolve, reject) => {
-    const job = { read, resolve, reject };
-    if (first) reads.unshift(job); else reads.push(job);
+    const job = { read, resolve, reject, later };
+    const behind = later ? -1 : reads.findIndex(each => each.later);
+    if (first) reads.unshift(job); else reads.splice(behind < 0 ? reads.length : behind, 0, job);
     nextRead();
   });
 }
@@ -72,9 +76,10 @@ const show = (image, picture) => { picture.images.add(image); image.src = pictur
 // load() gives (null for none). A row keeps its thumbnail while its key is the
 // same, so a repaint of the row's words never reads it again; a picture still
 // shown elsewhere is not read again either. Each image otherwise reads its
-// own bytes, when its turn comes and only if it is still in the page. One that
-// brings none leaves its row, so the row's next paint reads the picture again.
-export function paintThumb(row, key, load, place = image => row.prepend(image)) {
+// own bytes, when its turn comes and only if it is still in the page; with
+// later, behind every read that is not (readInTurn). One that brings none
+// leaves its row, so the row's next paint reads the picture again.
+export function paintThumb(row, key, load, place = image => row.prepend(image), { later = false } = {}) {
   letGo();
   let image = row.querySelector(':scope > img.image-thumb');
   if (image?.dataset.key === key) { place(image); return; }
@@ -83,7 +88,7 @@ export function paintThumb(row, key, load, place = image => row.prepend(image)) 
   place(image);
   if (pictures.has(key)) { show(image, pictures.get(key)); return; }
   const shown = image;
-  readInTurn(() => (shown.isConnected ? load() : null)).catch(() => null).then(blob => {
+  readInTurn(() => (shown.isConnected ? load() : null), { later }).catch(() => null).then(blob => {
     if (!blob || !shown.isConnected) { shown.remove(); return; }
     letGo();
     if (!pictures.has(key)) keep(key, blob);

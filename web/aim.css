@@ -1107,3 +1107,15 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
 
 .feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
+
+/* A message's images in its card (item 474, card-images.mjs): after its words, a row of squares the right rail's
+   thumbnail size (rails.css, .things-thumbs), which wraps on a phone and never runs past the card. A square holds its
+   place, blank, while its picture is coming (data-coming, before it is near the window) and while it loads; only one
+   whose read brought nothing gives it to the image's name. The card stays one button: a press
+   opens the Reader, where each image keeps its Open. */
+.card-images{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.55rem;max-width:100%}
+.card-image{position:relative;display:block;flex:none;width:4.2rem;height:4.2rem;overflow:hidden;border:1px solid var(--line);border-radius:.45rem;background:var(--soft)}
+.card-image>img.image-thumb{display:block;width:100%;height:100%;margin:0;object-fit:cover;border:0;border-radius:0}
+.card-image>img.image-thumb[hidden]{display:none}
+.card-image-name{display:none}
+.card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;padding:.3rem;font-size:.66rem;line-height:1.25;color:var(--muted);overflow-wrap:anywhere;overflow:hidden}

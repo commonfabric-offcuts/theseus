@@ -48,3 +48,18 @@ test('image reads take turns, and a read the person waits on goes first', async 
   const failed = readInTurn(() => Promise.reject(Error('busy'))), after = readInTurn(async () => 'next');
   await assert.rejects(failed, /busy/); assert.equal(await after, 'next');
 });
+
+// A topic card's thumbnail can wait (card-images.mjs reads it with later): the
+// composer's own thumbnails, the Reader's and the right rail's never queue
+// behind a topic's cards; the cards keep their own order among themselves.
+test('a card thumbnail waits behind every other image read, so the composer\'s own never queue behind a topic\'s cards', async () => {
+  const { readInTurn } = await import('../web/image-pick.mjs');
+  const order = [], open = new Set(), gates = {};
+  const read = name => () => { open.add(name); order.push(name); return new Promise(resolve => { gates[name] = () => { open.delete(name); resolve(name); }; }); };
+  const cards = [1, 2, 3, 4].map(n => readInTurn(read(`card-${n}`), { later: true }));
+  await Promise.resolve();
+  const composer = readInTurn(read('composer')), rail = readInTurn(read('rail')), last = readInTurn(read('card-5'), { later: true });
+  for (let i = 0; i < 8; i++) { await new Promise(setImmediate); for (const name of [...open]) gates[name](); }
+  assert.deepEqual(order, ['card-1', 'composer', 'rail', 'card-2', 'card-3', 'card-4', 'card-5'], 'only the card read under way goes before the composer\'s');
+  assert.deepEqual(await Promise.all([...cards, composer, rail, last]), ['card-1', 'card-2', 'card-3', 'card-4', 'composer', 'rail', 'card-5']);
+});

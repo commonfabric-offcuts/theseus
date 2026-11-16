@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, imageLine, imageStandIns, lineImage, parseDeck } from '../web/deck.mjs';
 import { NotebookImages } from '../web/notebook-images.mjs';
+import { cardImages as messageCardImages } from '../web/card-images.mjs';
 
 // Images in a Notebook card (item 321, docs/decks.md "Images in a card"): a line of a card's words that holds only
 // ![name](attachment:ID) names one of the page's attachments, which the card shows under its words.
@@ -210,4 +211,22 @@ test('where only words show, an image line reads as the image\'s name after an i
   for (const cut of ['![chart.png](https://a.ex', '![chart.png](attachmenx', '![chart.p']) assert.equal(imageStandIns(`Words.\n${cut}`, { partial: true }), `Words.\n${cut}`, cut);
   assert.equal(imageStandIns('Words.\n![chart.png](attach'), 'Words.\n![chart.png](attach', 'only an excerpt\'s last line may be cut');
   assert.equal(imageStandIns('```\n![chart.png](attach', { partial: true }), '```\n![chart.png](attach', 'a cut line inside a fence is words');
+});
+
+// A message's images in its card (item 474, web/card-images.mjs, imported here as messageCardImages beside the
+// Notebook card's cardImages of web/deck.mjs, item 321): which of its attachments its card shows as
+// thumbnails. The native reading checks (tests/stack_native.mjs, "reading thumbnails …") read them on the page.
+
+const image = (id, type, more = {}) => ({ id, name: `${id}.x`, content_type: type, inline: true, ...more });
+
+test('a card shows each verified inline image its message carries, in the order sent', () => {
+  const item = { attachments: [image('b', 'image/jpeg'), image('a', 'image/png'), image('c', 'image/gif'), image('d', 'image/webp')] };
+  assert.deepEqual(messageCardImages(item).map(each => each.id), ['b', 'a', 'c', 'd']);
+});
+
+test('a file, an SVG and an image not verified inline show no thumbnail; a message with none shows nothing', () => {
+  const item = { attachments: [image('notes', 'text/plain', { inline: false }), image('drawing', 'image/svg+xml'), image('raw', 'image/png', { inline: false }), image('kept', 'image/png')] };
+  assert.deepEqual(messageCardImages(item).map(each => each.id), ['kept']);
+  assert.deepEqual(messageCardImages({ attachments: [] }), []);
+  assert.deepEqual(messageCardImages({ body: 'No attachments at all.' }), []);
 });

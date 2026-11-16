@@ -555,7 +555,9 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   await check('reading a dossier showing its whole first message, its chevron selected by ↓, comes into view as the whole dossier, its top a tenth below the top when it is taller than the window', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-margin-chevron-' + device;
-      const replies = Array.from({ length: 7 }, (_, k) => [`r${k}`, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor],
+      // Six replies, seven messages with the first: opened, the dossier shows every one of them whole (one of more than
+      // seven shows its newest seven and one row for the earlier ones, item 476, its first message among those).
+      const replies = Array.from({ length: 6 }, (_, k) => [`r${k}`, { sender: 'aim-core', reply_to: 'root', addressees: [facts.actor],
         body: `Reply ${k}, a long one. ` + 'A reply that takes several lines to read, so the dossier with all of its replies is taller than the window. '.repeat(5) }]);
       const ids = await seed(topic, [['old', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The oldest message, on its own, below the dossier.' }],
         ['root', { sender: 'aim-core', addressees: [facts.actor], body: 'The message the long replies answer.' }], ...replies,

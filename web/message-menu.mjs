@@ -23,7 +23,7 @@ import { cardIn } from './fold.mjs';
 import { pageItself, writing } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
-import { entries, entryOf, navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
+import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { FeedPassages } from './feed-passages.mjs';
 
@@ -109,6 +109,9 @@ export class MessageMenu {
         if (!(this.touch && react.classList.contains('reaction-count'))) this.act(react.dataset.react);
         return;
       }
+      // An earlier message's row shows whole at the first tap (reply-stacks.mjs, item 476); its tab, and the card
+      // drawn whole under Only new, light first as any card's does.
+      if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
       if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);

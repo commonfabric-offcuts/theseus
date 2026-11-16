@@ -137,6 +137,9 @@ order and folds, and the one file that sets the look. In short:
   read, and any they starred. Each run folded away is one line where it
   sits ("3 earlier replies"), with how many in it are new in red. A click or
   tap opens them in place, and again folds them.
+- Open, a dossier of more than seven messages shows its newest seven and one
+  row for the rest, "8 earlier messages", which shows them all as rows in
+  place for this visit, recording nothing (item 476).
 - A message whose parent is not loaded heads its own stack until the parent
   loads.
 - The conversation page stacks its replies by the same rule. There a folded
@@ -154,6 +157,56 @@ what was on screen. A range runs over messages in the topic's order and
 ends at a loaded message that was not seen (`seenRanges`). So a folded
 reply, or a message between a stack and its new place, is never reported
 read.
+
+## Images in a card (474)
+
+A message's images show as thumbnails in its card, after its words, on the
+topic page, in the Conversation and in a dossier (`web/card-images.mjs`). Each
+verified inline image (PNG, JPEG, GIF, WebP) is a square the right rail's
+thumbnail size (4.2rem, `.things-thumbs`), in the order it was sent; the
+squares wrap on a phone and never run past the card. Each is named for a
+screen reader ("Image: screen.png") and shows its file's name under the
+pointer. A square holds its place, blank, from the moment it is drawn until
+its picture comes, also while it waits to come near the window before its
+picture is asked for; only one whose read brings nothing shows the image's
+name instead, so a picture on its way never looks refused.
+
+Each thumbnail reads its bytes through the message that carries it
+(`/api/media/read` with that message as its source), so Theseus gives them
+only to someone who may read the message, and the reads
+take turns with every other image read on the page (docs/images.md), behind
+the composer's own thumbnails, the Reader's and the right rail's. A thumbnail
+is read only once its card is drawn as a card within half a window of the
+window: a card shown as one row (folded, between others, or behind a dossier's
+earlier-messages row) or further away reads nothing, so a long topic's load
+reads only the pictures near where the reader is. Scrolling a card near,
+unfolding it, or showing an earlier message whole reads its pictures then. When
+the topic becomes one the reader can no longer read, the thumbnails go at once
+with the right rail's pictures, and the page holds none of their bytes. The card
+stays one button: a press opens the Reader, where each attachment keeps its
+Open. A message with no image, a file that is not an image and a message shown
+as one row (folded, between others, or an earlier message's row) draw no
+thumbnails.
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading thumbnails a message's images show in its card …", at a laptop's
+  width and 390, 375 and 320 on a phone, light and dark, with a refused image
+  showing its name.
+- Read only near the window: `tests/stack_native.mjs` (`native-reading`,
+  `native-webkit-reading`), "reading card thumbnails are read only for cards
+  drawn near the window …", on a topic of thirty messages each with an image,
+  which counts the reads at load and after a scroll, an unfold, the dossier
+  and its earlier-messages row opened, and an earlier message shown whole.
+  The same case samples every frame before it is painted, at load and after
+  a jump to the card furthest from the window, and no square in view draws
+  its image's name while its picture is on the way.
+  Behind the composer's own: `tests/ui_image_pick.test.mjs`, "a card thumbnail
+  waits behind every other image read …".
+- A topic no longer readable keeps none of the bytes: `tests/outcome_rail_native.mjs`
+  (`native-rail`), "rail a topic the page can no longer read leaves the right rail at once …",
+  which counts every picture's bytes the page holds.
+- Who may read an attachment: `tests/test_media.py`,
+  `test_exact_attached_source_grants_read_but_id_or_unattached_source_does_not`.
 
 ## Formatted words (11)
 
