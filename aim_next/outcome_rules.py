@@ -216,6 +216,19 @@ def stage_name(name, rounds, round_number):
     return name
 
 
+def now_order(pieces, stage_ids):
+    """Now's pieces nearest to live first (item 567): the later a piece's stage in stage_ids, the sooner it is listed,
+    and within a stage the earliest started first. A piece in a stage no longer listed, or in none, comes after every
+    current stage, and one never started after those that were. Equal starts keep the order given, which the pipeline
+    view makes the order the pieces were made."""
+    place = {stage_id: at for at, stage_id in enumerate(stage_ids)}
+
+    def nearness(piece):
+        stage, started = piece["stage"], piece["started"]
+        return (-place.get(stage["stage_id"], -1) if stage else 1, started["ms"] if started else float("inf"))
+    return sorted(pieces, key=nearness)
+
+
 def median(values):
     """The median; of an even count, the mean of the middle two, rounded to the minute."""
     ordered = sorted(values)

@@ -19435,6 +19435,92 @@
    "check": {
     "python": "test_migrations.py"
    }
+  },
+  {
+   "item": 567,
+   "act": "Now's pieces are listed nearest to live first: Waits to combine, then Review, then Build",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "-place.get(stage[\"stage_id\"], -1) if stage else 1",
+     "place.get(stage[\"stage_id\"], -1) if stage else 1"
+    ]
+   ],
+   "check": {
+    "python": "test_now_order.py"
+   }
+  },
+  {
+   "item": 567,
+   "act": "Within a stage, the piece that started first is listed first, whenever each entered its stage",
+   "break": [
+    [
+     "aim_next/outcome_rules.py",
+     "started[\"ms\"] if started else float(\"inf\")",
+     "-started[\"ms\"] if started else float(\"inf\")"
+    ]
+   ],
+   "check": {
+    "python": "test_now_order.py"
+   }
+  },
+  {
+   "item": 567,
+   "act": "The pipeline view hands every reader of Now its pieces in that order (Core)",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "[stage[\"stage_id\"] for stage in stages])\n",
+     "[])\n"
+    ]
+   ],
+   "check": {
+    "python": "test_now_order.py"
+   }
+  },
+  {
+   "item": 567,
+   "act": "The CLI's pipeline listing prints Now as the page draws it: each piece's items in the view's order, then the items not in a piece",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "items = sorted(items, key=lambda item: at.get(item[\"number\"], (len(pieces), 0)))",
+     "items = list(items)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 567,
+   "act": "The pipeline page draws Now's piece cards nearest to live first, then what is not started, at 320, 375, 390 and a laptop, light and dark (Chrome)",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "[stage[\"stage_id\"] for stage in stages])\n",
+     "[])\n"
+    ]
+   ],
+   "check": {
+    "native": "pipeline",
+    "case": "Now lists its pieces nearest to live first"
+   }
+  },
+  {
+   "item": 567,
+   "act": "The pipeline page draws Now's piece cards nearest to live first, then what is not started, at 320, 375, 390 and a laptop, light and dark (Safari's engine)",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "[stage[\"stage_id\"] for stage in stages])\n",
+     "[])\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-pipeline",
+    "case": "Now lists its pieces nearest to live first"
+   }
   }
  ]
 }

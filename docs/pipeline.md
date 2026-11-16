@@ -54,6 +54,26 @@ while its outcome's pipeline is on: the same line, its title the message's first
 line, adds the item to Candidates with the message as its source, so Core
 records the message's author as who raised it.
 
+## Now's order
+
+Now lists its pieces nearest to live first: a piece waiting in the last stage a
+piece goes through (Waits to combine, approved and waiting for a release), then
+each earlier stage in turn (Review, then Build), and a piece in a stage no longer
+in the list after every current one. Within a stage, the piece that started
+first comes first, by when it entered its first stage, whatever stage it entered
+since: a piece sent back to Build keeps its place among the pieces in Build. Two
+pieces started in the same millisecond keep the order they were made in. The
+release being put together is listed apart, above Now ([the release](#the-release)).
+
+The `pipeline` view sorts the pieces once (`outcome_rules.now_order`), and every
+reader of Now takes that order: the page's piece cards, the right rail's Now
+group where the reader has not placed its topics (docs/rails.md), the head's
+Being built line, and the CLI's `pipeline` listing, which prints Now as the page
+draws it: the release's items, each piece's items in the view's order, then the
+items in Now not in a piece. Those keep their placed order after the pieces, as
+Next, Later and Candidates keep theirs; the order of Now's pieces is read, never
+stored, so an older store reads the same way.
+
 ## Who changes what
 
 Anyone on the outcome (its owner or a member) adds an item, adds a source to
@@ -441,8 +461,8 @@ Views:
 - `pipeline {workspace_id, section, cursor, limit}`: one section's items, in
   order, paged by an offset cursor. Section `now` also carries the head: the
   facts boxes, the banner for the live release until a stage is entered after its deploy, the release
-  being put together ([the release](#the-release)), what waits on the reader, the pieces in Now and the
-  table of typical stage times. Section `shipped` gives groups, newest first.
+  being put together ([the release](#the-release)), what waits on the reader, the pieces in Now
+  ([nearest to live first](#nows-order)) and the table of typical stage times. Section `shipped` gives groups, newest first.
   Each piece in Now, and the release being put together, carries `held`: the
   asks that hold it until they are answered, newest first, `[{message_id,
   topic_id, by, since_ms, waiting_on, line}]`

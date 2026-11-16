@@ -467,6 +467,9 @@ are absolute local times.
 
 - `pipeline OUTCOME [--section now|next|later|candidates|shipped|dropped]`
   lists items in order, with their stage, where they came from and any ask.
+  Now is listed as the page draws it: the release's items, then each piece's
+  items nearest to live first ([pipeline.md](pipeline.md#nows-order)), then the
+  items not in a piece, in their placed order.
 - `item OUTCOME N` shows one item with its stages and events.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
   turns it on or off (the owner or the coordinator); its title, units, sizing

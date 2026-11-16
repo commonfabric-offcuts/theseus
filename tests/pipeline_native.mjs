@@ -569,7 +569,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     await control({ method: 'navigation_topics', topics: ['po-1', 'po-2', 'po-3', 'po-4'].map(id => ({ id, title: 'Topic ' + id, workspace_id: outcome })) });
     await order('pipeline.configure', { workspace_id: outcome }, { enabled: true });
     await order('pipeline.stages_set', { workspace_id: outcome }, { stages: [{ stage_id: 'build', name: 'Build', rounds: 'split' },
-      { stage_id: 'review', name: 'Review', rounds: 'together' }, { stage_id: 'wait', name: 'Waits to combine' }] });
+      { stage_id: 'review', name: 'Review' }, { stage_id: 'wait', name: 'Waits to combine' }] });
     const add = async (title, section) => (await order('pipeline.item_add', { workspace_id: outcome }, { title, section, size: 'small', sources: [{ note: 'the check' }] })).result.number;
     const built = await add('Built first, sent back last', 'now'), unstarted = await add('Planned, not started', 'now'), waits = await add('Approved, waits to combine', 'now');
     const third = await add('In review, started third', 'now'), fourth = await add('In review, started fourth', 'now');
