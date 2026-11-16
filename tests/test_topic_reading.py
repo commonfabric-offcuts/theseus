@@ -247,14 +247,34 @@ class TopicReadingCase(fixtures.ReaderCase):
         # Item 475's words, "after the reader posts" (codex #5267): nothing already in the store starts pulsing when this
         # ships. The release before this one never wrote where the rule begins; the store reads as it left it.
         old = self.post("Asked before the release", actor="owner", addressees=["agent-a"], intent="ask")
-        self.sql("DELETE FROM metadata WHERE key='reply_wait_from_seq'")
+        self.sql("DELETE FROM metadata WHERE key='reply_wait_from_seq.597'")
         self.assertIs(self.awaiting()[old], False, "a message present before the release never starts waiting")
         new = self.post("Asked after it", actor="owner", addressees=["agent-a"], intent="ask")
         later = self.post("And this", actor="owner", addressees=["agent-a"], intent="ask")
         waits = self.awaiting()
         self.assertEqual((waits[old], waits[new], waits[later]), (False, True, True), "the rule holds from the first post after the release")
-        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='reply_wait_from_seq'"),
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='reply_wait_from_seq.597'"),
                          [(str(self.sql("SELECT seq FROM messages WHERE id=?", (new,))[0][0]),)], "recorded once, by the first post")
+
+    def test_a_wait_start_an_earlier_release_left_in_the_store_is_not_where_this_release_begins(self):
+        # Item 597, the re-ship of 475: release 83 shipped 475 and its first post wrote where the rule began; release 84
+        # took 475 out and left that value in the store, and its posts recorded nothing. Nothing posted before this
+        # release starts pulsing when it ships, the messages after 83's start included.
+        first = self.post("Asked under the first release", actor="owner", addressees=["agent-a"], intent="ask")
+        between = self.post("Asked after it was taken out", actor="owner", addressees=["agent-a"], intent="ask")
+        again = self.post("And once more", actor="owner", addressees=["agent-a"], intent="ask")
+        # The store as release 84 left it: 83's value, and nothing these posts would have recorded under this release.
+        self.sql("DELETE FROM metadata WHERE key='reply_wait_from_seq.597'")
+        self.sql("INSERT OR REPLACE INTO metadata(key,value) VALUES ('reply_wait_from_seq',?)",
+                 (str(self.sql("SELECT seq FROM messages WHERE id=?", (first,))[0][0]),))
+        waits = self.awaiting()
+        self.assertEqual((waits[first], waits[between], waits[again]), (False, False, False),
+                         "no message from before this release waits, however it stands to 83's start")
+        new = self.post("Asked after this release", actor="owner", addressees=["agent-a"], intent="ask")
+        later = self.post("And this", actor="owner", addressees=["agent-a"], intent="ask")
+        waits = self.awaiting()
+        self.assertEqual((waits[first], waits[between], waits[again], waits[new], waits[later]), (False, False, False, True, True),
+                         "the rule holds from this release's first post")
 
     def test_no_wait_on_a_whisper_in_a_conversation_or_where_no_agent_received_it(self):
         whisper = self.committed(self.command("message.post", {"body": "Just you", "whisper": True, "addressees": ["agent-a"]},

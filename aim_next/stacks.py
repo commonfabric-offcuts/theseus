@@ -210,8 +210,10 @@ def act_fields(db, actor, items):
 # Where the rule of a message waiting for a reply begins (item 475, docs/topic-reading.md, "Waiting for a reply"):
 # the sequence of the first message posted by a release that holds it, written once, by that post, and never moved.
 # A message before it was in the store when the rule shipped and never waits, so nothing already there starts
-# pulsing; a store no such release has posted to has none, and no message there waits.
-WAIT_FROM_KEY = "reply_wait_from_seq"
+# pulsing; a store no such release has posted to has none, and no message there waits. The key names the shipping
+# that writes it (item 597, 475's re-ship): release 83 shipped 475 under "reply_wait_from_seq" and release 84 took it
+# out, leaving that value in the store, so this release starts from its own first post and never reads 83's.
+WAIT_FROM_KEY = "reply_wait_from_seq.597"
 
 
 def record_wait_start(db, seq):

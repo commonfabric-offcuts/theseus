@@ -18755,6 +18755,20 @@
    }
   },
   {
+   "item": 597,
+   "act": "The re-ship begins where its own first post is, never where the release that first shipped the rule began",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "WAIT_FROM_KEY = \"reply_wait_from_seq.597\"",
+     "WAIT_FROM_KEY = \"reply_wait_from_seq\""
+    ]
+   ],
+   "check": {
+    "python": "test_topic_reading.py"
+   }
+  },
+  {
    "item": 475,
    "act": "On the page a reply to the waiting message arriving from another dossier ends its wait",
    "break": [

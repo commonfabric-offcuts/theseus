@@ -63,12 +63,16 @@ is placed in its dossier:
 
 Where the rule begins is the sequence of the first message posted by a
 release that holds it: that post writes it once into the store's metadata
-(`reply_wait_from_seq`, `record_wait_start` in `aim_next/stacks.py`, called
-from every post in the same transaction), and no later post moves it. A
+(`reply_wait_from_seq.597`, `record_wait_start` in `aim_next/stacks.py`,
+called from every post in the same transaction), and no later post moves it. A
 message before it was already in the store when the rule shipped and never
 waits, so nothing there starts pulsing on deploy; a store no such release has
 posted to has no value and reads as before, with no message waiting. It is a
-sequence, not a time, so neither Core nor the page compares clocks.
+sequence, not a time, so neither Core nor the page compares clocks. The key
+names the shipping that writes it (item 597, this rule's re-ship): the release
+that first shipped the rule wrote `reply_wait_from_seq`, and the release that
+took it out left that value in the store. Reading it would set waiting every
+unanswered message posted since, so it is never read.
 
 Messages naming the reader are read only between the reader's oldest message
 on the page and the newest message on the record by anyone else, which the
