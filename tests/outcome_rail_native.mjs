@@ -2336,6 +2336,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // page): a press that leaves the focus where it was while one lies there is a dead end. Not from where the
   // arrow is the control's own: in words (← and → in a line with words in it, any arrow in a box with words, a
   // number or a date), ↑ and ↓ in a select, which choose among its options, and in a radio group or a slider.
+  // Not a control a box that does not hold the focus has clipped wholly out of sight (a link scrolled up out of
+  // the Reader's message box lies above nothing in the header): it is reached from inside its box. One out of
+  // sight only by the page, or by a box the focus is in, does lie that way, and the arrows scroll toward it.
   const LIES = key => `(e=>{if(!e||e===document.body||e===document.documentElement)return [];const key=${JSON.stringify(key)},vertical=key==='ArrowUp'||key==='ArrowDown';
     const line=e.tagName==='INPUT'&&['text','search','email','url','tel','password'].includes(e.type),typed=e.matches('textarea,[contenteditable]:not([contenteditable=false])')||(e.tagName==='INPUT'&&!['checkbox','radio','button','submit','reset','file','color','image','range'].includes(e.type));
     const suggests=e.matches('[role=combobox],[aria-autocomplete]')||Boolean(e.list);
@@ -2343,7 +2346,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     if((e.tagName==='SELECT'&&vertical)||e.matches('input[type=radio],input[type=range],[role=slider],[role=radio]'))return [];
     const modal=[...document.querySelectorAll('dialog[open]')].filter(d=>d.matches(':modal')).at(-1),layer=modal??e.closest('dialog[open],[role=dialog]:not([hidden]),[role=menu]:not([hidden])')??document.body;
     const b=e.getBoundingClientRect(),shown=x=>x.checkVisibility({visibilityProperty:true})&&!x.disabled&&!x.closest('[inert],[aria-hidden=true]')&&x.getBoundingClientRect().width>0;
-    return [...layer.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&!x.contains(e)&&!e.contains(x)&&(x.tabIndex>=0||x.getAttribute('role')==='treeitem')&&shown(x)).filter(x=>{const c=x.getBoundingClientRect();
+    const clipped=x=>{const c=x.getBoundingClientRect();let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!at.contains(e);at=at.parentElement){const s=getComputedStyle(at);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
+    return [...layer.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&!x.contains(e)&&!e.contains(x)&&(x.tabIndex>=0||x.getAttribute('role')==='treeitem')&&shown(x)&&!clipped(x)).filter(x=>{const c=x.getBoundingClientRect();
       if(key==='ArrowDown')return c.top>=b.bottom-1&&c.left<b.right&&c.right>b.left;if(key==='ArrowUp')return c.bottom<=b.top+1&&c.left<b.right&&c.right>b.left;
       if(key==='ArrowRight')return c.left>=b.right-1&&c.top<b.bottom&&c.bottom>b.top;return c.right<=b.left+1&&c.top<b.bottom&&c.bottom>b.top})
       .slice(0,3).map(x=>(x.id||x.dataset.key||x.getAttribute('aria-label')||x.textContent.trim().replace(/\\s+/g,' ').slice(0,30)||x.tagName)+'<'+x.tagName.toLowerCase()+(x.type&&x.tagName==='INPUT'?' '+x.type:'')+'>')})(document.activeElement)`;
@@ -2806,6 +2810,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await q.evaluate("(b=>{b.scrollTop=0,b.focus()})(document.getElementById('source-body'))");
       const through = await walk(q, 'ArrowDown', 80);
       assert.ok(through.includes('dialog:who-chip'), `${size}: ↓ through the long message reaches the reply below it: ${through.join(' → ')}`);
+      // Read to its end, the message's box has scrolled its link up out of sight, above the header on the page but
+      // inside the box below it: ↑ from the header lands on nothing there, and leaves the message where it was read to.
+      const read = await q.evaluate("(b=>({top:b.scrollTop,hidden:document.getElementById('arrow-link').getBoundingClientRect().bottom<=b.getBoundingClientRect().top}))(document.getElementById('source-body'))");
+      assert.equal(read.hidden, true, size + ': the link in the words is scrolled up out of the message\'s box');
+      for (const id of ['reader-parent', 'reader-close']) {
+        await q.evaluate(`document.getElementById('${id}').focus()`);
+        await q.key('ArrowUp');
+        assert.equal(await focusAt(q), 'dialog:' + id, `${size}: ↑ from ${id} finds nothing above it`);
+        assert.equal(await q.evaluate("document.getElementById('source-body').scrollTop"), read.top, `${size}: ↑ from ${id} leaves the message scrolled where it was read to, not back up toward the link out of sight in its box`);
+      }
       const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
       const { missing, lost, dead } = await arrowClosure(q, '#reader', readerFirst);
       assert.deepEqual(missing, [], size + ': the arrows reach every control in the Reader');
