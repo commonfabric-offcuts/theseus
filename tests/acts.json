@@ -14133,6 +14133,21 @@
   },
   {
    "item": 301,
+   "act": "What a box the focus is not in has scrolled out of sight lies no way of the focus: ↑ from the Reader's header leaves a message read to its end where it was, never scrolling it back toward a link out of sight in it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  return !(box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right);\n}",
+     "  return false;\n}"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
    "act": "From a box the focus reads in (a message's words in the Reader), → goes to the first link in it in sight, and ← from a link with nothing more to its left comes back to the box",
    "break": [
     [

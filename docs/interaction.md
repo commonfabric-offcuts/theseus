@@ -323,7 +323,10 @@ rule above. (`web/arrow-reach.mjs`)
   its left comes back to the words. While the next control that way is out
   of sight, the arrow scrolls toward it, a third of a window at a time, so the
   words between are read on the way; once it shows, the next press lands on
-  it.
+  it. What a box the focus is not in has scrolled out of sight lies no way of
+  the focus, as the eye sees: a link scrolled up out of the Reader's message is
+  not above its header, and ↑ from the header leaves the message where it was
+  read to. The arrows reach such a control from inside its box.
 - **A control pressed, not typed in.** A checkbox ("Mark it reached anyway"
   in the reach box, the acknowledgement in a reply's review) holds no arrow,
   as a button holds none: each goes on to the control that way. A select (the
@@ -481,6 +484,7 @@ form …"; and a topic and a Conversation at every width, the header's top row
 and nothing focused among them, "rail arrows on a topic and a Conversation …"
 (at 320, 375, 390, 820, 1024 and 1280). Each case that marks every control
 also fails on a press that leaves the focus where it was while a control lies
-straight that way, unless the press acted there (opened or folded something,
+straight that way (in sight, or out of sight only by the page or a box the
+focus is in), unless the press acted there (opened or folded something,
 switched a stack, or said so in a live region). Where an arrow lands by the geometry, and which arrows a
 form control keeps: `tests/ui_arrow_reach.test.mjs`.
