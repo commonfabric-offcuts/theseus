@@ -93,18 +93,18 @@ class AsideCase(StackCase):
         later = self.post('A later answer to that answer', reply_to=answer)
         place = lambda key, revision, mid=sailcloth, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': mid},
                                                                                expected={'place_revision': revision}, actor=actor)
-        self.assertEqual([self.position(answer)[key] for key in ('placed', 'place_revision')], [None, 0])
+        self.assertEqual([self.position(answer).get(key) for key in ('placed', 'place_revision')], [None, 0])
         self.committed(place(2.5, 0))
-        self.assertEqual([(self.position(mid)['placed'], self.position(mid)['place_revision']) for mid in (answer, later)], [(2.5, 1)] * 2)
+        self.assertEqual([(self.position(mid).get('placed'), self.position(mid).get('place_revision')) for mid in (answer, later)], [(2.5, 1)] * 2)
         self.rejected(place(4.5, 0), 'REVISION_CONFLICT')
         # The negatives: another reader's position holds no place of the owner's; a place on a reply is not the
         # dossier's; another dossier's position holds its own.
-        self.assertEqual([self.position(answer, 'agent-a')[key] for key in ('placed', 'place_revision')], [None, 0])
+        self.assertEqual([self.position(answer, 'agent-a').get(key) for key in ('placed', 'place_revision')], [None, 0])
         self.committed(place(9.5, 0, mid=answer))
-        self.assertEqual((self.position(later)['placed'], self.position(later)['place_revision']), (2.5, 1))
-        self.assertEqual((self.position(ferry)['placed'], self.position(ferry)['place_revision']), (None, 0))
+        self.assertEqual((self.position(later).get('placed'), self.position(later).get('place_revision')), (2.5, 1))
+        self.assertEqual((self.position(ferry).get('placed'), self.position(ferry).get('place_revision')), (None, 0))
         self.committed(place(None, 1))
-        self.assertEqual((self.position(answer)['placed'], self.position(answer)['place_revision']), (None, 2), 'let new replies move it')
+        self.assertEqual((self.position(answer).get('placed'), self.position(answer).get('place_revision')), (None, 2), 'let new replies move it')
 
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
