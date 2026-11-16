@@ -66,12 +66,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
-  // The outline at rest, as a person sees the page before pressing in it: its first read of the outcomes has landed
-  // and it has taken in the page's own topic list (outline-rail.mjs, place), on the page as it now is. Earlier cases
-  // leave many outcomes to read, and something new or waiting in them, so that read can land late: until it does, a
-  // topic's row in the outline can move under a press, and on a phone the line under the header saying what is new
-  // elsewhere comes in and pushes the messages down under a finger.
-  const outlineAtRest = (p, at) => until(() => p.evaluate(`Boolean(document.querySelector('#outline .ol-adopted:not([inert])'))`), `${at}: the outline has read the outcomes and taken in the page's topic list`);
+  // The outline at rest, as a person sees it before pressing in it: the rails have no read out (data-rails-reading,
+  // in-place-navigation.mjs), the outline holds the page's own topic list in a live list (outline-rail.mjs, place),
+  // which it takes in only once its first read of the outcomes has landed (a list a run that went left behind is
+  // inert), and that list has no read out either (topic-navigation.mjs marks its Retry aria-disabled meanwhile): a
+  // commit reorders its rows when it lands. Earlier cases leave many outcomes to read, and something new or waiting
+  // in them, so those reads can land late: until they do, a row in the outline can move under a press, and on a phone
+  // the line under the header saying what is new elsewhere comes in and pushes the messages down under a finger.
+  const OUTLINE_AT_REST = `!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`;
+  const outlineAtRest = (p, what) => until(() => p.evaluate(OUTLINE_AT_REST).catch(() => false), `${what}: the outline is at rest`);
+  // Up, with nothing more on its way: the page, the right rail's sections, and the outline at rest.
+  const settled = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true'
+    && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && ${OUTLINE_AT_REST}`).catch(() => false), what);
   const drawer = p => p.evaluate(`(()=>{const control=document.getElementById('rail-open');return {open:document.getElementById('rail').classList.contains('open'),
     backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
     focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
@@ -538,6 +544,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await q.send('Emulation.setDeviceMetricsOverride', { ...SIZES.laptop, height: 420 });
     } });
     await until(async () => (await outline(p)).outcomes['rail-move-o'], 'the outline lists the other outcome');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await p.evaluate("(window.railKept=document.getElementById('outline'),window.railMark='this window')");
     const opens = async () => Object.entries((await outline(p)).outcomes).filter(([, row]) => row.open).map(([id]) => id);
@@ -552,6 +559,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await outline(p)).outcomes['rail-move-o'].topics.some(row => row.id === 'rail-move-t'), 'its topics show under it');
     assert.deepEqual(await opens(), ['rail-move-o'], 'and every other outcome is folded');
     assert.equal((await outline(p)).outcomes['rail-move-o'].current, 'page', 'its name is marked as the page');
+    await outlineAtRest(p, 'on the Conversation');
     const room = await p.evaluate("(()=>{document.querySelector('#outline a[data-topic-id=\"rail-move-t\"]').scrollIntoView({block:'center'});return document.getElementById('rail').scrollTop})()");
     assert.ok(room > 0, 'the rail scrolls at this height');
     await p.point('#outline a[data-topic-id="rail-move-t"]');
@@ -619,6 +627,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail a new message raises a folded outcome\'s count and the new total live; open, the row counts only its Conversation; reading the topic lowers them', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-count-o', title: 'Counting outcome', topic: { id: 'rail-count-t', title: 'Counting topic' } });
     const p = await open('rail-count', '/?topic=t1');
+    await settled(p, 'the topic is up');
     const first = await until(async () => { const seen = await outline(p); return seen.outcomes['rail-count-o'] && seen; }, 'the outline lists the outcome');
     assert.equal(first.outcomes['rail-count-o'].open, false, 'an outcome not being read starts folded');
     const before = await loaded(p), count = first.outcomes['rail-count-o'].count, total = parseInt(first.fresh.text, 10);
@@ -633,6 +642,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const opened = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o']; return row.topics.some(topic => topic.id === 'rail-count-t' && topic.unread === count + 1) && seen; }, 'open, the topic row counts its unread');
     assert.equal(opened.outcomes['rail-count-o'].count, 0, 'and the outcome row counts only its Conversation, which has nothing new');
     // Reading the topic lowers both.
+    await outlineAtRest(p, 'the outcome opened');
     await p.point('#outline a[data-topic-id="rail-count-t"]');
     await arrived(p, '?topic=rail-count-t', 'Counting topic', 'the topic opens in place');
     const read = await until(async () => { const seen = await outline(p); const row = seen.outcomes['rail-count-o'].topics.find(topic => topic.id === 'rail-count-t'); return row && row.unread === 0 && parseInt(seen.fresh.text, 10) <= total - count && seen; }, 'read, its count goes, and the total drops by it');
@@ -677,6 +687,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'navigation_topics', topics: [{ id: 'rail-leave-t', title: 'Leaving topic' }] });
     const p = await open('rail-leave', '/?topic=t1');
     await until(() => p.evaluate('Boolean(document.querySelector("#outline a[data-topic-id=rail-leave-t]")) && Boolean(document.getElementById("inline-writing-body"))'), 'the outline and the writing box are ready');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await p.evaluate("window.railKept=document.getElementById('outline')");
     // A send held on its way: leaving now would lose track of it, so the page stays.
@@ -685,6 +696,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Sent while the page tries to leave' });
     await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
     await until(() => p.held.some(entry => entry.payload?.kind === 'message.send'), 'the send is on its way');
+    // What the writing committed is read again, and t1 moves up the topic list above the row pressed.
+    await outlineAtRest(p, 'the send is on its way');
     await p.point('#outline a[data-topic-id="rail-leave-t"]');
     await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), 'the page says why it stays');
     const stayed = await placeOf(p);
@@ -692,7 +705,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     await until(() => p.evaluate("document.getElementById('messages').textContent.includes('Sent while the page tries to leave')"), 'the send lands');
-    // Writing not sent yet goes with the page as it moves, and is there on coming back.
+    // Writing not sent yet goes with the page as it moves, and is there on coming back. The outline at rest after the
+    // send landed first (its commit reorders the rows), then the writing, and the press before it is saved.
+    await outlineAtRest(p, 'the send landed');
     await writeHere(); await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Kept for later' });
     await p.point('#outline a[data-topic-id="rail-leave-t"]');
     const moved = await arrived(p, '?topic=rail-leave-t', 'Leaving topic', 'with the send done, the page moves');
@@ -751,9 +766,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       things:{heading:t.querySelector('h2').textContent,name:t.querySelector('.things-name').textContent,
         chips:shown(t.querySelector('.things-scope'))?[...t.querySelectorAll('.things-scope .chip')].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')):[],
         sections:[...t.querySelectorAll('.things-sec')].filter(shown).map(d=>d.dataset.key),nothing:shown(nothing)?nothing.textContent:null}}})()`);
-  // Up, with nothing more on its way: the page, both rails' reads, and the page's own list in the outline.
-  const settled = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
-    && document.querySelector('#things .things-sections')?.getAttribute('aria-busy')!=='true' && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
   // A reload, waited out on the new document.
   const reloaded = async (p, what) => {
     const before = (await placeOf(p)).origin;
@@ -1083,6 +1095,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const words = `#messages .message-card[data-id="${asked.result.message_id}"] > .message-preview`;
     const p = await open('rail-stay', '/?topic=rail-stay-a');
     await until(() => p.evaluate('document.querySelector("#outline a[data-topic-id=rail-stay-b]")?.getClientRects().length>0'), 'the outline is ready');
+    await settled(p, 'the topic is up');
     const start = await placeOf(p);
     await press(p, '#outline a[data-topic-id="rail-stay-b"]');
     await arrived(p, '?topic=rail-stay-b', 'Staying topic B', 'B opens in place');
@@ -1124,6 +1137,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await until(async () => (await drawer(p)).open, at + ': "☰ Outcomes" opens the drawer');
         const row = '#outline a.nav-item[data-topic-id="rail-keys-t"]';
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.getClientRects().length>0`), at + ': the topic is in the drawer');
+        await outlineAtRest(p, at);
         await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
         await tap(p, row);
         await arrived(p, '?topic=rail-keys-t', 'Keyboard topic', at + ': the topic opens');
@@ -2398,6 +2412,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p=await open(oid,'/?topic='+tid,size);
       // On a laptop the page settles its things and its scroll first; a phone keeps them behind a sheet.
       if(size==='laptop')await settled(p,'the topic is up');
+      await outlineAtRest(p,size);
       const name=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-name`;
       const waiting=`#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
       // Brought into view and held there: the outline may still be settling its own scroll as the page comes up.
@@ -2465,6 +2480,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const reader = () => p.evaluate(`(r=>({open:r.open,text:r.textContent,topic:new URL(location.href).searchParams.get('topic')}))(document.querySelector('#reader'))`);
     // A press, then what the Reader shows; Escape puts it away before the next press.
     const pressed = async (selector, words) => {
+      await outlineAtRest(p, words);
       await p.point(selector);
       const shown = await until(async () => { const seen = await reader(); return seen.open && /question in [AB]/.test(seen.text) && seen; }, words + ': a question opens in the Reader');
       await p.key('Escape');
@@ -3122,6 +3138,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-build-done-1', topic_id: 'rb-review', args: { state: 'done' } });
     const done = await until(async () => { const now = await buildRail(p); return !now.rows.some(row => row.id === 'rb-review') && now.doneLabel === 'Done (1)' && now; }, 'marked Done, it leaves the right rail and the outline counts it Done, live');
     assert.deepEqual(done.outline.map(row => row.id), ['rb-plain'], 'it is not among the outline\'s open topics');
+    await outlineAtRest(p, 'marked Done');
     await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] details.topic-group > summary');
     await until(async () => (await buildRail(p)).done.includes('rb-review'), 'the outline\'s Done group lists it');
     await shot(p, 'rail-build-done');
@@ -3210,6 +3227,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const spoken = await p.evaluate(`document.querySelector('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name .sr-only')?.textContent ?? ''`);
     assert.match(spoken, /its Build topics$/, 'a screen reader hears where they are: ' + spoken);
     await shot(p, 'rail-build-chip');
+    await outlineAtRest(p, 'only what is new');
     await p.point('#outline .ol-outcome[data-workspace-id="rail-build-o"] .ol-name');
     await arrived(p, '?conversation=rail-build-o', null, 'a press on the row opens its Conversation');
     await settled(p, 'the Conversation is up');
@@ -3428,6 +3446,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await control({ method: 'topic_state', operation_id: 'rail-done-building-done', topic_id: 'rd-built', args: { state: 'done' } });
     try {
       await shows('marked Done, it leaves the right rail and the outline counts it Done, live', now => !now.rows.some(row => row.id === 'rd-built') && now.doneLabel === 'Done (1)');
+      await outlineAtRest(p, 'marked Done while building');
       await p.point('#outline .ol-outcome[data-workspace-id="rail-done-o"] details.topic-group > summary');
       await shows('the outline\'s Done group lists it', now => now.done.includes('rd-built'));
       assert.deepEqual([seen.rows.filter(row => row.id === 'rd-built').length, seen.outline.filter(row => row.id === 'rd-built').length, seen.done.filter(id => id === 'rd-built').length], [0, 0, 1],
@@ -3804,6 +3823,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await open('rail-together-' + size, '/?topic=' + topic, size, theme);
       const card = `#messages .message-card[data-id="${message}"]`, row = `#outline a[data-topic-id="${other}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body')) && Boolean(document.querySelector(${JSON.stringify(row)}))`), at + ': the card, the writing box and the outline are up');
+      await outlineAtRest(p, at);
       const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
       // The star: Theseus too busy to take it, each time it goes, until the page has moved on.
       const lane = { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } };

@@ -142,6 +142,9 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual([(await held()).state, (await held()).state_note, (await held()).state_by], ['done', LIVE, facts.actor]);
     // It moves into the outcome's Done group in the outline, as the chip moves it.
     await until(async () => { const g = await doneGroup(p); return g && !g.hidden && !g.activeRow && g.label === `Done (${count + 1})`; }, 'the outline counts it Done and lists it no more among the active topics');
+    // The outline at rest first, as outcome_rail_native.mjs's outlineAtRest has it: the commit is read again, and a
+    // read that lands under the press moves the rows.
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`), 'the outline is at rest');
     if (!(await doneGroup(p)).open) await p.point('#outline details.topic-group:not([hidden]) > summary');
     await until(async () => (await doneGroup(p))?.inDone, 'opened, the Done group lists it');
     await shot(p, 'header-review-marked-done');

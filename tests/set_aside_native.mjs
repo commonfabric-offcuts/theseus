@@ -64,20 +64,26 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const reviews = p => p.evaluate(`[...document.querySelectorAll('#inline-pending button,#topic-pending button,#pending-submissions button')].filter(b=>b.getClientRects().length).map(b=>b.textContent)`);
   const topicRow = id => `#outline a[data-topic-id="${id}"]`;
   // A press on another topic's row in the outline, scrolled into view as a person scrolls to it: earlier
-  // cases add topics, so the row can sit below the window.
+  // cases add topics, so the row can sit below the window. The outline is at rest first, as outcome_rail_native.mjs's
+  // outlineAtRest has it: no rails read out, the page's own topic list taken into it in a live list (which happens once
+  // its first read of the outcomes lands) and that list not reading; until then a row can move under the press.
   const pressRow = async (p, id) => {
     await until(() => p.evaluate(`Boolean(document.querySelector(${q(topicRow(id))}))`), 'the other topic is in the outline');
+    await until(() => p.evaluate(`!document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline #topic-navigation:not([inert])')) && !document.querySelector('#retry-topics[aria-disabled]')`), 'the outline is at rest');
     await p.evaluate(`document.querySelector(${q(topicRow(id))}).scrollIntoView({block:'center',inline:'nearest'})`);
     await p.point(topicRow(id));
   };
   // Nothing on the page is moving: no animation that ends is still running (an open dialog appears over .12s, rising 4px).
   const atRest = p => until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'nothing is moving');
-  // A press on a Review or Set aside button as a person makes it, scrolled into view first. The composer sits at the
-  // page's end, and on a phone what shows above it depends on what earlier cases left: once they leave something new
-  // or waiting in other outcomes, the line under the header that says so puts the button below a 320 window.
+  // A Review or Set aside button pressed from the keys: given them, as Tab gives them, and Return. Pressed with a
+  // pointer while the writing holds the keys, the press moves them, the composer draws its save line and this button
+  // again (app.mjs, reviewControl, sets its words at each draw), and a draw that lands between the press and its
+  // release costs the click in Chrome (the list never opens). Given the keys, it is in view as well: earlier cases
+  // leave the line under a phone's header saying what is new elsewhere, which puts it below a 320 window.
   const pressReview = async (p, selector = '#inline-pending button') => {
-    await p.evaluate(`document.querySelector(${q(selector)}).scrollIntoView({block:'nearest'})`);
-    await p.point(selector);
+    await p.evaluate(`document.querySelector(${q(selector)}).focus()`);
+    await until(() => p.evaluate(`document.activeElement===document.querySelector(${q(selector)})`), `${selector} has the keys`);
+    await p.key('Enter');
   };
   // A press on the composer's writing as a person makes it: scrolled to the middle of the window, once nothing is
   // moving, so on a phone in WebKit the field is not under the window's edge or still settling.
