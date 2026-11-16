@@ -95,9 +95,10 @@ class RecordsCase(unittest.TestCase):
 
 
 class SeedsCase(unittest.TestCase):
-    """The five seed records are the product: all homed in Building Theseus, four with a check, one written skill."""
+    """The repository's records are the product: the five seeds and the start line (item 603), all homed in Building
+    Theseus, five tools with a check and one written skill."""
 
-    def test_the_five_seeds(self):
+    def test_the_five_seeds_and_the_start_line(self):
         records = tool_records.Records(ROOT)
         self.assertIsNone(records.error)
         self.assertEqual({tool_id: (record["kind"], record["home"], tool_records.check_path(record)) for tool_id, record in records.tools.items()}, {
@@ -105,6 +106,7 @@ class SeedsCase(unittest.TestCase):
             "act-ledger": ("tool", "building-theseus", "tests/test_tools_acts.py"),
             "native-step-runner": ("tool", "building-theseus", "tests/test_tools_native.py"),
             "pipeline-page-builder": ("tool", "building-theseus", "tests/test_tools_pipeline.py"),
+            "start-line": ("tool", "building-theseus", "tests/test_tools_start_line.py"),
             "theseus-team-assessment": ("skill", "building-theseus", None)})
 
 

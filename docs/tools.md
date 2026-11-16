@@ -212,6 +212,83 @@ stand-in; its bridge to the real live CLI (`LiveCli`: the views it reads and
 `tool-record`) is checked in `tests/test_agent_verbs_tools.py`, against the
 real `bin/aim-next` of a copy of the code.
 
+## Start line: `tools/start_line.py`
+
+Before a build starts, its builder says in one line what it will build, written
+against the surface the item touches as it is that minute, and the outcome's
+owner can correct it in one line before the work goes the wrong way. The
+record is kept in Theseus itself: the line is a message, the operation that
+posted it names the item's revision, and the owner's answer is their 👍 or
+their reply to it.
+
+```sh
+tools/start_line.py open OUTCOME N --topic TOPIC --cli LIVE/bin/aim-next --profile /abs/agent.json --surface LIVE \
+  [--user-facing] [--every-feature] [--owner-decides] -- WRITER [ARG...]
+tools/start_line.py cut OUTCOME N --cli LIVE/bin/aim-next --profile /abs/agent.json
+```
+
+`open` runs when a build slot opens for item N: after its piece enters Build in
+TOPIC and before its builder starts. WRITER is the headless brief-writer, any
+command: it runs in the live checkout (`--surface`, a git checkout), gets on
+its stdin the item's title, words and where it came from (each message's
+words, each note), reads the page, view, command or tool the item names as it
+is now, and prints one line of at most 300 characters. Anything else (a
+failed exit, nothing, a second line, a longer line) is refused (exit 1) and
+nothing is posted.
+
+The line is posted in TOPIC, about item N (`--subject item:N`), followed by a
+sentence naming the item. The brief is written for every build; who is told
+is one rule:
+
+- to the owner, as a tell, when the item is theirs: they raised it, or one of
+  the messages it came from is theirs. Their message says "👍 or no answer
+  builds it as written; a reply of one line becomes what it builds."
+- to the owner when `--owner-decides` says the build holds a product decision
+  they own;
+- to the owner when the `--every-feature` switch is on and `--user-facing` says
+  the build is a user-facing feature;
+- otherwise to nobody: it is kept with the item's work, and the owner is not
+  told ("Kept with the item's work; nobody is asked.").
+
+One operation per revision of the item's words: `start-line-OUTCOME-N-REV`,
+where REV is the first twelve hex digits of the sha256 of the item's title, its
+words and its sources. A move of the item is not a new revision, so it never
+asks again; new words or a new source are, so they get a new start line. Before
+the writer runs, `open` reads that operation: a start line already recorded is
+answered as it stands (`posted: false`) and the writer is not run, so a retry,
+a regenerated piece or a second slot never asks the owner twice. A post whose
+answer was lost is sent again under the same operation, the request saved the
+first time and not a new writing of it (`retry`), so what the owner reads is
+what was first written. Operations are the poster's own, so the coordinator
+opens every start line.
+
+`cut` reads the start line of the item's current words and the owner's answer
+from Theseus: the owner's newest reply to it with words, in one line, is a
+correction and becomes the brief (`answer: "correction"`, with its message);
+otherwise their 👍 on it, or a reply with no letter or digit (a 👍 typed as a
+reply), is `thumbs-up`, and nothing is `silence`; both build the line as
+written. Only the owner's 👍 and replies count. A reply of more than one line
+is refused (exit 1) with its message named, to be read and cut by hand, never
+built as written. With no start line for the item's current words (none was
+opened, or its words changed since) the cut is refused: open one first. A
+reply the owner has open in Edit is not read yet (exit 2). A later preview
+posted as a reply to the start line is recorded against the same revision.
+
+Each verb prints one JSON object: `item`, `revision`, `operation_id`,
+`message_id`, `topic_id`, `owner` and the brief (`brief`; `open` adds
+`owners_item`, `to_owner`, `posted` and, when it posted, `surface_commit`;
+`cut` adds `written` and `answer`). Exit 0 done, 1 refused with one line on
+stderr and nothing posted, 2 Theseus could not be read or did not record the
+post, which is never read as "nothing there".
+
+It is a tool with its own record (`skills/start-line.json`), homed in the
+outcome it serves, so its check, `tests/test_tools_start_line.py`, runs in the
+tool step when it changes. The check runs the tool through the real
+`bin/aim-next` of this checkout against a temporary instance, with a stand-in
+writer. Launching the writer, and when a slot opens, are the coordinator's
+own: it calls `open` from its slot opening, puts `cut`'s brief in the build's
+brief, and keeps the `--every-feature` switch.
+
 ## Deploy: `tools/deploy.py`
 
 ```sh

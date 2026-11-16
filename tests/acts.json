@@ -24477,6 +24477,230 @@
    "check": {
     "python": "test_agent_verbs_tools.py"
    }
+  },
+  {
+   "item": 603,
+   "act": "A start line goes to the owner for an item the owner raised",
+   "break": [
+    [
+     "tools/start_line.py",
+     "return item.get(\"raised_by\") == owner or any(",
+     "return False or any("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An item that came from the owner's message is the owner's, so its start line goes to them",
+   "break": [
+    [
+     "tools/start_line.py",
+     "source.get(\"readable\") and source.get(\"author\") == owner",
+     "source.get(\"readable\") and False"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An item nobody asks the owner about is kept with its work and told to nobody",
+   "break": [
+    [
+     "tools/start_line.py",
+     "to_owner = theirs or owner_decides or (every_feature and user_facing)",
+     "to_owner = True"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The switch widens the start line to user-facing features only, not to every build",
+   "break": [
+    [
+     "tools/start_line.py",
+     "(every_feature and user_facing)",
+     "(every_feature or user_facing)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A retry of a start line already recorded for the item's words posts nothing and never runs the writer again",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    message = recorded(cli, operation)\n    if message is None:\n        commit = surface_commit(surface)",
+     "    message = None\n    if message is None:\n        commit = surface_commit(surface)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "One operation id per revision of the item's words: new words ask again, and the cut never reads an answer to older words as one to these",
+   "break": [
+    [
+     "tools/start_line.py",
+     "\"start-line-%s-%d-%s\" % (outcome, number, revision(item))",
+     "\"start-line-%s-%d-%s\" % (outcome, number, \"x\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "New words are a new revision of the item, so they get a new start line",
+   "break": [
+    [
+     "tools/start_line.py",
+     "json.dumps([item[\"title\"], item[\"description\"], sources]",
+     "json.dumps([item[\"title\"], sources]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A move of the item is not a new revision, so it never asks the owner again",
+   "break": [
+    [
+     "tools/start_line.py",
+     "json.dumps([item[\"title\"], item[\"description\"], sources]",
+     "json.dumps([item[\"title\"], item[\"description\"], sources, item[\"version\"]]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The brief-writer runs in the live checkout, the surface as it is that minute",
+   "break": [
+    [
+     "tools/start_line.py",
+     "cwd=str(surface)",
+     "cwd=None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A writer that writes more than one line posts nothing",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if \"\\n\" in line:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A start line whose first send was not recorded is sent as first written, so the owner is asked once",
+   "break": [
+    [
+     "tools/start_line.py",
+     "                cli.retry(operation)\n",
+     "                pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The owner's one-line reply to the start line becomes the brief",
+   "break": [
+    [
+     "tools/start_line.py",
+     "result.update(brief=words, answer=\"correction\"",
+     "result.update(brief=written, answer=\"correction\""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Only the owner's thumbs-up is a thumbs-up on the start line",
+   "break": [
+    [
+     "tools/start_line.py",
+     "thumb.get(\"actor_id\") == owner",
+     "True"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Only the owner's reply to the start line is read as a correction",
+   "break": [
+    [
+     "tools/start_line.py",
+     "item.get(\"author_id\") == owner",
+     "True"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A reply with no words, such as a typed thumbs-up, builds as written",
+   "break": [
+    [
+     "tools/start_line.py",
+     "(worded if WORDED.search(words) else acks)",
+     "(worded if True else acks)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An owner's reply of more than one line refuses the cut rather than building as written",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if \"\\n\" in words:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
   }
  ]
 }
