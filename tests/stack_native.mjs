@@ -2214,7 +2214,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     // ⌘↑ ⌘↓ ⌘Z at once, Core's answers held and let go one at a time, with the page drawn again between them.
-    // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands.
+    // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands. The page
+    // first has the answer to every move it sent before: Core holding a move says nothing of its answer reaching
+    // the page, and one reaching it later would be held here as the first of these.
+    const sentMoves = () => p.network.filter(e => e.method === 'Network.requestWillBeSent' && places((() => { try { return JSON.parse(e.params.request.postData); } catch { return null; } })()));
+    await until(() => sentMoves().length === 2 && sentMoves().every(sent => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === sent.params.requestId)),
+      'the page has the answers to the two moves sent before');
     p.intercept(payload => places(payload));
     await p.key('ArrowUp', 4); await p.key('ArrowDown', 4); await p.key('z', 4);
     await becomes(() => stacks(p, ids), ['c', 'a', 'b'], '⌘↑ ⌘↓ ⌘Z: A above B, as ⌘Z left it');
