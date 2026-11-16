@@ -1849,7 +1849,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.ok(rows.length, `${surface}: the field is painted behind the words lit`);
     const top = rows[0], bottom = rows.at(-1) + 1, above = lines[0].top - top, below = bottom - lines.at(-1).bottom;
     const round = n => Math.round(n * 10) / 10;
-    return { text: lit.text, lines: lines.map(l => round(l.bottom - l.top + above + below)), above: round(above), below: round(below), gaps: bottom - top - rows.length };
+    return { text: lit.text, lines: lines.map(l => round(l.bottom - l.top + above + below)), above: round(above), below: round(below), gaps: bottom - top - rows.length,
+      steps: lines.slice(1).map((l, i) => round(l.top - lines[i].top)) };
   };
   // A card's layout as it stands, measured from its top: each line of its words (the top of its characters), the
   // height its lines keep and the size of its words, and how tall the card is.
@@ -1894,14 +1895,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       for (const [id, where] of [[ids.alone, 'topic card'], [ids.reply, 'dossier card']]) {
         await centre(p, card(id)); await away(p);
         const before = await layoutOf(p, id);
-        const pitches = before.tops.slice(1).map((top, i) => Math.round((top - before.tops[i]) * 10) / 10).filter(step => step < 2 * before.lineHeight);
-        assert.ok(pitches.length && pitches.every(step => Math.abs(step - before.lineHeight) < 0.6), `${tone} ${where}: its lines are its own line height apart (${before.lineHeight}px): ${JSON.stringify(pitches)}`);
         assert.ok(Math.abs(before.lineHeight - 1.5 * before.size) < 0.6, `${tone} ${where}: a line of its words is 1.5 times their size (${before.lineHeight}px at ${before.size}px), as before`);
         for (const [name, text, said] of passages) {
           await moveTo(p, id, text);
           await until(async () => await shiningOn(p) !== null && (await shiningOn(p)).trim() === said, `${tone} ${where}: the ${name} passage lights under the pointer`);
           const field = await fieldOf(p, 'card');
           fields.push({ where, name, field });
+          assert.ok(field.steps.every(step => Math.abs(step - before.lineHeight) < 0.6), `${tone} ${where}: the ${name} passage's lines are the card's own line height apart (${before.lineHeight}px): ${JSON.stringify(field.steps)}`);
           assert.deepEqual(await layoutOf(p, id), before, `${tone} ${where}: the ${name} passage lit moves no line of the card and leaves it as tall`);
           await shot(p, `reading-field-${width}-${tone}-${where.split(' ')[0]}-${name}`);
         }
