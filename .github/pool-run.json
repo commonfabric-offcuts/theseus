@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the Reader's archive button shows for no Notebook page"
+ ],
+ "label": "mutant-header-39b84fc7-1",
+ "snapshot": "203c5627322fa5560efeff2a8a7aafff68e20ed9"
+}
