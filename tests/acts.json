@@ -14137,6 +14137,21 @@
     "native": "header",
     "case": "header a long Team takes"
    }
+  },
+  {
+   "item": 378,
+   "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
+   "break": [
+    [
+     "web/aim.css",
+     "background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}\n#reader-aside .aside-count",
+     "background:transparent;font-size:.8rem;line-height:1;color:var(--muted)}\n#reader-aside .aside-count"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "live rendering: every pill"
+   }
   }
  ]
 }
