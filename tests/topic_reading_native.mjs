@@ -2066,7 +2066,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // or a mouse) and a card that scrolls in place. A message longer than a card shows, whose first sentence runs past
   // where the excerpt is cut off: lit under the pointer while its whole words are still on their way, the sentence's
   // field stops where the excerpt is cut off, and none shows on the card below it. Once the whole message has come,
-  // the card scrolls in place; a short sentence lit there keeps its field behind it as the card scrolls under it.
+  // the card scrolls in place; a short sentence lit there has its field behind it, and keeps it as the card scrolls
+  // 60 pixels under it.
   await check('reading a lit passage on a phone\'s cut-off excerpt paints no field past where the excerpt is cut off, and on a card that scrolls in place its field moves with the words, in light and dark', async () => {
     const topic = 'reading-clip-phone';
     const first = 'Here begins one sentence, ' + Array.from({ length: 30 }, () => 'and the words run on across the line').join(', ') + '.';
@@ -2097,16 +2098,19 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await scheme(p, dark);
       await p.evaluate(`(c=>{c.scrollIntoView({block:'center'});c.scrollTop=c.scrollHeight})(document.querySelector(${JSON.stringify(on)}))`);
       await painted(p); await away(p);
-      await moveTo(p, ids.long, 'Short sentence 20.');
-      await until(async () => (await shiningOn(p))?.trim() === 'Short sentence 20.', `${tone}: a short sentence lights under the pointer`);
+      await moveTo(p, ids.long, 'Short sentence 10.');
+      await until(async () => (await shiningOn(p))?.trim() === 'Short sentence 10.', `${tone}: a short sentence lights under the pointer`);
       const top = await p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop`);
       assert.ok(top > 120, `${tone}: the card has scrolled in place (${top}px)`);
       const still = await fieldPaint(p, ids.long);
       assert.equal(still.stray, 0, `${tone}: no field shows where no lit word does (${still.stray} pixels, the first at ${still.at})`);
-      await p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop -= 100`);
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop === ${top - 100}`), `${tone}: the card scrolls 100px under the pointer`);
+      assert.deepEqual(still.bare, [], `${tone}: on the card scrolled in place, the lit sentence has its field over and under it`);
+      await p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop -= 60`);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on)}).scrollTop === ${top - 60}`), `${tone}: the card scrolls 60px under the pointer`);
       await painted(p);
-      assert.equal((await shiningOn(p))?.trim(), 'Short sentence 20.', `${tone}: the same sentence stays lit as the card scrolls`);
+      assert.equal((await shiningOn(p))?.trim(), 'Short sentence 10.', `${tone}: the same sentence stays lit as the card scrolls`);
+      const whole = await shownLit(p, ids.long);
+      assert.ok(whole.boxes.every(b => b.top >= b.shows.top + 8 && b.bottom <= b.shows.bottom - 8), `${tone}: the lit sentence still shows whole in the card, clear of its edges`);
       const moved = await fieldPaint(p, ids.long);
       assert.equal(moved.stray, 0, `${tone}: scrolled in place, no field is left where no lit word shows (${moved.stray} pixels, the first at ${moved.at})`);
       assert.deepEqual(moved.bare, [], `${tone}: scrolled in place, the lit sentence has its field over and under it`);
