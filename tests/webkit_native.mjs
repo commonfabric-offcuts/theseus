@@ -155,6 +155,21 @@ const untilChecks = async ({ check, page }) => {
       assert.equal(reads, 1, 'no read again before the page it went to has its document');
     } finally { release(); }
   });
+  await check('review close during wait: a page closed while until waits for the page it went to ends the wait with its own error', async () => {
+    const p = await page('until-close', null, true);
+    let release;
+    const released = new Promise(resolve => { release = resolve; });
+    await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
+    let reads = 0;
+    const started = Date.now();
+    const closer = setTimeout(() => { p.pw.close().catch(() => {}); }, 1000);
+    try {
+      await assert.rejects(ended(until(() => { reads += 1; return p.evaluate("(location.assign('/?topic=t1'), new Promise(() => {}))"); }, 'a page closed during the wait', 6000), 30000, 'until on a page closed during the wait'),
+        error => { console.error('review close case error:', error.message); return /closed/.test(error.message) && !/Timed out/.test(error.message); });
+      assert.ok(Date.now() - started < 6000, `ended before its bound, after ${Date.now() - started} ms`);
+      assert.equal(reads, 2, 'read once more, on the closed page');
+    } finally { clearTimeout(closer); release(); }
+  });
 };
 
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person'] : []), '--freshness', '--images', '--media'], { cwd: root });
