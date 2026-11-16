@@ -8,6 +8,7 @@ import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './im
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { holdPlace } from './sheet-holder.mjs';
+const releasePlace = dialog => { if (!dialog.open) dialog.previousElementSibling?.classList.contains('sheet-holder') && dialog.previousElementSibling.remove(); };
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -38,6 +39,7 @@ export class InlineComposer {
     // later, leaves it there, or wherever a key pressed since has moved it.
     this.sheet?.addEventListener('close', () => {
       const popped = this.popped; this.popped = false;
+      releasePlace(this.sheet);
       this.bar.fold();
       if (popped) document.querySelector('#new-message')?.focus({ preventScroll: true });
     });
