@@ -131,7 +131,8 @@ the pointer's way, the keys' and the phone's.
   `home` in `web/reply-stacks.mjs`, item 465)
 - **The Team.** The topic's people are its Team, on the title row's right,
   under the title (under the subtitle on a phone): a pill each and "+ Add" for
-  whoever may change them, as ever. The label sits beside the first pill; the
+  whoever may change them, as ever, a small gap (.4rem) between each and the
+  next at every width, so no two touch. The label sits beside the first pill; the
   people "+ Add" opens come in under the pills, taking no width of their own, so
   the label and the subtitle stay where they were. The subtitle keeps at least
   6rem beside it: a Team that would leave it less wraps its pills, so the

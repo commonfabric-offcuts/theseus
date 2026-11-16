@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf } from './stack-order.mjs';
+import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
@@ -661,6 +661,16 @@ export class StackFeed {
     if (!position) return null;
     const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
     return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
+  }
+  // The name of the dossier a message is in, as its tab shows it (item 561):
+  // the name typed or minted, or, for a dossier nobody named, its first line.
+  // Null for a message of its own nobody named (a stack of one, which shows no
+  // tab), and for one no stack drawn holds.
+  dossierName(id) {
+    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+    if (!stack) return null;
+    const head = headOf(stack, { preview: messagePreview });
+    return head.typed?.text || (stack.replies.length ? head.name : '') || null;
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.

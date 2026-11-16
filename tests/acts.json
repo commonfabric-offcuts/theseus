@@ -8384,21 +8384,6 @@
   },
   {
    "item": 376,
-   "act": "The Reader's star follows the message's star as the stacks are drawn again, outline or filled",
-   "break": [
-    [
-     "web/app.mjs",
-     "redrawn: () => { paintReaderStar(); paintReaderAside(); },",
-     "redrawn: () => { paintReaderAside(); },"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's star beside its title"
-   }
-  },
-  {
-   "item": 376,
    "act": "The Reader's ⋯ offers Fold message, which folds it for the reader alone",
    "break": [
     [
@@ -23759,6 +23744,111 @@
    "check": {
     "native": "inline",
     "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
+   "item": 376,
+   "act": "The Reader's star follows the message's star as the stacks are drawn again, outline or filled",
+   "break": [
+    [
+     "web/app.mjs",
+     "redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); },",
+     "redrawn: () => { paintReaderAside(); paintReaderTitle(); },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's star beside its title"
+   }
+  },
+  {
+   "item": 465,
+   "act": "The Team's pills and + Add stand apart, a modest gap after each, beside the subtitle as on a phone",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people .participants>.chips>:not(:first-child){margin-inline-start:.4rem}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header the Team's pills and"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A reply in a named dossier has the dossier's name as the Reader's title",
+   "break": [
+    [
+     "web/reader.mjs",
+     "const words = this.callbacks.dossierName?.(source) || topic.title;",
+     "const words = topic.title;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A name given while the Reader is open shows in its title at once",
+   "break": [
+    [
+     "web/app.mjs",
+     "paintReaderAside(); paintReaderTitle(); }",
+     "paintReaderAside(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A long title keeps one line, cut off with an ellipsis, the archive button and ✕ in the header",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-title-row .reader-topic{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A dossier nobody named is titled by its first line, as its tab is",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length ? head.name : '')",
+     "''"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title names the dossier"
+   }
+  },
+  {
+   "item": 561,
+   "act": "A message of its own, in no dossier, keeps the topic's name as the Reader's title",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length ? head.name : '')",
+     "head.name"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's title is the topic's name"
    }
   }
  ]

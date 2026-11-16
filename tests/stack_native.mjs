@@ -1100,6 +1100,69 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
+  // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
+  // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
+  // ellipsis, and the archive button (right of the title) and ✕ stay within the header's width: on a laptop and by a finger at 320, 375 and 390, in light
+  // and dark. A press on the title still goes back to the topic.
+  const titleOf = p => p.evaluate(`(()=>{const h=document.querySelector('#reader-title'),b=h.querySelector('.reader-topic'),header=document.querySelector('#reader .reader-header').getBoundingClientRect(),
+    box=id=>document.getElementById(id).getBoundingClientRect(),inside=r=>r.width>0&&r.left>=header.left-0.5&&r.right<=header.right+0.5;
+    const range=document.createRange();range.selectNodeContents(b??h);const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top))).size;
+    const cut=[b,h].some(e=>e&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow==='ellipsis'),title=h.getBoundingClientRect(),aside=box('reader-aside'),close=box('reader-close');
+    return {text:h.textContent,button:Boolean(b),lines,cut,aside:inside(aside)&&aside.left>=title.right-0.5,close:inside(close),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  await check('reading stacks the Reader\'s title names the dossier its reply goes into, its first line until it is named, on one line however long', async () => {
+    const ROOT = 'Where shall we stay for the cabin week?\nThe lake or the hills, either is fine.';
+    const LONG = 'The cabin week plan, with every booking, the lake, the long drive up and who brings the food for all seven days';
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-title-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Shall we book the lake cabin for the week?' }],
+        ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The lake cabin is free that week.' }],
+        ['plain', { sender: other, addressees: [facts.actor], body: ROOT }],
+        ['answer', { sender: other, reply_to: 'plain', addressees: [facts.actor], body: 'The hills, for the walks.' }]]);
+      await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-name`, args: { name: 'Cabin week plan' } });
+      const p = await open(topic, device, topic, ids.answer);
+      await openReader(p, device, ids.reply, 'The lake cabin');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button]; }, ['Cabin week plan', true], `${device}: a reply in a named dossier is titled by the dossier's name`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-title-named-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-long`, args: { name: LONG } });
+      await becomes(async () => (await titleOf(p)).text, LONG, `${device}: renamed while the Reader is open, the title follows`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const at = await titleOf(p);
+          assert.deepEqual([at.text, at.lines, at.cut, at.aside, at.close, at.sideways], [LONG, 1, true, true, true, false],
+            `${device} ${width} ${theme}: the long name stays on one line, cut off with an ellipsis, the archive button and ✕ in the header: ${JSON.stringify(at)}`);
+          await shot(p, `stack-title-long-${device}-${width}-${theme}`);
+        }
+        await dossierTheme(p, 'light');
+      }
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      await press(p, device, '#reader-title .reader-topic');
+      await until(async () => await readerOn(p) === null, `${device}: a press on the title goes back to the topic`);
+      await openReader(p, device, ids.answer, 'The hills');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button]; }, [messagePreview({ body: ROOT }), true], `${device}: a dossier nobody named is titled by its first line, as its tab is`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  // Item 561's other side: a message of the topic's own, in no dossier (nobody replied to it, nobody named it), keeps
+  // the topic's name as the Reader's title, a new one arriving while the page is open as well.
+  await check('reading stacks the Reader\'s title is the topic\'s name for a new topic-level message, in no dossier', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-title-topic-' + device;
+      const ids = await seed(topic, [['first', { sender: other, join: true, addressees: [facts.actor], body: 'A message of the topic, answered by nobody.' }]]);
+      const p = await open(topic, device, topic, ids.first);
+      const fresh = (await control({ method: 'agent_message', operation_id: `${topic}-new`, topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor], body: 'A new message at the topic level.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(fresh))}))`), `${device}: the new message arrives`);
+      await openReader(p, device, fresh, 'A new message at the topic level');
+      await becomes(async () => { const t = await titleOf(p); return [t.text, t.button, t.lines]; }, ['Reading ' + topic, true, 1], `${device}: its title is the topic's name`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-title-topic-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 378, the count where Core's dossier is drawn as more than one stack: its first message is older than the page
   // loaded, and two of its replies on the page are two stacks. The button moves the whole dossier, both stacks, so its
   // count names both stacks' messages; a message of another dossier stays where it is.
