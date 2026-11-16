@@ -3949,7 +3949,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // a scroll to the card furthest from the window, an unfold, opening the dossier and its earlier-messages row, and a press that shows an
   // earlier message whole each read just the cards drawn near the window that were not read before. A square never
   // read holds no picture at all. Each look's counts go to the run's observations.
-  await check('reading card thumbnails are read only for cards drawn near the window: at load none folded, behind the earlier-messages row or far below; a scroll, an unfold and an earlier message shown whole each read just those cards', async () => {
+  await check('reading card thumbnails are read only for cards drawn near the window: at load none folded, behind the earlier-messages row or far below; a scroll, an unfold and an earlier message shown whole each read just those cards, and no square in view draws its name while its picture is on the way', async () => {
     const IMAGES = ['screen.png', 'one.png', 'palette.png', 'one.jpg', 'one.gif', 'one.webp', 'sixteen.png'];
     const pic = n => ({ attachments: [{ name: `pic-${n}.${IMAGES[n % IMAGES.length].split('.')[1]}`, image: IMAGES[n % IMAGES.length] }] });
     // The oldest first: the right rail, beside the page at a laptop's width, shows the newest 24 images and reads
@@ -3961,7 +3961,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const READS = `(()=>{window.mediaReads=[];window.mediaOut=0;const f=window.fetch;window.fetch=function(input,init){let read=null;
       try{const u=typeof input==='string'?input:input.url;if(u.endsWith('/api/media/read'))read=JSON.parse(init.body).media_id}catch(e){}
       const answer=f.call(this,input,init);if(read!==null){window.mediaReads.push(read);window.mediaOut++;const back=()=>{window.mediaOut--};answer.then(back,back)}
-      return answer}})()`;
+      return answer}})();
+      (()=>{window.namesShown={};const each=()=>{for(const h of document.querySelectorAll('#messages .card-image')){const n=h.querySelector(':scope > .card-image-name'),b=h.getBoundingClientRect();
+        if(n&&n.getClientRects().length&&h.getClientRects().length&&b.bottom>0&&b.top<innerHeight){const k=h.dataset.key.slice(h.dataset.key.lastIndexOf(':')+1);window.namesShown[k]=(window.namesShown[k]||0)+1}}
+        requestAnimationFrame(each)};requestAnimationFrame(each)})()`;
+    // The squares in view that drew their image's name in some frame since the last look (every image here comes, so
+    // a name drawn is a picture on its way drawn as if refused), sampled each frame just before it is painted.
+    const named = async p => p.evaluate('(()=>{const out=window.namesShown;window.namesShown={};return out})()');
     // Every thumbnail square in the page: its image's media id, its message, whether it is drawn (has a box), where,
     // whether a picture was ever asked for (its img) and shows, and its name; every image read so far; and the images
     // the right rail shows, which it reads for itself (things-rail.mjs) and are no card's reads.
@@ -4019,17 +4025,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.ok(atLoad.length <= 15 && look.hosts.some(h => near(look, h, -4) && h.picture), `${device}: at load only the cards near the window are read, ${atLoad.length} of 30 for cards alone`);
       for (const key of ['s2', 's5', 's15', 'r1', 'r2', 'r3']) if (!look.hosts.find(h => h.media === media[key]).drawn) assert.ok(!atLoad.includes(media[key]), `${device}: ${key}, not drawn as a card, is not read`);
       shown(look, `${device} at load`);
+      assert.deepEqual(await named(p), {}, `${device} at load: no square in view draws its image's name while its picture is on the way`);
       // A scroll to the card drawn furthest from the window reads the cards then drawn near it, that one among them.
       const far = h => (h.top > look.H ? h.top - look.H : -h.bottom);
       const furthest = Object.keys(media).filter(each => look.hosts.find(h => h.media === media[each]).drawn)
         .sort((a, b) => far(look.hosts.find(h => h.media === media[b])) - far(look.hosts.find(h => h.media === media[a])))[0];
       assert.ok(look.rail.includes(media[furthest]) || !look.reads.includes(media[furthest]), `${device}: the card furthest from the window, ${furthest}, is not read at load`);
       let before = look.reads;
+      await named(p);
       await centre(p, card(ids[furthest]));
       look = await settle(p, `${device} scrolled to ${furthest}`);
       const scrolled = fresh(look, before, `${device} scrolled to ${furthest}`);
       assert.ok(pictured(look, furthest) && (look.rail.includes(media[furthest]) || scrolled.includes(media[furthest])), `${device}: ${furthest}'s picture is read once it is near, and shows`);
       shown(look, `${device} scrolled to ${furthest}`);
+      assert.deepEqual(await named(p), {}, `${device} scrolled to ${furthest}: no square in view draws its image's name while its picture is on the way`);
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `card-thumbs-near-${device}-${theme}`); }
       await dossierTheme(p, 'light');
       // A folded message (one the right rail does not show), brought into view, reads nothing; unfolded, it reads its own picture.
