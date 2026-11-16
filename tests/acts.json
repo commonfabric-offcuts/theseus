@@ -14399,6 +14399,123 @@
    }
   },
   {
+   "item": 523,
+   "act": "A page whose modules are asked for once the next server serves another build loads afresh on it by itself, once, and comes up with every module of that build, on a laptop and at 390 by touch",
+   "break": [
+    [
+     "web/boot.js",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) location.reload(); else say(); })",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) say(); else say(); })"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules are asked for once the server has started on another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "In Safari's engine, a page whose modules are asked for once the next server serves another build loads afresh on it by itself, once, and comes up with every module of that build",
+   "break": [
+    [
+     "web/boot.js",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) location.reload(); else say(); })",
+     ".then(served => { if (typeof served?.build === 'string' && served.build && served.build !== own) say(); else say(); })"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading edit build a page whose modules are asked for once the server has started on another build"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page whose modules the server could not give, one lost on its own build or the server away mid-restart, says Theseus could not open this page with Reload where the person sees it, and Reload brings it up",
+   "break": [
+    [
+     "web/boot.js",
+     "    status.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "In Safari's engine, a page whose modules the server could not give says Theseus could not open this page with Reload where the person sees it, and Reload brings it up",
+   "break": [
+    [
+     "web/boot.js",
+     "    status.hidden = false;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A module lost on the page's own build never loads the page again by itself: the boot reloads only onto another build, so never in a loop",
+   "break": [
+    [
+     "web/boot.js",
+     "served.build && served.build !== own) location.reload();",
+     "served.build) location.reload();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit build a page whose modules the server could not give"
+   }
+  },
+  {
+   "item": 523,
+   "act": "Only the failure of a module under a build reads the build: an image's, a classic script's or an unbuilt module's error reads nothing and loads nothing",
+   "break": [
+    [
+     "web/boot.js",
+     "  if (!own) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_boot.test.mjs"
+   }
+  },
+  {
+   "item": 523,
+   "act": "The page's boot is written whole and inline before the import map and the entry, and the page's policy allows it by its hash",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "for script in (boot, text))",
+     "for script in (text,))"
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
+   "item": 523,
+   "act": "A page whose index.html names its entry with no boot.js beside it is refused as the server reads it, rather than served with no boot",
+   "break": [
+    [
+     "aim_next/web_build.py",
+     "        if BOOT not in files:\n            raise ValueError(",
+     "        if False:\n            raise ValueError("
+    ]
+   ],
+   "check": {
+    "python": "test_web_build.py"
+   }
+  },
+  {
    "item": 324,
    "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
    "break": [

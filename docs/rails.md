@@ -283,8 +283,9 @@ move to another build is a load.
   names its entry that way, so each relative import, the run's
   `./app.mjs?place=N` included, carries the build. An import map before the
   entry sends an absolute address (`/api.mjs`, as a check imports it) to the
-  same build. The page's Content-Security-Policy allows that one inline script
-  by its hash.
+  same build. Before both comes the page's boot (`web/boot.js`), written in
+  whole, below. The page's Content-Security-Policy allows those two inline
+  scripts by their hashes.
 - An address under another build is refused (404), and so is a module asked
   for with a query outside a build: the run of a page opened before builds
   were stamped. A module asked for plainly outside a build is still the file
@@ -295,9 +296,23 @@ move to another build is a load.
   document's own build, so another server refuses it and the move loads
   instead (`shell.leave`). A page opened before builds were stamped imports
   `/app.mjs?place=N`, which is refused too, so its next move loads the new
-  build. A page whose `index.html` came from one server and whose entry is
-  asked for after the next one started gets a refusal and does not start; a
-  reload opens it on the new build.
+  build.
+- A page whose `index.html` came from one server and whose modules are asked
+  for once the next one has started (a deploy between the two) gets refusals,
+  and one asked for while the server restarts gets no answer. Either way the
+  module graph fails as a whole: none of it runs, so nothing is assembled from
+  two builds, and the browser says so only by an error on the entry's script
+  element. The boot hears that error and reads the served build. On another
+  build it loads the page afresh, which then comes up on that build alone. A
+  load gets the build the server serves as it answers, so another load comes
+  only from another deploy, never in a loop. On the page's own build, or with
+  the server unread, it loads nothing by itself and says "Theseus could not
+  open this page." with Reload, in the page's status line, which shows on a
+  phone too. Nothing of the page has run, so no writing is in the document to
+  lose; words this device kept from before stay in its stores and are offered
+  by the next load, as after any load. The boot is inline, so it needs no
+  request of its own however the server is, and it acts only on a module under
+  a build: a page that loads reads no build.
 - Before a move, the shell reads the served build. Meanwhile the phone's
   drawer closes and the page is not ready (`data-ready`), since a back has
   already changed the address. The page stays up meanwhile, so the person
@@ -337,7 +352,14 @@ of the words kept and with it still being written. Each time they find the
 page where it was, saying why, with the words in their box and no run asked
 for, at 320, 375 and 390 by touch and on a laptop. Chosen again once the words
 are safe, the move goes in place. On another build, words typed meanwhile and
-kept on this device keep the page too, saying Theseus updated.
+kept on this device keep the page too, saying Theseus updated. They load a page
+again with its modules held, its entry let through, and serve another build
+before its imports go, on a laptop and at 390 by touch: the page loads once
+more by itself and comes up with every module of the new build. They lose its
+imports on its own build, and stop the server before they go: the page says it
+could not open, with Reload, having loaded nothing by itself, and Reload brings
+it up. A page with its modules held on one server, and one opened plainly,
+loads once and reads no build.
 
 ## Known gaps
 
