@@ -95,6 +95,9 @@ class WebBuildTests(unittest.TestCase):
         (self.web / "boot.js").unlink()
         with self.assertRaisesRegex(ValueError, "boot.js"):
             web_build.load(self.web)
+        (self.web / "boot.js").write_text("\n")
+        with self.assertRaisesRegex(ValueError, "boot.js"):
+            web_build.load(self.web)
         (self.web / "boot.js").write_text("document.write('</SCRIPT>');\n")
         with self.assertRaisesRegex(ValueError, "</script"):
             web_build.load(self.web)

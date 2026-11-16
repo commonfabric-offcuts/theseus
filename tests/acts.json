@@ -14503,11 +14503,11 @@
   },
   {
    "item": 523,
-   "act": "A page whose index.html names its entry with no boot.js beside it is refused as the server reads it, rather than served with no boot",
+   "act": "A page whose index.html names its entry with no boot.js beside it, or an empty one, is refused as the server reads it, rather than served with no boot",
    "break": [
     [
      "aim_next/web_build.py",
-     "        if BOOT not in files:\n            raise ValueError(",
+     "        if not boot.strip():\n            raise ValueError(",
      "        if False:\n            raise ValueError("
     ]
    ],

@@ -100,9 +100,9 @@ def load(web_root) -> Build:
     if index is not None and ENTRY in index:
         if index.count(ENTRY) != 1:
             raise ValueError("index.html names its entry script more than once")
-        if BOOT not in files:
+        boot = files.get(BOOT, b"").decode("utf-8")
+        if not boot.strip():
             raise ValueError("index.html names its entry script and web/ has no %s to load the page afresh when its build is gone" % BOOT)
-        boot = files[BOOT].decode("utf-8")
         if "</script" in boot.lower():
             raise ValueError("%s cannot be written inline: it holds </script" % BOOT)
         # An absolute address outside a build ("/api.mjs") is this build's ("/b/<stamp>/api.mjs"); one that
