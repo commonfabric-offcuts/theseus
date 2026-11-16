@@ -1119,3 +1119,32 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .card-image>img.image-thumb[hidden]{display:none}
 .card-image-name{display:none}
 .card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;padding:.3rem;font-size:.66rem;line-height:1.25;color:var(--muted);overflow-wrap:anywhere;overflow:hidden}
+
+/* Skills and tools (item 17, skills.mjs; docs/skills-and-tools.md): the tool page, the outcome page's section, Topic
+   settings' chips. Plain lines, no cards and no coloured edges; the check word is words, never a colour alone. A glyph
+   button (×) is 2.75rem square, a target a finger can hit; a quiet line opened from a button is about a sentence wide. */
+.tool-page{display:grid;gap:.55rem;max-width:46rem}
+.tool-line{margin:0;overflow-wrap:anywhere}.tool-label{color:var(--muted)}
+.tool-section h2,.outcome-tools h2{font-size:1rem;margin:1.2rem 0 .4rem}.outcome-tools h3{font-size:.8rem;font-weight:600;color:var(--muted);margin:.9rem 0 .3rem}
+.tool-went-back,.tool-topics,.tool-rows{list-style:none;margin:0;padding:0}
+.tool-went-back li{margin:.3rem 0;overflow-wrap:anywhere}
+.tool-topic,.tool-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.75rem;border-bottom:1px solid var(--line)}
+.tool-topic>a,.tool-row-words{min-width:0;overflow-wrap:anywhere;padding:.35rem 0}
+.tool-row-words .tool-row-word{display:block;font-size:.85rem;color:var(--muted)}
+.glyph-button{flex:none;width:2.75rem;height:2.75rem;min-height:2.75rem;padding:0;font-size:1.15rem;line-height:1;color:var(--muted)}
+.glyph-button:hover{color:var(--ink)}
+.finder-host{margin-top:.5rem}.finder-open{padding-inline:.2rem;color:var(--accent)}
+.finder{display:grid;gap:.3rem;max-width:min(26rem,100%)}
+.finder-input{width:100%;min-height:2.75rem;padding:.3rem .65rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink)}
+.finder-list{list-style:none;margin:0;padding:0}
+.finder-list li{padding:.55rem .65rem;border-radius:.45rem;overflow-wrap:anywhere}
+.finder-option{cursor:pointer;min-height:2.75rem}.finder-option[aria-selected=true],.finder-option:hover{background:var(--soft)}
+.tool-files summary{cursor:pointer;color:var(--muted);min-height:2.75rem;display:flex;align-items:center}
+.tool-files ul{margin:.2rem 0 0;padding-left:1.1rem}.tool-files code{overflow-wrap:anywhere}
+.outcome-tools{margin-top:1rem}
+.tool-chips .choice-chip[aria-disabled=true]{opacity:.7;cursor:progress}
+@media(max-width:760px){.finder-input{font-size:16px}.tool-chips .choice-chip{min-height:2.75rem}}
+/* The rail's Skills and tools: names only, the same rows as its topics. */
+#skills-links a.nav-item{min-height:44px;padding:.55rem .65rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
+#skills-links a.nav-item:hover{background:var(--soft)}#skills-links a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;border-color:var(--line)}
+@media(max-width:760px){#skills-links{display:flex;overflow:auto;gap:.35rem;padding:.25rem}#skills-links a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}}

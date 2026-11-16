@@ -52,6 +52,10 @@
       <details id="archived-topics" class="topic-group" hidden><summary id="archived-topics-label">Archived</summary><div id="archived-topic-list" class="topic-list" aria-label="Archived topics"></div><button id="more-archived-topics" type="button" hidden>More archived topics</button></details>
       <p id="outcome-empty" class="empty" hidden>No topics yet. Start the first topic in this outcome.</p>
       </section>
+      <section id="skills-navigation" aria-labelledby="skills-heading" hidden>
+      <div class="rail-heading"><h2 id="skills-heading">Skills and tools</h2></div>
+      <div id="skills-links" aria-labelledby="skills-heading"></div>
+      </section>
     </nav>
     <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
@@ -70,6 +74,8 @@
       <section id="pipeline-page" class="pipeline-page" aria-label="Pipeline" hidden></section>
       <section id="health-page" class="health-page" aria-label="Health" hidden></section>
       <section id="measurements-page" class="measurements-page" aria-label="Measurements" hidden></section>
+      <section id="tool-page" class="tool-page" aria-label="Skill or tool" hidden></section>
+      <section id="outcome-tools" class="outcome-tools" aria-labelledby="tools-heading" hidden></section>
       <section id="deck-page" class="deck-page" aria-label="Cards" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div><div id="team-invite" class="team-invite" hidden></div></section>
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
@@ -205,6 +211,7 @@
     <div class="settings-body">
       <header class="settings-header"><h2 id="settings-title" tabindex="-1">Topic settings</h2><button id="settings-close" type="button" aria-label="Close topic settings">✕</button></header>
       <section id="topic-state" class="settings-section" aria-label="Where this topic stands" hidden></section>
+      <section id="topic-tools" class="settings-section" aria-labelledby="topic-tools-heading" hidden></section>
     </div>
   </dialog>
   <dialog id="version-review" aria-labelledby="review-title">

@@ -650,7 +650,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual([topic.heading, topic.chips], ['In this topic', ['Just this topic:true', 'All of this outcome:false']], 'a topic shows its own things, the whole outcome one tap away');
     assert.deepEqual(topic.prs, ['Sort species by common name https://github.com/acme/field/pull/12'], 'the pull request by the words it was posted with');
     assert.deepEqual(topic.previews, ['http://bench.example.ts.net:5192/preview/species'], 'the preview by its address');
-    assert.equal(topic.tools, 'Skills and tools are not recorded yet.', 'what Core does not record is said, not made up');
+    assert.ok(!topic.sections.includes('tools'), 'a topic about no skill or tool shows no Skills and tools (docs/skills-and-tools.md)');
     assert.ok(!topic.sections.includes('pipeline'), 'a topic with nothing in the pipeline shows no Pipeline section');
     await shot(p, 'rail-things-topic');
     await p.point('#things .things-scope .chip:nth-child(2)');
@@ -935,15 +935,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail a section of the right rail folded stays folded across a move in place and a reload, and opens again when unfolded', async () => {
     const p = await page('rail-section-fold', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => { await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
     await settled(p, 'the topic is up');
-    const tools = "document.querySelector('#things .things-sec[data-key=tools]')";
+    // The Notebook: the topic's pages, and on the Conversation the outcome's, empty but kept for its pencil.
+    const tools = "document.querySelector('#things .things-sec[data-key=notebook]')";
     const open = () => p.evaluate(`(()=>{const d=${tools};return d.getClientRects().length>0?d.open:null})()`);
     // A press on the section's heading, waited out until the section has said it folded or opened.
     const toggle = async () => {
       await p.evaluate(`(window.railToggled=new Promise(resolve=>${tools}.addEventListener('toggle',resolve,{once:true})),true)`);
-      await press(p, '#things .things-sec[data-key=tools] summary');
+      await press(p, '#things .things-sec[data-key=notebook] summary');
       await p.evaluate('window.railToggled.then(()=>true)');
     };
-    assert.equal(await open(), true, 'Skills and tools shows, open');
+    assert.equal(await open(), true, 'the Notebook shows, open');
     await toggle();
     assert.equal(await open(), false, 'a press on its heading folds it');
     await press(p, '.ol-outcome[data-workspace-id="w1"] .ol-name');
@@ -3539,5 +3540,269 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         assert.deepEqual(p.errors, []); await p.close();
       }
     }
+  });
+
+  // ---- Skills and tools (item 17; docs/skills-and-tools.md, section 1) ----
+  // Invented records (tests/fixtures/ui_http.py, tools_seed): Kite club homes Spool winder (its check passed, and one
+  // version went back) and Knot guide (a skill with no check); w1 homes Wind meter, whose check has not run; Glider
+  // bench, which the person is not on, homes Glide timer. Every state at 320, 375, 390 and on a laptop, light and dark.
+  const TOOL_WIDTHS = [[320, 'light'], [320, 'dark'], [375, 'light'], [375, 'dark'], [390, 'light'], [390, 'dark'], [1280, 'light'], [1280, 'dark']];
+  const sized = (key, url, width, theme, more = async () => {}) => page(key, null, true, { url: facts.origin + url, beforeNavigate: async q => {
+    await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+    await q.send('Emulation.setDeviceMetricsOverride', width < SIZES.laptop.width ? { ...SIZES.phone, width } : SIZES.laptop);
+    if (width < SIZES.laptop.width) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await more(q);
+  } });
+  // A press as the size presses: a finger on a phone, the mouse on a laptop.
+  const pressAt = async (p, width, selector) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    if (width < SIZES.laptop.width) await tap(p, selector); else await p.point(selector);
+  };
+  // A page as drawn: the tool page's lines, the outcome page's Skills and tools, the rail's list, and what a finger
+  // or a screen reader needs (every button 44px tall on a phone, every glyph named, with a tooltip).
+  const toolsDrawn = p => p.evaluate(`(()=>{const shown=e=>Boolean(e)&&e.getClientRects().length>0,text=(r,s)=>[...r.querySelectorAll(s)].filter(shown).map(e=>e.textContent);
+    const page=document.getElementById('tool-page'),uses=document.getElementById('outcome-tools'),status=page.querySelector('.tool-status'),brand=document.querySelector('.brand');
+    const buttons=[...document.querySelectorAll('#tool-page button,#outcome-tools button,#topic-tools button')].filter(shown);
+    return {ready:document.body.dataset.ready==='true',eyebrow:document.getElementById('workspace-name').textContent,title:document.getElementById('topic-title').textContent,
+      description:document.getElementById('topic-description').textContent,lines:text(page,'.tool-line'),went:text(page,'.tool-went-back li'),topics:text(page,'.tool-topic a'),
+      empty:text(page,'.empty'),hidden:text(page,'.tool-topics ~ .muted'),link:shown(page.querySelector('.finder-open')),files:page.querySelector('.tool-files')?.open??null,
+      timed:Boolean(page.querySelector('.tool-word time')),status:shown(status)?status.textContent:null,pageShown:shown(page),rail:shown(document.querySelector('.rail')),
+      skills:[...document.querySelectorAll('#skills-links a')].filter(shown).map(a=>a.textContent+(a.getAttribute('aria-current')?'*':'')),
+      brandIn:brand.parentElement.id||brand.parentElement.className,home:shown(document.getElementById('outcomes-home')),
+      uses:shown(uses)?{rows:text(uses,'.tool-row'),names:text(uses,'.tool-name'),used:text(uses,'h3'),add:shown(uses.querySelector('.finder-open')),offs:text(uses,'.glyph-button').length}:null,
+      small:buttons.filter(b=>innerWidth<761&&b.getBoundingClientRect().height<43.5).map(b=>b.textContent),
+      unnamed:buttons.filter(b=>b.classList.contains('glyph-button')&&!(b.getAttribute('aria-label')&&b.title)).length,
+      scroll:document.documentElement.scrollWidth<=innerWidth}})()`);
+  const toolUp = (p, what, ready = seen => seen.ready) => until(async () => { const seen = await toolsDrawn(p).catch(() => null); return seen && ready(seen) && seen; }, what);
+
+  await check('rail skills and tools: a tool\'s page at 320, 375, 390 and on a laptop, light and dark: Tool, its name and summary, Home, its check passed with its count and time, Used by, Went back with its topic, Topics about it with Link a topic, the files folded; in its home\'s rail; its outcome page lists it beside a skill with no check, which reads Not evaluated yet', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
+      const p = await sized(`tools-page-${width}-${theme}`, '/?workspace=kites&tool=spool-winder', width, theme);
+      const seen = await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual([seen.eyebrow, seen.title, seen.description], ['Tool', 'Spool winder', 'Winds a kite line back without a tangle'], at + ': the word Tool, its name and its summary');
+      assert.equal(seen.lines[0], 'Home: Kite club', at);
+      assert.match(seen.lines[1], /^Its check: Its check passed: 12 of 12 · \S/, at + ': the pass with its count and its time');
+      assert.equal(seen.timed, true, at + ': its time is a time');
+      assert.equal(seen.lines[2], 'Used by: No outcome says it uses this yet.', at);
+      assert.equal(seen.went.length, 1, at + ': the one version that went back');
+      assert.match(seen.went[0], /: a new version failed its check \(3 of 12 failed: test_winds_back, test_no_tangle, test_line_end\) and went back to its live version\. Topic: Spool winder went back to its live version\.$/, at);
+      assert.deepEqual([seen.link, seen.files, seen.status], [true, false, null], at + ': Link a topic, the files folded, nothing wrong');
+      assert.deepEqual([seen.small, seen.unnamed, seen.scroll], [[], 0, true], at + ': every button a finger can hit, every glyph named, no sideways scroll');
+      if (!phone) assert.deepEqual([seen.rail, seen.brandIn, seen.skills], [true, 'rail', ['Knot guide', 'Spool winder*']], at + ': the home\'s rail, its Skills and tools, this one marked');
+      await shot(p, `tools-page-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+      const o = await sized(`tools-outcome-${width}-${theme}`, '/?workspace=kites', width, theme);
+      const outcome = await toolUp(o, at + ': the outcome page is up', drawn => drawn.ready && drawn.uses?.rows.length === 2);
+      assert.deepEqual(outcome.uses.names, ['Knot guide', 'Spool winder'], at + ': its own skills and tools');
+      assert.match(outcome.uses.rows[0], /^Knot guide · SkillNot evaluated yet: it has no check$/, at + ': a skill with no check is never a pass');
+      assert.match(outcome.uses.rows[1], /^Spool winder · ToolIts check passed: 12 of 12 · \S/, at + ': the same words as its page');
+      assert.deepEqual([outcome.uses.used, outcome.uses.add, outcome.uses.offs], [[], true, 0], at + ': nothing used here yet, and + Uses a tool');
+      assert.deepEqual([outcome.small, outcome.scroll], [[], true], at);
+      await shot(o, `tools-outcome-${width}-${theme}`);
+      assert.deepEqual(o.errors, []); await o.close();
+    }
+  });
+
+  await check('rail skills and tools: empty, read-only and error, each at 320, 375, 390 and on a laptop, light and dark: a skill nothing uses or is about; a tool whose home the reader is not on, with no rail and no Link a topic; a tool that is not there, in the server\'s words', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`;
+      const e = await sized(`tools-empty-${width}-${theme}`, '/?workspace=kites&tool=knot-guide', width, theme);
+      const empty = await toolUp(e, at + ': the skill\'s page is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual([empty.eyebrow, empty.title], ['Skill', 'Knot guide'], at);
+      assert.deepEqual(empty.lines, ['Home: Kite club', 'Its check: Not evaluated yet: it has no check', 'Used by: No outcome says it uses this yet.'], at + ': Not evaluated yet, never a pass');
+      assert.deepEqual([empty.went, empty.topics, empty.empty, empty.timed], [[], [], ['No topics about it yet.'], false], at + ': nothing went back and no topic is about it, said');
+      assert.deepEqual([empty.small, empty.scroll], [[], true], at);
+      await shot(e, `tools-empty-${width}-${theme}`);
+      assert.deepEqual(e.errors, []); await e.close();
+      const r = await sized(`tools-outside-${width}-${theme}`, '/?workspace=gliders&tool=glide-timer', width, theme);
+      const outside = await toolUp(r, at + ': the page of a tool homed outside the reader\'s outcomes is up', drawn => drawn.ready && drawn.lines.length === 3);
+      assert.deepEqual(outside.lines, ['Home: an outcome you are not on', 'Its check: Its check has not run on this version yet', 'Used by: No outcome says it uses this yet.'], at + ': its home unnamed; not run, never a pass');
+      assert.deepEqual([outside.link, outside.rail, outside.brandIn, outside.home], [false, false, 'main', true], at + ': no Link a topic and no rail; the logo block and ← Outcomes head the page');
+      assert.deepEqual([outside.small, outside.scroll], [[], true], at);
+      await shot(r, `tools-outside-${width}-${theme}`);
+      assert.deepEqual(r.errors, []); await r.close();
+      const x = await sized(`tools-missing-${width}-${theme}`, '/?workspace=kites&tool=no-such-tool', width, theme);
+      const missing = await toolUp(x, at + ': the page of a tool that is not there is up', drawn => drawn.ready && drawn.status !== null);
+      assert.deepEqual([missing.status, missing.lines, missing.rail, missing.home], ['That tool is not on this Theseus.', [], false, true], at + ': the server\'s words, nothing made up, and the way back');
+      assert.equal(missing.scroll, true, at);
+      await shot(x, `tools-missing-${width}-${theme}`);
+      assert.deepEqual(x.errors, []); await x.close();
+    }
+  });
+
+  // One quiet line's state: shown, what it holds, whether it has the cursor and is busy, what it says.
+  const finderState = (p, host) => p.evaluate(`(()=>{const h=document.querySelector(${JSON.stringify(host)}),line=h?.querySelector('.finder'),input=line?.querySelector('.finder-input'),say=line?.querySelector('.notice');
+    return {open:Boolean(line)&&!line.hidden,value:input?.value??null,focused:document.activeElement===input,button:document.activeElement===h?.querySelector('.finder-open'),
+      busy:input?.getAttribute('aria-busy')??null,said:say&&!say.hidden?say.textContent:null,options:[...(line?.querySelectorAll('.finder-option')??[])].map(o=>o.textContent),
+      tall:input?input.getBoundingClientRect().height>=43.5:null,inside:input?input.getBoundingClientRect().right<=innerWidth:null}})()`);
+
+  await check('rail skills and tools: Link a topic on a tool\'s page and + Uses a tool on an outcome page, typed and chosen with Return; Escape leaves things as they were; a × takes it off again', async () => {
+    await control({ method: 'tools_seed' });
+    for (const [width, theme] of [[390, 'light'], [1280, 'light']]) {
+      const at = `${width} ${theme}`;
+      const p = await sized(`tools-link-${width}`, '/?workspace=kites&tool=spool-winder', width, theme);
+      await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.link);
+      // Escape: the line closes, nothing is linked, and the keys are back on Link a topic.
+      await pressAt(p, width, '#tool-page .finder-open');
+      await until(async () => (await finderState(p, '#tool-page')).focused, at + ': Link a topic opens one line, the cursor in it');
+      await until(async () => (await finderState(p, '#tool-page')).options.length === 2, at + ': the outcome\'s open topics are offered');
+      await p.send('Input.insertText', { text: 'tangled' });
+      assert.deepEqual((await finderState(p, '#tool-page')).options, ['Tangled lines'], at + ': typing finds a topic');
+      await p.key('Escape');
+      const closed = await until(async () => { const seen = await finderState(p, '#tool-page'); return !seen.open && seen; }, at + ': Escape closes the line');
+      assert.equal(closed.button, true, at + ': and gives Link a topic the keys');
+      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics, [], at + ': nothing was linked');
+      // Return links the topic typed.
+      await pressAt(p, width, '#tool-page .finder-open');
+      await until(async () => (await finderState(p, '#tool-page')).options.length === 2, at + ': the line again');
+      await p.send('Input.insertText', { text: 'tangled' });
+      await p.key('Enter');
+      const linked = await toolUp(p, at + ': Return links it, and the page lists it', drawn => drawn.topics.length === 1);
+      assert.deepEqual(linked.topics, ['Tangled lines'], at);
+      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics.map(topic => topic.topic_id), ['kite-lines'], at + ': Core has the link');
+      await shot(p, `tools-linked-${width}`);
+      // × takes it off, and the keys go to Link a topic.
+      await pressAt(p, width, '#tool-page .tool-topic .glyph-button');
+      await toolUp(p, at + ': × takes the topic off', drawn => drawn.topics.length === 0);
+      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics, [], at + ': Core has it off');
+      assert.deepEqual(p.errors, []); await p.close();
+      // + Uses a tool on w1's page: Wind meter is its own; Spool winder, homed in Kite club, is offered.
+      const o = await sized(`tools-uses-${width}`, '/?workspace=w1', width, theme);
+      await toolUp(o, at + ': w1\'s page is up', drawn => drawn.ready && drawn.uses?.names.length === 1);
+      await pressAt(o, width, '#outcome-tools .finder-open');
+      await until(async () => (await finderState(o, '#outcome-tools')).options.length >= 2, at + ': + Uses a tool offers the tools homed elsewhere');
+      assert.ok(!(await finderState(o, '#outcome-tools')).options.includes('Wind meter'), at + ': never its own');
+      await o.send('Input.insertText', { text: 'spool' });
+      await o.key('Escape');
+      await until(async () => !(await finderState(o, '#outcome-tools')).open, at + ': Escape closes the line');
+      assert.deepEqual((await view('tools', { workspace_id: 'w1' })).used, [], at + ': nothing said');
+      await pressAt(o, width, '#outcome-tools .finder-open');
+      await until(async () => (await finderState(o, '#outcome-tools')).options.length >= 2, at + ': the line again');
+      await o.send('Input.insertText', { text: 'spool' });
+      await o.key('Enter');
+      const used = await toolUp(o, at + ': Return says w1 uses it', drawn => drawn.uses?.used.length === 1);
+      assert.deepEqual([used.uses.names, used.uses.offs], [['Wind meter', 'Spool winder'], 1], at + ': under Used here, with a ×');
+      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).used_by.map(user => user.workspace_id), ['w1'], at + ': its page will say w1 uses it');
+      await shot(o, `tools-used-${width}`);
+      await pressAt(o, width, '#outcome-tools .glyph-button');
+      await toolUp(o, at + ': × says it no longer does', drawn => drawn.uses?.used.length === 0);
+      assert.deepEqual((await view('tools', { workspace_id: 'w1' })).used, [], at + ': Core has it off');
+      assert.deepEqual(o.errors, []); await o.close();
+    }
+  });
+
+  // Saving and refused, with the way back: the command held before the server has it (holdCommands), so the busy
+  // line is seen and a refusal given in its place leaves nothing made; Return again then saves it.
+  for (const [surface, url, host, kind, typed] of [['link', '/?workspace=kites&tool=spool-winder', '#tool-page', 'tool.link', 'faster'], ['uses', '/?workspace=w1', '#outcome-tools', 'tool.use', 'knot']]) {
+    const REFUSED = 'Kite club was reached; its topics are kept to read.';
+    const run = async (width, theme, upTo) => {
+      const at = `${surface} ${width} ${theme}`;
+      const p = await sized(`tools-${surface}-${upTo}-${width}-${theme}`, url, width, theme);
+      await toolUp(p, at + ': the page is up', drawn => drawn.ready && (surface === 'link' ? drawn.link : drawn.uses?.add));
+      await pressAt(p, width, `${host} .finder-open`);
+      await until(async () => (await finderState(p, host)).options.length >= 1, at + ': the line, with what it offers');
+      await p.send('Input.insertText', { text: typed });
+      const hold = await holdCommands(p, kind);
+      await p.key('Enter');
+      const held = await hold.first(at + ': Return sends the command');
+      const busy = await until(async () => { const seen = await finderState(p, host); return seen.busy === 'true' && seen; }, at + ': the line is busy while it saves');
+      assert.deepEqual([busy.open, busy.value, busy.tall, busy.inside], [true, typed, true, true], at + ': still open, the words as typed, 44px tall, inside the page');
+      if (upTo === 'saving') {
+        await shot(p, `tools-${surface}-saving-${width}-${theme}`);
+        await hold.answer(held, { instance_id: held.payload.instance_id, operation_id: held.payload.operation_id, kind, status: 'rejected', recorded: false,
+          result: null, affected: [], error: { code: 'FORBIDDEN', message: REFUSED, retryable: false } });
+        await hold.stop();
+        assert.deepEqual(p.errors, []); await p.close();
+        return;
+      }
+      await hold.answer(held, { instance_id: held.payload.instance_id, operation_id: held.payload.operation_id, kind, status: 'rejected', recorded: false,
+        result: null, affected: [], error: { code: 'FORBIDDEN', message: REFUSED, retryable: false } });
+      const refused = await until(async () => { const seen = await finderState(p, host); return seen.said === REFUSED && seen; }, at + ': the refusal in the server\'s words');
+      assert.deepEqual([refused.open, refused.value, refused.focused, refused.busy], [true, typed, true, null], at + ': the line stays, the words as typed, the cursor in it, no longer busy');
+      await shot(p, `tools-${surface}-refused-${width}-${theme}`);
+      await hold.stop();
+      // The way back: Return again saves it.
+      await p.key('Enter');
+      if (surface === 'link') {
+        await toolUp(p, at + ': Return again links it', drawn => drawn.topics.length === 1);
+        await pressAt(p, width, '#tool-page .tool-topic .glyph-button');
+        await toolUp(p, at + ': and × takes it off', drawn => drawn.topics.length === 0);
+      } else {
+        await toolUp(p, at + ': Return again says w1 uses it', drawn => drawn.uses?.used.length === 1);
+        await pressAt(p, width, '#outcome-tools .glyph-button');
+        await toolUp(p, at + ': and × says it no longer does', drawn => drawn.uses?.used.length === 0);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    };
+    await check(`rail skills and tools: ${surface === 'link' ? 'Link a topic' : '+ Uses a tool'} saving, at 320, 375, 390 and on a laptop, light and dark: the line busy, open, the words as typed`, async () => {
+      await control({ method: 'tools_seed' });
+      for (const [width, theme] of TOOL_WIDTHS) await run(width, theme, 'saving');
+    });
+    await check(`rail skills and tools: ${surface === 'link' ? 'Link a topic' : '+ Uses a tool'} refused, at 320, 375, 390 and on a laptop, light and dark: the server's words, the line kept as typed with the cursor in it, and Return again saves it`, async () => {
+      await control({ method: 'tools_seed' });
+      for (const [width, theme] of TOOL_WIDTHS) await run(width, theme, 'refused');
+    });
+  }
+
+  await check('rail skills and tools: Topic settings\' Tools this topic improves links by a tap and by the keys and unlinks by a second; the right rail lists the topic\'s tools, the Conversation the outcome\'s, and hides the section when there are none', async () => {
+    await control({ method: 'tools_seed' });
+    const chips = p => p.evaluate(`(()=>{const h=document.getElementById('topic-tools');return {shown:Boolean(h)&&h.getClientRects().length>0,heading:h?.querySelector('h3')?.textContent??null,
+      chips:[...(h?.querySelectorAll('.tool-chip')??[])].map(c=>c.textContent+':'+c.getAttribute('aria-pressed')+(c.getAttribute('aria-disabled')==='true'?':saving':'')),
+      focused:document.activeElement?.classList.contains('tool-chip')?document.activeElement.textContent:null,tall:[...(h?.querySelectorAll('.tool-chip')??[])].every(c=>innerWidth>760||c.getBoundingClientRect().height>=43.5)}})()`);
+    const linkedHere = async () => (await view('topic_tools', { topic_id: 'kite-spools' })).linked.map(tool => tool.tool_id);
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
+      const p = await sized(`tools-settings-${width}-${theme}`, '/?topic=kite-spools', width, theme);
+      await settled(p, at + ': the topic is up');
+      await pressAt(p, width, '#settings-open');
+      const open = await until(async () => { const seen = await chips(p); return seen.shown && seen.chips.length === 2 && seen; }, at + ': Topic settings shows Tools this topic improves');
+      assert.deepEqual([open.heading, open.chips, open.tall], ['Tools this topic improves', ['Knot guide:false', 'Spool winder:false'], true], at + ': the home\'s tools as chips, none pressed, each a finger\'s size');
+      await shot(p, `tools-settings-${width}-${theme}`);
+      if (width === 390 || width === 1280) {
+        // A tap (a press on a laptop) links; Core has it at once.
+        await pressAt(p, width, '#topic-tools .tool-chip:nth-child(2)');
+        await until(async () => (await chips(p)).chips[1] === 'Spool winder:true', at + ': a tap links it');
+        await until(async () => JSON.stringify(await linkedHere()) === '["spool-winder"]', at + ': saved at once');
+        // The keys: from Knot guide, Tab to Spool winder, Return unlinks it, and the chip keeps the keys.
+        await p.evaluate(`document.querySelector('#topic-tools .tool-chip').focus()`);
+        await p.key('Tab');
+        await until(async () => (await chips(p)).focused === 'Spool winder', at + ': Tab reaches the next chip');
+        await p.key('Enter');
+        const unlinked = await until(async () => { const seen = await chips(p); return seen.chips[1] === 'Spool winder:false' && seen; }, at + ': Return on it unlinks it');
+        assert.equal(unlinked.focused, 'Spool winder', at + ': the chip keeps the keys');
+        await until(async () => (await linkedHere()).length === 0, at + ': saved at once');
+      }
+      await p.key('Escape');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // The right rail, on a laptop: the topic's own tools, the Conversation's, and none on w1's topic.
+    const p = await sized('tools-things', '/?topic=kite-spools', 1280, 'light');
+    await settled(p, 'the topic is up');
+    const rail = () => p.evaluate(`(()=>{const d=document.querySelector('#things .things-sec[data-key=tools]');return d&&d.getClientRects().length>0?[...d.querySelectorAll('.things-list a.row')].map(a=>a.textContent+' '+a.getAttribute('href')):null})()`);
+    assert.equal(await rail(), null, 'a topic about no tool shows no Skills and tools');
+    await pressAt(p, 1280, '#settings-open');
+    await until(async () => (await chips(p)).chips.length === 2, 'Topic settings is open');
+    await pressAt(p, 1280, '#topic-tools .tool-chip:nth-child(1)');
+    await until(async () => (await chips(p)).chips[0] === 'Knot guide:true', 'Knot guide is linked');
+    await p.key('Escape');
+    const listed = await until(async () => { const seen = await rail(); return seen?.length === 1 && seen; }, 'the right rail lists the topic\'s tool');
+    assert.deepEqual(listed, ['Knot guide ?workspace=kites&tool=knot-guide'], 'by name, opening its page');
+    await shot(p, 'tools-things-topic');
+    await press(p, '.ol-outcome[data-workspace-id="kites"] .ol-name');
+    await arrived(p, '?conversation=kites', null, 'the Conversation opens in place');
+    const outcome = await until(async () => { const seen = await rail(); return seen?.length === 2 && seen; }, 'the Conversation lists the outcome\'s tools');
+    assert.deepEqual(outcome, ['Knot guide ?workspace=kites&tool=knot-guide', 'Spool winder ?workspace=kites&tool=spool-winder']);
+    await shot(p, 'tools-things-conversation');
+    await press(p, '#things .things-sec[data-key=tools] .things-list a.row');
+    await arrived(p, '?workspace=kites&tool=knot-guide', 'Knot guide', 'a row opens the tool\'s page');
+    assert.deepEqual(p.errors, []); await p.close();
+    await control({ method: 'tools_seed' });
+    const q = await sized('tools-things-none', '/?topic=t1', 1280, 'light');
+    await settled(q, 'w1\'s topic is up');
+    assert.equal(await (async () => q.evaluate(`(()=>{const d=document.querySelector('#things .things-sec[data-key=tools]');return d&&d.getClientRects().length>0})()`))(), false, 'a topic about no tool shows no Skills and tools');
+    assert.deepEqual(q.errors, []); await q.close();
   });
 }
