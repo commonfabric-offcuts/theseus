@@ -364,6 +364,56 @@ test('a position a join or a split has made stale is not the stack\'s: the head 
   assert.deepEqual([positionOf(joinedAfar[0]).root_id, headOf(joinedAfar[0]).name], ['m5', 'Dossier name'], 'joined to a dossier the page has not loaded, it reads that dossier\'s position');
 });
 
+// Item 550: a dossier whose fork sits above the loaded page is one stack, not one per branch. Core's position names
+// the dossier's first message on every reply; the branches that name one gather under the oldest loaded head, or under
+// that first message where the page has loaded it, whatever is loaded between.
+test('the branches of one dossier whose fork sits above the loaded page are one stack: one name, one count, its replies in time order', () => {
+  const at = (root, name, acts = 3) => ({ root_id: root, through: null, below: false, aside_revision: 0, name, name_revision: name ? 1 : 0, at: { acts, messages: 0 } });
+  const minted = { text: 'Lantern repair plan', by: 'agent-a', at_ms: 1, minted: true };
+  const lantern = extra => ({ stack_position: at('m1', minted), ...extra });
+  // m1, the lantern dossier's first message, and m9, a fork under it, are above the page. m10, m11 and m13 answer m1
+  // itself; m15 answers m9; m12 and m14 answer m10 and m11.
+  const branches = [message(10, lantern({ reply_to: 'm1' })), message(11, lantern({ reply_to: 'm1', author_id: 'agent-b' })), message(12, lantern({ reply_to: 'm10' })),
+    message(13, lantern({ reply_to: 'm1' })), message(14, lantern({ reply_to: 'm11' })), message(15, lantern({ reply_to: 'm9' }))];
+  // m2, another dossier above the page, with no name of its own; m20, a dossier whose first message is loaded.
+  const other = [message(16, { reply_to: 'm2', stack_position: at('m2', null) }), message(17, { reply_to: 'm16', stack_position: at('m2', null) })];
+  const loaded = [message(20, { stack_position: at('m20', null) }), message(21, { reply_to: 'm20', stack_position: at('m20', null) })];
+  const stacks = stacksOf([...branches, ...other, ...loaded]);
+  const lanterns = stacks.filter(stack => headOf(stack).name === 'Lantern repair plan');
+  assert.equal(lanterns.length, 1, 'the dossier is one stack: its name shows once');
+  const [one] = lanterns;
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m10', ['m11', 'm12', 'm13', 'm14', 'm15']], 'the oldest loaded head, every other reply oldest first');
+  assert.deepEqual([headOf(one).count, headOf(one).mintedBy, headOf(one).repliers], [5, 'agent-a', ['agent-b', 'agent-a']], 'one count, its minted name\'s agent, who replied');
+  assert.equal(positionOf(one).root_id, 'm1');
+  assert.deepEqual(ids(stacks.map(stack => stack.head)), ['m20', 'm16', 'm10'], 'three stacks: the lantern dossier sits where its newest reply does');
+  // The negatives: another dossier stays its own, under its own first line and no minted name.
+  const second = stacks.find(stack => stack.id === 'm16');
+  assert.deepEqual([ids(second.replies), headOf(second).name, headOf(second).mintedBy], [['m17'], 'Message 16', null], 'another dossier is its own stack and takes no other name');
+  // A dossier whose first message is loaded reads as it did.
+  assert.deepEqual(ids(stacks.find(stack => stack.id === 'm20').replies), ['m21']);
+  // More: the fork m9 loads, then the first message; the dossier stays one stack, never split or doubled.
+  const fork = message(9, lantern({ reply_to: 'm1' }));
+  const withFork = stacksOf([fork, ...branches, ...other, ...loaded]);
+  assert.deepEqual(withFork.filter(stack => headOf(stack).name === 'Lantern repair plan').map(stack => [stack.head.id, ids(stack.replies)]),
+    [['m9', ['m10', 'm11', 'm12', 'm13', 'm14', 'm15']]], 'the fork loaded: one stack under it');
+  const root = message(1, { acts: { name: minted }, stack_position: at('m1', minted) });
+  const whole = stacksOf([root, fork, ...branches, ...other, ...loaded]);
+  assert.deepEqual(whole.filter(stack => headOf(stack).name === 'Lantern repair plan').map(stack => [stack.head.id, stack.replies.length]), [['m1', 7]], 'the first message loaded: one stack under it');
+  // The first message loaded and the fork not (two runs of the page with a gap between): m15 goes into m1's stack.
+  const gap = stacksOf([root, ...branches]);
+  assert.deepEqual(gap.map(stack => [stack.head.id, ids(stack.replies)]), [['m1', ['m10', 'm11', 'm12', 'm13', 'm14', 'm15']]], 'the root loaded, the fork not: one stack');
+  // The reader's own reply under the dossier's first message does not lift it, as in any stack.
+  const mine = ordered(gather([...branches, message(25), message(30, lantern({ reply_to: 'm1', author_id: 'owner' }))], { viewer: 'owner' }));
+  assert.deepEqual(mine.map(stack => [stack.head.id, stack.replies.length]), [['m25', 0], ['m10', 6]], 'the reader\'s own reply joins the dossier and leaves it where it was');
+  // A split not yet answered: the head carries positions Core read before it, naming the dossier it left. It gathers
+  // nothing by them and takes none of its name.
+  const split = stacksOf([...branches, message(40, { reply_to: 'm39', moving: true, acts: { joined: null, name: { text: 'Its own', by: 'owner', at_ms: 1 } }, stack_position: at('m1', minted) }),
+    message(41, lantern({ reply_to: 'm40' }))]);
+  const out = split.find(stack => stack.id === 'm40');
+  assert.deepEqual([ids(out.replies), positionOf(out), headOf(out).name], [['m41'], null, 'Its own'], 'a split not yet answered stays out, under its own name');
+  assert.equal(split.filter(stack => headOf(stack).name === 'Lantern repair plan').length, 1);
+});
+
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {
   const items = [message(1), message(2), message(3, { reply_to: 'm1' }), message(4)];
   const stacks = stacksOf(items);

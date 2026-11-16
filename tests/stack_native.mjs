@@ -1100,10 +1100,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  // Item 378, the count where Core's dossier is drawn as more than one stack: its first message is older than the page
-  // loaded, and two of its replies on the page are two stacks. The button moves the whole dossier, both stacks, so its
-  // count names both stacks' messages; a message of another dossier stays where it is.
-  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, where the page draws it as two stacks, its first message not loaded', async () => {
+  // Item 378, the count where Core's dossier's first message is older than the page loaded: two of its replies on the
+  // page are its two branches, which the page draws as one stack (item 550). The button moves the whole dossier, so
+  // its count names both answers; a message of another dossier stays where it is.
+  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, its first message not loaded and its two answers one stack', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-archive-split-' + device;
       const said = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'An old question everyone answers.', read: true }]];
@@ -1115,10 +1115,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const shownId = id => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${id}"]')?.getClientRects().length)`);
       const drawn = () => p.evaluate(`[${JSON.stringify(ids.a)},${JSON.stringify(ids.b)},${JSON.stringify(ids.f29)}].map(id=>Boolean(document.querySelector('#messages [data-id="'+id+'"]')?.getClientRects().length))`);
       await becomes(drawn, [true, true, true], `${device}: both answers and the newest filler are drawn`);
-      // The page as this case needs it: the dossier's first message not loaded, and its two answers in two stacks.
+      // The page as this case needs it: the dossier's first message not loaded, and its two answers one stack (item 550).
       assert.deepEqual(await p.evaluate(`(()=>{const own=id=>document.querySelector('#messages [data-id="'+id+'"]'),stackOf=id=>own(id).closest('.reply-stack')?.dataset.stack??id;
-        return {root:Boolean(own(${JSON.stringify(ids.root)})),apart:stackOf(${JSON.stringify(ids.a)})!==stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, apart: true },
-        `${device}: the old question is not loaded, and its two answers are two stacks`);
+        return {root:Boolean(own(${JSON.stringify(ids.root)})),together:stackOf(${JSON.stringify(ids.a)})===stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, together: true },
+        `${device}: the old question is not loaded, and its two answers are one stack`);
       const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed')}))(document.querySelector('#reader-aside'))`);
       await openReader(p, device, ids.b, 'Second answer');
       for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
@@ -1134,6 +1134,73 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await closeReader(p, device);
       await becomes(drawn, [false, false, true], `${device}: both answers went below More, as the count said, and the filler stays`);
       assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.f29] })).items[0].stack_position.below, false, `${device}: Core moved no other dossier`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: one dossier is one stack, whatever of it is loaded. The lantern dossier's first message and the fork
+  // under it are older than the page loads; replies made straight under the first message, and under the fork, are
+  // the page's. Before this item each such branch was a stack of its own, and each took the dossier's minted name.
+  // Read as a person sees it on a laptop and by a finger at 320, 375 and 390, light and dark: the name shows once,
+  // every loaded reply is in its stack, and its count is right. Another dossier above the page stays its own, under
+  // its own first line and no "Named by"; a dossier whose first message is loaded reads as before; Earlier messages,
+  // pressed twice (the fork loads, then the first message), never splits or doubles the dossier.
+  await check('reading stacks one dossier whose fork sits above the loaded page is one stack: its name once, every loaded reply in it, its count right; another dossier stays its own, and Earlier messages neither splits nor doubles it (item 550)', async () => {
+    const minter = 'aim-ux', words = 'Lantern hinge repair';
+    const lantern = ['a1', 'b1', 'a2', 'c1', 'b2', 'c2'];
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-one-dossier-' + device;
+      const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+      const said = [['root', say(other, 'Can the lantern shop mend the brass hinge by Thursday?', { join: true })],
+        ['ferry', say(other, 'Who keeps the ferry timetable this month?')]];
+      for (let n = 0; n < 30; n++) said.push(['g' + n, say(other, `Harbour note ${n}, a message of its own.`)]);
+      said.push(['fork', say(minter, 'The shop opens at nine; I will ask about the hinge.', { join: true, reply_to: 'root' })]);
+      for (let n = 0; n < 29; n++) said.push(['f' + n, say(other, `Market note ${n}, a message of its own.`)]);
+      said.push(['a1', say(minter, 'The smith can solder it on Wednesday.', { reply_to: 'root' })],
+        ['b1', say(other, 'Ask whether the glass is covered too.', { reply_to: 'root' })],
+        ['a2', say(other, 'Wednesday suits; book it.', { reply_to: 'a1' })],
+        ['c1', say(other, 'Nine is too late for me; can you go at eight?', { reply_to: 'fork' })],
+        ['s1', say(other, 'I can keep it until the twentieth.', { reply_to: 'ferry' })],
+        ['b2', say(minter, 'The glass is covered; only the hinge is extra.', { reply_to: 'b1' })],
+        ['c2', say(minter, 'Eight works; I will go first thing.', { reply_to: 'c1' })],
+        ['s2', say(minter, 'Thanks; I will take it after that.', { reply_to: 's1' })],
+        ['near', say(other, 'Bring a spare wick to the shop?')],
+        ['near1', say(minter, 'Two spare wicks are in the drawer.', { reply_to: 'near' })]);
+      const ids = await seed(topic, said);
+      // The first agent to reply mints the lantern dossier's name; the ferry dossier keeps its first line.
+      const minted = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-mint`, args: { name: words, minted: true } });
+      assert.equal(minted.status, 'committed', `${device}: the namer mints the lantern dossier's name`);
+      const p = await open(topic, device, topic, ids.near1);
+      // The page as a person reads it: each tab drawn, by its name, mark and count; which stack each message is in.
+      const look = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},own=k=>document.querySelector('#messages [data-id="'+ids[k]+'"]');
+        const stackOf=k=>{const e=own(k);return e?(e.closest('.reply-stack')?.dataset.stack??ids[k]):null},key=id=>Object.keys(ids).find(k=>ids[k]===id)??id;
+        const tabs=[...document.querySelectorAll('#messages .reply-stack .stack-head')].filter(r=>r.getClientRects().length)
+          .map(r=>({stack:key(r.closest('.reply-stack').dataset.stack),name:r.querySelector('.stack-name').textContent,named:Boolean(r.querySelector('.stack-named')),count:r.querySelector('.stack-count').textContent}));
+        const lantern=${JSON.stringify(lantern)}.concat(own('fork')?['fork']:[],own('root')?['root']:[]);
+        return {loaded:{root:Boolean(own('root')),fork:Boolean(own('fork'))},named:tabs.filter(t=>t.name===${JSON.stringify(words)}),
+          lantern:[...new Set(lantern.map(stackOf).map(key))],ferry:[stackOf('s1'),stackOf('s2')].map(key),near:[stackOf('near'),stackOf('near1')].map(key),
+          ferryTab:tabs.find(t=>t.stack===key(stackOf('s2')))??null,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const ferryTab = (stack, name, count = '1 reply') => ({ stack, name, named: false, count });
+      const stages = [
+        { loaded: { root: false, fork: false }, head: 'a1', count: '5 replies', ferry: ferryTab('s1', 'I can keep it until the twentieth.') },
+        { loaded: { root: false, fork: true }, head: 'fork', count: '6 replies', ferry: ferryTab('s1', 'I can keep it until the twentieth.') },
+        { loaded: { root: true, fork: true }, head: 'root', count: '7 replies', ferry: ferryTab('ferry', 'Who keeps the ferry timetable this month?', '2 replies') }];
+      for (const [at, stage] of stages.entries()) {
+        if (at) {
+          const cards = await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+          await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+          await until(async () => (await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`)) > cards, `${device}: Earlier messages reads an older page`);
+        }
+        const want = { loaded: stage.loaded, named: [{ stack: stage.head, name: words, named: true, count: stage.count }], lantern: [stage.head],
+          ferry: [stage.ferry.stack, stage.ferry.stack], near: ['near', 'near'], ferryTab: stage.ferry, sideways: false };
+        for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+          if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await becomes(look, want, `${device} ${width}, ${['the first message and the fork above the page', 'the fork loaded', 'the first message loaded'][at]}: the lantern dossier is one stack under ${stage.head}, its name once with its mark and ${stage.count}; the ferry dossier is its own under its first line; the loaded dossier reads as before`);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-one-dossier-${device}-${width}-${at}-${theme}`); }
+          await dossierTheme(p, 'light');
+        }
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      }
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
