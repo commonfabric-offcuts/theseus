@@ -373,6 +373,19 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
+def scope_basis(config, sha):
+    """For a scoped summary (item 608): the live commit, the paths changed since it, and the native steps those changes
+    touch at SHA, chosen again here by tools/steps_for.py from the live checkout's git, never taken from the summary."""
+    if config.outcome:
+        raise release_check.Refused("measuring %s reads every step, so run the whole release check" % config.outcome)
+    head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
+    if head.returncode != 0:
+        raise release_check.Refused("the live commit cannot be read: %s" % head.stderr.strip())
+    live, git = head.stdout.strip(), (lambda root, *args: run(["git", "-C", str(root)] + list(args)))
+    changed, chosen, _ = release_check.scope(config.live, live, sha, git)
+    return live, changed, chosen
+
+
 def live_policy(config, base):
     """.github/check-baseline.json at BASE, the live commit, read from the live checkout's git (never the candidate's
     copy); None when BASE keeps none. A read that fails is refused, not taken as no policy."""
@@ -647,8 +660,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # 0. A merged train (items 481, 482), or a summary of exactly this commit; otherwise nothing is touched.
     trained = take_train(config, sha, evidence, train, known_reds, github) if train is not None else None
     # A summary whose steps failed is still measured (7.2 step 1). One that skipped steps is taken only when what
-    # changed since the live commit, read here, lets them be skipped.
-    foreign, unpassed = release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha)) if trained is None else ([], [])
+    # changed since the live commit, read here, lets them be skipped; one scoped to a small fix only when the steps
+    # that change touches, chosen again here, all ran (item 608).
+    foreign, unpassed = (release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha), lambda: scope_basis(config, sha))
+                         if trained is None else ([], []))
     reasons = foreign + unpassed
     # Item 178: failed browser cases the live commit fails too, each listed, are known reds; they stay failures.
     known = None
@@ -660,7 +675,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
             known = {"file": str(known_reds), "refused": str(refusal)}
     if trained is None:
         record(evidence, "00-release-check", dict({"summary": str(summary), "commit": sha, "passed": not reasons,
-                                                   "reasons": reasons, "skipped": release_check.skipped_of(summary)},
+                                                   "reasons": reasons, "skipped": release_check.skipped_of(summary),
+                                                   "scoped": release_check.skipped_of(summary, "scoped")},
                                                   **({"known_reds": known} if known_reds is not None else {})))
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
     require(not foreign, unchecked)

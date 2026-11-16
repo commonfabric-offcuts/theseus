@@ -16,9 +16,10 @@ claim after the revert ships it again. Other Train-Item values are display only.
 
 Usage: tools/releases.py attach-judgment RELEASE --config CONFIG.json --runs ID[,ID] --checks ID[,ID] --audit MESSAGE
 
-attaches the hosted judgment of an ordinary merged train's release, once it has
-landed, to that release's record in the live instance (docs/tools.md, "A merged
-train"): each run and check, read from GitHub, completed and naming that
+attaches the hosted judgment of an ordinary merged train's release, or the full
+run of a release deployed on a scoped run (item 608), once it has landed, to
+that release's record in the live instance (docs/tools.md, "A merged train" and
+"A small fix"): each run and check, read from GitHub, completed and naming that
 release's commit as its head. Nothing else in the record changes.
 """
 
@@ -32,6 +33,7 @@ import tempfile
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aim_next.releases import judgment_pending
 from tools import train as train_check
 
 NUMBER = re.compile(r"[1-9][0-9]*")
@@ -119,9 +121,22 @@ def measurements(summary, known_reds=()):
                        "total": sum(step["total"] for step in native.values()), "steps": native},
             # Item 166: a release whose check skipped the browser modes and the replay says so beside their empty counts.
             **({"skipped": {key: summary["skipped"].get(key) for key in ("live", "why")}} if isinstance(summary.get("skipped"), dict) else {}),
+            # Item 608: a small fix deployed on a scoped run keeps the browser steps it ran and those it did not, and says
+            # its full run, which follows on the deployed head, is pending; that run is attached beside the record.
+            **({"scoped": scoped(summary)} if isinstance(summary.get("scoped"), dict) else {}),
             **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why", "taken_by")}
                                 for red in known_reds]}
                if known_reds else {})}
+
+
+def scoped(summary):
+    """A scoped summary's record (item 608): the live commit it was scoped beside, the paths changed, the browser steps
+    that ran and those that did not, from the steps it lists and the steps it was required to run, and the full run
+    pending."""
+    ran = [step.get("name") for step in summary.get("steps") or [] if isinstance(step, dict) and str(step.get("name")).startswith("native-")]
+    native = [name for name in summary.get("required") or [] if str(name).startswith("native-")]
+    return {"live": summary["scoped"].get("live"), "changed": list(summary["scoped"].get("changed") or [])[:20], "steps": ran,
+            "not_run": [name for name in native if name not in ran], "full_judgment": "pending"}
 
 
 def train_measurements(train):
@@ -154,9 +169,8 @@ def attach_judgment(config, number, runs, checks, audit, github):
     if not found:
         raise train_check.Refused("the live instance records no release %d" % number)
     record = found[0]
-    measured = (record.get("measurements") or {}).get("train") or {}
-    if measured.get("kind") != "ordinary" or measured.get("judgment") != "pending":
-        raise train_check.Refused("release %d's record does not say its hosted judgment is pending" % number)
+    if not judgment_pending(record.get("measurements")):
+        raise train_check.Refused("release %d's record does not say its hosted judgment or its full run is pending" % number)
     judgment = train_check.on_commit(github, config.repository, {"producer_runs": runs, "verdict_checks": checks, "audit": audit},
                                      record["commit"], "release %d's commit" % number)
     with tempfile.TemporaryDirectory() as folder:
@@ -173,7 +187,8 @@ def main(argv=None, github=None):
     from tools import deploy
     parser = argparse.ArgumentParser(prog="tools/releases.py", description="Release records: attach a hosted judgment.")
     verbs = parser.add_subparsers(dest="verb", required=True)
-    attach = verbs.add_parser("attach-judgment", help="attach an ordinary release's hosted judgment once it has landed")
+    attach = verbs.add_parser("attach-judgment", help="attach an ordinary train's hosted judgment, or a scoped release's full "
+                              "run, once it has landed")
     attach.add_argument("release", type=int)
     attach.add_argument("--config", required=True)
     words = lambda text: [int(part) for part in text.split(",") if part.strip()]

@@ -95,6 +95,78 @@ def good_summary(commit):
             "steps": [{"name": name, "exit": 0, "passed": True} for name in release_check.REQUIRED]}
 
 
+# Item 608: a repository whose release check names three real steps of the persistence harness, each of whose cases
+# reads one class of the page's CSS, so tools/steps_for.py chooses exactly the step whose case reads what a change touches.
+SCOPED_RELEASE_CHECK = """import collections
+NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
+PERSISTENCE = "tests/reader_persistence_native.mjs"
+UNIT_STEPS = ("python-units", "node-units")
+NATIVE_STEPS = tuple([NativeStep(mode, PERSISTENCE, ("--" + mode,), "native.json") for mode in ("health", "colors", "rail")])
+"""
+SCOPED_HARNESS = """const [chromePath, evidencePath, mode = '--health'] = process.argv.slice(2);
+const check = async (name, action) => {
+  if (mode === '--health' && !name.startsWith('health ')) return;
+  if (mode === '--colors' && !name.startsWith('colors ')) return;
+  if (mode === '--rail' && !name.startsWith('rail ')) return;
+  await action();
+};
+await check('health the release line says its full run', async () => {
+  await page.evaluate(`document.querySelector('.release-line').textContent`);
+});
+await check('colors a reply keeps its colour', async () => {
+  await page.evaluate(`document.querySelector('.reply').style.color`);
+});
+await check('rail the outline opens', async () => {
+  await page.evaluate(`document.querySelector('#outline').open`);
+});
+"""
+SCOPED_CSS = ".release-line{color:black}\n.reply{color:blue}\n#outline{margin:0}\n"
+SCOPED_FILES = {"tools/release_check.py": SCOPED_RELEASE_CHECK, release_check.PERSISTENCE: SCOPED_HARNESS, "web/aim.css": SCOPED_CSS,
+                "web/app.mjs": "export const quiet = 1;\n", "docs/tools.md": "# Tools\n", "tools/checks.py": "# trials\n"}
+# What the health step's case reads, changed: the small fix these checks deploy.
+HEALTH_FIX = {"web/aim.css": SCOPED_CSS.replace("color:black", "color:#222"), "docs/health.md": "# Health\n"}
+
+
+def commit_files(root, files, remove=()):
+    """Write files and remove paths in the git checkout root, and commit them; the new commit."""
+    for path, text in files.items():
+        (Path(root) / path).parent.mkdir(parents=True, exist_ok=True)
+        (Path(root) / path).write_text(text)
+    for path in remove:
+        (Path(root) / path).unlink()
+    for argv in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "change"]):
+        subprocess.run(["git", "-C", str(root)] + argv, check=True, capture_output=True)
+    return release_check.tree(root)[0]
+
+
+def scoped_repository(root):
+    """root as a new git repository holding SCOPED_FILES at its one commit, the live commit; that commit."""
+    Path(root).mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "-C", str(root), "init", "-q"], check=True, capture_output=True)
+    return commit_files(root, SCOPED_FILES)
+
+
+def scoped_change(root, live, files, remove=()):
+    """A commit on top of live changing files; the checkout goes back to live, where a live checkout sits while the
+    deploy reads ahead to the commit it deploys."""
+    commit = commit_files(root, files, remove)
+    subprocess.run(["git", "-C", str(root), "checkout", "-q", "--detach", live], check=True, capture_output=True)
+    return commit
+
+
+def scoped_summary(commit, live, chosen, changed, ran=None):
+    """A passed scoped summary (release_check.check with scoped=live) of commit: the units, the deploy's refusals, the
+    wake replay and the steps ran (default chosen), each browser step run whole, as the release check runs it."""
+    native = {"native-" + step.name: step for step in release_check.NATIVE_STEPS}
+    names = [name for name in release_check.REQUIRED if name not in native or name in (chosen if ran is None else ran)]
+    steps = [dict({"name": name, "exit": 0, "passed": True},
+                  **({"argv": ["/usr/bin/node", native[name].harness, "/x/chrome", "/out/native/" + name[7:]] + list(native[name].flags)}
+                     if name in native else {})) for name in names]
+    return {"tool": release_check.TOOL, "commit": commit, "tree_unchanged": True, "passed": True, "required": list(release_check.REQUIRED),
+            "steps": steps, "scoped": {"steps": list(chosen), "live": live, "changed": list(changed),
+                                       "not_run": [name for name in native if name not in chosen], "why": "a small fix"}}
+
+
 class FakeCheckout(unittest.TestCase):
     """A committed checkout holding the harness files, and stub interpreters."""
 
@@ -547,6 +619,174 @@ class ReleaseCheckSkips(FakeCheckout):
         foreign, unpassed = release_check.judge_summary(path, self.commit, lambda: (self.live, []))
         self.assertIn("skipped steps it never skips together", foreign[0])
         self.assertIn("the release check did not run native-journal", unpassed)
+
+
+class ReleaseCheckScoped(FakeCheckout):
+    """Item 608: with --scoped LIVE, a small fix runs the units, the deploy's refusals, the wake replay and only the
+    browser steps its files touch since LIVE, chosen by tools/steps_for.py from the rules at the commit; the summary says
+    which did not run, and only a reader that chooses those steps again itself takes it."""
+
+    def setUp(self):
+        super().setUp()
+        self.live = commit_files(self.root, SCOPED_FILES)
+
+    def scoped(self, files, remove=(), name="out"):
+        self.commit = commit_files(self.root, files, remove)
+        self.out = Path(self.tmp.name) / name
+        with mock.patch.dict(os.environ, {"STUB_FAIL": ""}), redirect_stdout(io.StringIO()):
+            return release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node, "/stub/playwright-core",
+                                       scoped=self.live)
+
+    def test_scope_chooses_the_steps_whose_cases_read_what_changed_from_the_rules_at_the_commit(self):
+        cases = (("the release line", HEALTH_FIX, ["native-health"]),
+                 ("a reply's colour", {"web/aim.css": SCOPED_CSS.replace("color:blue", "color:navy")}, ["native-colors"]),
+                 ("docs alone", {"docs/tools.md": "# Tools, again\n"}, []))
+        for case, files, steps in cases:
+            with self.subTest(case):
+                commit = commit_files(self.root, files)
+                changed, chosen, notes = release_check.scope(self.root, self.live, commit)
+                self.assertEqual((sorted(changed), chosen), (sorted(files), steps))
+                subprocess.run(["git", "-C", str(self.root), "reset", "-q", "--hard", self.live], check=True)
+        with self.assertRaises(release_check.Refused) as refused:
+            release_check.scope(self.root, "f" * 40, self.live)
+        self.assertIn("cannot be read", str(refused.exception))
+
+    def test_a_small_fix_runs_the_units_the_refusals_the_replay_and_the_steps_it_touches_and_says_what_did_not_run(self):
+        summary = self.scoped(HEALTH_FIX)
+        ran = [step["name"] for step in summary["steps"]]
+        self.assertEqual(ran, ["python-units", "node-units", release_check.DEPLOY_REFUSALS, "native-health", release_check.WAKE_REPLAY])
+        self.assertTrue(summary["passed"], "every step it ran passed")
+        scoped = summary["scoped"]
+        self.assertEqual((scoped["steps"], scoped["live"], sorted(scoped["changed"])), (["native-health"], self.live, ["docs/health.md", "web/aim.css"]))
+        native = ["native-" + step.name for step in release_check.NATIVE_STEPS]
+        self.assertEqual(scoped["not_run"], [name for name in native if name != "native-health"])
+        self.assertIn("the other %d did not" % (len(native) - 1), scoped["why"])
+        self.assertTrue(release_check.ran_whole(summary["steps"][3]), "the chosen step ran every case of its mode")
+        self.assertEqual(summary["steps"][3]["argv"][1:], [release_check.PERSISTENCE, "/x" + release_check.CHROME_SUFFIX,
+                                                            str(self.out / "native" / "health"), "--health"])
+        path = self.out / "summary.json"
+        # Nothing but a reader that chooses the steps again takes it: verify_summary does not.
+        [said] = release_check.verify_summary(path, self.commit)
+        self.assertIn("only the browser steps a small fix touches beside the live commit %s; only the deploy" % self.live, said)
+        chose = lambda: (self.live,) + release_check.scope(self.root, self.live, self.commit)[:2]
+        self.assertEqual(release_check.judge_summary(path, self.commit, None, chose), ([], []))
+        self.assertEqual(release_check.skipped_of(path, "scoped"), scoped["why"])
+
+    def test_a_scoped_run_refuses_what_is_not_a_small_fix_before_running_anything(self):
+        cases = (("a tool", {"tools/checks.py": "# trials, again\n"}, "tools/checks.py changed, which a small fix never changes"),
+                 ("the controller", {".github/workflows/checks.yml": "on: push\n"}, ".github/workflows/checks.yml changed"),
+                 ("a script", {"bin/aim-next": "# again\n"}, "bin/aim-next changed"),
+                 ("the migrations", {"aim_next/migrations.py": "# steps\n"}, "aim_next/migrations.py changed"),
+                 ("too many files", {"docs/n%d.md" % n: "# %d\n" % n for n in range(release_check.SMALL_FIX_FILES + 1)},
+                  "%d files changed, more than a small fix's %d" % (release_check.SMALL_FIX_FILES + 1, release_check.SMALL_FIX_FILES)))
+        for case, files, words in cases:
+            with self.subTest(case):
+                with self.assertRaises(release_check.Refused) as refused:
+                    self.scoped(files, name="out-" + case.replace(" ", "-"))
+                self.assertIn(words, str(refused.exception))
+                self.assertFalse((self.out / "summary.json").exists())
+                subprocess.run(["git", "-C", str(self.root), "reset", "-q", "--hard", self.live], check=True)
+        # The bound's edge: as many files as a small fix may change is one.
+        self.assertEqual(release_check.small_fix_problems(["docs/n%d.md" % n for n in range(release_check.SMALL_FIX_FILES)]), [])
+        for only, live in ((["node-units"], None), (None, self.live)):
+            with self.subTest(only=only, live=live), self.assertRaises(release_check.Refused) as refused:
+                release_check.check(self.root, Path(self.tmp.name) / "out-both", "/x" + release_check.CHROME_SUFFIX, self.python, self.node,
+                                    "/stub/playwright-core", only=only, live=live, scoped=self.live)
+            self.assertIn("give it alone", str(refused.exception))
+
+
+class JudgeScoped(unittest.TestCase):
+    """Item 608: judge_summary takes a scoped summary only through scope, the reader's own choice of the steps: the same
+    live commit, a small fix, every chosen step run whole and once, and the units, the deploy's refusals and the wake
+    replay present and passed. Only the browser steps not chosen may be missing."""
+
+    live, commit, changed = "b" * 40, "c" * 40, ["web/aim.css", "docs/health.md"]
+
+    def judged(self, summary, scope):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "summary.json"
+            path.write_text(json.dumps(summary))
+            return release_check.judge_summary(path, self.commit, None, scope)
+
+    def health(self, summary):
+        [step] = [step for step in summary["steps"] if step["name"] == "native-health"]
+        return step
+
+    def agreeing(self, chosen=("native-health",), changed=None, live=None):
+        return lambda: (live or self.live, list(self.changed if changed is None else changed), list(chosen))
+
+    def test_a_scoped_summary_is_taken_when_the_readers_own_choice_agrees(self):
+        summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        self.assertEqual(self.judged(summary, self.agreeing()), ([], []))
+        # A step it ran beyond the choice is judged like any other; one that failed is a reason.
+        more = scoped_summary(self.commit, self.live, ["native-health"], self.changed, ran=["native-health", "native-colors"])
+        self.assertEqual(self.judged(more, self.agreeing()), ([], []))
+        [colors] = [step for step in more["steps"] if step["name"] == "native-colors"]
+        colors.update(passed=False, exit=1)
+        self.assertEqual(self.judged(more, self.agreeing()), ([], ["native-colors failed (exit 1)"]))
+
+    def test_a_step_the_change_touches_that_it_did_not_run_is_refused_whatever_the_summary_says_it_chose(self):
+        # The summary says it chose only native-health; the reader's own choice from what changed touches native-colors too.
+        summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        foreign, _ = self.judged(summary, self.agreeing(chosen=("native-health", "native-colors")))
+        self.assertEqual(len(foreign), 1)
+        self.assertIn("but what changed since then touches native-colors, which it did not run", foreign[0])
+        # Even a summary that says it chose none of them.
+        none = scoped_summary(self.commit, self.live, [], self.changed)
+        self.assertIn("touches native-health, which it did not run", self.judged(none, self.agreeing())[0][0])
+
+    def test_a_change_outside_the_small_fix_bound_is_refused(self):
+        summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        for changed, words in ((self.changed + ["tools/deploy.py"], "tools/deploy.py changed, which a small fix never changes"),
+                               (self.changed + ["aim_next/migrations.py"], "aim_next/migrations.py changed"),
+                               (["web/f%d.mjs" % n for n in range(release_check.SMALL_FIX_FILES + 1)], "more than a small fix's")):
+            with self.subTest(words):
+                foreign, _ = self.judged(summary, self.agreeing(changed=changed))
+                self.assertIn(words, foreign[0])
+        # The service's own code is inside the bound.
+        self.assertEqual(self.judged(summary, self.agreeing(changed=["aim_next/health.py", "web/health.mjs"])), ([], []))
+
+    def test_a_chosen_step_must_have_run_whole_and_once(self):
+        filtered = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        self.health(filtered)["argv"].append("health the release line")
+        self.assertIn("native-health did not run whole", self.judged(filtered, self.agreeing())[0][0])
+        bare = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        del self.health(bare)["argv"]
+        self.assertIn("native-health did not run whole", self.judged(bare, self.agreeing())[0][0])
+        twice = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        twice["steps"].append(dict(self.health(twice)))
+        self.assertIn("lists native-health more than once", self.judged(twice, self.agreeing())[0][0])
+
+    def test_the_units_the_deploys_refusals_and_the_wake_replay_stay_required(self):
+        for name in ("python-units", "node-units", release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY):
+            with self.subTest(name):
+                summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+                summary["steps"] = [step for step in summary["steps"] if step["name"] != name]
+                self.assertEqual(self.judged(summary, self.agreeing()), ([], ["the release check did not run %s" % name]))
+
+    def test_without_the_readers_choice_another_live_commit_or_a_choice_that_cannot_be_made_nothing_is_taken(self):
+        summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        self.assertIn("only the deploy, choosing those steps again", self.judged(summary, None)[0][0])
+        self.assertIn("but %s is live; run the release check again" % ("a" * 40), self.judged(summary, self.agreeing(live="a" * 40))[0][0])
+
+        def unreadable():
+            raise release_check.Refused("git is gone")
+        self.assertIn("and that cannot be taken: git is gone", self.judged(summary, unreadable)[0][0])
+        both = dict(summary, skipped={"steps": list(release_check.SKIPPABLE), "live": self.live})
+        self.assertIn("both skipped and scoped", self.judged(both, self.agreeing())[0][0])
+        self.assertIn("is not one it writes", self.judged(dict(summary, scoped=["native-health"]), self.agreeing())[0][0])
+        only = dict(summary, only=["native-health"])
+        self.assertIn("ran only native-health", self.judged(only, self.agreeing())[0][0])
+
+    def test_the_release_record_keeps_the_steps_not_run_and_its_full_run_pending(self):
+        from tools import releases
+        summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
+        record = releases.measurements(summary)
+        native = ["native-" + step.name for step in release_check.NATIVE_STEPS]
+        self.assertEqual(record["scoped"], {"live": self.live, "changed": self.changed, "steps": ["native-health"],
+                                            "not_run": [name for name in native if name != "native-health"], "full_judgment": "pending"})
+        self.assertEqual(sorted(record["native"]["steps"]), ["health"], "only the step that ran is counted")
+        self.assertNotIn("scoped", releases.measurements(good_summary(self.commit)), "a whole run's record is not scoped")
 
 
 class EveryCheckHasItsStep(unittest.TestCase):

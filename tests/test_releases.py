@@ -276,6 +276,76 @@ class HealthOfATrainRelease(ReleaseCase):
         self.assertEqual((latest["release"], latest["check"], latest["train"]), (20, None, None))
 
 
+def scoped(full_judgment="pending"):
+    """The measurements of a release deployed on a scoped run (item 608, tools/releases.py measurements): its release
+    check's counts, of the units and the one browser step it ran, and the steps it did not run."""
+    return {"release_check": {"commit": A, "started_at": "2026-11-16T09:00:00-08:00", "finished_at": "2026-11-16T09:40:00-08:00"},
+            "python_units": {"tests": 1106}, "node_units": {"tests": 740, "pass": 740},
+            "native": {"pass": 12, "total": 12, "steps": {"health": {"pass": 12, "total": 12}}},
+            "scoped": {"live": B, "changed": ["web/aim.css", "docs/health.md"], "steps": ["native-health"],
+                       "not_run": ["native-journal", "native-colors", "native-rail"], "full_judgment": full_judgment}}
+
+
+class ScopedFullRun(ReleaseCase):
+    """Item 608: a release deployed on a scoped run says its full run is pending, and takes that run's judgment beside
+    its record once it lands, once, never changed; a scoped record that does not say pending takes none."""
+
+    def setUp(self):
+        super().setUp()
+        self.recorded(record(release=20, items=[608], measurements=scoped()))
+        [self.before] = self.releases()["items"]
+
+    def attach(self, value, number=20):
+        return HostedJudgment.attach(self, value, number)
+
+    def refused_attach(self, value, error, number=20):
+        return HostedJudgment.refused_attach(self, value, error, number)
+
+    def test_a_scoped_release_takes_its_full_runs_judgment_once_and_nothing_else_in_its_record_changes(self):
+        self.assertIsNone(self.before["hosted_judgment"])
+        code, answer = self.attach(judgment(conclusion="failure"))
+        self.assertEqual((code, answer.get("attached")), (0, True), answer)
+        [after] = self.releases()["items"]
+        self.assertEqual(after["hosted_judgment"], judgment(conclusion="failure"))
+        self.assertEqual({k: v for k, v in after.items() if k != "hosted_judgment"},
+                         {k: v for k, v in self.before.items() if k != "hosted_judgment"})
+        self.assertEqual(after["measurements"]["scoped"]["full_judgment"], "pending", "the record stays as it was written")
+        self.assertEqual(self.attach(judgment(conclusion="failure"))[1].get("attached"), False, "the same judgment again is the one attached")
+        self.assertIn("never changes", self.refused_attach(judgment(), "RELEASE_JUDGED"))
+        self.refused_attach(judgment(head=C), "JUDGMENT_OF_ANOTHER_COMMIT")
+
+    def test_a_scoped_record_that_does_not_say_its_full_run_is_pending_takes_none(self):
+        self.recorded(record(commit=C, previous=A, items=[609], measurements=scoped(full_judgment="judged")))
+        self.refused_attach(judgment(head=C), "JUDGMENT_NOT_PENDING", 21)
+
+
+class HealthOfAScopedRelease(ReleaseCase):
+    """Item 608: the Health view's latest release, for a release deployed on a scoped run, says how many browser steps
+    ran of the steps there are and that its full run is pending, then what the attached run found; it keeps its
+    release check's counts. Any other release is not scoped."""
+
+    def latest(self):
+        answer = self.store.view("owner", "health", {})
+        self.assertNotIn("error", answer, answer)
+        return answer["release"]
+
+    def test_a_scoped_release_says_its_steps_and_its_full_run_as_it_stands(self):
+        self.recorded(record(release=20, items=[608], measurements=scoped()))
+        latest = self.latest()
+        self.assertEqual(latest.get("scoped"), {"ran": 1, "steps": 4, "judgment": "pending", "succeeded": None, "total": None})
+        self.assertEqual((latest["check"]["python"], latest["check"]["native"], latest["train"]), (1106, {"pass": 12, "total": 12}, None))
+        attached = judgment()
+        attached["verdict_checks"][0]["conclusion"] = "failure"
+        self.store.attach_judgment(20, attached)
+        self.assertEqual(self.latest().get("scoped"), {"ran": 1, "steps": 4, "judgment": "judged", "succeeded": 1, "total": 2})
+
+    def test_a_whole_runs_record_and_a_trains_are_not_scoped(self):
+        self.recorded(record(release=19))
+        self.assertIsNone(self.latest().get("scoped", "missing"))
+        self.recorded(record(commit=C, previous=A, items=[481], measurements=trained()))
+        self.assertIsNone(self.latest().get("scoped", "missing"))
+
+
 class AttachJudgmentTool(ReleaseCase):
     """tools/releases.py attach-judgment: reads the record through the live CLI and each run and check from GitHub, and
     attaches the judgment through the live admin verb. Both are this checkout's own, run as processes."""
@@ -344,6 +414,44 @@ class AttachJudgmentTool(ReleaseCase):
                 self.assertEqual(self.sql("SELECT count(*) FROM release_judgments"), [(0,)])
 
 
+class AttachScopedFullRunTool(ReleaseCase):
+    """Item 608: tools/releases.py attach-judgment attaches a scoped release's full run as it does a train's hosted
+    judgment, read from GitHub, and refuses a release whose record says neither is pending."""
+
+    def setUp(self):
+        super().setUp()
+        import test_tools_train as trains
+        self.trains = trains
+        self.recorded(record(release=20, items=[481], measurements=trained()))
+        raw = {"live": str(ROOT), "instance": str(Path(self.temp.name).resolve()), "server_profile": str(self.profile),
+               "port": 5999, "runner_profile": "r.json", "runner_id": "r", "routes": "routes.json", "python": sys.executable,
+               "release_branch": "release/live73", "repository": trains.REPOSITORY}
+        self.config_path = Path(self.temp.name).resolve() / "deploy.json"
+        self.config_path.write_text(json.dumps(raw))
+        self.recorded(record(commit=C, previous=A, items=[608], measurements=scoped()))
+        self.recorded(record(commit=B, previous=C, items=[609]))
+
+    def tool(self, github, number, runs="301", checks="401"):
+        from tools import releases
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = releases.main(["attach-judgment", str(number), "--config", str(self.config_path), "--runs", runs, "--checks", checks,
+                                  "--audit", "m-audit"], github=github)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_the_tool_attaches_a_scoped_releases_full_run_and_refuses_a_release_with_none_pending(self):
+        listed = self.trains.listed
+        code, out, err = self.tool(self.trains.FakeGitHub(runs=[listed(301, C)], checks=[listed(401, C, "failure")]), 21)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(json.loads(out)["attached"])
+        judged = {item["release"]: item["hosted_judgment"] for item in self.releases()["items"]}
+        self.assertEqual((judged[21]["head"], [found["conclusion"] for found in judged[21]["verdict_checks"]]), (C, ["failure"]))
+        code, out, err = self.tool(self.trains.FakeGitHub(runs=[listed(301, B)], checks=[listed(401, B)]), 22)
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("release 22's record does not say its hosted judgment or its full run is pending", err)
+        self.assertIsNone({item["release"]: item["hosted_judgment"] for item in self.releases()["items"]}[22])
+
+
 class Backfill(ReleaseCase):
     """Releases 18 and 19 shipped before deploys wrote records; docs/releases.md has the one-off command that records them."""
 
@@ -378,7 +486,7 @@ for _name in list(fixtures.StoreCase.__dict__):
         setattr(ReleaseCase, _name, None)
 for _name in list(ReleaseCase.__dict__):
     if _name.startswith("test_"):
-        for _case in (Backfill, HostedJudgment, AttachJudgmentTool):
+        for _case in (Backfill, HostedJudgment, AttachJudgmentTool, ScopedFullRun, HealthOfAScopedRelease, AttachScopedFullRunTool):
             setattr(_case, _name, None)
 # Unbound, or the loader collects the last case twice: once by its name and once as _case.
 del _case, _name

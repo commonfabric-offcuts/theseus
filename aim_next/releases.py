@@ -18,7 +18,10 @@ A release deployed from an ordinary merged train (items 481, 482) says its
 hosted judgment is pending. Once GitHub's judgment of its commit lands, the
 operator attaches it (`bin/aim-next-admin attach-judgment`): a separate fact
 beside the record, written once, which the record's view shows as
-`hosted_judgment`; the record itself stays as it was written.
+`hosted_judgment`; the record itself stays as it was written. A release deployed
+on a scoped run (item 608), a small fix checked on only the browser steps its
+files touch, says its full run is pending the same way, and takes that run's
+judgment beside its record once it lands.
 """
 
 import datetime
@@ -184,6 +187,15 @@ def _judged(entries, name, commit):
                           % (name, entry["id"], entry.get("head_sha"), commit))
 
 
+def judgment_pending(measurements):
+    """Whether a record's measurements say a judgment is attached afterwards: an ordinary merged train's hosted
+    judgment ("judgment": "pending"), or the full run of a release deployed on a scoped run ("full_judgment": "pending")."""
+    measured = measurements if isinstance(measurements, dict) else {}
+    train, scoped = measured.get("train"), measured.get("scoped")
+    return ((isinstance(train, dict) and train.get("kind") == "ordinary" and train.get("judgment") == "pending")
+            or (isinstance(scoped, dict) and scoped.get("full_judgment") == "pending"))
+
+
 def write_judgment(db, number, judgment, now_ms):
     """Attach the hosted judgment to release number, in the caller's write transaction: (the record, whether it was
     attached now). Only a release whose record says its judgment is pending takes one, and only of its own commit;
@@ -192,10 +204,9 @@ def write_judgment(db, number, judgment, now_ms):
     row = db.execute(RECORDS + " WHERE releases.number=?", (number,)).fetchone()
     if row is None:
         raise Refusal("RELEASE_UNKNOWN", "No release %d is recorded" % number)
-    train = (json.loads(row["measurements"]) if row["measurements"] is not None else {}).get("train") or {}
-    if train.get("kind") != "ordinary" or train.get("judgment") != "pending":
+    if not judgment_pending(json.loads(row["measurements"]) if row["measurements"] is not None else None):
         raise Refusal("JUDGMENT_NOT_PENDING", "Release %d's record does not say its hosted judgment is pending; only an "
-                      "ordinary merged train's release takes one afterwards" % number)
+                      "ordinary merged train's release, or one deployed on a scoped run, takes one afterwards" % number)
     if not isinstance(judgment, dict) or set(judgment) != set(JUDGMENT_FIELDS):
         _refuse("A judgment is a JSON object with exactly %s" % ", ".join(JUDGMENT_FIELDS))
     commit = row["commit_sha"]

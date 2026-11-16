@@ -1122,6 +1122,103 @@ class DeployRefuses(DeployCase):
             deploy.main(["--config", str(self.config_path), SHA, str(self.evidence)])
         self.assertEqual(caught.exception.code, 2)
 
+
+class GitHost(FakeHost):
+    """FakeHost, with the live checkout's own git answering what the deploy reads of the change before anything else:
+    the live commit, what changed since it, and the files tools/steps_for.py reads at the commit (item 608)."""
+
+    def __call__(self, argv, **kw):
+        if argv[0] == "git" and argv[3] in ("rev-parse", "diff", "show", "ls-tree"):
+            self.calls.append(argv)
+            return subprocess.run(argv, capture_output=True, text=True, errors="replace")
+        return super().__call__(argv, **kw)
+
+
+class DeployRefusesScoped(DeployCase):
+    """Item 608: a small fix's scoped summary is taken only when the deploy, choosing the steps the change touches again
+    from its own live checkout, finds each chosen step run whole and passed, the units, its refusals and the wake replay
+    passed, and the change inside the small-fix bound; otherwise it is refused before anything stops."""
+
+    def setUp(self):
+        super().setUp()
+        import test_tools_release_check as checks
+        self.checks = checks
+        self.live = checks.scoped_repository(self.config.live)
+
+    def scoped(self, files, chosen=("native-health",), remove=(), **more):
+        """A commit changing files on top of the live commit, and a passed summary of it scoped to chosen."""
+        commit = self.checks.scoped_change(self.config.live, self.live, files, remove)
+        written = self.checks.scoped_summary(commit, self.live, list(chosen), sorted(files), **more)
+        self.summary.write_text(json.dumps(written))
+        return commit, written
+
+    def test_a_small_fix_whose_steps_the_deploy_chooses_again_and_finds_passed_is_taken(self):
+        commit, _ = self.scoped(self.checks.HEALTH_FIX)
+        host = GitHost(self.config, ff=False)
+        self.assertIn("fast-forward", self.refused(host, sha=commit), "taken: the deploy goes on to the live checkout")
+        written = json.loads((self.evidence / "00-release-check.json").read_text())
+        self.assertEqual((written["passed"], written["reasons"]), (True, []))
+        self.assertEqual(written["scoped"], "a small fix")
+        [diff] = [argv for argv in host.ran("diff") if "--name-only" in argv]
+        self.assertEqual(diff[-3:], [self.live, commit, "--"], "the paths are read from the live HEAD to the commit, by the deploy itself")
+        self.assertTrue([argv for argv in host.ran("show") if argv[-1] == "%s:%s" % (commit, release_check.PERSISTENCE)],
+                        "the steps are chosen from the harness at the commit, read by the deploy")
+
+    def test_a_change_that_touches_a_step_the_summary_did_not_run_is_refused_before_anything_stops(self):
+        # The fix touches the reply's colour too, which native-colors' case reads; the summary ran native-health alone,
+        # and says it chose only that.
+        files = dict(self.checks.HEALTH_FIX, **{"web/aim.css": self.checks.SCOPED_CSS.replace("color:black", "color:#222").replace("color:blue", "color:navy")})
+        commit, _ = self.scoped(files)
+        host = GitHost(self.config)
+        refusal = self.refused(host, sha=commit)
+        self.assertIn("the release check has not passed for %s" % commit, refusal)
+        self.assertIn("but what changed since then touches native-colors, which it did not run", refusal)
+        self.assertEqual(self.records(), ["00-release-check"])
+        self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+
+    def test_a_change_outside_the_small_fix_bound_is_refused_before_anything_stops(self):
+        many = {"docs/n%d.md" % n: "# %d\n" % n for n in range(release_check.SMALL_FIX_FILES)}
+        cases = (("a tool", dict(self.checks.HEALTH_FIX, **{"tools/checks.py": "# trials, again\n"}), "tools/checks.py changed, which a small fix never changes"),
+                 ("a migration", dict(self.checks.HEALTH_FIX, **{"aim_next/migrations.py": "# steps\n"}), "aim_next/migrations.py changed"),
+                 ("too many files", dict(self.checks.HEALTH_FIX, **many), "more than a small fix's %d" % release_check.SMALL_FIX_FILES))
+        for case, files, words in cases:
+            with self.subTest(case):
+                commit, _ = self.scoped(files)
+                host = GitHost(self.config)
+                refusal = self.refused(host, sha=commit)
+                self.assertIn(words, refusal)
+                self.assertEqual(self.records(), ["00-release-check"])
+                self.assertFalse(host.ran("ps"))
+
+    def test_a_chosen_step_run_for_one_case_or_a_missing_replay_or_refusals_step_is_refused(self):
+        commit, written = self.scoped(self.checks.HEALTH_FIX)
+        [health] = [step for step in written["steps"] if step["name"] == "native-health"]
+        health["argv"].append("health the release line")
+        self.summary.write_text(json.dumps(written))
+        self.assertIn("native-health did not run whole", self.refused(GitHost(self.config), sha=commit))
+        for name in (release_check.WAKE_REPLAY, release_check.DEPLOY_REFUSALS, "python-units"):
+            with self.subTest(name):
+                commit, written = self.scoped(self.checks.HEALTH_FIX)
+                written["steps"] = [step for step in written["steps"] if step["name"] != name]
+                self.summary.write_text(json.dumps(written))
+                # It describes the commit, so it is refused as not passed, after the checks and before anything stops.
+                host = GitHost(self.config, line=(self.live, commit))
+                refusal = self.refused(host, sha=commit)
+                self.assertIn("the release check has not passed for %s: the release check did not run %s" % (commit, name), refusal)
+                self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
+
+    def test_a_summary_scoped_beside_another_live_commit_or_with_an_outcome_is_refused(self):
+        commit, written = self.scoped(self.checks.HEALTH_FIX)
+        written["scoped"]["live"] = "a" * 40
+        self.summary.write_text(json.dumps(written))
+        self.assertIn("but %s is live; run the release check again" % self.live, self.refused(GitHost(self.config), sha=commit))
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        self.config = deploy.load_config(self.config_path)
+        commit, _ = self.scoped(self.checks.HEALTH_FIX)
+        host = GitHost(self.config)
+        self.assertIn("measuring building-theseus reads every step, so run the whole release check", self.refused(host, sha=commit))
+        self.assertEqual(host.calls, [])
+
 # Item 178: a step of tests/reader_persistence_native.mjs, whose native.json records its fixture's exit, one of
 # tests/reader_native.mjs (results.json, its page served in-process) and the composer's, whose native.json records its
 # fixture's exit and signal and which of its planned phases completed.
