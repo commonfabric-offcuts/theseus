@@ -71,7 +71,8 @@ test('a finder line keeps the choices whose names hold every typed word, and dro
 });
 
 test('a tool page has its own address in its home outcome, and the address reads back to it', () => {
-  const route = parseRoute(new URL('https://x/?workspace=kites&tool=spool'));
+  const parsed = href => { try { return parseRoute(new URL(href)); } catch (error) { return error.message; } };
+  const route = parsed('https://x/?workspace=kites&tool=spool');
   assert.deepEqual(route, { kind: 'tool', id: 'kites', tool: 'spool' });
   assert.equal(routeHref(route), '?workspace=kites&tool=spool');
   assert.equal(toolHref('kites', 'spool'), '?workspace=kites&tool=spool');
@@ -297,7 +298,10 @@ test('Topic settings: a refused tap goes back as it was and says why; a tool lin
   const h = harness(t, { topic_tools: topicTools({ offered: [{ tool_id: 'spool', kind: 'tool', name: 'Spool winder' }],
     linked: [{ tool_id: 'meter', kind: 'tool', name: 'Wind meter', home_workspace_id: 'wind', live: true }] }) }, { refuse: 'A topic can be linked to a tool only in the tool\'s home.' });
   const host = h.dom.host();
-  const chips = new TopicTools({ host, topicId: 't1', instanceId: 'i', read: h.read, send: h.send, doc: h.doc });
+  // The read after the refusal fails too (offline): the chip still goes back as it was.
+  let reads = 0;
+  const read = (...args) => (++reads > 1 ? Promise.reject(new Error('offline')) : h.read(...args));
+  const chips = new TopicTools({ host, topicId: 't1', instanceId: 'i', read, send: h.send, doc: h.doc });
   await chips.load();
   const pressed = () => host.querySelectorAll('.tool-chip').map(chip => [chip.textContent, chip.getAttribute('aria-pressed')]);
   assert.deepEqual(pressed(), [['Spool winder', 'false'], ['Wind meter', 'true']]);

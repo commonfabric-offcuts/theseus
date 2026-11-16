@@ -516,13 +516,14 @@ class Step:
         return summary
 
     def record(self, back, head_out, items):
-        """Every back run (from the round it failed in), and every passing run of a tool that stayed new or went back,
-        recorded through the live CLI in that order; a refusal stops the step before the checkout moves."""
+        """Every back run (from the round it failed in), then every run on the commit that ships (live for a tool that
+        went back, new for one that stayed new), recorded through the live CLI in that order; a refusal stops the step
+        before the checkout moves. A still-new tool's runs in earlier rounds were on commits that never ship."""
         head_records, live_records = self.at["head"][0], self.at["live"][0]
         head_content, live_content = self.at["head"][1], self.at["live"][1]
         chosen = [run for run in self.runs if run["fate"] == "back"]
         chosen += [run for run in self.runs if run["fate"] == "live" and run["commit"] == head_out]
-        chosen += [run for run in self.runs if run["fate"] == "new" and run["tool_id"] not in back]
+        chosen += [run for run in self.runs if run["fate"] == "new" and run["commit"] == head_out]
         receipts = []
         directory = self.out / "records"
         directory.mkdir(exist_ok=True)

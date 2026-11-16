@@ -84,6 +84,9 @@ class ToolsCase(reader_fixture.ReaderCase):
     def used_by(self, tool="kite-flyer", actor="owner"):
         return [row["title"] for row in self.view("tool", {"tool_id": tool}, actor)["used_by"]]
 
+    def used_here(self, workspace="w2", actor="agent-b"):
+        return [item["tool_id"] for item in self.view("tools", {"workspace_id": workspace}, actor)["used"]]
+
 
 class WordsCase(unittest.TestCase):
     """Every word in section 5, from the record and the rows; never "0 of 0", never a pass without a count."""
@@ -139,10 +142,12 @@ class UsesCase(ToolsCase):
         said = self.committed(self.use("kite-flyer"))
         self.assertEqual((said["changed"], said["used"]), (True, True))
         self.assertEqual(self.used_by(actor="agent-b"), ["Kite club"])
+        self.assertEqual(self.used_here(), ["kite-flyer"], "the outcome page lists it under Used here")
         self.assertFalse(self.committed(self.use("kite-flyer"))["changed"], "the same answer writes nothing")
         self.assertEqual(self.sql("SELECT count(*) FROM tool_uses"), [(1,)])
         self.committed(self.use("kite-flyer", used=False))
         self.assertEqual(self.used_by(actor="agent-b"), [])
+        self.assertEqual(self.used_here(), [], "and no longer under Used here")
         self.assertEqual(self.sql("SELECT used FROM tool_uses ORDER BY seq"), [(1,), (0,)], "the past is kept")
 
     def test_a_reader_who_cannot_open_a_user_sees_it_counted_never_named(self):

@@ -239,10 +239,11 @@ class TensionCase(StepCase):
         # The ledger: 531's act on the restored file left with it; its act on the web label and the live act stay.
         self.assertEqual(json.loads(self.repo.show(c1, "tests/acts.json"))["acts"], [LIVE_ROW, WEB_ROW_531])
         self.assertEqual(self.repo.show(c1, "tests/acts.json") + "\n", ledger([LIVE_ROW, WEB_ROW_531]), "edited as text, in the ledger's own layout")
-        # What was recorded: the back run, the live run on C1, and the spool winder's new runs at C0 and C1.
+        # What was recorded: the back run, then every run on C1 (the commit that ships): the kite flyer's live run and
+        # the spool winder's new run. Its new run on C0, a commit that never ships, is not recorded.
         recorded = [(run["tool_id"], run["fate"], run["commit_sha"], run["result"], run["passed"], run["total"]) for run in cli.records()]
         self.assertEqual(recorded, [("kite-flyer", "back", c0, "failed", 3, 5), ("kite-flyer", "live", c1, "passed", 4, 4),
-                                    ("spool-winder", "new", c0, "passed", 3, 3), ("spool-winder", "new", c1, "passed", 3, 3)])
+                                    ("spool-winder", "new", c1, "passed", 3, 3)])
         back = cli.records()[0]
         self.assertEqual((back["failing"], back["items_back"], back["first_version"], back["live_commit"]),
                          (["test_doubles_one", "test_doubles_two"], [531], 0, self.live))
@@ -265,9 +266,9 @@ class TensionCase(StepCase):
         self.repo.git("reset", "--quiet", "--hard", c0)
         again, summary, said, problems, cli, _ = self.step(items=items)
         self.assertEqual((again, summary["head_out"]), (0, c1), problems + said)
-        self.assertEqual([receipt["recorded"] for receipt in summary["records"]], [False, False, False, False])
+        self.assertEqual([receipt["recorded"] for receipt in summary["records"]], [False, False, False])
         self.assertEqual(len(self.sql("SELECT id FROM topics WHERE title LIKE 'Kite flyer%'")), 1)
-        self.assertEqual(self.sql("SELECT count(*) FROM tool_runs"), [(4,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM tool_runs"), [(3,)])
 
 
 class GoodCase(StepCase):

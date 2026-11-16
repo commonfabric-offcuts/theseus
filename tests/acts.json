@@ -19533,6 +19533,11 @@
      "tools/tool_check.py",
      "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0] and head[0][tool_id][\"check\"]]",
      "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0]]"
+    ],
+    [
+     "tools/tool_check.py",
+     "runner, module = next(iter(record[\"check\"].items()))",
+     "runner, module = next(iter((record[\"check\"] or {\"python\": \"tests/test_no_such_check.py\"}).items()))"
     ]
    ],
    "check": {
@@ -19821,6 +19826,20 @@
    "check": {
     "native": "rail",
     "case": "Topic settings' Tools this topic improves"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Only the runs on the commit that ships are recorded: a still-new tool's run on a commit that never ships is not",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "chosen += [run for run in self.runs if run[\"fate\"] == \"new\" and run[\"commit\"] == head_out]",
+     "chosen += [run for run in self.runs if run[\"fate\"] == \"new\" and run[\"tool_id\"] not in back]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
    }
   }
  ]
