@@ -1845,8 +1845,16 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const left = Math.ceil(Math.max(...lines.map(l => l.left))) + 1, right = Math.min(Math.floor(Math.min(...lines.map(l => l.right))) - 1, left + 24);
     assert.ok(right - left >= 4, `${surface}: the lines lit share columns to measure the field in (${left} to ${right})`);
     const dark = y => { for (let x = left; x <= right; x++) if (image.pixel(x, y).every((v, i) => v === color[i])) return true; return false; };
-    const rows = [];
-    for (let y = Math.max(0, Math.floor(lines[0].top - 2 * high)); y < Math.min(image.height, Math.ceil(lines.at(-1).bottom + 2 * high)); y++) if (dark(y)) rows.push(y);
+    // The field's rows: from the middle of each line lit, every row painted in its colour, over and under, without a
+    // break; rows of words not lit nearby, painted in that colour on the person's own card, are not reached.
+    const found = new Set(), low = Math.max(0, Math.floor(lines[0].top - 2 * high)), high2 = Math.min(image.height, Math.ceil(lines.at(-1).bottom + 2 * high));
+    for (const line of lines) {
+      const mid = Math.round((line.top + line.bottom) / 2);
+      if (!dark(mid)) continue;
+      for (let y = mid; y >= low && dark(y); y--) found.add(y);
+      for (let y = mid + 1; y < high2 && dark(y); y++) found.add(y);
+    }
+    const rows = [...found].sort((a, b) => a - b);
     assert.ok(rows.length, `${surface}: the field is painted behind the words lit`);
     const top = rows[0], bottom = rows.at(-1) + 1, above = lines[0].top - top, below = bottom - lines.at(-1).bottom;
     const round = n => Math.round(n * 10) / 10;

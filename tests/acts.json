@@ -10976,7 +10976,7 @@
    "break": [
     [
      "web/reader.mjs",
-     "{ ...structuredClone(source.source_ref), revision: revisionOf(source) }",
+     "{ ...structuredClone(source.source_ref), revision }",
      "structuredClone(source.source_ref)"
     ]
    ],
@@ -11060,8 +11060,8 @@
    "break": [
     [
      "web/card-scroll.mjs",
-     "    this.wholes.delete(id);\n    if (!card) return;",
-     "    if (!card) return;"
+     "    this.wholes.delete(id); this.revisions.delete(id);\n    if (!card) return;",
+     "    this.revisions.delete(id);\n    if (!card) return;"
     ]
    ],
    "check": {
@@ -11597,8 +11597,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "revision: revisionOf(source) }",
-     "revision: 1 }"
+     "revision = revisionOf(source)) =>",
+     "revision = 1) =>"
     ]
    ],
    "check": {
@@ -15815,8 +15815,8 @@
    "break": [
     [
      "web/feed-passages.mjs",
-     "    const selected = this.selected(entry);\n    if (selected) return selected;",
-     "    const selected = null;\n    if (selected) return selected;"
+     "    const selected = this.selected(entry);\n    if (selected) return { ...selected, revision };",
+     "    const selected = null;\n    if (selected) return { ...selected, revision };"
     ]
    ],
    "check": {
@@ -16002,6 +16002,321 @@
    "check": {
     "native": "compose",
     "case": "chromium stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A passage lit on a topic's, a dossier's or the person's own card has a dark field as tall, line by line, as the Reader's for the same words, at a laptop's width and at 390, 375 and 320 pixels with a pointer, in light and dark",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    if (!card || !height) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "has a dark field as tall as the Reader"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A passage lit on a topic's, a dossier's or the person's own card has a dark field as tall, line by line, as the Reader's for the same words, at a laptop's width and at 390, 375 and 320 pixels with a pointer, in light and dark",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    if (!card || !height) return;",
+     "    return;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "has a dark field as tall as the Reader"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A card's lit passage moves nothing on the card: its lines stay where they were and it is as tall, lit and once the light is out",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    this.fielded = card;\n",
+     "    this.fielded = card; card.style.paddingBottom = '3px';\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "has a dark field as tall as the Reader"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A card's lines keep their own height, 1.5 times their words' size, not the Reader's: the field matches the Reader's without moving them",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere}",
+     ".message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere;line-height:1.7}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "has a dark field as tall as the Reader"
+   }
+  },
+  {
+   "item": 527,
+   "act": "On the person's own black card the field is painted in its light words' colour, as tall as the Reader's",
+   "break": [
+    [
+     "web/aim.css",
+     "  --lit-field: var(--ink);\n",
+     "  --lit-field: #000;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "has a dark field as tall as the Reader"
+   }
+  },
+  {
+   "item": 527,
+   "act": "At a phone's widths with a pointer (390, 375 and 320) a card's passage lights under it, stays lit off the words, grows with Shift, goes out at a control of the message, and Return quotes it",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;",
+     "    const anchor = span;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a card's passage light at"
+   }
+  },
+  {
+   "item": 527,
+   "act": "At a phone's widths with a pointer (390, 375 and 320) a card's passage lights under it, stays lit off the words, grows with Shift, goes out at a control of the message, and Return quotes it",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    const anchor = extend && this.lit?.words === words ? this.lit.anchor : span;",
+     "    const anchor = span;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a card's passage light at"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A quote taken from a card names the revision the card shows, whose words it quotes, though the Reader opens on a newer one; Core records it so",
+   "break": [
+    [
+     "web/reader.mjs",
+     "{ source: quoteSource(this.source, revision), excerpt }",
+     "{ source: quoteSource(this.source), excerpt }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "still showing an older revision"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A quote taken from a card names the revision the card shows, whose words it quotes, though the Reader opens on a newer one; Core records it so",
+   "break": [
+    [
+     "web/reader.mjs",
+     "{ source: quoteSource(this.source, revision), excerpt }",
+     "{ source: quoteSource(this.source), excerpt }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "still showing an older revision"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A reply's card drawn again with its own unchanged words, as the message it answers is edited, keeps its lit passage on the same words, and Return quotes them",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.clear();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "drawn again with its own words"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A reply's card drawn again with its own unchanged words, as the message it answers is edited, keeps its lit passage on the same words, and Return quotes them",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "      if (this.lit && drawnText(this.lit.words) !== this.lit.text) this.clear(); else this.paint();",
+     "      this.clear();"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "drawn again with its own words"
+   }
+  },
+  {
+   "item": 527,
+   "act": "The message's ⋯ menu taking the focus, opened from its bar or by a right-click, puts a card's lit passage out",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "menu takes the focus"
+   }
+  },
+  {
+   "item": 527,
+   "act": "The message's ⋯ menu taking the focus, opened from its bar or by a right-click, puts a card's lit passage out",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "menu takes the focus"
+   }
+  },
+  {
+   "item": 527,
+   "act": "Tab off a lit passage on a dossier's card, to a control of its message, empties CSS.highlights' lit passage",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "Tab off a lit passage on a dossier"
+   }
+  },
+  {
+   "item": 527,
+   "act": "Tab off a lit passage on a dossier's card, to a control of its message, empties CSS.highlights' lit passage",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "    doc.addEventListener('focusin', () => { if (this.lit && !this.lights()) this.clear(); });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "Tab off a lit passage on a dossier"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size moves nothing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.sourceBody.addEventListener('scroll', () => this.scrolled(), { passive: true });",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The Reader's own moves of the message are not taken for the person's scroll: one who has not scrolled keeps the quoted words in sight as the reply grows",
+   "break": [
+    [
+     "web/reader.mjs",
+     "moveTo(top) { this.sourceBody.scrollTop = top; this.lastTop = this.sourceBody.scrollTop; }",
+     "moveTo(top) { this.sourceBody.scrollTop = top; }"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting: one who has not scrolled keeps the quoted words in sight"
+   }
+  },
+  {
+   "item": 434,
+   "act": "The browser's own pull of a message scrolled to its end, as its room grows, is no scroll of the person's",
+   "break": [
+    [
+     "web/reader.mjs",
+     "now < before && now >= body.scrollHeight - body.clientHeight - 1",
+     "false"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit phone: quoting at the end of a message"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Typing in a reply leaves a message scrolled to its end at its end",
+   "break": [
+    [
+     "web/compose-bar.mjs",
+     "    back();",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: typing in the reply leaves a message scrolled to its end"
+   }
+  },
+  {
+   "item": 434,
+   "act": "Once the lines wrap anew the message shows the words quoted, measured again, not where they were",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (width !== this.kept.width) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit wide: quoting: once the lines wrap anew"
+   }
+  },
+  {
+   "item": 434,
+   "act": "A scroll of the message down that the person makes, a scrollbar's drag among them, lets the quoted words go, so the reply's next change of size does not pull them back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (now === before || now < before",
+     "if (now >= before || now < before"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "webkit stacked: quoting: one who has not scrolled keeps the quoted words in sight"
    }
   }
  ]
