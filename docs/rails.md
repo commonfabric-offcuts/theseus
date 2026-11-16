@@ -153,7 +153,9 @@ The right rail has folding sections: Starred, Pipeline, Waiting for…,
 Notebook pages, Previews, Pull requests, Images, and Skills and tools. On a Conversation they
 hold the outcome's things. On a topic they hold the topic's, and the chip
 "All of this outcome" switches to the outcome's. A section with nothing in it
-says so in one quiet line.
+does not show, except the Notebook's, which keeps its pencil and says No
+pages yet; when none shows, one quiet line says the place refers to nothing
+yet.
 
 - **Starred** is the reader's own stars, shown to no one else: this topic's
   (on a Conversation, this outcome's) first, then the rest under Elsewhere.
@@ -197,7 +199,10 @@ says so in one quiet line.
   messages of each. Core records no pull request's state, so the section says
   so and does not guess.
 - **Images** come from `topic_images`.
-- **Skills and tools** are not recorded by Core yet, and the section says so.
+- **Skills and tools** come from `topic_tools` on a topic (the tools linked to
+  it) and from `tools` on a Conversation (the outcome's own and those it says
+  it uses), each opening its page; one linked to a topic whose record is gone
+  is named, with no page ([skills-and-tools.md](skills-and-tools.md)).
 
 Folds are kept per section on this browser. A section takes its kept fold as
 it appears, and stays as the person leaves it after that. The rail reads only while it is
@@ -359,7 +364,7 @@ the foreground lane. The right rail reads in the background lane.
 
 ## Known gaps
 
-- Core records no pull request's state, and no skills or tools.
+- Core records no pull request's state.
 - The old sections the outline stands for (the outcomes list, the
   Conversation and Pipeline rows) are still read by the page, hidden, since
   other parts of the page follow them.

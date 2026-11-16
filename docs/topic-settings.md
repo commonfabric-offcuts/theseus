@@ -101,6 +101,21 @@ reaches Core late runs nothing.
 Fences compare values, so a change by someone else that puts a field back
 to the value a start holds is not seen as a change.
 
+## Tools this topic improves
+
+Below where the topic stands, Topic settings shows the topic's outcome's skills
+and tools as chips ([skills-and-tools.md](skills-and-tools.md)), the ones the
+topic is about pressed. A tap links the topic to the tool and a second tap
+takes it off, each saved at once with `tool.link` (`{tool_id, linked}`),
+outside `topic.update` and its fences: saying what is already so changes
+nothing. The chip shows its new state at once and, while it saves, keeps the
+focus and takes no second tap; a refusal puts it back and says why in the
+server's words under the chips. A tool linked to the topic whose home is
+another outcome (its record moved) shows as a chip too, so it can be taken
+off. The line shows only when there is a chip, never on a Conversation; it is
+read with the page and again each time Topic settings opens
+(`web/skills.mjs`, `TopicTools`).
+
 ## Core: `topic.update`
 
 Besides `topic_revision`, a `topic.update` can be fenced on fields:

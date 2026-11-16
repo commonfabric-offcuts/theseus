@@ -3573,6 +3573,23 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       small:buttons.filter(b=>innerWidth<761&&b.getBoundingClientRect().height<43.5).map(b=>b.textContent),
       unnamed:buttons.filter(b=>b.classList.contains('glyph-button')&&!(b.getAttribute('aria-label')&&b.title)).length,
       scroll:document.documentElement.scrollWidth<=innerWidth}})()`);
+  // A command held before the server has it: Chrome's Fetch, or WebKit's own route.
+  const holdTool = async (p, kind) => {
+    if (!p.pw) return holdCommands(p, kind);
+    const held = [], url = facts.origin + '/api/command';
+    const handler = route => { const payload = route.request().postDataJSON(); if (payload?.kind === kind) held.push({ route, payload }); else route.continue(); };
+    await p.pw.route(url, handler);
+    return {
+      first: what => until(() => held[0], what),
+      answer: (entry, receipt) => entry.route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(receipt) }),
+      stop: () => p.pw.unroute(url, handler),
+    };
+  };
+  // A topic page up with its outline, at any width (on a phone the right rail is not drawn, so it is not waited for).
+  const topicUp = (p, what) => until(() => p.evaluate(`document.body?.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading')
+    && Boolean(document.querySelector('#outline #topic-navigation'))`).catch(() => false), what);
+  // The topics linked to Spool winder: the topic its version that went back opened is one from the start.
+  const spoolTopics = async () => (await view('tool', { tool_id: 'spool-winder' })).topics.map(topic => topic.title).sort();
   const toolUp = (p, what, ready = seen => seen.ready) => until(async () => { const seen = await toolsDrawn(p).catch(() => null); return seen && ready(seen) && seen; }, what);
 
   await check('rail skills and tools: a tool\'s page at 320, 375, 390 and on a laptop, light and dark: Tool, its name and summary, Home, its check passed with its count and time, Used by, Went back with its topic, Topics about it with Link a topic, the files folded; in its home\'s rail; its outcome page lists it beside a skill with no check, which reads Not evaluated yet', async () => {
@@ -3644,7 +3661,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const [width, theme] of [[390, 'light'], [1280, 'light']]) {
       const at = `${width} ${theme}`;
       const p = await sized(`tools-link-${width}`, '/?workspace=kites&tool=spool-winder', width, theme);
-      await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.link);
+      const before = await toolUp(p, at + ': the tool page is up', drawn => drawn.ready && drawn.link);
+      const linkedBefore = await spoolTopics();
+      assert.deepEqual([before.topics, linkedBefore], [['Spool winder went back to its live version'], ['Spool winder went back to its live version']],
+        at + ': the topic its version that went back opened is about it from the start');
       // Escape: the line closes, nothing is linked, and the keys are back on Link a topic.
       await pressAt(p, width, '#tool-page .finder-open');
       await until(async () => (await finderState(p, '#tool-page')).focused, at + ': Link a topic opens one line, the cursor in it');
@@ -3654,20 +3674,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.key('Escape');
       const closed = await until(async () => { const seen = await finderState(p, '#tool-page'); return !seen.open && seen; }, at + ': Escape closes the line');
       assert.equal(closed.button, true, at + ': and gives Link a topic the keys');
-      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics, [], at + ': nothing was linked');
+      assert.deepEqual(await spoolTopics(), linkedBefore, at + ': nothing was linked');
       // Return links the topic typed.
       await pressAt(p, width, '#tool-page .finder-open');
       await until(async () => (await finderState(p, '#tool-page')).options.length === 2, at + ': the line again');
       await p.send('Input.insertText', { text: 'tangled' });
       await p.key('Enter');
-      const linked = await toolUp(p, at + ': Return links it, and the page lists it', drawn => drawn.topics.length === 1);
-      assert.deepEqual(linked.topics, ['Tangled lines'], at);
-      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics.map(topic => topic.topic_id), ['kite-lines'], at + ': Core has the link');
+      const linked = await toolUp(p, at + ': Return links it, and the page lists it', drawn => drawn.topics.length === 2);
+      assert.deepEqual(linked.topics, ['Spool winder went back to its live version', 'Tangled lines'], at);
+      assert.deepEqual(await spoolTopics(), [...linkedBefore, 'Tangled lines'].sort(), at + ': Core has the link');
       await shot(p, `tools-linked-${width}`);
-      // × takes it off, and the keys go to Link a topic.
-      await pressAt(p, width, '#tool-page .tool-topic .glyph-button');
-      await toolUp(p, at + ': × takes the topic off', drawn => drawn.topics.length === 0);
-      assert.deepEqual((await view('tool', { tool_id: 'spool-winder' })).topics, [], at + ': Core has it off');
+      // × takes it off.
+      await pressAt(p, width, '#tool-page .tool-topic:nth-child(2) .glyph-button');
+      await toolUp(p, at + ': × takes the topic off', drawn => drawn.topics.length === 1);
+      assert.deepEqual(await spoolTopics(), linkedBefore, at + ': Core has it off');
       assert.deepEqual(p.errors, []); await p.close();
       // + Uses a tool on w1's page: Wind meter is its own; Spool winder, homed in Kite club, is offered.
       const o = await sized(`tools-uses-${width}`, '/?workspace=w1', width, theme);
@@ -3705,7 +3725,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await pressAt(p, width, `${host} .finder-open`);
       await until(async () => (await finderState(p, host)).options.length >= 1, at + ': the line, with what it offers');
       await p.send('Input.insertText', { text: typed });
-      const hold = await holdCommands(p, kind);
+      const hold = await holdTool(p, kind);
       await p.key('Enter');
       const held = await hold.first(at + ': Return sends the command');
       const busy = await until(async () => { const seen = await finderState(p, host); return seen.busy === 'true' && seen; }, at + ': the line is busy while it saves');
@@ -3727,9 +3747,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // The way back: Return again saves it.
       await p.key('Enter');
       if (surface === 'link') {
-        await toolUp(p, at + ': Return again links it', drawn => drawn.topics.length === 1);
-        await pressAt(p, width, '#tool-page .tool-topic .glyph-button');
-        await toolUp(p, at + ': and × takes it off', drawn => drawn.topics.length === 0);
+        await toolUp(p, at + ': Return again links it', drawn => drawn.topics.includes('Faster spools'));
+        const row = await p.evaluate(`[...document.querySelectorAll('#tool-page .tool-topic')].findIndex(row=>row.querySelector('a').textContent==='Faster spools')+1`);
+        await pressAt(p, width, `#tool-page .tool-topic:nth-child(${row}) .glyph-button`);
+        await toolUp(p, at + ': and × takes it off', drawn => !drawn.topics.includes('Faster spools'));
       } else {
         await toolUp(p, at + ': Return again says w1 uses it', drawn => drawn.uses?.used.length === 1);
         await pressAt(p, width, '#outcome-tools .glyph-button');
@@ -3756,7 +3777,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const [width, theme] of TOOL_WIDTHS) {
       const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
       const p = await sized(`tools-settings-${width}-${theme}`, '/?topic=kite-spools', width, theme);
-      await settled(p, at + ': the topic is up');
+      await topicUp(p, at + ': the topic is up');
       await pressAt(p, width, '#settings-open');
       const open = await until(async () => { const seen = await chips(p); return seen.shown && seen.chips.length === 2 && seen; }, at + ': Topic settings shows Tools this topic improves');
       assert.deepEqual([open.heading, open.chips, open.tall], ['Tools this topic improves', ['Knot guide:false', 'Spool winder:false'], true], at + ': the home\'s tools as chips, none pressed, each a finger\'s size');

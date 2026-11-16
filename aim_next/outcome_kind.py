@@ -9,8 +9,9 @@ Reached is final: every topic closes, and every later change to the outcome is
 refused OUTCOME_REACHED, while a reader's own state there still saves
 (REACHED_EXEMPT).
 
-Seam until skills (17) lands: an outcome has no tools of its own, so nothing
-blocks Reached for TOOLS_IN_USE and nothing retires with it.
+Skills and tools (17; docs/skills-and-tools.md): Reached neither waits for nor
+retires the tools an outcome homes or uses. They stay in place for others to
+use; a reached outcome refuses tool.use and tool.link, as it refuses every change.
 """
 
 import json

@@ -19357,9 +19357,14 @@
      "(\"41\", \"42\", INVITATIONS_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"43\", \"44\", TOOLS_SCHEMA",
+     "(\"42\", \"43\", TOOLS_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"43\"",
-     "SCHEMA_VERSION = \"42\""
+     "SCHEMA_VERSION = \"44\"",
+     "SCHEMA_VERSION = \"43\""
     ]
    ],
    "check": {
@@ -19434,6 +19439,388 @@
    ],
    "check": {
     "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool whose check fails in a release ships at its live version: its files are put back in a new commit on the candidate",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                git(self.root, \"update-index\", \"--add\", \"--cacheinfo\", \"%s,%s,%s\" % (entry[0], entry[2], path), env=env)\n",
+     "                pass\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A first version whose check fails does not ship: its record and files leave the release",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            elif path in self.trees[\"head\"].entries:\n                git(self.root, \"update-index\", \"--force-remove\", \"--\", path, env=env)\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The items whose change touched a tool that went back are taken back, named in a Train-Item: Revert trailer",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "            if touched & paths:\n                taken.append(item[\"item\"])",
+     "            if False:\n                taken.append(item[\"item\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An item's new act rows on a tool's restored files leave the act ledger with it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        gone = [row for row in rows if key(row) not in live_keys and names(row) & paths]",
+     "        gone = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool that went back and still fails at its live version stops the release, with nothing recorded and no commit",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                run[\"fate\"] = \"live\"\n                if run[\"result\"] != \"passed\":",
+     "                run[\"fate\"] = \"live\"\n                if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A still-new tool that fails on the restored commit goes back too, round after round",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "                new = [tool_id for tool_id in new if tool_id not in failed]",
+     "                new = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A changed skill with no check ships new, and nothing runs for it",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0] and head[0][tool_id][\"check\"]]",
+     "self.checked = [tool_id for tool_id in self.changed if tool_id in head[0]]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A check that ran no tests is never a pass: its tool goes back",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "    total = ran - skipped\n",
+     "    total = max(ran - skipped, 1)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The tool step refuses a checkout with changes before it runs or writes anything",
+   "break": [
+    [
+     "tools/tool_check.py",
+     "        if text(root, \"status\", \"--porcelain=v1\", \"--untracked-files=all\"):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_tool_check.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A record that names the deploy's or the release check's own code is refused",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "                problems.append(\"%s names %s, which is %s; deploy and the release checks stay ordinary code.\" % (path, file, words))",
+     "                pass"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A file belongs to at most one tool",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "        if len(set(ids)) > 1:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A version that went back opens one topic in its home, addressed to its coordinator and linked to the tool",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        topic_id = self._open_back_topic(db, actor, workspace, run, envelope[\"operation_id\"]) if run[\"fate\"] == \"back\" else None",
+     "        topic_id = None"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An outcome uses a tool only while it says so",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "\"SELECT u.tool_id FROM tool_uses u WHERE u.workspace_id=? AND u.used=1 AND \"",
+     "\"SELECT u.tool_id FROM tool_uses u WHERE u.workspace_id=? AND \""
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A topic is linked to a tool only in the tool's home",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "            if topic[\"workspace_id\"] != record[\"home\"]:",
+     "            if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Saying again what is already so changes nothing",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "        if (row[\"linked\"] if row else 0) == linked:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's word is a pass only with a recorded count of at least one, every test passed",
+   "break": [
+    [
+     "aim_next/tool_words.py",
+     "    if result == \"passed\" and isinstance(total, int) and total >= 1 and passed == total:",
+     "    if result == \"passed\":"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Only a version that went back is recorded as not passing",
+   "break": [
+    [
+     "aim_next/tools_core.py",
+     "    if fate != \"back\" and result != \"passed\":",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_core.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The schema step from 43 to 44 adds the tables for skills and tools, and steps back",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "    (\"43\", \"44\", TOOLS_SCHEMA, TOOLS_DOWN, TOOLS_OCCUPIED),",
+     "    (\"43\", \"44\", \"\", TOOLS_DOWN, TOOLS_OCCUPIED),"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A page never paints a pass without a count of at least one, nor 0 of 0",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    if (!Number.isSafeInteger(word.total) || word.total < 1 || word.passed !== word.total || !Number.isSafeInteger(word.at_ms)) throw Error(FAILED);",
+     "    if (!Number.isSafeInteger(word.at_ms)) throw Error(FAILED);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Used by counts the outcomes the reader cannot open, never naming them",
+   "break": [
+    [
+     "web/skills.mjs",
+     "  const more = hidden ? `${usedBy.length ? 'and ' : ''}${hidden} ${hidden === 1 ? 'outcome' : 'outcomes'} you cannot open` : null;",
+     "  const more = null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The left rail lists the outcome's skills and tools, and hides with none",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      this.section.hidden = !items.length;",
+     "      this.section.hidden = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A refused tap on a tool's chip in Topic settings puts it back as it was and says why",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    catch (error) { this.answer = was; this.notice.textContent",
+     "    catch (error) { this.notice.textContent"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tool's page has its own address in its home outcome",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  else if (keys.length===2 && p.has('workspace') && p.has('tool')) route={kind:'tool',id:p.get('workspace'),tool:p.get('tool')};",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "Link a topic finds an open topic of the home as it is typed, and Return links it",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      if (!event.repeat && found[this.active]) this.take(found[this.active]);",
+     "      if (false) this.take(found[this.active]);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Link a topic on a tool's page and + Uses a tool"
+   }
+  },
+  {
+   "item": 17,
+   "act": "+ Uses a tool says the outcome uses the tool chosen",
+   "break": [
+    [
+     "web/skills.mjs",
+     "    await sent(this.send('tool.use', { workspace_id: this.workspace }, { tool_id: toolId, used }));",
+     "    await sent(this.send('tool.use', { workspace_id: this.workspace }, { tool_id: toolId, used: false }));"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Link a topic on a tool's page and + Uses a tool"
+   }
+  },
+  {
+   "item": 17,
+   "act": "A tap or the keys on a chip in Topic settings link the topic to the tool, and a second unlinks it",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      chip.onclick = () => { if (!this.pending.has(tool.tool_id)) this.toggle(tool); };",
+     "      chip.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Topic settings' Tools this topic improves"
+   }
+  },
+  {
+   "item": 17,
+   "act": "The right rail lists a topic's skills and tools, and on a Conversation the outcome's",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      tools: found.tools === undefined ? undefined : this.toolSection(found.tools),",
+     "      tools: null,"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "Topic settings' Tools this topic improves"
    }
   }
  ]
