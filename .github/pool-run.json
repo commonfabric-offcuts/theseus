@@ -1,0 +1,8 @@
+{
+ "step": "notebook",
+ "cases": [
+  "notebook in the composer: a page opened from the right rail"
+ ],
+ "label": "x8-base-native-notebook-8e352290-3",
+ "snapshot": "8dd6a40f5767f76a8992917db0643440c0169f3b"
+}
