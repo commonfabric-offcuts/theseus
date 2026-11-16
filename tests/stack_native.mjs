@@ -757,10 +757,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await keyed(), 'read-it', `${device}: ↓ from "+ Add" comes down to Read it, the filter the keys were last on`);
       await p.key('ArrowUp');
       assert.equal(await keyed(), 'header:add', `${device}: ↑ goes back up to "+ Add"`);
-      // The header's buttons end at their own row: → from "+ Add" goes on to the right rail, never to a filter.
+      // The header's buttons end at their own row: → from "+ Add" goes on to the right rail, never to a filter. Where no
+      // rail takes the keys it goes on to the nearest control that way on screen (item 301; on a phone the Team wraps,
+      // and a pill's × can stand to the right of "+ Add"), and stays where none does.
+      const beside = await p.evaluate(`(b=>[...document.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].some(x=>x!==document.activeElement&&x.tabIndex>=0&&!x.disabled&&!x.closest('[inert],[aria-hidden="true"]')&&x.checkVisibility()&&(c=>c.width>0&&c.left>b.left&&c.right>b.right&&c.left+c.right>b.left+b.right+1)(x.getBoundingClientRect())))(document.activeElement.getBoundingClientRect())`);
+      const from = await p.evaluate(`JSON.stringify(document.activeElement.getBoundingClientRect())`);
       await p.key('ArrowRight');
-      assert.equal(await keyed(), rail ? 'things' : 'header:add',
-        `${device}: → from "+ Add", the header's last, goes ${rail ? 'to the right rail' : 'nowhere, the right rail taking no keys'}, not on to a filter`);
+      const to = await keyed();
+      if (rail || !beside) assert.equal(to, rail ? 'things' : 'header:add',
+        `${device}: → from "+ Add", the header's last, goes ${rail ? 'to the right rail' : 'nowhere, nothing lying that way'}, not on to a filter`);
+      else {
+        assert.ok(to !== 'header:add' && to !== 'chip' && to !== 'read-it', `${device}: → from "+ Add", with a control that way and no right rail taking keys, goes on to it, not on to a filter: ${to}`);
+        assert.equal(await p.evaluate(`(b=>(c=>c.left>b.left&&c.right>b.right)(document.activeElement.getBoundingClientRect()))(${from})`), true, `${device}: → from "+ Add" lands to its right: ${to}`);
+      }
       // No arrow pressed a filter: no Reader opened, the mark is still there, and the agents' dossier still shows.
       assert.equal(await readerOn(p), null, `${device}: no arrow on Read it opened the Reader`);
       assert.equal(await marked(), true, `${device}: and the mark is still there`);
