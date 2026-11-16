@@ -950,7 +950,9 @@ MESSAGE_READS = {
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
-    "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),
+    "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
+                                  "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
+                                  "operation id that shows nothing of any message", 2),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
                                 "person's whisper replies to (its author and place, never shown), "
                                 "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),

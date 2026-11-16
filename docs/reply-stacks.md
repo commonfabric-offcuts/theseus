@@ -150,8 +150,10 @@ CLI (`tests/test_dossier_names.py`, `FakeCoordinator`), so no live model is
 needed.
 
 On the page the tab's second line says "Named by" and the agent, after who
-began the dossier (`.stack-named`), whole at every width down to 320 pixels:
-short of room the count gives way first. The name's tooltip says it was named
+began the dossier and the marks of what its first message carries
+(`.stack-named`), whole at every width down to 320 pixels: short of room who
+replied, what is new, the marks and who began it give way first, and the count
+always shows (The head, below). The name's tooltip says it was named
 when the first reply landed. Renaming starts from the minted name; a name the
 person types replaces it and the mark goes, and their name says who typed it
 in its tooltip, as any typed name does. ⌘Z after such a rename gives the
@@ -269,9 +271,16 @@ their acts.
   the messages. Its accessible label describes the current state and next
   action; `aria-expanded` is false only on a quiet agent dossier's header alone.
 - **The head.** The first message is one compact row: its short name, ✎,
-  who began the stack, "New" when the message itself is new, ★ if starred,
-  how many replied and who, and how many replies are new. On a phone the
-  count, who replied and what is new sit on a second short line. The short name is the
+  who began the stack and the marks of what that message carries (an image,
+  the reader's own note and saved reply, docs/topic-reading.md), "New" when
+  the message itself is new, ★ if starred,
+  how many replied and who, and how many replies are new. The tab is two
+  lines high: the short name, then the rest on one line that never wraps to
+  a third (`stack-look.css`). When that line is short of room, who replied
+  and what is new give way first, then the marks, whole glyphs dropped from
+  the end, then who began it, cut short with its whole name in its tooltip;
+  a minted name's "Named by", after the marks, keeps its width ahead of them,
+  and "New", ★, "Folded" and the count always show. The short name is the
   one someone typed for the dossier, or minted for it (Minted names, above),
   or else the first message's line (One line of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.
@@ -480,8 +489,9 @@ the semantic colour tokens of `web/aim.css` and only the names that
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
-    `.stack-who`, `.stack-named` (a minted name's "Named by"), `.stack-new`, `.stack-star`, `.stack-meta` (with
-    `.stack-repliers` and `.stack-fresh`) and `.stack-hide`.
+    `.stack-who`, `.card-carries`, `.stack-named` (a minted name's "Named by"), `.stack-new`, `.stack-star`, `.stack-meta`
+    (with `.stack-count`, `.stack-repliers` and `.stack-fresh`, each a part of
+    the tab's line of its own) and `.stack-hide`.
   - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
   - `.stack-toggle`, the header's native expand/collapse button, a sibling of
     the message button, with `aria-expanded` and `aria-controls`.

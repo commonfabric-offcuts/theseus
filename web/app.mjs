@@ -31,7 +31,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -62,7 +62,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
@@ -750,6 +750,8 @@ function paintViews(kind) {
   if (kind === 'acts') { keepListAnchor(() => { stackMessages(); menu?.paint(); }); return; }
   // A message edited, here or elsewhere: its card and the lines that read its words (docs/message-edit.md).
   if (kind === 'edited') { keepListAnchor(() => repaintEdited(views.takeRevised(), views.takeEdits())); return; }
+  // The person's own note or saved reply on a message, saved, emptied or sent here or elsewhere: its card's marks (item 127).
+  if (kind === 'yours') { keepListAnchor(() => repaintYours(views.takeYours())); return; }
   // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
@@ -970,9 +972,11 @@ function paintHeader(current) {
     $('topic-description').textContent = conversationSubtitle(here?.view?.coordinator?.actor_id); $('topic-description').hidden = false;
   }
 }
-// Messages sent before times were kept have none.
+// Messages sent before times were kept have none. Beside the time, the marks of
+// what the message carries: an image, the person's private note, a reply they
+// saved and have not sent (carriesOf, item 127).
 function paintCardAuthor(author, item) {
-  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item));
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
@@ -1409,6 +1413,21 @@ async function messageEdited(key, version, read, current) {
   Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null });
   reader.redrawSource();
   return done;
+}
+// Each card whose marks of the person's own note and saved reply changed
+// (TopicViews.takeYours): its author line, then what the page puts back on
+// that line as it is drawn afresh (the reply arrow, the bar), and the row of
+// the stack it heads, which shows its marks (paintHeadCarries).
+function repaintYours(ids) {
+  for (const id of ids) {
+    const item = views.messages.get(id), entry = messageEntries.get(id);
+    if (!item || !entry) continue;
+    const card = cardIn(entry);
+    paintCardAuthor(card.querySelector(':scope > .message-author'), item);
+    paintHeadCarries(card, item);
+  }
+  // The reply arrow goes back into each line painted again; the stacks are not arranged again, so the New line stays where it is.
+  paintCardReading(); menu?.paint();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
 // message's words, its excerpt cue, its folded line and its author line's

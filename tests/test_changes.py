@@ -93,7 +93,10 @@ class ChangesCase(ReaderCase):
         self.assertEqual(self.read(cursor=topic, actor="agent-b")["items"], [])
         self.assertEqual(self.read(workspace, ws, actor="agent-b")["items"], [])
         private = self.read({"kind": "actor", "id": "owner"}, own)
-        self.assertEqual({r["resource_id"] for r in private["items"]}, {"secret-draft", "secret-note", "secret-submission"})
+        # Writing about a message also says so keyed by that message (item 127, docs/topic-reading.md), in the same
+        # private scope only.
+        self.assertEqual({r["resource_id"] for r in private["items"]}, {"secret-draft", "secret-note", "secret-submission", self.opening["id"]})
+        self.assertEqual({r["resource_kind"] for r in private["items"] if r["resource_id"] == self.opening["id"]}, {"yours"})
         for row in private["items"]:
             self.assertEqual(set(row), {"seq", "resource_kind", "resource_id", "version"})
         denied = self.store.view("agent-b", "changes", {"scope": {"kind": "actor", "id": "owner"}})

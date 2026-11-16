@@ -206,7 +206,9 @@ export const mayStartFrom = source => !source?.whisper || source.author_kind ===
 // A whisper's card, read from the viewer's side: after the author's name,
 // "· whisper to aim-ux" or "· whisper to you", and on the viewer's own
 // whisper that has no answer yet, a muted "· no answer yet" (not a light).
-// Repainting keeps one of each.
+// Repainting keeps one of each. The card's name says who, to whom, when and
+// the marks of what it carries (item 127, docs/topic-reading.md), as the
+// words of every other card do, then its words.
 export function whisperWords(item, viewer) {
   return `whisper to ${item.private_to === viewer ? 'you' : item.private_to}`;
 }
@@ -220,5 +222,6 @@ export function paintWhisperAuthor(author, item, viewer, doc = document) {
     author.append(wait);
   }
   const card = author.closest('.message-card'), time = author.querySelector('.message-time')?.textContent.replace(/^ · /, '');
-  card?.setAttribute('aria-label', `${item.author_id}, ${words}${time ? `, ${time}` : ''}. ${item.body}`);
+  const carried = [...author.querySelectorAll('.carry')].map(mark => `, ${mark.getAttribute('aria-label')}`).join('');
+  card?.setAttribute('aria-label', `${item.author_id}, ${words}${time ? `, ${time}` : ''}${carried}. ${item.body}`);
 }

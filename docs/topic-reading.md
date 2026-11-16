@@ -2,12 +2,12 @@
 
 A topic reads like an inbox: newest on top, each message answered in the
 Reader. This page says how each card shows where the person stands with it
-(pipeline items 31, 102, 103 and 11). Nothing here changes a record; Core says
-two more facts per message, and the page shows them.
+(pipeline items 31, 102, 103, 11 and 127). Nothing here changes a record; Core
+says a few more facts per message, and the page shows them.
 
 ## What Core says
 
-`topic_messages` items carry two fields, read for the page's own messages
+`topic_messages` items carry three fields, read for the page's own messages
 only (`aim_next/topic_reading.py`), through indexes keyed by message:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
@@ -17,8 +17,32 @@ only (`aim_next/topic_reading.py`), through indexes keyed by message:
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
   null. A reply is in its parent's topic, and the reader always sees their own
   messages, whispers included, so it never names a message they cannot read.
+- `yours`: what the reader has written privately on the message,
+  `{note, reply, version}`, from their own notes and drafts only, so another
+  reader's never shows. `note` is true while their private note on it holds
+  words; `reply` while they have a reply from it that is not sent: a reply
+  saved there holding words or an image, or the newest reply they prepared
+  from it while its send has not been accepted. Preparing a reply empties its
+  draft, so without the second a send refused after it (the authority
+  changed, or the person left the topic) would leave the reply unsent and
+  unmarked. A send is accepted when it made its message, which carries the
+  send's operation id; a reply prepared again from a refused one, once
+  accepted, answers for it. `version` is the note's revision, every such
+  draft's and the count of replies from the message that were sent, added up:
+  each save, preparation and accepted send raises one of them and none is
+  ever lowered, so it grows with each, and a page keeps the newer of two
+  reads. The prepared replies are read by the page's messages
+  (`editor_submissions`), never by the reader's whole send history, so a
+  page costs the same however many replies they prepared from other messages,
+  in this topic or another; so does a save's version
+  (`tests/test_reader_bounds.py`).
 
-No table, command or schema step.
+A save of a private note or a draft about a message, a reply's preparation and
+its accepted send record a `yours` change in the writer's own scope, keyed by
+the message and carrying that version, so a page showing the card reads the
+message again (`topic_messages {topic_id, message_ids: [id]}`), on this
+device or another. A refused send changes nothing, so the mark stays. No
+table, command or schema step.
 
 ## Read cards (31)
 
@@ -57,6 +81,46 @@ phone a first tap shows the same words, as the pointer would, and a second tap
 on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
+
+## What a card carries (127)
+
+A card shows at a glance what its message carries: a small, quiet glyph in
+its author line, just after the time, for an image (a picture; "Has 2 images"
+for more than one), for the person's own private note (a page), and for a
+reply they saved and have not sent (a pencil). They are marks, not controls:
+no Tab stop and no press of their own, so a press on one opens the message
+as a press anywhere on the card does. Each says its words as its accessible
+name and its tooltip ("Has an image", "Your private note, which only you can
+see", "Your reply, saved and not sent"), so a screen reader hears them with
+the card; a whisper's card, whose name is set to say who it is to, says them
+in that name after its time (`paintWhisperAuthor`, `web/whisper-choice.mjs`). They are drawn in the line's quiet color (`--muted`), which every
+card face sets for light and dark, and held to the time (`.together`), so a
+line that wraps keeps them beside it; a message from before times were kept
+shows them after its name (`carriesOf` and `paintAuthor`, `web/marks.mjs`).
+The card's star (item 376) shows only on a lit card but always has its place
+after them. On a marked line that place is kept at the end of what comes
+before the star (the time and its marks, or Edited), and the star sits in it
+taking no width of its own (`aim.css`), so a line the marks fill wraps with
+its star rather than leaving the star alone on a line that shows nothing.
+A message that heads a reply stack shows them on the stack's head row too,
+beside who started it, since that row stands for the message while its card
+is folded into it (docs/reply-stacks.md, "The head"). The row's second line
+never wraps: on a narrow tab who replied and what is new give way first, then
+its marks, whole glyphs dropped from the end, then who started it, cut short;
+the reply count always shows, as it did before the marks, so a phone may show
+fewer marks there than the card does.
+
+They follow the person's writing as Core keeps it: a note saved in the
+Reader, or a reply saved there or on another device, marks the card once its
+`yours` change is read (`TopicViews`, key `yours:<id>`); a note emptied, a
+reply emptied or a reply whose send is accepted takes its mark away. A reply
+whose send is refused keeps its mark until a reply from that message is sent.
+Another reader's note or draft never marks a card. `tests/card_marks_native.mjs` (`native-card-marks`)
+checks them in Chrome and Safari's engine at 320, 375 and 390 points with
+touch and on a laptop, light and dark, and at every width that a marked line
+holds no line showing nothing and the star's place stays inside the card,
+that every head row shows its reply count whole and only whole marks, and
+that a whisper's card says its marks in the name the browser gives it.
 
 ## Reply stacks (103, 283)
 

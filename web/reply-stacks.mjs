@@ -21,6 +21,7 @@ import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, position
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
+import { carriesNode, carriesOf } from './marks.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -315,8 +316,9 @@ function line(section, key, make) {
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
 // The head's row, set into its card: its short name (renamed in place), who
-// started the stack, how many replied and who, what is new, and whether its
-// first message is folded.
+// started the stack and the marks of what that first message carries (an
+// image, the reader's own note and saved reply: marks.mjs, item 127), how many
+// replied and who, what is new, and whether its first message is folded.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
@@ -332,13 +334,19 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   // Use the same pencil and direction as the page's New message control.
   const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
   if (pencil) pen.append(pencil);
-  const meta = element(doc, 'span', 'stack-meta', `${head.count} ${replies(head.count)}`);
+  // The count in a part of its own, which never gives way on a narrow tab (stack-look.css); who replied and what is new may.
+  const meta = element(doc, 'span', 'stack-meta');
+  meta.append(element(doc, 'span', 'stack-count', `${head.count} ${replies(head.count)}`));
   if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
   if (head.fresh) meta.append(element(doc, 'span', 'stack-fresh', ` · ${head.fresh} new`));
   // A minted name says who named it, in the row (item 479); a typed one says so in its tooltip.
   const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;
   if (minted) minted.title = `Named by ${nameOf(head.mintedBy)} when the first reply landed; a name anyone types replaces it`;
-  row.replaceChildren(name, pen, element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)),
+  // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.
+  const who = element(doc, 'span', 'stack-who', nameOf(stack.head.author_id)); who.title = who.textContent;
+  const carried = carriesNode(doc, carriesOf(stack.head));
+  // The first message's marks stand beside who began it (paintHeadCarries puts them back there), then a minted name's mark.
+  row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
     ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
@@ -346,6 +354,17 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
+}
+
+// The marks alone on the row of the stack a message heads, when only what that message
+// carries changed (item 127): the row's other parts, the stacks' order and the New line
+// stay as they are, so nothing is arranged again. A card heading no stack has no row.
+export function paintHeadCarries(card, item, doc = card.ownerDocument) {
+  const row = headRows.get(card), who = row?.parentNode === card ? row.querySelector(':scope > .stack-who') : null;
+  if (!who) return;
+  row.querySelector(':scope > .card-carries')?.remove();
+  const carried = carriesNode(doc, carriesOf(item));
+  if (carried) who.after(carried);
 }
 
 // A message that no longer heads a stack is a card again.
