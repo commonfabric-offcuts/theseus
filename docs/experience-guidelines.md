@@ -37,7 +37,9 @@ maximum, and on a phone never reach past the screen.
 
 ## Keys mean one thing in each place
 
-While reading a source, Return quotes the selected or lit passage. In the reply,
+While reading a source, Return quotes the selected or lit passage, in the
+Reader and on a topic's or a dossier's card alike, and ⌘C copies exactly the
+lit passage. In the reply,
 Return makes a new line and Cmd-Return sends. In a private note, Cmd-Return
 saves the note. Buttons, pickers and other controls keep their own keys. A hover
 never promises a quote that Return would not make.
@@ -46,6 +48,18 @@ never promises a quote that Return would not make.
   Return quotes exact words and composer Return stays a newline", "note
   Cmd-Return saves only the note and keeps the Reader open on the reply",
   "nonempty send-and-stay shortcuts each send once and keep the reader open".
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading a passage the pointer rests on lights on a topic's card and a
+  dossier's; ⌘C copies exactly its words and Return quotes them …", "reading
+  a card's lit passage goes out as the focus moves to a control of the message
+  or to writing …" (no hover promise where Return presses a control),
+  "reading Shift-click on a card grows the light and opens nothing …",
+  "reading a cut-off card's lit passage goes out as its whole message
+  arrives …" and "reading an edit arriving under a card's lit passage puts
+  the light out …" (a card drawn again with other words lights none of them
+  until the pointer moves, so Return and ⌘C act on no words that were not
+  lit), and "reading Shift-click on a link in a card's words opens it in a new
+  window …".
 
 ## Every input works
 
@@ -62,6 +76,10 @@ and the writing. Focus stays visible and follows what the person did.
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks keyboard activation on the copy glyph and its feed card in Chromium and WebKit.
+- Focus follows the pointer into the keys: `tests/outcome_rail_native.mjs`
+  (`native-rail`, `native-webkit-rail`): "rail a press on an outline row opens
+  its place in place with the keys kept on the row, wearing their ring: …",
+  and the same for the row being read, a refused move and Waiting on you.
 - Touch: see "A phone by touch" below.
 
 ## Dismiss without losing work
@@ -87,12 +105,20 @@ starts or ends inside the pop-up is not an outside press.
 ## Your place holds
 
 A message arriving never moves what is being read or written, and nor does
-quoting from it. Loading older messages shows them where they were asked for.
+quoting from it, nor typing in the reply. A quote keeps its words in sight
+until you scroll the message yourself, however you scroll it, and keeps the
+words themselves when the lines wrap anew. Loading older messages shows them
+where they were asked for.
 
 - `tests/reader_compose_native.mjs` (`native-compose`): "quoting keeps your
   place: the quoted passage stays where it was on screen, …" and "quoting from
   a passage taller than what shows keeps the words quoted where they were, …",
-  in Chrome and Safari's engine, on a phone and a laptop, stacked and wide.
+  in Chrome and Safari's engine, on a phone and a laptop, stacked and wide;
+  "quoting: one who has not scrolled keeps the quoted words in sight as the
+  reply grows, and a scroll the person makes … lets them go", "typing in the
+  reply leaves a message scrolled to its end at its end", "quoting: words
+  chosen to the very start of the next sentence …" and "quoting: once the
+  lines wrap anew, the message shows the words quoted …".
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",
   "live with no card on the screen, a message arriving scrolls nothing".
@@ -148,6 +174,10 @@ content needs: a title line is about a sentence wide, and a few sentences about
 - `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
   "pipeline turning it on is one tap from the outcome page, and one line and
   Return adds an item whose words and size are set in place".
+- `tests/team_invite_native.mjs` (`native-forms`): "forms invite an agent from
+  the Team panel: a name, Codex, Return; …", and each of its states measured at
+  320, 375 and 390 pixels by touch and on a laptop, in light and dark ("forms
+  invite on a phone by touch the line and the prompt fit …").
 
 ## No coloured left edges
 

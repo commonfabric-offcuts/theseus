@@ -6,7 +6,9 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 
 from aim_next import admin, cli
 from aim_next.profile import write_profile
@@ -135,7 +137,8 @@ class ReleaseCase(fixtures.StoreCase):
         self.assertEqual(([item["release"] for item in rest["items"]], rest["next_cursor"]), ([18], None))
         item = first["items"][1]
         self.assertEqual(set(item), {"release", "commit", "previous", "deployed_at", "deployed_ms", "items", "measurements",
-                                     "source", "evidence", "recorded_ms"})
+                                     "source", "evidence", "recorded_ms", "hosted_judgment"})
+        self.assertIsNone(item["hosted_judgment"], "no judgment is attached to a release check's record")
         self.assertEqual(item["measurements"]["native"], {"pass": 208, "total": 208, "steps": {}})
         for args in ({"cursor": "19"}, {"limit": 0}, {"actor": "owner"}):
             with self.subTest(args):
@@ -158,6 +161,187 @@ class ReleaseCase(fixtures.StoreCase):
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKFILL = ROOT / "tools" / "pipeline" / "releases"
+
+
+def trained(kind="ordinary", judgment="pending"):
+    """The measurements of a release deployed from a merged train (tools/releases.py train_measurements)."""
+    return {"train": {"file": "/t/train.json", "pr": 31, "kind": kind, "merge_commit": A, "merged_tree": B,
+                      "release_branch": "release/live73", "items": [{"item": 481, "approved_head": C, "review": "m-r"}],
+                      "hosted_run": None, "judgment": judgment}}
+
+
+def judgment(head=A, conclusion="success", audit="m-audit"):
+    found = lambda kind, number: {"id": number, "name": "Checks", "head_sha": head, "status": "completed",
+                                  "conclusion": conclusion, "kind": kind}
+    return {"head": head, "producer_runs": [found("run", 301)], "verdict_checks": [found("check", 401)], "audit": audit}
+
+
+class HostedJudgment(ReleaseCase):
+    """Items 481, 482: an ordinary merged train's release takes its hosted judgment once it lands, beside its record,
+    which never changes; through the admin verb and through tools/releases.py attach-judgment, which reads GitHub."""
+
+    def setUp(self):
+        super().setUp()
+        self.recorded(record(release=20, items=[481], measurements=trained()))
+        self.before = self.only()
+
+    def only(self):
+        [item] = self.releases()["items"]
+        return item
+
+    def attach(self, value, number=20):
+        self.serial += 1
+        path = Path(self.temp.name).resolve() / ("judgment-%d.json" % self.serial)
+        path.write_text(json.dumps(value))
+        out, err = io.StringIO(), io.StringIO()
+        code = admin.main(["attach-judgment", "--profile", str(self.profile), "--release", str(number), "--judgment", str(path)],
+                          stdout=out, stderr=err)
+        return code, json.loads(out.getvalue()) if out.getvalue() else {"stderr": err.getvalue()}
+
+    def refused_attach(self, value, error, number=20):
+        before = self.sql("SELECT * FROM release_judgments"), self.sql("SELECT value FROM metadata WHERE key='commit_seq'")
+        code, answer = self.attach(value, number)
+        self.assertEqual((code, answer.get("error", {}).get("code")), (2, error), answer)
+        self.assertEqual((self.sql("SELECT * FROM release_judgments"), self.sql("SELECT value FROM metadata WHERE key='commit_seq'")),
+                         before, "a refusal writes nothing")
+        return answer["error"]["message"]
+
+    def test_a_pending_release_takes_its_judgment_once_and_nothing_else_in_its_record_changes(self):
+        self.assertIsNone(self.before["hosted_judgment"])
+        code, answer = self.attach(judgment(conclusion="failure"))
+        self.assertEqual((code, answer["attached"]), (0, True), answer)
+        after = self.only()
+        self.assertEqual(after["hosted_judgment"], judgment(conclusion="failure"), "each conclusion is kept as it is")
+        self.assertEqual({k: v for k, v in after.items() if k != "hosted_judgment"},
+                         {k: v for k, v in self.before.items() if k != "hosted_judgment"})
+        self.assertEqual(after["measurements"]["train"]["judgment"], "pending", "the record stays as it was written")
+        code, again = self.attach(judgment(conclusion="failure"))
+        self.assertEqual((code, again["attached"]), (0, False), "the same judgment again is the one attached")
+        self.assertIn("never changes", self.refused_attach(judgment(), "RELEASE_JUDGED"))
+        for statement in ("UPDATE release_judgments SET judgment='{}'", "DELETE FROM release_judgments"):
+            with self.subTest(statement), self.assertRaises(sqlite3.IntegrityError):
+                self.sql(statement)
+
+    def test_a_judgment_of_another_commit_is_refused(self):
+        self.refused_attach(judgment(head=C), "JUDGMENT_OF_ANOTHER_COMMIT")
+        mixed = judgment()
+        mixed["verdict_checks"][0]["head_sha"] = C
+        self.assertIn("names %r as its head, not the release's commit %s" % (C, A), self.refused_attach(mixed, "JUDGMENT_OF_ANOTHER_COMMIT"))
+        self.assertIsNone(self.only()["hosted_judgment"])
+
+    def test_only_a_release_whose_record_says_its_judgment_is_pending_takes_one(self):
+        self.recorded(record(commit=C, previous=A, items=[482]))
+        self.recorded(record(commit=B, previous=C, items=[483], measurements=trained(kind="judged-first", judgment=judgment())))
+        for number in (21, 22):
+            with self.subTest(number):
+                self.refused_attach(judgment(), "JUDGMENT_NOT_PENDING", number)
+        self.refused_attach(judgment(), "RELEASE_UNKNOWN", 23)
+        for value in ({}, dict(judgment(), audit=""), dict(judgment(), producer_runs=[]), dict(judgment(), extra=1)):
+            with self.subTest(value):
+                self.refused_attach(value, "INVALID_ARGUMENT")
+
+
+class HealthOfATrainRelease(ReleaseCase):
+    """Items 481, 482: the Health view's latest release, for a release deployed from a merged train, says no release
+    check measured it and says its hosted judgment: pending, then the one attached; for a train judged before its
+    merge, that judgment. A release check's record still gives its counts."""
+
+    def latest(self):
+        answer = self.store.view("owner", "health", {})
+        self.assertNotIn("error", answer, answer)
+        return answer["release"]
+
+    def test_a_train_release_has_no_release_check_and_says_its_judgment_as_it_stands(self):
+        self.recorded(record(release=20, items=[481], measurements=trained()))
+        latest = self.latest()
+        self.assertIsNone(latest["check"], "no release check ran for a merged train")
+        self.assertEqual(latest["train"], {"kind": "ordinary", "judgment": "pending", "succeeded": None, "total": None})
+        attached = judgment()
+        attached["verdict_checks"][0]["conclusion"] = "failure"
+        self.store.attach_judgment(20, attached)
+        self.assertEqual(self.latest()["train"], {"kind": "ordinary", "judgment": "judged", "succeeded": 1, "total": 2})
+        self.recorded(record(commit=B, previous=A, items=[482], measurements=trained(kind="judged-first", judgment=judgment(head=C))))
+        latest = self.latest()
+        self.assertEqual((latest["release"], latest["check"]), (21, None))
+        self.assertEqual(latest["train"], {"kind": "judged-first", "judgment": "judged", "succeeded": 2, "total": 2})
+
+    def test_a_release_check_record_keeps_its_counts_and_is_no_train(self):
+        # The negative: a release check's record, and one with no measurements, are not trains.
+        self.recorded(record(release=19))
+        latest = self.latest()
+        self.assertIsNone(latest["train"])
+        self.assertEqual((latest["check"]["python"], latest["check"]["node"], latest["check"]["native"]), (1106, 740, {"pass": 208, "total": 208}))
+        self.recorded(record(commit=C, previous=A, items=[88], measurements=None))
+        latest = self.latest()
+        self.assertEqual((latest["release"], latest["check"], latest["train"]), (20, None, None))
+
+
+class AttachJudgmentTool(ReleaseCase):
+    """tools/releases.py attach-judgment: reads the record through the live CLI and each run and check from GitHub, and
+    attaches the judgment through the live admin verb. Both are this checkout's own, run as processes."""
+
+    def setUp(self):
+        super().setUp()
+        import test_tools_train as trains
+        from tools import deploy
+        self.trains, self.deploy = trains, deploy
+        self.recorded(record(release=20, items=[481], measurements=trained()))
+        raw = {"live": str(ROOT), "instance": str(Path(self.temp.name).resolve()), "server_profile": str(self.profile),
+               "port": 5999, "runner_profile": "r.json", "runner_id": "r", "routes": "routes.json", "python": sys.executable,
+               "release_branch": "release/live73", "repository": trains.REPOSITORY}
+        self.config_path = Path(self.temp.name).resolve() / "deploy.json"
+        self.config_path.write_text(json.dumps(raw))
+
+    def tool(self, github, runs="301", checks="401,402"):
+        from tools import releases
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = releases.main(["attach-judgment", "20", "--config", str(self.config_path), "--runs", runs, "--checks", checks,
+                                  "--audit", "m-audit"], github=github)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_the_tool_attaches_the_judgment_of_the_releases_commit(self):
+        listed = self.trains.listed
+        github = self.trains.FakeGitHub(runs=[listed(301, A)], checks=[listed(401, A, "failure", name="App"), listed(402, A)])
+        code, out, err = self.tool(github)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(json.loads(out)["attached"])
+        [item] = self.store.view("owner", "releases", {})["items"]
+        self.assertEqual([(found["id"], found["conclusion"]) for found in item["hosted_judgment"]["verdict_checks"]],
+                         [(401, "failure"), (402, "success")])
+        self.assertEqual(item["hosted_judgment"]["audit"], "m-audit")
+        self.assertEqual(github.asked, ["repos/%s/actions/runs/301" % self.trains.REPOSITORY,
+                                        "repos/%s/check-runs/401" % self.trains.REPOSITORY,
+                                        "repos/%s/check-runs/402" % self.trains.REPOSITORY])
+
+    def test_the_tool_finds_a_release_on_an_older_page_of_the_records(self):
+        # B10: fifty later releases put release 20 on the second page the live CLI prints; the tool reads every page.
+        previous = A
+        for number in range(21, 71):
+            commit = "%040x" % number
+            self.recorded(record(release=number, commit=commit, previous=previous, items=[], measurements=None))
+            previous = commit
+        first = self.releases()
+        self.assertNotIn(20, [item["release"] for item in first["items"]])
+        self.assertIsNotNone(first["next_cursor"], "release 20 is on a later page")
+        listed = self.trains.listed
+        code, out, err = self.tool(self.trains.FakeGitHub(runs=[listed(301, A)], checks=[listed(401, A), listed(402, A)]))
+        self.assertEqual(code, 0, err)
+        self.assertTrue(json.loads(out)["attached"])
+        judged = {item["release"]: item["hosted_judgment"] for item in self.store.view("owner", "releases", {"limit": 100})["items"]}
+        self.assertEqual(judged[20]["head"], A)
+        self.assertEqual([number for number, value in judged.items() if value is not None], [20], "no other release is judged")
+
+    def test_the_tool_refuses_a_run_naming_another_commit_and_attaches_nothing(self):
+        listed = self.trains.listed
+        for runs, words in (([listed(301, C)], "the run 301 (Checks) names %s as its head, not %s, release 20's commit" % (C, A)),
+                            ([listed(301, A, None, "in_progress")], "is in_progress, not completed"),
+                            ([], "the run 301 could not be read")):
+            with self.subTest(words):
+                code, out, err = self.tool(self.trains.FakeGitHub(runs=runs, checks=[listed(401, A), listed(402, A)]))
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn(words, err)
+                self.assertEqual(self.sql("SELECT count(*) FROM release_judgments"), [(0,)])
 
 
 class Backfill(ReleaseCase):
@@ -194,7 +378,8 @@ for _name in list(fixtures.StoreCase.__dict__):
         setattr(ReleaseCase, _name, None)
 for _name in list(ReleaseCase.__dict__):
     if _name.startswith("test_"):
-        setattr(Backfill, _name, None)
+        for _case in (Backfill, HostedJudgment, AttachJudgmentTool):
+            setattr(_case, _name, None)
 
 
 if __name__ == "__main__":

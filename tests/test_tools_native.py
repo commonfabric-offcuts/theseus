@@ -13,16 +13,19 @@ from unittest import mock
 from tools import native, release_check
 
 CHROME = "/x" + release_check.CHROME_SUFFIX
-# A stand-in node harness: records its argv and writes a results file; the case named "bad" fails.
+# A stand-in node harness: records its argv, writes a results file and, as the persistence harness does, each case's
+# start and result lines on its log; the case named "bad" fails, and "no-lines" writes no case lines.
 STUB = r'''#!%s
 import json, os, sys
 evidence = sys.argv[3]
 open(os.path.join(evidence, "argv.json"), "w").write(json.dumps(sys.argv[1:]))
 open(os.path.join(evidence, "playwright.json"), "w").write(json.dumps(os.environ.get("AIM_PLAYWRIGHT_CORE")))
 bad = sys.argv[-1] == "bad"
-open(os.path.join(evidence, "native.json"), "w").write(json.dumps(
-    {"browserClosed": True, "results": [{"name": "case", "passed": not bad,
-     "error": '{"kind": "focus", "at": "reader"}\n{"kind": "focus", "at": "reader"}'}]}))
+result = {"name": "case", "passed": not bad, "error": '{"kind": "focus", "at": "reader"}\n{"kind": "focus", "at": "reader"}'}
+if sys.argv[-1] != "no-lines":
+    print(json.dumps({"case": "case", "started": "2026-11-15T01:00:00.000Z"}))
+    print(json.dumps(dict(result, started="2026-11-15T01:00:00.000Z", finished="2026-11-15T01:00:01.000Z")))
+open(os.path.join(evidence, "native.json"), "w").write(json.dumps({"browserClosed": True, "results": [result]}))
 sys.exit(int(bad))
 '''
 
@@ -95,6 +98,14 @@ class Main(unittest.TestCase):
         code, printed = self.main("--out", str(self.base / "run"), "openings", "bad")
         self.assertEqual(code, 1)
         self.assertIn("FAILED case\n    2 ('focus', 'reader')", printed)
+
+    def test_a_persistence_case_without_its_lines_on_the_log_fails_and_is_listed(self):
+        code, printed = self.main("--out", str(self.base / "run"), "navigation", "no-lines")
+        self.assertEqual(code, 1, printed)
+        self.assertIn("FAILED case lines: case 'case': no start line in the step's log where it began", printed)
+        # Another harness writes no case lines and is not held to them.
+        code, printed = self.main("--out", str(self.base / "openings"), "openings", "no-lines")
+        self.assertEqual(code, 0, printed)
 
     def test_refusals(self):
         self.assertEqual(self.main("--out", "relative", "journal")[0], 2)

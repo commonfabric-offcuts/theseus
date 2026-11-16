@@ -74,13 +74,16 @@ def main(argv=None):
         argv.append(args.case_filter)
     result = release_check.run_step(
         "native-" + step.name, argv, release_check.REPO, args.out,
-        lambda text: release_check.native_counts(step, evidence), step.harness, playwright=playwright)
+        lambda text: release_check.native_counts(step, evidence, text), step.harness, playwright=playwright)
     try:
         report = json.loads((evidence / step.results).read_text())
     except (OSError, ValueError):
         report = {}
     for line in digest(report):
         print(line)
+    # A case missing its lines on the step's log fails as a case does (release_check.case_lines).
+    for line in (result["counts"] or {}).get("case_lines") or []:
+        print("FAILED case lines: %s" % line)
     print("%s exit %s %s" % (step.name, result["exit"], args.out))
     return 0 if result["passed"] else 1
 

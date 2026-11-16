@@ -4,10 +4,12 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The message under the pointer lights, as a passage lights in the Reader,
 // and a small bar of buttons sits over its top corner: 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
-// Reply (Return: the Reader opens on the message with the cursor in the
-// reply; a quote is the reader's own selection there), and ⋯, the message's
+// Reply (the Reader opens on the message with the cursor in the reply), and ⋯, the message's
 // menu (Copy Link, Mark read or unread; docs/links.md), which a right-click on
-// the message opens too, where the pointer is. ↑ and ↓ move the light;
+// the message opens too, where the pointer is. Under the pointer a passage
+// of the message lights too, as in the Reader (FeedPassages): Return on it
+// quotes it in the Reader's reply, and ⌘C copies it; with none lit, Return
+// replies with nothing quoted, as Reply does. ↑ and ↓ move the light;
 // Tab onto a card lights it too, and Tab again goes through its bar (tab). A click on a lit card opens it in the Reader.
 // On a phone, a tap lights a card and shows its bar (its 👍 count then names
 // who, which a pointer reads on hover); a second tap opens it, and a tap
@@ -23,6 +25,7 @@ import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
+import { FeedPassages } from './feed-passages.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -61,11 +64,14 @@ export class MessageMenu {
   // thumb(item, on) and answer(item, yes|no): the person's acts.
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
-  // copy(item): puts the message's words on the clipboard (⌘C, copies).
-  constructor({ host, item, viewer, kind, reply, thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, thumb, answer, more, expand, copy, mac, doc });
+  // copy(item, words): puts the message's words on the clipboard, or the
+  // words given, a passage of them (⌘C, copies). quote(id, card, chosen): the
+  // Reader on it with chosen ({start, end, text} of its words) quoted.
+  constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, mac, doc });
     this.lit = null; this.touch = false; this.before = null;
     this.bar = this.buildBar();
+    this.passages = new FeedPassages({ host, doc, lights: () => this.returns(), entryOf: target => this.entryOf(target) });
     // Scrolling or a repaint can put another card under a stationary pointer
     // and fire pointerover. Only actual pointer movement takes the light from
     // the keyboard; otherwise repeated arrows can bounce between stacks.
@@ -87,6 +93,8 @@ export class MessageMenu {
       else if (!entry && !this.ownsControls(event.target)) this.light(null);
       // The keys follow the pointer too (item 387): what it moved onto takes the keyboard's place, as a click gives it (claim).
       if (this.host.contains(event.target)) this.hover(event);
+      // Then the passage under it lights, where Return would quote it (FeedPassages).
+      if (entry && entry === this.lit) this.passages.point(event, entry);
     });
     // What was lit when the press began: the press itself focuses the card,
     // which lights it, before its click arrives.
@@ -246,6 +254,7 @@ export class MessageMenu {
       unsay(this.buttons.more);
     }
     this.lit = entry;
+    this.passages.follow(entry);
     if (!entry) { this.bar.hidden = true; return; }
     this.host.dataset.lastMessage = entry.dataset.id;
     entry.classList.add('lit'); cardIn(entry).classList.add('lit');
@@ -345,7 +354,11 @@ export class MessageMenu {
     if (event.key === 'Enter') {
       if (event.shiftKey || !this.lit?.isConnected) return;
       event.preventDefault();
-      this.act('reply');
+      // Words selected in the lit message, or a passage of it lit, are quoted
+      // as the Reader opens on it; with none, Return replies as Reply does.
+      const chosen = this.passages.chosen(this.lit), item = this.item(this.lit.dataset.id);
+      if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);
+      else this.act('reply');
       return;
     }
     const entries = this.entries();
@@ -375,7 +388,8 @@ export class MessageMenu {
   }
   // ⌘C (Ctrl-C off a Mac) with no words selected copies the lit message's
   // words as written, as the Reader's ⇧⌘C copies the message it shows: the
-  // message the pointer or the keys lit last, which Return would answer. Words
+  // message the pointer or the keys lit last, which Return would answer, or
+  // the passage of it lit under the pointer, which Return would quote. Words
   // selected anywhere, the focus in writing or a pop-up, or no lit message
   // leave the key to the browser, which copies as it always does. Whether it
   // took the key.
@@ -386,8 +400,19 @@ export class MessageMenu {
     const item = this.item(this.lit.dataset.id);
     if (!item) return false;
     event.preventDefault();
-    this.copy(item);
+    // A passage lit in it is what is copied, as Return would quote it.
+    const words = this.passages.copied(this.lit);
+    if (words) this.copy(item, words); else this.copy(item);
     return true;
+  }
+  // Whether Return, pressed now, would answer the lit message (key): the
+  // focus on the page itself or on a card, not in writing, a rail, a pop-up
+  // or another control, which take Return themselves.
+  returns(at = this.doc.activeElement) {
+    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]') || open) return false;
+    if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return false;
+    const inList = at && this.host.contains(at), entry = inList && this.entryOf(at);
+    return inList ? Boolean(entry && at === cardIn(entry)) : pageItself(at, this.doc);
   }
   // The bar sits at the end of the page, so the keys reach it from its card:
   // Tab from the lit card goes to the bar's first button, as the card's own ⋯

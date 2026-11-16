@@ -4168,6 +4168,50 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Tony's 5418 beside item 478: a passage lit under the pointer on a lit dossier card is painted over the card's words
+  // (a highlight) and the card's ring is its box's own: the two touch the same card and neither undoes the other. Read
+  // from the screen: the passage's own boxes show the highlight's fill, and the ring keeps its top and sides, one outline,
+  // its bottom under the card in front.
+  await check('reading stacks a passage lit under the pointer on a lit dossier card keeps its light over the words while the card keeps its ring, its bottom under the card in front, at 1280 and 900 wide, light and dark (Tony 5418, item 478)', async () => {
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const topic = 'stack-ring-passage', ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The message a dossier grows from.', read: true }],
+      ['reply', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: said.join(' '), read: true }],
+      ['after', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply in front of it.', read: true }]]);
+    const p = await open(topic, 'laptop', topic, ids.root); await dossierOpen(p, 'laptop', ids.root);
+    const at = text => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(card(ids.reply) + ' > .message-preview')}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+      while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return null;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+      const b=r.getClientRects()[0];return {x:b.left+b.width/2,y:b.top+b.height/2,top:b.top,height:b.height,left:b.left,right:b.right}})()`);
+    const shining = () => p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`);
+    for (const width of [DEVICES.laptop.width, 900]) {
+      await p.send('Emulation.setDeviceMetricsOverride', { width, height: DEVICES.laptop.height, deviceScaleFactor: 1, mobile: false });
+      await centre(p, card(ids.reply));
+      await p.point(card(ids.reply) + ' > .message-author', 'move');
+      await until(async () => (await lit(p)).includes(ids.reply), `${width}px: the reply is lit from its author's line`);
+      const words = await at('lit passage');
+      assert.ok(words, `${width}px: the passage is drawn on the reply`);
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: words.x, y: words.y });
+      await becomes(shining, said[1] + ' ', `${width}px: the passage under the pointer lights`);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const where = `laptop ${width}px ${theme}`;
+        assert.equal(await shining(), said[1] + ' ', `${where}: the passage is still lit`);
+        await ringRead(p, card(ids.reply), `${where} with a passage lit`, 'reply');
+        // The highlight's fill (aim.css: black under white words) across the passage's first line, read from the screen
+        // along a row near the top of its line box, which is mostly the fill between the letters' tops.
+        const box = await at('lit passage'), image = pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+        const scale = image.width / width;
+        const filled = b => { const xs = []; for (let x = b.left + 1; x < b.right - 1; x += 2) xs.push(x); return [xs.filter(x => image.pixel(Math.floor(x * scale), Math.floor((b.top + b.height * .15) * scale)).every(v => v <= 40)).length, xs.length]; };
+        const [dark, of] = filled(box), [unlit, unlitOf] = filled(await at('Words before'));
+        assert.ok(dark >= of * .75, `${where}: the lit passage's fill shows over its words (${dark} of ${of} points)`);
+        assert.ok(unlit <= unlitOf * .25, `${where}: and not over the words before it (${unlit} of ${unlitOf} points)`);
+        observations.push({ name: 'stack lit ring with a passage', engine, where, dark, of, unlit, unlitOf });
+        await shot(p, `stack-ring-passage-${width}-${theme}`);
+      }
+    }
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Tony's 5418: a long message read in place keeps one ring, on its own box, as it scrolls inside, as the page scrolls
   // it, as the window resizes and as it grows (Show full message): each read after the scroll has ended. The first
   // message and a reply have a card in front; the latest reply has none, so its whole ring shows, bottom side too.

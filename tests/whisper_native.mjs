@@ -224,6 +224,56 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.deepEqual(p.errors, []);
   });
 
+  // Item 307: a whisper replying to an ask to the reader, sent to the agent that asked, answers it as a reply in the
+  // topic would: the topic's row stops saying "Waiting on you" on the open page. A whisper that replies to no ask
+  // leaves it lit. Each width has its own ask and answer, at a laptop's and a phone's three narrowest widths, and the
+  // row and the writing are shot in light and in dark.
+  const row = '#topics .nav-item[data-topic-id="t1"]';
+  const rowMark = p => quiet(p, `(m=>m?{text:m.textContent,state:m.dataset.state,mine:m.classList.contains('mine')}:null)(document.querySelector(${JSON.stringify(row + ' .topic-state')}))`);
+  const schemeShot = async (p, name) => {
+    for (const scheme of ['light', 'dark']) {
+      await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+      await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: ${scheme})').matches`), scheme);
+      await shot(p, `${name}-${scheme}`);
+    }
+    await p.send('Emulation.setEmulatedMedia', { features: [] });
+  };
+  for (const width of [null, 390, 375, 320]) {
+    const where = width ? `${width}px` : 'laptop';
+    await check(`whispers a whisper replying to an ask ends Waiting on you and one replying to nothing does not, at ${where}`, async () => {
+      const words = `Can we ship on the fourth (${where})?`;
+      const asked = await control({ method: 'agent_message', operation_id: `whispers-ask-${where}`, body: words, addressees: [facts.actor], intent: 'ask' });
+      const ask = asked.result.message_id;
+      const p = await page(`whispers-ask-${where}`, null, true);
+      if (width) await p.send('Emulation.setDeviceMetricsOverride', { width, height: 760, deviceScaleFactor: 2, mobile: true });
+      const lit = await until(async () => { const m = await rowMark(p); return m?.state === 'waiting' && m; }, 'the row waits on the reader');
+      assert.equal(lit.mine, true); assert.match(lit.text, /^Waiting on you/);
+      // A whisper to the agent that asked, replying to nothing, answers no ask: once its card is drawn the row still waits.
+      const aside = await personWhispers(`whispers-aside-${where}`, `Unrelated: who has the copy (${where})?`);
+      await until(async () => (await cardShown(p, aside))?.whisper, 'the whisper replying to nothing is drawn');
+      assert.equal((await rowMark(p))?.state, 'waiting', 'a whisper replying to no ask leaves the row waiting');
+      assert.ok((await view('topic', { topic_id: 't1' })).topic.asks.some(a => a.actor_id === facts.actor && a.message_id === ask), 'and the ask waiting');
+      await schemeShot(p, `whispers-ask-waiting-${where}`);
+      // The reader replies to the ask in the Reader and chooses Whisper.
+      await openCard(p, ask, words);
+      await replace(p, 'The fourth works.');
+      if ((await choice(p)).whisper === 'disabled') await addressTo(p, agent);
+      await chooseWhisper(p);
+      assert.match(await line(p), new RegExp(`^Only you and ${agent} will see this\\.`));
+      if (width) assert.equal(await p.evaluate('document.scrollingElement.scrollWidth <= innerWidth'), true, 'nothing scrolls sideways');
+      await schemeShot(p, `whispers-ask-reply-${where}`);
+      const answer = await sent(p, 0);
+      const source = await view('source', { source_ref: { kind: 'message', id: answer } });
+      assert.deepEqual([source.whisper, source.private_to, source.reply_to], [true, agent, ask], 'a whisper replying to the ask');
+      await until(async () => (await rowMark(p)) === null, 'the row stops waiting on the reader once the whisper answers');
+      assert.deepEqual((await view('topic', { topic_id: 't1' })).topic.asks.filter(a => a.actor_id === facts.actor), [], 'the ask stops waiting on them');
+      assert.equal((await view('attention', {})).waiting_on_me, 0, 'Waiting on you goes out');
+      await closeReader(p);
+      await schemeShot(p, `whispers-ask-answered-${where}`);
+      assert.deepEqual(p.errors, []);
+    });
+  }
+
   // Each check above reads the same field the Reader writes in.
   async function field(p) { return p.evaluate('document.querySelector("#writing-body").value'); }
 }
