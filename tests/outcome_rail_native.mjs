@@ -2338,15 +2338,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // number or a date), ↑ and ↓ in a select, which choose among its options, and in a radio group or a slider.
   // Not a control a box that does not hold the focus has clipped wholly out of sight (a link scrolled up out of
   // the Reader's message box lies above nothing in the header): it is reached from inside its box. One out of
-  // sight only by the page, or by a box the focus is in, does lie that way, and the arrows scroll toward it.
+  // sight only by the page, or by a box the focus is in, does lie that way, and the arrows scroll toward it. The
+  // focus scrolled out of its own box is judged where it went out, on the box's edge.
   const LIES = key => `(e=>{if(!e||e===document.body||e===document.documentElement)return [];const key=${JSON.stringify(key)},vertical=key==='ArrowUp'||key==='ArrowDown';
     const line=e.tagName==='INPUT'&&['text','search','email','url','tel','password'].includes(e.type),typed=e.matches('textarea,[contenteditable]:not([contenteditable=false])')||(e.tagName==='INPUT'&&!['checkbox','radio','button','submit','reset','file','color','image','range'].includes(e.type));
     const suggests=e.matches('[role=combobox],[aria-autocomplete]')||Boolean(e.list);
     if(typed&&(suggests||!((e.value===''&&(line||e.tagName==='TEXTAREA'))||(line&&vertical))))return [];
     if((e.tagName==='SELECT'&&vertical)||e.matches('input[type=radio],input[type=range],[role=slider],[role=radio]'))return [];
     const modal=[...document.querySelectorAll('dialog[open]')].filter(d=>d.matches(':modal')).at(-1),layer=modal??e.closest('dialog[open],[role=dialog]:not([hidden]),[role=menu]:not([hidden])')??document.body;
-    const b=e.getBoundingClientRect(),shown=x=>x.checkVisibility({visibilityProperty:true})&&!x.disabled&&!x.closest('[inert],[aria-hidden=true]')&&x.getBoundingClientRect().width>0;
-    const clipped=x=>{const c=x.getBoundingClientRect();let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!at.contains(e);at=at.parentElement){const s=getComputedStyle(at);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
+    const area=(x,holding)=>{let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!(holding&&at.contains(holding));at=at.parentElement){const s=getComputedStyle(at);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return a};
+    const clipped=x=>{const c=x.getBoundingClientRect(),a=area(x,e);return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
+    const r=e.getBoundingClientRect(),o=area(e,null),cl=(v,lo,hi)=>Math.min(Math.max(v,lo),hi),b={top:cl(r.top,o.top,o.bottom),bottom:cl(r.bottom,o.top,o.bottom),left:cl(r.left,o.left,o.right),right:cl(r.right,o.left,o.right)};
+    const shown=x=>x.checkVisibility({visibilityProperty:true})&&!x.disabled&&!x.closest('[inert],[aria-hidden=true]')&&x.getBoundingClientRect().width>0;
     return [...layer.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&!x.contains(e)&&!e.contains(x)&&(x.tabIndex>=0||x.getAttribute('role')==='treeitem')&&shown(x)&&!clipped(x)).filter(x=>{const c=x.getBoundingClientRect();
       if(key==='ArrowDown')return c.top>=b.bottom-1&&c.left<b.right&&c.right>b.left;if(key==='ArrowUp')return c.bottom<=b.top+1&&c.left<b.right&&c.right>b.left;
       if(key==='ArrowRight')return c.left>=b.right-1&&c.top<b.bottom&&c.bottom>b.top;return c.right<=b.left+1&&c.top<b.bottom&&c.bottom>b.top})
@@ -2718,8 +2721,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying on ' + from);
       assert.equal(await inView(p), true, said + ': and it shows');
       // So inside a box that scrolls, from a control in that box: what the box holds out of sight lies that way of
-      // the focus in it (what a box has scrolled away lies no way only of a control outside it).
-      await p.evaluate(`(()=>{const box=document.createElement('div'),near=document.createElement('button'),words=document.createElement('div'),far=document.createElement('button');
+      // the focus in it (what a box has scrolled away lies no way only of a control outside it). The words and the
+      // control far below go first, so nothing but the box's own lies below the control in it.
+      await p.evaluate(`(()=>{document.getElementById('far-words').remove();document.getElementById('far-button').remove();const box=document.createElement('div'),near=document.createElement('button'),words=document.createElement('div'),far=document.createElement('button');
         box.id='far-box';box.style.cssText='overflow:auto;height:'+Math.round(innerHeight/2)+'px';near.id='box-near';near.type='button';near.textContent='Near';
         words.style.height=(innerHeight*2)+'px';words.textContent='Words in the box.';far.id='box-far';far.type='button';far.textContent='Far in the box';
         box.append(near,words,far);document.getElementById('main').append(box);box.scrollIntoView({block:'center'});near.focus({preventScroll:true});return true})()`);

@@ -326,7 +326,10 @@ rule above. (`web/arrow-reach.mjs`)
   it. What a box the focus is not in has scrolled out of sight lies no way of
   the focus, as the eye sees: a link scrolled up out of the Reader's message is
   not above its header, and ↑ from the header leaves the message where it was
-  read to. The arrows reach such a control from inside its box.
+  read to. The arrows reach such a control from inside its box: from a control
+  in a box that scrolls, the box scrolls toward the next one out of sight in
+  it, and the focus scrolled out of the box meanwhile is where it went out, on
+  the box's edge, never over what lies past it.
 - **A control pressed, not typed in.** A checkbox ("Mark it reached anyway"
   in the reach box, the acknowledgement in a reply's review) holds no arrow,
   as a button holds none: each goes on to the control that way. A select (the

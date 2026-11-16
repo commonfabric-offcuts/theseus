@@ -14137,13 +14137,28 @@
    "break": [
     [
      "web/arrow-reach.mjs",
-     "  return !(box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right);\n}",
-     "  return false;\n}"
+     "const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from));",
+     "const clippedAway = () => false;"
     ]
    ],
    "check": {
     "native": "rail",
     "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "Inside a box that scrolls, ↓ from a control in it reaches one out of sight in it, the box scrolling toward it first; the focus scrolled out of its box is judged where it went out, never over what lies past the box's edge",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const next = nearest(nothing ? edge(doc, way) : seenFrom(from, doc), list",
+     "const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows a control out of sight is scrolled toward"
    }
   },
   {

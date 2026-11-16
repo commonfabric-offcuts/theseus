@@ -23,7 +23,8 @@
 // scrolls a third of what it shows, and once at its end the arrows go on. A
 // control that way but out of sight is scrolled toward a step at a time, so
 // the words between are read; but what a box the focus is not in has scrolled
-// out of sight lies no way of it (clippedAway).
+// out of sight lies no way of it, and the focus scrolled out of its own box is
+// where it went out (clippedAway, seenFrom).
 // While a pop-up is open the arrows move only through it. With nothing
 // focused, ↓ goes to the first control in view from the top, ↑ to the last,
 // → to the first from the left and ← from the right.
@@ -100,36 +101,39 @@ function room(el, way) {
   if (way === 'up' || way === 'down') return way === 'down' ? el.scrollTop + el.clientHeight < el.scrollHeight - 1 : el.scrollTop > 0;
   return way === 'right' ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0;
 }
+// What the boxes that clip el (overflow other than visible) leave to show,
+// out to the first that holds `holding` (none: every one up to the page).
+function clipArea(el, doc, holding = null) {
+  const view = doc.defaultView;
+  let area = { top: -Infinity, left: -Infinity, bottom: Infinity, right: Infinity };
+  for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement && !(holding && at.contains(holding)); at = at.parentElement) {
+    const style = view.getComputedStyle(at);
+    if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
+    const clip = at.getBoundingClientRect();
+    area = { top: Math.max(area.top, clip.top), left: Math.max(area.left, clip.left), bottom: Math.min(area.bottom, clip.bottom), right: Math.min(area.right, clip.right) };
+  }
+  return area;
+}
+const meets = (box, area) => box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right;
 // Whether some of el shows: inside the window and every scrolling box around it.
 function inSight(el, doc) {
-  const view = doc.defaultView, box = el.getBoundingClientRect();
-  let area = { top: 0, left: 0, bottom: view.innerHeight, right: view.innerWidth };
-  for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement; at = at.parentElement) {
-    const style = view.getComputedStyle(at);
-    if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
-    const clip = at.getBoundingClientRect();
-    area = { top: Math.max(area.top, clip.top), left: Math.max(area.left, clip.left), bottom: Math.min(area.bottom, clip.bottom), right: Math.min(area.right, clip.right) };
-  }
-  return box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right;
+  const view = doc.defaultView, area = clipArea(el, doc);
+  return meets(el.getBoundingClientRect(), { top: Math.max(area.top, 0), left: Math.max(area.left, 0), bottom: Math.min(area.bottom, view.innerHeight), right: Math.min(area.right, view.innerWidth) });
 }
 
-// Whether a box that clips el and does not hold `from` (null: nothing
-// focused) hides it wholly. What such a box has scrolled out of sight lies no
-// way of a control outside it, as the eye sees: a link scrolled up out of a
+// What a box has scrolled out of sight is judged where the eye sees it, not
+// where it is drawn. A control a box that does not hold `from` (null: nothing
+// focused) hides wholly lies no way of from: a link scrolled up out of a
 // message's box in the Reader is not above the header, though it is drawn
-// there, and ↑ from the header never scrolls the message back toward it. The
+// there, and ↑ from the header never scrolls the message back toward it; the
 // arrows reach it from inside its box. Out of sight only by the page, or by a
-// box `from` is in, a control still lies that way, and is scrolled toward.
-function clippedAway(el, from, doc) {
-  const view = doc.defaultView, box = el.getBoundingClientRect();
-  let area = { top: -Infinity, left: -Infinity, bottom: Infinity, right: Infinity };
-  for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement && !(from && at.contains(from)); at = at.parentElement) {
-    const style = view.getComputedStyle(at);
-    if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
-    const clip = at.getBoundingClientRect();
-    area = { top: Math.max(area.top, clip.top), left: Math.max(area.left, clip.left), bottom: Math.min(area.bottom, clip.bottom), right: Math.min(area.right, clip.right) };
-  }
-  return !(box.bottom > area.top && box.top < area.bottom && box.right > area.left && box.left < area.right);
+// box from is in, a control still lies that way, and is scrolled toward.
+const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from));
+// And the focus scrolled out of its own box (stepping toward a control further
+// in it) is where it went out, on the box's edge, never over what lies past it.
+function seenFrom(from, doc) {
+  const box = from.getBoundingClientRect(), area = clipArea(from, doc), clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  return { top: clamp(box.top, area.top, area.bottom), bottom: clamp(box.bottom, area.top, area.bottom), left: clamp(box.left, area.left, area.right), right: clamp(box.right, area.left, area.right) };
 }
 
 // One step toward a control out of sight: the innermost box around it that
@@ -169,7 +173,7 @@ export function reach(from, way, { within = null, doc = from?.ownerDocument ?? g
   const nothing = onNothing(from, doc), layer = layerOf(doc, nothing ? null : from), scope = within && layer.contains(within) ? within : layer;
   const list = controls(scope).filter(el => (nothing || (el !== from && !el.contains(from) && !from.contains(el))) && !clippedAway(el, nothing ? null : from, doc));
   // From a field, a button set into its edge (Taller writing) is beside it.
-  const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list.map(el => ({ el, box: el.getBoundingClientRect() })), way, { inside: Boolean(from?.matches?.(FIELD)) });
+  const next = nearest(nothing ? edge(doc, way) : seenFrom(from, doc), list.map(el => ({ el, box: el.getBoundingClientRect() })), way, { inside: Boolean(from?.matches?.(FIELD)) });
   if (!next) return false;
   if (!inSight(next, doc) && stepToward(next, way, doc)) return true;
   next.focus({ preventScroll: true });
