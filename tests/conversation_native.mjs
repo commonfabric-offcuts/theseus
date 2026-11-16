@@ -84,6 +84,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
 
   await check('conversation the page is a topic page, messages above the writing box, and a card arrives waiting for an answer, three quiet dots pulsing in turn, and turns Answered live, the dots gone', async () => {
     const p = await open('conversation-page', '/?conversation=w1');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     await until(() => quiet(p, `!document.querySelector('#conversation-empty').hidden`), 'the empty conversation says what it is for');
     assert.match(await p.evaluate(`document.querySelector('#conversation-empty').textContent`), new RegExp(`^Nothing here yet\\.Write below .* ${agent} answers each one here`));
     assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Conversation');
@@ -106,10 +107,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
     const calm = await until(async () => { const d = await dots(p, item); return d?.running === 0 && d; }, 'under reduced motion the dots stop');
     assert.deepEqual([calm.count, calm.shown, calm.names], [3, true, ['none', 'none', 'none']], 'still three, shown, and still');
-    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: '' }] });
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
     assert.equal(await p.evaluate(`document.querySelector('#conversation-empty').hidden`), true);
     assert.deepEqual(await until(async () => { const c = await chip(p); return !c.hidden && c; }, 'Only new shows'), { hidden: false, text: 'Only new (1)', pressed: 'false' });
-    const placed = await p.evaluate(`(()=>{const m=document.querySelector('#messages').getBoundingClientRect(),w=document.querySelector('#inline-composer').getBoundingClientRect();return {messages:m.bottom,writing:w.top}})()`);
+    const placed = await p.evaluate(`(()=>{const m=[...document.querySelectorAll('#messages [data-id]')].filter(e=>e.getClientRects().length).at(-1).getBoundingClientRect(),w=document.querySelector('#inline-composer').getBoundingClientRect();return {messages:m.bottom,writing:w.top}})()`);
     assert.ok(placed.messages <= placed.writing + 1, `the messages sit above the writing box (${JSON.stringify(placed)})`);
     await answer('conversation-answer', 'On track for Friday.', { reply_to: item });
     const answered = await until(async () => { const t = await tags(p, item); return t?.tags[0] === 'Answered' && t; }, 'the card turns Answered without a reload');
