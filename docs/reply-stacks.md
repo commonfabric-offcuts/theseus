@@ -41,7 +41,8 @@ row exists, because dropping rows would restart their revisions. Version 37
 lets the table hold a fold. SQLite changes the kinds a table takes only by
 building it again, and the step keeps every row, its id, and where the next
 id goes on from. Stepping back to 36 is refused once anyone has folded a
-message, even one unfolded since.
+message, even one unfolded since. Version 46 lets it hold a dossier's cover the
+same way; stepping back to 45 is refused once any cover was written.
 
 | Act | Command | Value | Whose |
 | --- | --- | --- | --- |
@@ -51,6 +52,7 @@ message, even one unfolded since.
 | place | `stack.place` | `{"key": 1.5}` or `{"key": null}` | the reader's own |
 | name | `stack.name` | `{"name": "Cabin week"}` (empty gives back its first message's line), or an agent's `{"name": "Cabin week plan", "minted": true}` (below, "Minted names") | the topic's |
 | join | `stack.join` | `{"into": "m-…"}` or `{"into": null}` (split back out) | the topic's |
+| cover | `stack.cover` | where the dossier stands, what waits on the outcome's owner and its payload, on the dossier's first message ([dossier-covers.md](dossier-covers.md)) | the topic's |
 
 Each act names one message, `target: {"message_id": "m-…"}`, and is fenced on
 the revision its sender read: `expected: {"star_revision": 3}` (and likewise

@@ -672,6 +672,13 @@ export class StackFeed {
     const head = headOf(stack, { preview: messagePreview });
     return head.typed?.text || (stack.replies.length ? head.name : '') || null;
   }
+  // The cover of the dossier a message is in, as its folder shows it (item 624), with the topic its links go to; null
+  // for a message on its own, one no stack drawn holds, and a dossier with no cover.
+  dossierCover(id) {
+    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;
+    return cover ? { cover, topicId: stack.head.topic_id } : null;
+  }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.
   setAside(stack, below, { undoable = true, restoreThrough, focus = true } = {}) {

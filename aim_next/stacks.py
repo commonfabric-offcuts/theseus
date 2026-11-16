@@ -28,6 +28,9 @@ change:
 - `join` (stack.join): the stack this message heads is joined to the end of
   another stack (`into`, a message of that stack), or split back out (none).
   The topic's, wiki style, with who did it.
+- `cover` (stack.cover, covers.py): the dossier's cover on its first message:
+  where it stands, what waits on the outcome's owner, and its payload, whose
+  Done only the owner's own 👍 or word gives (item 624). The topic's.
 
 A personal row belongs to its reader (`owner` is their id); a shared row has the
 empty owner. An act's revision counts its rows for that message, kind and owner,
@@ -48,6 +51,7 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
+from . import cover_values
 
 
 def _act_table(kinds):
@@ -65,6 +69,10 @@ FOLD_SCHEMA = [_act_table(("star", "deal", "fold", "place", "name", "join"))] + 
 ASIDE_INDEXES = ["CREATE INDEX stack_replies ON messages(reply_to,topic_id)",
                  "CREATE INDEX stack_joins ON message_acts(json_extract(value,'$.into')) WHERE kind='join'"]
 ACT_FRESH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside"))] + ACT_INDEXES + ASIDE_INDEXES
+# Version 46 lets the table hold a dossier's cover (item 624), and finds the covers whose payload a message delivered,
+# so the owner's 👍 or word on it settles Done at once.
+COVER_INDEXES = ["CREATE INDEX cover_payloads ON message_acts(json_extract(value,'$.payload.message_id')) WHERE kind='cover'"]
+ACT_COVERS = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES
 ACT_DOWN = ("DROP INDEX reader_stars", "DROP INDEX topic_acts", "DROP TABLE message_acts")
 # Any row: dropping one would restart its revisions, and a late request could then undo a newer act.
 ACT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts)"
@@ -94,6 +102,13 @@ ASIDE_UP = _rebuilt(ACT_FRESH[0]) + ASIDE_INDEXES
 ASIDE_DOWN = ["DROP INDEX stack_replies"] + _rebuilt(FOLD_SCHEMA[0])
 ASIDE_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='aside')"
 
+# Building the table again drops its own indexes: _rebuilt puts back the acts' two, and each step the joins' (the
+# stack_replies index is on messages, which stays).
+COVER_UP = _rebuilt(ACT_COVERS[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+COVER_DOWN = _rebuilt(ACT_FRESH[0]) + ASIDE_INDEXES[1:]
+# Any cover, even one cleared since: version 45 cannot hold its rows, and dropping them would restart its revisions.
+COVER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover')"
+
 PERSONAL = {"star", "deal", "fold", "place", "aside"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
@@ -108,10 +123,11 @@ JOIN_DEPTH = 10000
 # A minted name is this many words, from the fewest to the most (item 479).
 MINT_WORDS = (2, 5)
 # What an act stands at before anyone has made it.
-NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None}}
+NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
+        "cover": cover_values.EMPTY_COVER}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0,
-         "name": None, "name_revision": 0, "joined": None, "join_revision": 0}
+         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0}
 
 
 def _flag(args, name, words):
@@ -189,10 +205,18 @@ def current_acts(db, actor, message_ids):
         "SELECT a.* FROM message_acts a WHERE a.message_id IN (%s) AND a.owner IN ('',?) AND a.revision="
         "(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind=a.kind AND b.owner=a.owner)" % marks,
         list(message_ids) + [actor]).fetchall()
+    owners = {}
     for row in rows:
         kind = row["kind"]
         acts = found.setdefault(row["message_id"], dict(EMPTY))
-        acts.update(_shown(kind, row))
+        if kind == "cover":
+            # A dossier's cover (item 624): as this reader reads it, with the outcome's owner, whose 👍 or word gives Done.
+            if row["topic_id"] not in owners:
+                owners[row["topic_id"]] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
+                                                     (row["topic_id"],)).fetchone()[0]
+            acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owners[row["topic_id"]])
+        else:
+            acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
     return found
 

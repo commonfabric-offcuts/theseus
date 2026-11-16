@@ -1290,6 +1290,11 @@ function readerDossierName(source) {
   const ref = source?.source_ref;
   return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
 }
+// The cover of that dossier (item 624), on the same terms: the Reader shows it as one line above the message.
+function readerDossierCover(source) {
+  const ref = source?.source_ref;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierCover(ref.id) : null;
+}
 function paintReaderTitle() {
   const p = registry?.current;
   if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
@@ -2183,6 +2188,7 @@ async function initialize() {
     error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
+    dossierCover: source => readerDossierCover(source),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so

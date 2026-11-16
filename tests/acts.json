@@ -20688,9 +20688,14 @@
      "(\"43\", \"44\", ENDS_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"45\", \"46\", COVER_UP",
+     "(\"44\", \"45\", COVER_UP"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"45\"",
-     "SCHEMA_VERSION = \"44\""
+     "SCHEMA_VERSION = \"46\"",
+     "SCHEMA_VERSION = \"45\""
     ]
    ],
    "check": {

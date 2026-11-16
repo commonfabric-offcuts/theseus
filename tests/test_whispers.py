@@ -909,6 +909,9 @@ VIEW_PATHS = {
     "stack_namer": "the message named through _acted_message, which applies visible(); its root walked up through parents each "
                    "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
                    "so a whisper never names one",
+    "dossier_cover": "the message named through _acted_message, which applies visible(); its dossier's root walked up through parents "
+                     "each checked by visible(), and the root's cover as message_acts reads it, under the whisper rule; a word that made "
+                     "its payload Done shows its message only to a reader who may see it",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
     "tools": "no message words: the records, what each check found and which outcomes said they use each",
     "tool": "no message words; a went-back line names its topic's title only when READABLE to the reader",
@@ -980,6 +983,11 @@ MESSAGE_READS = {
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside", 23),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
+    "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
+                           "dossier is a whisper between the same two people; and a cover's root, read under VISIBLE as the owner reads "
+                           "it before the owner's 👍 or word settles Done (item 624)", 2),
+    "aim_next/cover_values.py": ("the owner's own reply to a payload's message, read under VISIBLE as the owner reads it, whose id is shown "
+                                 "only to a reader the next read finds it VISIBLE to (item 624)", 2),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
                              "number then read through _message_access; sources and gathering shown through _message_access; "

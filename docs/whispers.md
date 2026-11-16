@@ -124,8 +124,11 @@ can't open.
 Core gives someone outside a person's whisper exactly this: that a topic
 changed (its version, activity and order), was reopened and by whom and when;
 that an ask waiting on the writer ended; that an item was answered, by whom
-and when; and that a topic, item, problem or move came from a message they
-can't open. No view, refusal or
+and when; that a topic, item, problem or move came from a message they
+can't open; and that a dossier's payload was accepted by the owner's word,
+when that word was a whisper ([dossier-covers.md](dossier-covers.md)). A
+whispered dossier's cover is read only by its two people, and a whisper is
+never the payload of a dossier on the record. No view, refusal or
 command answer gives them the whisper's id, number, topic, words, excerpt or
 attachments: `state_message_id` and `source_message_id` on a topic, a take's
 `ref`, a pipeline source or because, and a problem's message are null or

@@ -19,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
