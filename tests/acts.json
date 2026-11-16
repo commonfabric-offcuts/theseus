@@ -26064,6 +26064,21 @@
    }
   },
   {
+   "item": 602,
+   "act": "On a phone the title bar's ⋯ offers Reply to the first message and Move below More with the glyphs of the buttons that do the same",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "glyph: 'reply', act: () => state.on?.reply?.(stack) }",
+     "act: () => state.on?.reply?.(stack) }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier's title bar ⋯ on a 390px phone offers Reply"
+   }
+  },
+  {
    "item": 473,
    "act": "The title bar's tray glyph moves the dossier below More, and brings it back from there",
    "break": [

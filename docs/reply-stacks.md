@@ -499,7 +499,10 @@ its second line too little room for who began the dossier and who named it
 (item 479), which needs a 371px folder beside them. ⋯ keeps its name, its
 tooltip and its 44px, and its menu offers Reply to the first message and Move
 below More (or Bring back above More) first, by those names, before what the
-first message's own ⋯ offers; each does what its glyph does, by touch and by
+first message's own ⋯ offers. As every menu item (docs/links.md, "A message's
+menu"), each shows the glyph of the button that does the same: Reply the title
+bar's Reply, Move below More the Reader's archive tray and Bring back above
+More the tray with an arrow out. Each does what its glyph does, by touch and by
 the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab
 leaves room for ⋯ alone, at rest as once selected, so its name keeps the same
 words either way. A wider window keeps the three glyphs.
@@ -863,6 +866,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
 | the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
 | the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |
+| on a 390px phone the title bar's ⋯ opens its menu, Reply to the first message with the title bar's Reply glyph and Move below More with the Reader's tray first, Bring back above More with the tray and its arrow out once below, light and dark | `tests/stack_native.mjs`, "reading menus a dossier's title bar ⋯ on a 390px phone …", in Chrome and Safari's engine |
 | the message bar's Reply glyph, Show full message only on a cut-off message, Fold and Unfold, none on a starred message | `tests/stack_native.mjs`, "reading stacks the message bar's Reply is a glyph …", in Chrome and Safari's engine |
 | the message bar in the window: a go-ahead ask's bar, short and cut off, plain and with "Link copied", in one row at 390, 375 and 320 pixels with Fold and Show full message behind its ⋯ where they do not fit and back once they do, nothing put away on a laptop or where there is room | `tests/topic_reading_native.mjs`, "reading a go-ahead ask's bar keeps every button in the window …", in Chrome and Safari's engine |
 | a folder in its agent's colour, following the reader's choice; a person's neutral; no edge | `tests/ui_folder_colour.test.mjs` (contrast for every palette colour, light and dark); `tests/stack_native.mjs`, "reading stacks a dossier an agent began wears its colour …", in Chrome and Safari's engine |

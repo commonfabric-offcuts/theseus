@@ -394,11 +394,13 @@ function paintTools(tools, stack, shown, { state, doc }) {
   aside.onclick = () => state.on?.aside?.(stack, !positionOf(stack)?.below);
   nameTool(menu, 'More for this dossier');
   if (menu.textContent !== '⋯') menu.textContent = '⋯';
-  // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names.
+  // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names,
+  // each with the glyph of the button that does the same (item 602): Reply the title bar's own, Move below More the
+  // Reader's archive tray (item 601) and Bring back above More the tray with an arrow out.
   menu.onclick = () => {
     const folded = !reply.getClientRects().length, below = positionOf(stack)?.below;
-    state.on?.menu?.(stack, menu, folded ? [{ label: reply.getAttribute('aria-label'), act: () => state.on?.reply?.(stack) },
-      ...(positionOf(stack) ? [{ label: aside.getAttribute('aria-label'), act: () => state.on?.aside?.(stack, !below) }] : [])] : []);
+    state.on?.menu?.(stack, menu, folded ? [{ label: reply.getAttribute('aria-label'), glyph: 'reply', act: () => state.on?.reply?.(stack) },
+      ...(positionOf(stack) ? [{ label: aside.getAttribute('aria-label'), glyph: below ? 'back' : 'archive', act: () => state.on?.aside?.(stack, !below) }] : [])] : []);
   };
 }
 

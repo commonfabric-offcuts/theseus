@@ -7241,6 +7241,51 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Items 602 and 473: on a phone narrower than 404px the title bar's Reply and Move below More fold into its ⋯,
+  // whose menu offers them first; as every menu item, each shows a glyph before its words, the drawing of the button
+  // that does the same (602's rule): Reply to the first message the title bar's Reply, Move below More the Reader's
+  // archive tray (item 601) and Bring back above More the tray with an arrow out. A menu with an item that names no
+  // glyph opens nothing (openMessageMenu), so without them the phone's ⋯ opens no menu at all.
+  await check('reading menus a dossier\'s title bar ⋯ on a 390px phone offers Reply to the first message and Move below More first, then Bring back above More once below, each with its glyph before its words, light and dark', async () => {
+    const topic = 'title-bar-phone-menu', ids = await barDossierSeed(topic), seen = [], firstTwo = [];
+    const p = await open(topic, 'phone', topic, ids.root);
+    assert.equal(await p.evaluate('innerWidth'), 390, 'a phone 390px wide');
+    // The title bar's ⋯ pressed by touch, and its menu's rows read: the press refused for a missing glyph fails here, by its error.
+    const menuRows = async name => {
+      await showTools(p, 'phone', ids.root);
+      await press(p, 'phone', toolOf(ids.root, 'menu'));
+      await until(async () => p.errors.length > 0 || await p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${name}: the title bar's ⋯ opens its menu, or the page says why not`);
+      assert.deepEqual(p.errors.map(error => error.message ?? error.exception?.description ?? error.text ?? JSON.stringify(error)), [], `${name}: the title bar's ⋯ opens its menu, no item refused for want of a glyph`);
+      const rows = await p.evaluate(ROWS);
+      await shot(p, `title-bar-phone-menu-${name}`);
+      seen.push(...rows.map(row => ({ ...row, at: name })));
+      firstTwo.push([name, rows.slice(0, 2).map(row => [row.label, row.glyphs])]);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${name}: Escape puts the menu away`);
+    };
+    for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await menuRows(theme); }
+    await dossierTheme(p, 'light');
+    // Move below More chosen from ⋯ by touch; below More, the same item brings it back.
+    await showTools(p, 'phone', ids.root);
+    await press(p, 'phone', toolOf(ids.root, 'menu'));
+    await until(() => p.evaluate(`document.querySelector('.message-menu-list > button:nth-child(2)')?.textContent === 'Move below More'`), 'the phone\'s ⋯ offers Move below More second');
+    await press(p, 'phone', '.message-menu-list > button:nth-child(2)');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the dossier below More');
+    await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length && Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), 'the dossier is below a closed More');
+    await centre(p, '#messages .stack-more'); await press(p, 'phone', '#messages .stack-more');
+    await until(() => p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length > 0`), 'More shows the dossier below it');
+    await menuRows('below-more');
+    assert.deepEqual(firstTwo, [
+      ['light', [['Reply to the first message', ['reply']], ['Move below More', ['archive']]]],
+      ['dark', [['Reply to the first message', ['reply']], ['Move below More', ['archive']]]],
+      ['below-more', [['Reply to the first message', ['reply']], ['Bring back above More', ['back']]]],
+    ], 'the phone\'s ⋯ offers Reply with the title bar\'s Reply and Move below More with the Reader\'s tray, then Bring back with the tray and its arrow out');
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved drawing and leaves ink; the tray is the Reader\'s archive button\'s own drawing');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // A title bar act as a person takes it: its glyph on a laptop; on a phone, where the three fold into ⋯, the item of
   // that name in ⋯'s menu, which offers Reply and Move below More (or Bring back) before the first message's own.
   const menuWords = p => p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
