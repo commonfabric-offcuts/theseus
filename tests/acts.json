@@ -14797,6 +14797,21 @@
    }
   },
   {
+   "item": 473,
+   "act": "On a phone the title bar keeps only ⋯'s width beside the tab, at rest as once selected, so the tab's name is not cut back for the two glyphs folded into ⋯",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
    "item": 324,
    "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
    "break": [

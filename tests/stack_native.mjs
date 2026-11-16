@@ -4880,7 +4880,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
 
   await check('reading stacks the title bar shows Reply, Move below More and ⋯ at its right under the pointer, or once selected by touch, each named with its tooltip and 44px by touch, beside the tab at 320, 375 and 390 pixels and on a laptop, in light and dark; a message on its own has none', async () => {
     for (const device of Object.keys(DEVICES)) {
-      const topic = `title-bar-${device}`, ids = await barDossierSeed(topic);
+      const topic = `title-bar-${device}`, ids = await barDossierSeed(topic), resting = {};
       const p = await open(topic, device, topic, ids.root);
       await away(p);
       assert.equal(await toolsShown(p, ids.root), false, `${device}: at rest the title bar shows no glyphs`);
@@ -4895,6 +4895,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           assert.ok(at.width >= 44 && at.height >= 44, `phone ${width}: the hidden ⋯ keeps its 44px place: ${JSON.stringify(at)}`);
           assert.equal(at.hit, false, `phone ${width}: a press at the hidden ⋯'s centre does not land on it: ${JSON.stringify(at)}`);
           assert.ok(at.page, `phone ${width}: it lands on the page beneath, which holds the dossier: ${JSON.stringify(at)}`);
+          await dossierTheme(p, 'light');
+          resting[width] = await toolFacts(p, ids.root);
+          await shot(p, `title-bar-phone-${width}-rest-light`);
         }
       }
       assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.solo))}).closest('.reply-stack')?.querySelector('.stack-tools')??null`), null, `${device}: a message on its own has no title bar glyphs`);
@@ -4931,6 +4934,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             if (device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${width}: ${t.tool} is 44px to touch: ${JSON.stringify(t)}`);
           }
           assert.ok(f.name > 20, `${device} ${width}: the tab keeps room for its name beside the glyphs: ${JSON.stringify(f)}`);
+          // At rest the hidden glyphs keep their place, and on a phone that place is ⋯'s alone: the tab is as wide at
+          // rest as once selected, its name the same words, not cut back for two glyphs folded into ⋯.
+          if (device === 'phone' && theme === 'light') {
+            const r = resting[width], menu = f.tools.find(t => t.tool === 'menu');
+            assert.ok(Math.abs(r.tab.right - f.tab.right) <= .5 && r.name >= f.name - .5,
+              `phone ${width}: at rest the tab and its name are as wide as once selected: ${JSON.stringify({ rest: { tab: r.tab, name: r.name }, selected: { tab: f.tab, name: f.name } })}`);
+            assert.ok(menu.left - r.tab.right <= menu.width, `phone ${width}: at rest the tab reaches to within one glyph of ⋯: ${JSON.stringify({ rest: r.tab, menu })}`);
+            observations.push({ name: 'title bar at rest', engine, device, width, tab: r.tab, name: r.name, selectedName: f.name, gapToMenu: menu.left - r.tab.right });
+          }
           assert.equal(f.overflow, false, `${device} ${width}: nothing scrolls sideways`);
           observations.push({ name: 'title bar glyphs', engine, device, width, theme, ...f });
           await shot(p, `title-bar-${device}-${width}-${theme}`);

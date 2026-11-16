@@ -418,8 +418,9 @@ its second line too little room for who began the dossier and who named it
 tooltip and its 44px, and its menu offers Reply to the first message and Move
 below More (or Bring back above More) first, by those names, before what the
 first message's own ⋯ offers; each does what its glyph does, by touch and by
-the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). A wider
-window keeps the three glyphs.
+the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab
+leaves room for ⋯ alone, at rest as once selected, so its name keeps the same
+words either way. A wider window keeps the three glyphs.
 
 The bar over a lit message shows Reply as its glyph, named Reply (Return), and
 two more: Show full message (two arrows pointing out), only while the card
