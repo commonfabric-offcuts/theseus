@@ -26,7 +26,6 @@ import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } 
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { FeedPassages } from './feed-passages.mjs';
-import { reach } from './arrow-reach.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -351,9 +350,8 @@ export class MessageMenu {
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
     // folded line, a link in the words, a reaction, the reply arrow, a stack's
-    // line), answer Return themselves. On the bar ↑ and ↓ go on from its message.
-    const onBar = this.bar.contains(at) && event.key !== 'Enter' && this.lit?.isConnected;
-    const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList || onBar;
+    // line), answer Return themselves.
+    const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList;
     const entry = inList && this.entryOf(at);
     if (!onPage || inList && event.key === 'Enter' && !(entry && at === cardIn(entry))) return;
     if (event.key === 'Enter') {
@@ -368,6 +366,7 @@ export class MessageMenu {
     }
     const entries = this.entries();
     if (!entries.length) return;
+    event.preventDefault();
     // A dossier's chevron holding the focus is where the keys are, whether it
     // is a stop of its own or stands for its dossier's head; else the lit message.
     const selected = (at?.matches?.('.stack-toggle') ? stopAt(this.host, at, entries) : null)
@@ -376,21 +375,12 @@ export class MessageMenu {
     const inView = entries.find(entry => entry.getBoundingClientRect().bottom > 0);
     // Focus on the list's own control between the stops (More messages, a
     // stack's line) is where the keys are: ↑ the stop drawn just above it, ↓
-    // the one just below.
+    // the one just below, none past either end.
     const between = inList && at !== this.host && !entry && !at.closest('.stack-toggle');
     const after = stop => Boolean(at.compareDocumentPosition(stop) & at.DOCUMENT_POSITION_FOLLOWING);
-    const step = event.key === 'ArrowDown' ? 1 : -1;
-    const next = between ? (step > 0 ? entries.find(after) : entries.findLast(stop => !after(stop)))
-      : index < 0 ? inView ?? entries[0] : entries[index + step];
-    if (!next) {
-      // Past the last message (or above the first, with no buttons over the
-      // feed), the keys go on to what lies that way in the page's column: More
-      // messages, the People row, the Notebook and the reply (arrow-reach.mjs).
-      const from = between || !selected ? at : cardIn(selected).hidden ? selected.querySelector('.fold-line') : cardIn(selected);
-      if (from && reach(from, step > 0 ? 'down' : 'up', { within: this.host.closest('#main') ?? null, doc: this.doc })) event.preventDefault();
-      return;
-    }
-    event.preventDefault();
+    const next = between ? (event.key === 'ArrowDown' ? entries.find(after) : entries.findLast(stop => !after(stop)))
+      : index < 0 ? inView ?? entries[0] : entries[Math.max(0, Math.min(entries.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))];
+    if (!next) return;
     // A dossier's header shows no message toolbar (focusin also clears the
     // light when focus lands on the chevron).
     this.light(next.matches('.stack-toggle') ? null : next);

@@ -75,10 +75,7 @@ and the writing. Focus stays visible and follows what the person did.
   and Shift-Tab comes back", "rail the arrows move through the outline as a
   tree" and "rail → and ← move between the outline, the messages and the right
   rail"; "rail → on a folded outcome opens it, the next → lands on its pencil
-  with a ring, …" reaches each pencil by the keys and presses it with Return;
-  from anywhere outside writing an arrow lands on the nearest control that
-  way and the arrows reach every control a click reaches, the "rail arrows
-  …" cases (docs/interaction.md, "The arrows everywhere").
+  with a ring, …" reaches each pencil by the keys and presses it with Return.
   `tests/reader_colors_native.mjs`
   (`native-colors`, `native-webkit-colors`): the own card is reached by native
   Tab, and keyboard focus stays visible on it.
