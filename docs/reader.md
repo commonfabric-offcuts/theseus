@@ -268,11 +268,12 @@ default, "To fable" for a reply to fable and "To everyone here" for the
 topic (`web/whisper-choice.mjs` `toWords`). The chip, Send's word and the
 who panel's sentence follow the same names; the who panel's chips still
 show who was named by a tap, and the name field still names them. The line
-is small type set close under the chip, and the head keeps only a small gap
-under it, so it costs the message little more than its own words: with a
-long reply, a phone with the keyboard up still shows 7 lines of the message
-and a stacked laptop Reader 17 (`web/aim.css`; the floors are the
-`native-compose` "phone …" and "laptop stacked …" cases).
+is small type set close under the chip, adding no gap of its own, and on a
+phone the composer's padding gives a little, so it costs the message little
+more than its own words: with a long reply, a phone with the keyboard up
+still shows 7 lines of the message and a stacked laptop Reader 17
+(`web/aim.css`; the floors are the `native-compose` "phone …" and "laptop
+stacked …" cases).
 
 **Core records it.** `submission.prepare`, which freezes the writing the
 page saved, records as its addressees the members its leading @names name

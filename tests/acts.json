@@ -19442,7 +19442,7 @@
    "break": [
     [
      "web/aim.css",
-     ".composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0;margin-bottom:.15rem}\n",
+     "  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.3rem;padding-bottom:calc(.35rem + env(safe-area-inset-bottom))}\n",
      ""
     ]
    ],
@@ -19457,18 +19457,13 @@
    "break": [
     [
      "web/aim.css",
-     ".composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0;margin-bottom:.15rem}\n",
+     ".composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0}\n",
      ""
     ],
     [
      "web/aim.css",
      "font-size:.75rem;line-height:1.2;white-space:nowrap",
      "font-size:.75rem;white-space:nowrap"
-    ],
-    [
-     "web/aim.css",
-     "  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.35rem}\n",
-     ""
     ]
    ],
    "check": {

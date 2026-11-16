@@ -737,8 +737,8 @@ body:has(.rail.open){overflow:hidden}
 .compose-head>.destination-note{flex:1 0 100%;margin:0;padding-left:.2rem}
 /* Who the message goes to (docs/reader.md, "Naming who a message is to"): a quiet line of its own under the chip, while writing, following a leading @name as it is typed. */
 .compose-head>.to-note{flex:1 0 100%;margin:0;padding-left:.2rem;font-size:.75rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* The To line costs the message no more than its words (item 363): it sits close under the chip and takes the head's gaps rather than adding to them, so with a long reply a phone with the keyboard up still shows 7 lines of the message and a stacked laptop Reader 17 (docs/reader.md, "Size"). */
-.composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0;margin-bottom:.15rem}
+/* The To line costs the message no more than its words (item 363): set at its own small line height close under the chip, it adds no gap of its own, and the head keeps its gap to the field, which the field's focus ring needs; on a phone the composer's padding gives a little more. So with a long reply a phone with the keyboard up still shows 7 lines of the message and a stacked laptop Reader 17 (docs/reader.md, "Naming who a message is to"). */
+.composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0}
 .composer>.image-strip{grid-area:strip;margin-bottom:.45rem}
 .composer>.plus-button{grid-area:plus;align-self:end}
 .composer>.field-box{grid-area:field;grid-column:2/4}
@@ -888,7 +888,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   /* Stacked, the reply is never taller than what the header leaves (its row's minimum is the pane's, 0): past that it scrolls inside itself, as it can here, where its panels open in its flow rather than over the message; as the keyboard comes up it scrolls the field back into view (compose-bar.mjs), so no part of it goes past the screen and the Reader itself never scrolls. */
   #reader:not([data-layout=wide]) .writing-pane{overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
   .composer{padding-left:.6rem;padding-right:.6rem;column-gap:.35rem}
-  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.35rem}
+  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.3rem;padding-bottom:calc(.35rem + env(safe-area-inset-bottom))}
   .composer textarea{max-height:calc(3 * 1.5em + 1.1rem)}
   .compose-send>[aria-hidden=true]{display:none}
   .compose-send{padding:.3rem .9rem}
