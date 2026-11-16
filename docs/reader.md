@@ -13,6 +13,15 @@ Nothing under the message is boxed. A draft already written shows a Draft
 tag on the line, and one waiting to be reviewed shows its chip ("1 reply may
 not have sent", read whole by a screen reader).
 
+The Reader's title names the dossier a reply there goes into (item 561):
+its name, typed or minted, as the dossier's tab shows it, and for a dossier
+nobody has named yet its first line, as its tab shows that. A message of its
+own, which nobody answered or named, has the topic's name. A name given while
+the Reader is open shows at once. However long, the title keeps one line, cut
+off with an ellipsis, so the star, the archive button and ✕ keep their place;
+a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
+`Reader.paintTitle`).
+
 A star beside the message's title stars it for you, and pressed again
 unstars it: outline until starred, filled once starred, "Star for me" or
 "Unstar" by name, a 44 pixel target under a finger. It is the card's ⋯ Star
