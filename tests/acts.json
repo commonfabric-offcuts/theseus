@@ -15387,6 +15387,36 @@
    }
   },
   {
+   "item": 465,
+   "act": "The room the view keeps never ends the page short of the view, so the view is not pulled back a pixel at a time",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.floor(win.innerHeight - end) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "At the page's top no room is kept for the view, so a page scrolled to its top scrolls no further",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
+     "const room = Math.max(needed, Math.ceil(win.innerHeight - end));"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
    "item": 378,
    "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
    "break": [
