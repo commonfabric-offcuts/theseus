@@ -2567,9 +2567,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
     const topic = 'rail-notices-t';
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
-    const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, join: true, addressees: [facts.actor], body: 'A card whose star is not settled.' })).result.message_id;
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
       const at = `${size} ${theme}`, laptop = size === 'laptop';
+      // A card of its own each time, not starred yet.
+      const message = (await control({ method: 'agent_message', operation_id: `${topic}-${size}-${theme}`, topic_id: topic, join: true, addressees: [facts.actor], body: `A card whose star is not settled (${at}).` })).result.message_id;
       const p = await page('rail-notices-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
         await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         await q.send('Emulation.setDeviceMetricsOverride', laptop ? { ...SIZES.laptop, height: 560 } : SIZES[size]);
