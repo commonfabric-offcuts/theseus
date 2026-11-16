@@ -68,6 +68,62 @@ async function until(probe, description, timeout = 8000) {
   throw Error(`Timed out: ${description}`);
 }
 
+// The harness's own wait, held on a real page in the Notebook mode, whose checks open Notebook pages (item 418): a page
+// that navigates while until()'s read is out leaves that read with no page to answer it, and until() reads again once
+// the page it went to has its document; any other error still ends the wait at once, and the wait keeps its own bound.
+// A hang here would hold the run until the job is cut off, so each wait these checks expect to end is raced against a
+// bound well past its own, which fails the check by name.
+const ended = async (promise, ms, what) => {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`${what}: still waiting ${ms} ms on`)), ms); })]); }
+  finally { clearTimeout(timer); }
+};
+const untilChecks = async ({ check, page }) => {
+  await check('notebook harness until reads on through a navigation during its read: the page that left is not yet, and the page it went to answers', async () => {
+    const p = await page('until-navigation', null, true);
+    let reads = 0;
+    const answered = await ended(until(async () => {
+      reads += 1;
+      // The first read marks its page and navigates, and is still out when its page goes; every later read asks the page it went to.
+      if (reads === 1) return p.evaluate("(window.leftHere = true, location.assign('/?topic=t1'), new Promise(() => {}))");
+      return p.evaluate("document.body?.dataset.ready === 'true' && !('leftHere' in window) && location.search");
+    }, 'the page navigated to answers'), 30000, 'until across a navigation');
+    assert.equal(answered, '?topic=t1', 'the page it went to answers');
+    assert.ok(reads >= 2, `read again on the page it went to, ${reads} reads`);
+  });
+  await check('notebook harness until throws any other error at once: a read the page refuses, and a read of a closed page, are each read once', async () => {
+    const p = await page('until-other-error', null, true);
+    let reads = 0;
+    await assert.rejects(ended(until(() => { reads += 1; return p.evaluate("(() => { throw Error('not a navigation'); })()"); }, 'a refused read'), 30000, 'until on a refused read'),
+      error => /not a navigation/.test(error.message) && !/Timed out/.test(error.message));
+    assert.equal(reads, 1, 'a refused read is read once');
+    await p.close();
+    reads = 0;
+    await assert.rejects(ended(until(() => { reads += 1; return p.evaluate('true'); }, 'a closed page'), 30000, 'until on a closed page'),
+      error => /closed/.test(error.message) && !/Timed out/.test(error.message));
+    assert.equal(reads, 1, 'a closed page is read once');
+  });
+  await check('notebook harness until still times out at its own bound: a condition that never holds, and a page gone to a document that never loads', async () => {
+    const p = await page('until-bound', null, true);
+    let started = Date.now();
+    await assert.rejects(ended(until(() => p.evaluate('false'), 'a condition that never holds', 400), 30000, 'until on a condition that never holds'),
+      { message: 'Timed out: a condition that never holds' });
+    assert.ok(Date.now() - started >= 400, 'not before its bound');
+    // The page goes to a document whose module script is held, so it never has its DOMContentLoaded.
+    let release;
+    const released = new Promise(resolve => { release = resolve; });
+    await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
+    let reads = 0;
+    started = Date.now();
+    try {
+      await assert.rejects(ended(until(() => { reads += 1; return p.evaluate("(location.assign('/?topic=t1'), new Promise(() => {}))"); }, 'a document that never loads', 1500), 30000, 'until on a document that never loads'),
+        error => /^Timed out: a document that never loads/.test(error.message));
+      assert.ok(Date.now() - started >= 1500, 'not before its bound');
+      assert.equal(reads, 1, 'no read again before the page it went to has its document');
+    } finally { release(); }
+  });
+};
+
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person'] : []), '--freshness', '--images', '--media'], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
@@ -376,6 +432,7 @@ try {
   } else if (mode === '--whispers') {
     await whispersChecks({ check, page, until, facts, view, control, replace, shot });
   } else if (mode === '--notebook') {
+    await untilChecks({ check, page });
     await notebookChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--pipeline') {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
