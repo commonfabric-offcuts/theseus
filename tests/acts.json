@@ -19483,7 +19483,7 @@
   },
   {
    "item": 558,
-   "act": "A reply written in the Reader on a message among an open dossier's earlier messages, sent while Theseus is down, is published once it is back",
+   "act": "A reply written in the Reader, sent while Theseus is down, is published once it is back",
    "break": [
     [
      "web/session-renewal.mjs",
@@ -19493,12 +19493,12 @@
    ],
    "check": {
     "native": "live",
-    "case": "live restart: a reply sent while Theseus is down is published once it is back (reader)"
+    "case": "live restart: a reply sent while Theseus is down is published once it is back \\(reader\\)"
    }
   },
   {
    "item": 558,
-   "act": "A reply written in the Reader on a message among an open dossier's earlier messages, refused at its preparation for the old session after a restart, is published once the page has the new one",
+   "act": "A reply written in the Reader, refused at its preparation for the old session after a restart, is published once the page has the new one",
    "break": [
     [
      "web/session-renewal.mjs",
@@ -19508,7 +19508,7 @@
    ],
    "check": {
     "native": "live",
-    "case": "live restart: a reply sent before the page has the new session is published once it does (reader, refused at submission.prepare)"
+    "case": "live restart: a reply sent before the page has the new session is published once it does \\(reader, refused at submission\\.prepare\\)"
    }
   },
   {

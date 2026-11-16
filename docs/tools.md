@@ -41,6 +41,20 @@ where the code does it) and its check: `{"node": "tests/x.test.mjs"}`,
 `{"python": "test_x.py"}`, or a browser mode and case filter,
 `{"native": "reading", "case": "reading 👍 in the Reader"}`.
 
+A case filter goes to the harness unchanged and is read as that harness reads
+it. The persistence harness (every mode from `journal` to `reading`, `live`
+among them), the WebKit harness (the `webkit-*` modes) and `openings` read it
+as a regular expression, so what one reads as syntax in a case's name (a
+bracket, `?`, `+`, `.`) is escaped with `\`: `"... once it is back
+\\(reader\\)"` in the JSON. `compose`, `fence-copy` and `card-marks` read it as
+text, each part split at `|` selecting the names that hold it. A filter that
+selects no case runs none and prints no `FAILED` line, so its act could never
+be caught; `tests/test_tools_acts.py` fails on a filter read as a regular
+expression that does not select the name its own words spell out, and on a
+`\` in a text filter. An act's words say what its check does when the case
+runs alone, as `tools/acts.py` runs it, not what it does only after the mode's
+earlier cases.
+
 ```sh
 tools/acts.py tests/acts.json --evidence /abs/dir [--only REGEX]
 ```
