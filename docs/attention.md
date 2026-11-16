@@ -436,6 +436,16 @@ The line is placed from that answer when the topic opens and when the reader
 presses Mark read in this page. During the visit it never jumps to a new
 place while they read; it is a marker of where they were, not a count.
 
+However little of the page follows it, the line can be scrolled to the top
+of the window with every message it is under wholly above: while a line is
+in the feed, the page ends with as much room after its last part (the
+Notebook) as the window lacks below the line's top, and none when nothing
+is lacking or no line shows. The room comes after everything else on the
+page, so nothing in the feed moves (`web/line-room.mjs`). Since item 465 the
+topic's Team is in the header rather than after the messages, and without
+the room a short window ended with the oldest unread message still showing
+above the line.
+
 For the line, a message is read when the reader opens it or answers it, not
 while they scroll past it. So the line holds while a message at or above it
 is unread, or while this page has read one on screen since the line held and

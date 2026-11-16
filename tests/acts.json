@@ -15312,6 +15312,21 @@
    }
   },
   {
+   "item": 465,
+   "act": "However little of the page follows it, the New line can be scrolled to the top, the oldest unread message wholly above the window",
+   "break": [
+    [
+     "web/aim.css",
+     "main::after{content:\"\";display:block;height:var(--line-room,0px)}",
+     "main::after{content:\"\";display:block;height:0}"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors the New line sits under the oldest unread message"
+   }
+  },
+  {
    "item": 378,
    "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
    "break": [
