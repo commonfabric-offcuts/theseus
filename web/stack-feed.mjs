@@ -145,9 +145,12 @@ export class StackFeed {
   // press held down on the page (press-hold.mjs).
   // thumb(item, on): the message's thumbs-up, as its bar's 👍 gives it (a folded row's 👍).
   // redrawn(): the stacks were drawn again, so what else shows a message's acts (the Reader's star) follows.
+  // home: the page's New message composer at rest, drawn just above More (arrangeStacks); put back after
+  // being up over the page, it goes to that place at once.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, clock, doc });
+    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, clock = () => Date.now(), doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, clock, doc });
+    home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
     // dossier's root, a message Option's fold folded), kept so each act on it
@@ -208,7 +211,7 @@ export class StackFeed {
     } };
   }
   arrange() {
-    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, doc: this.doc, on: {
+    this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, home: this.home, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
@@ -644,7 +647,24 @@ export class StackFeed {
       ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
     return { item, position };
   }
-  setAside(stack, below, { undoable = true, restoreThrough } = {}) {
+  // What the Reader's archive button offers for the dossier a message is in
+  // (item 378): Move below More, or Bring back once it is there, the same act
+  // as ⋯'s (setAside), with how many of the page's messages go with it. The
+  // act moves Core's whole dossier, which the page draws as more than one
+  // stack where its first message is not loaded (two replies to it are two
+  // stacks), so the count is of every stack drawn from that dossier. Null
+  // where ⋯ offers neither: no stack drawn holds the message, or Core sent no
+  // position for it.
+  asideOffer(id) {
+    const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+    const position = stack && positionOf(stack);
+    if (!position) return null;
+    const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
+    return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
+  }
+  // focus: false leaves the focus where it is, as on the Reader's archive
+  // button, whose dialog keeps it while the page behind it changes.
+  setAside(stack, below, { undoable = true, restoreThrough, focus = true } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
     const { item, position } = found, root = item.id;
@@ -660,8 +680,10 @@ export class StackFeed {
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
-    if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
-    else this.focusOn(stack.id);
+    if (focus) {
+      if (below && this.state.more?.isConnected && !shownView(this.state).only) this.state.more.focus({ preventScroll: true });
+      else this.focusOn(stack.id);
+    }
     this.say(below ? 'Moved below More, for you only' : 'Brought back');
     return true;
   }

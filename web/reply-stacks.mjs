@@ -597,8 +597,13 @@ function paintStack(section, stack, byId, context) {
 // reading is never folded away under them. unread(item): counted as new on a
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
 // as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
+// home: the page's New message composer at rest (#new-message-sheet, item
+// 465), drawn just above More, under the last dossier shown above it; it is
+// never moved while it is up over the page, and goes to its place when next
+// drawn after it is put back. While the list is hidden it rests after it, at
+// the page's end.
 export function arrangeStacks(list, messages, options = {}) {
-  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, doc = list.ownerDocument } = options;
+  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, home = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
   Object.assign(state, { viewer, again: () => arrangeStacks(list, messages, options) });
   if (on) state.on = on;
@@ -636,13 +641,20 @@ export function arrangeStacks(list, messages, options = {}) {
     state.more = element(doc, 'button', 'stack-more'); state.more.type = 'button';
     state.more.onclick = () => { state.moreOpen = !state.moreOpen; state.again(); state.on?.more?.(); };
   }
+  // Where the feed is not drawn (app.mjs drawFeed), the composer at rest goes
+  // to the page's end instead, as a dialog in a box not drawn shows nothing.
+  const resting = home && !home.open && !list.hidden;
+  if (resting) top.push(home);
+  else if (home && !home.open && home.parentElement === list) list.parentElement.append(home);
   if (shownAside) {
     state.more.textContent = `${state.moreOpen ? 'Hide' : 'More'} messages · ${shownAside} put aside`;
     state.more.setAttribute('aria-expanded', String(Boolean(state.moreOpen)));
     top.push(state.more, ...aside);
   } else { state.more?.remove(); top.push(...aside); }
-  // Entries the page has that Core's messages do not name stay where they are.
-  reconcile(list, top, node => !node.dataset.line && (!node.dataset.id || messages.has(node.dataset.id)));
+  // Entries the page has that Core's messages do not name stay where they are,
+  // and so does anything else that is not a dossier, More or the composer at
+  // rest (a line, or what holds the composer's place while it is up).
+  reconcile(list, top, node => (node === home ? resting : node.dataset.id ? messages.has(node.dataset.id) : !node.dataset.line && (node === state.more || node.classList.contains('reply-stack'))));
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
@@ -658,7 +670,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // What is hidden here is what shownView says is hidden: below a closed More,
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
-  for (const node of top) if (node !== state.more) node.hidden = aside.includes(node) && !asideShown;
+  for (const node of top) if (node !== state.more && node !== home) node.hidden = aside.includes(node) && !asideShown;
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
 }

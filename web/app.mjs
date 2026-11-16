@@ -756,14 +756,19 @@ function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
-  const anchor = writing ? inline.field : field ? at : listAnchor();
+  const first = writing || field ? null : firstInView();
+  const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
+  const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
+  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy.style.paddingBottom = ''; roomy = null; }
+  const landed = control && last ? loadedAfter(list, present, last) : null;
+  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
   if (hold?.isConnected && !atTop) window.scrollBy(0, holdRoom(list, hold, tops.get(hold)));
 }
@@ -782,16 +787,24 @@ function holdRoom(list, hold, top) {
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
-// messages, first in view at the top edge, the list itself holds by its top:
-// what they load comes in where they were, and the Notebook below moves down,
-// rather than holding still while the page jumps past all of it. Loaded
-// replies can gather messages above into their stacks; the page still stays
-// where it was. A card in a reply stack is a card in view of its own, so a
-// reply arriving above it in its stack moves it no more than one above the stack.
+// messages, first in view at the top edge, what they load comes in where
+// they were, and the Notebook below moves down, rather than holding still
+// while the page jumps past all of it: the first card loaded after the last
+// one drawn before goes where the control was. Since item 465 the New
+// message composer rests between the last card and More, so the list's top
+// no longer holds that place. When the repaint draws nothing after the last
+// card, the list itself holds by its top. Loaded replies can gather messages
+// above into their stacks; the page still stays where it was. A card in a
+// reply stack is a card in view of its own, so a reply arriving above it in
+// its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
-function listAnchor() {
-  const first = [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
-  return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;
+function firstInView() {
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+}
+// The first card drawn now, after last, that the list did not hold before:
+// one loaded, not one a fold or a join only draws again.
+function loadedAfter(list, before, last) {
+  return entries(list).find(entry => !before.has(entry) && drawn(list, entry.dataset.id) && Boolean(last.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING));
 }
 // The New line, just below the oldest message the reader had not read when the
 // topic opened, or further back as more became unread (TopicViews.line); faded
@@ -836,7 +849,7 @@ function paintViews(kind) {
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
+    drawFeed(true);
     paintMoreMessages();
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
@@ -878,7 +891,9 @@ function paintViews(kind) {
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
-      while (following && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
+      // A new card goes above the New message composer resting under the messages (item 465), so the stacks
+      // drawn next move no card past it.
+      while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
       messageEntries.set(item.id, entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
@@ -958,8 +973,22 @@ function feedOf() {
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); }, home: $('new-message-sheet') });
   return stackFeed;
+}
+// The topic's feed, its Notebook and its Team, drawn or not, with any other
+// parts of the page named. The New message sheet rests in the feed, just above
+// More (item 465), and a dialog in a box that is not drawn shows nothing, up
+// over the page or not: where the feed is not drawn (an outcome's page, Health,
+// a topic the reader can no longer read) the sheet rests at the page's end
+// instead, put back first if it was up in the feed, its writing kept
+// (arrangeStacks, which takes it back above More once the feed is drawn).
+function drawFeed(on, ...parts) {
+  const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
+  for (const id of ['messages', 'notebook', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (on === inFeed) return;
+  if (!on && sheet.open) sheet.close();
+  if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);
 }
 // The conversation's own word on a message: its item and the asks that wait,
 // as the conversation's newest read says, else as the page's messages say.
@@ -1186,6 +1215,7 @@ function paintReaderMark() {
   $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
   paintReaderThumb$();
   paintReaderStar();
+  paintReaderAside();
 }
 // The message the Reader shows, with its acts: its star and fold there are
 // the reader's own (stack-feed.mjs). The page's reply stacks hold it, or, for
@@ -1224,6 +1254,27 @@ function starFromReader() {
   const item = readerFeedItem();
   if (!item) return;
   stackFeed.star(item);
+}
+// The archive button beside the star (item 378): Move below More for the
+// dossier the message is in, the same act as ⋯'s (StackFeed.setAside), with
+// the count of the messages that go with it (StackFeed.asideOffer); Bring back once it is
+// there, pressed. Only for a message the page's stacks hold, as ⋯ offers it.
+function readerAside() {
+  const item = readerFeedItem();
+  return item && views.messages.has(item.id) ? stackFeed.asideOffer(item.id) : null;
+}
+function paintReaderAside() {
+  const button = $('reader-aside'), offer = readerAside();
+  button.hidden = !offer;
+  if (!offer) return;
+  const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
+  button.querySelector('.aside-count').textContent = String(offer.count);
+  button.setAttribute('aria-pressed', String(offer.below));
+  button.setAttribute('aria-label', words); button.title = words;
+}
+function asideFromReader() {
+  const offer = readerAside();
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
@@ -1654,7 +1705,7 @@ function updateStatus(state) {
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
-    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
+    drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
     dropCardImages($('messages'));
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
@@ -2172,6 +2223,7 @@ async function initialize() {
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('reader-menu').onclick = () => openReaderMenu();
   $('reader-star').onclick = () => starFromReader();
+  $('reader-aside').onclick = () => asideFromReader();
   $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
@@ -2663,7 +2715,7 @@ async function initializeOutcomePage(route) {
   const shown=route.page?{id:route.page,revision:route.revision??null}:null;
   if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   sentHost=$('sent-to-you');
@@ -2786,7 +2838,7 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
 // Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('pipeline-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
@@ -2811,7 +2863,7 @@ async function initializePipelinePage(route) {
 // says at once when the live feed drops.
 async function initializeHealthPage() {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   $('health-link').setAttribute('aria-current','page');
@@ -2830,7 +2882,7 @@ async function initializeHealthPage() {
 // back to the page in its topic or outcome. The deck reads again on commits.
 async function initializeDeckPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   document.querySelector('.rail').hidden=true;
   $('main').prepend($('outcomes-home'));placeBrand($('main'));
   // The way back names the page's topic or outcome, or says only "The page" when that read fails.
@@ -2851,7 +2903,7 @@ async function initializeDeckPage(route) {
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
   status('');
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('measurements-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>shell.leave(routeHref(target))});
   const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
@@ -2962,7 +3014,7 @@ function enableNewTopic(workspace) {
   topicLine={workspace,line};
 }
 async function initializeOpeningPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer');
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -3012,7 +3064,7 @@ async function initializeUnfinished(route) {
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {
-  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  drawFeed(false,'topic-pending','inline-composer','topic-navigation');
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
   outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});

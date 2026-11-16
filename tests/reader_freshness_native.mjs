@@ -1085,7 +1085,13 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     p.intercept(payload=>payload?.name==='topic_messages' && payload.args.cursor!==undefined);
     await p.evaluate(`document.querySelector(${JSON.stringify(older)}).scrollIntoView({block:"center"})`); await p.point(older);
     const held=await until(()=>p.held[0], 'older page answer held',2500);
-    const oldCards=await p.evaluate('document.querySelector("#messages").innerHTML');
+    // What the list draws of its messages: since item 465 the New message
+    // composer rests in the list, above More, and the access transition
+    // changes it (a denied topic hides the list, and the composer goes to the
+    // page's end; a runtime change asks it to review its saved writing), which
+    // is no older page painting.
+    const listed='[...document.querySelector("#messages").children].filter(node=>!node.matches(".composer-home, .sheet-holder")).map(node=>node.outerHTML).join("")';
+    const oldCards=await p.evaluate(listed);
     // The foreground manual read intentionally defers background dispatch.
     // Inject the app's real access transition callbacks while that response
     // is held; this is a paint-race proof, not a claim of a native denial act.
@@ -1101,7 +1107,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     if(transition==='denial') assert.equal(await p.evaluate('closedReaderReadSource'),false,'the closed Reader reads no source during the denial recheck');
     p.intercept(null); await p.release(held);
     await until(()=>p.evaluate('appReadState().loads===0'),'late manual operation settled');
-    assert.equal(await p.evaluate('document.querySelector("#messages").innerHTML'),oldCards,'late answer cannot paint through a newer access gate');
+    assert.equal(await p.evaluate(listed),oldCards,'late answer cannot paint through a newer access gate');
     if(transition==='authority') {
       // Pressed again under a runtime change, it says to review and reads nothing.
       const calls=p.calls.length,again=await olderControl(p);

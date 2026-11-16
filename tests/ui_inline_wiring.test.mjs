@@ -30,6 +30,8 @@ import { EditorRegistry } from '../web/app-session.mjs';
 import { entries } from '../web/reply-stacks.mjs';
 // A message's entry in the list, on its own or in its reply stack (reply-stacks.mjs).
 const entryIn = (f, id) => entries(f.get('messages')).find(entry => entry.dataset.id === id);
+// The list's messages, stacks and lines in their order, leaving out the New message composer resting among them (item 465).
+const listed = f => f.get('messages').children.filter(child => child !== f.get('new-message-sheet'));
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { phoneCheck } from '../web/phone-check.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
@@ -2267,7 +2269,7 @@ for (const [way, act] of [
 
 // Escape with focus outside the open who panel (on +, on Send) is heard by
 // the composer itself, on the document, wherever the composer is: at the
-// page's end, in no dialog, and in the popped New message sheet, whose own
+// place in the feed, in no dialog, and in the popped New message sheet, whose own
 // cancel then never comes. It puts the panel away as the panel's own Escape
 // does, naming what was typed in To (docs/reader.md).
 for (const on of ['inline-plus-button', 'inline-send']) test(`the New message composer hears Escape with focus on ${on}, outside the open who panel: it puts the panel away and names what was typed in To; with no panel open it leaves Escape to the page`, () => {
@@ -3077,11 +3079,11 @@ test('a folded message the person marked unread carries the pill on its line, th
   const between = (from, through) => messages(from, through).map(item => ({ ...item, addressees: item.seq === 5 ? ['agent-b'] : [] }));
   const at = (from, through, next) => ({ instance_id: 'fixture', items: between(from, through), next_cursor: next, relevant_versions: { topic: 1 }, oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 });
   views.messagesPage(at(10, 19, 10), { initial: true }); await settle();
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   const pages = [at(1, 9, null)], view = f.api.view;
   f.api.view = async (name, args) => name === 'topic_messages' ? pages.shift() : view(name, args);
   await marker.onclick(); await settle();
-  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'the New line sits just below the fold');
   const fold = f.get('messages').children.find(child => child.dataset.id === 'm5'), [line, card] = fold.children;
   assert.equal(fold.className, 'message-fold');
@@ -3097,7 +3099,7 @@ test('a folded message the person marked unread carries the pill on its line, th
 test('the New line is drawn under the card of the message it holds, moves with it, and goes', async () => {
   const { f } = await readingPage();
   for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   f.views.line = { seq: 22, id: 'm22' }; f.paintViews('messages');
   assert.equal(order(), '25 24 23 22 new 21 20');
   f.views.messages.set('m26', { id: 'm26', seq: 26, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
@@ -3121,9 +3123,9 @@ test('the New line for a message further back sits at the bottom, and pressing i
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   const at = (from, through, next) => ({ ...page(from, through, next), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 });
   views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
-  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   assert.equal(text(marker), 'More new below', 'a line without a time says none');
   // While the line says more new messages lie below, it is the one control
@@ -3153,7 +3155,7 @@ test('once the line is in its place, More messages loads what is older again', a
   assert.equal(f.get('more-messages').hidden, true, 'hidden while the line says more new below');
   const view = f.api.view;
   f.api.view = async (name, args) => name === 'topic_messages' ? at(10, 19, 10) : view(name, args);
-  await f.get('messages').children.at(-1).onclick(); await settle();
+  await listed(f).at(-1).onclick(); await settle();
   assert.equal(f.get('messages').children.find(child => child.dataset.line)?.dataset.line, 'new', 'the line is in its place');
   assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
 });
@@ -3166,11 +3168,11 @@ test('the older-below line fades once what it leads to is read elsewhere, and Mo
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.messagesPage({ ...page(20, 29, 20), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
-  const marker = f.get('messages').children.at(-1);
+  const marker = listed(f).at(-1);
   assert.deepEqual([marker.dataset.line, marker.inert, f.get('more-messages').hidden], ['older', false, true], 'the line waits at the bottom, and More is hidden');
   const unread = async (oldest, at) => { await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: oldest, commit_seq: at })); await settle(); };
   await unread(null, 2);
-  assert.equal(f.get('messages').children.at(-1), marker, 'read elsewhere, the line stays in its place');
+  assert.equal(listed(f).at(-1), marker, 'read elsewhere, the line stays in its place');
   assert.deepEqual([marker.className, marker.inert], ['new-line new-line-older new-line-read', true], 'faded and inert');
   assert.equal(f.get('more-messages').hidden, false, 'More messages is back in its place');
   f.paintViews('memory');
@@ -3184,7 +3186,7 @@ test('with nothing older left to load, no line promises older messages below', a
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.messagesPage({ ...page(20, 29, null), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
-  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20', 'no line: there is nothing it could load');
 });
 
@@ -3197,9 +3199,9 @@ test('pressing the older-below line while the page may not read stops at once an
   f.api.view = async (name, args) => { if (name === 'topic_messages') reads.push(args.cursor); return view(name, args); };
   // The runtime changed: the page asks for a review before it reads again.
   f.registry.runtime.current = { authority_id: 'other', authority_epoch: 'e2' };
-  await f.get('messages').children.at(-1).onclick(); await settle();
+  await listed(f).at(-1).onclick(); await settle();
   assert.deepEqual(reads, [], 'nothing was read');
-  assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
+  assert.equal(listed(f).at(-1).dataset.line, 'older', 'the line still waits at the bottom');
 });
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
@@ -3221,7 +3223,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
     let top = listTop; for (const before of list.children.slice(0, list.children.indexOf(child))) top += before.dataset.line ? 30 : 100;
     return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
   views.messagesPage({ ...page(20, 26, null), oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 5 }, { initial: true }); await settle(); layout();
-  const order = () => list.children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  const order = () => listed(f).map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '26 25 24 23 22 new 21 20', 'placed from the server when the topic opens');
   // The person is reading #21, just below the line; #22 and #23 were read on screen.
   listTop = -500;
@@ -3334,8 +3336,23 @@ test('an agent\'s card in the topic log carries its color, and the person\'s own
   const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'dan', 'human'); add(4, 'warp', 'agent');
   f.paintViews('messages');
-  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  const classes = Object.fromEntries(listed(f).map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m4: 'message-card agent-card agent-cyan', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-green' });
+});
+
+// Item 465: the page's New message composer at rest sits among the messages, just above More: under the last
+// message shown above it, never at the list's top and never among the dossiers put aside.
+test('the New message composer rests just above More, under the last message shown above it', async () => {
+  const { f } = await readingPage();
+  const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1' });
+  add(1); add(2); add(3);
+  f.paintViews('messages');
+  const order = () => f.get('messages').children.map(child => child === f.get('new-message-sheet') ? 'composer' : child.className === 'stack-more' ? 'More' : child.dataset.id);
+  assert.deepEqual(order(), ['m3', 'm2', 'm1', 'composer'], 'under the last message, with nothing below More');
+  // m2 put below More: the composer stays above More, under m1.
+  f.views.messages.get('m2').stack_position = { root_id: 'm2', through: 2, aside_revision: 1, below: true, at: { messages: 2, acts: 1 } };
+  f.paintViews('acts');
+  assert.deepEqual(order(), ['m3', 'm1', 'composer', 'More', 'm2'], 'between the last message above More and the More line');
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
@@ -3347,7 +3364,7 @@ test('your own message keeps its own style when it arrives live and when More lo
   views.messagesPage(page([29, 30, 31].map(seq => item(seq, 'fable')), 29, 1), { initial: true }); await settle();
   views.messagesPage(page([item(32, 'fixture-person'), item(33, 'warp')], null, 2), { live: true, cursor: views.newest }); await settle();
   views.messagesPage(page([item(27, 'aim-lead'), item(28, 'fixture-person')], null, 2), { cursor: views.olderCursor }); await settle();
-  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  const classes = Object.fromEntries(listed(f).map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m33: 'message-card agent-card agent-cyan', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
 });
@@ -4282,11 +4299,10 @@ const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', sinc
 
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
   const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
-  const list = f.get('messages');
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
-  assert.deepEqual(list.children.map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
+  assert.deepEqual(listed(f).map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
   const [head, toggle, replies] = stack.children;
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');

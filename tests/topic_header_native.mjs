@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { pngPixels } from './png-bands.mjs';
 
-// The top of a topic, Topic settings and the people at the bottom, in the real
-// browser against the real server: the title with its gear and the note under
-// it, the dialog's keyboard, pointer and phone behaviour, and one pill per
-// person after the last message. Every press and key is a native input event.
+// The top of a topic, Topic settings and its Team, in the real browser against
+// the real server: the title with its gear and the note under it, the dialog's
+// keyboard, pointer and phone behaviour, and one pill per person in the Team on
+// the title row's right (item 465). Every press and key is a native input event.
 export async function headerChecks({ check, page, until, control, view, facts, shot }) {
   const HINT = 'Open a message to read, quote, reply, or keep a private note.';
   const NOTE = 'Ongoing: each release and what comes next';
@@ -71,7 +71,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
         hint:leaves.some(e=>e.textContent.trim()===${JSON.stringify(HINT)}),
         thisTopic:leaves.some(e=>e.textContent.trim()==='This topic'||e.getAttribute('aria-label')==='This topic'),
         stateInMain:Boolean(document.querySelector('main #topic-state')),stateInDialog:Boolean(document.querySelector('dialog#topic-settings #topic-state'))}})()`);
-    assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
+    assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description', 'topic-people'], 'the outcome\'s name, the title row, then the subtitle and the Team (item 465)');
     assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true], ['things-open', false]], 'the outcome\'s name, with "☰ Outcomes" before it shown only on a phone, and "Pipeline & pages" after it only below laptop width');
     // New message, a quiet ✎, ends the row (docs/reader.md).
     assert.deepEqual(top.row, ['topic-title', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
@@ -1003,8 +1003,10 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the people are one filled pill each after the last message, and a remove button sits in its pill', async () => {
-    await setState('header-people-active', { state: 'active', note: '' });
+  // Item 465: the people are the topic's Team, on the title row's right, under the title (under the subtitle on a
+  // phone), a filled pill each with "+ Add"; nothing of them is left after the messages.
+  await check('header the Team is one filled pill each on the title row\'s right, under the title, and a remove button sits in its pill', async () => {
+    await setState('header-people-active', { state: 'active', note: NOTE });
     // More messages than one page, all read, so More messages shows below them.
     await control({ method: 'seed', messages: 32 });
     await control({ method: 'agent_message', operation_id: 'header-people-read', body: 'Read up to here.', read: true });
@@ -1013,21 +1015,29 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       return {name:name.textContent,button:name.tagName==='BUTTON',title:name.title,fill:c.backgroundColor,border:[c.borderTopWidth,c.borderRightWidth,c.borderBottomWidth,c.borderLeftWidth],shadow:c.boxShadow,
         remove:out?{label:out.getAttribute('aria-label'),inside:ob.left>=pb.left-0.5&&ob.right<=pb.right+0.5&&ob.top>=pb.top-0.5&&ob.bottom<=pb.bottom+0.5,size:[ob.width,ob.height]}:null,
         buttonInButton:Boolean(e.querySelector('button button'))}})})()`);
-    // loaded: the messages the page holds; a reply stack folds most of them away (docs/topic-reading.md), so the last shown is the last on screen.
-    const below = p => p.evaluate(`(()=>{const all=[...document.querySelectorAll('#messages [data-id]')],cards=all.filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1).getBoundingClientRect(),more=document.querySelector('#more-messages');
-      const top=document.querySelector('#topic-people').getBoundingClientRect().top;return {loaded:all.length,belowCard:top>=last.bottom,belowMore:more.hidden||top>=more.getBoundingClientRect().bottom,next:more.nextElementSibling.id}})()`);
+    // Where the Team is: in the header, headed Team, under the title row; on a laptop flush with the title row's
+    // right and right of the subtitle, on a phone under the subtitle; nothing of it overlaps the title row or the
+    // subtitle, and no People section follows the messages.
+    const placed = p => p.evaluate(`(()=>{const team=document.querySelector('#topic-people'),t=team.getBoundingClientRect(),row=document.querySelector('.topic-header .title-row').getBoundingClientRect(),
+      sub=document.querySelector('#topic-description').getBoundingClientRect(),add=document.querySelector('#participants .add-chip')?.getBoundingClientRect(),pills=[...team.querySelectorAll('.person-pill, .add-chip')].map(e=>e.getBoundingClientRect());
+      const apart=(a,b)=>a.right<=b.left+0.5||b.right<=a.left+0.5||a.bottom<=b.top+0.5||b.bottom<=a.top+0.5;
+      return {header:Boolean(team.closest('.topic-header')),heading:document.querySelector('#people-heading').textContent,underTitle:t.top>=row.bottom-0.5,
+        right:Math.round(row.right-Math.max(...pills.map(b=>b.right))),besideSubtitle:sub.right<=t.left+0.5&&t.top<sub.bottom,underSubtitle:t.top>=sub.bottom-0.5,
+        clear:apart(t,row)&&apart(t,sub),afterMessages:Boolean(document.querySelector('#messages ~ #topic-people, #messages ~ * #topic-people')),add:Boolean(add),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
     const p = await page('header-people', null, true, { beforeNavigate: scheme('light') });
     await until(async () => (await people(p)).length >= 2, 'the people painted');
-    const first = await below(p);
-    assert.deepEqual([first.belowCard, first.belowMore, first.next], [true, true, 'topic-people'], 'the people come right after More messages, below the last message: ' + JSON.stringify(first));
+    const laptop = await placed(p);
+    assert.deepEqual([laptop.header, laptop.heading, laptop.underTitle, laptop.besideSubtitle, laptop.clear, laptop.afterMessages, laptop.add, laptop.sideways],
+      [true, 'Team', true, true, true, false, true, false], 'the Team is in the header under the title, right of the subtitle, with "+ Add", and nothing follows the messages: ' + JSON.stringify(laptop));
+    assert.ok(Math.abs(laptop.right) <= 2, 'its pills end flush with the title row\'s right: ' + JSON.stringify(laptop));
     assert.equal(await p.evaluate(`document.querySelector('#more-messages').hidden`), false, 'a topic with more than a page shows More messages');
+    // More messages loads the next page; the Team stays where it was, at the top.
+    const loaded = () => p.evaluate(`document.querySelectorAll('#messages [data-id]').length`), first = await loaded();
     await p.evaluate(`document.querySelector('#more-messages').scrollIntoView({block:'center'})`);
     await p.point('#more-messages');
-    // A page that loads nothing new fails naming what it showed.
-    let seen;
-    const later = await until(async () => { const b = seen = await below(p); return b.loaded > first.loaded && b; }, 'More messages loads the next page')
-      .catch(error => assert.fail(`${error.message}: ${JSON.stringify({ first, seen })}`));
-    assert.deepEqual([later.belowCard, later.belowMore], [true, true], 'still below the new last message');
+    await until(async () => await loaded() > first, 'More messages loads the next page');
+    assert.deepEqual(await placed(p).then(x => [x.header, x.underTitle, x.afterMessages]), [true, true, false], 'still in the header after More messages');
+    await p.evaluate(`scrollTo(0, 0)`);
     const light = await people(p);
     const own = light.find(x => x.name === facts.actor), theirs = light.find(x => x.name === agent);
     assert.deepEqual([own.button, own.fill], [false, 'rgb(0, 0, 0)'], 'the reader\'s own pill is black and opens nothing');
@@ -1038,7 +1048,6 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.deepEqual([pill.remove?.label, pill.remove?.inside], [`Remove ${pill.name}`, true], `${pill.name}'s remove button is inside the pill`);
       assert.ok(pill.remove.size[0] >= 32 && pill.remove.size[1] >= 32, 'a finger hits the remove button: ' + pill.remove.size);
     }
-    await p.evaluate(`document.querySelector('#topic-people').scrollIntoView({block:'center'})`);
     await shot(p, 'header-people-light');
     const dark = await page('header-people-dark', null, true, { beforeNavigate: scheme('dark') });
     await until(async () => (await people(dark)).length >= 2, 'the people painted, dark');
@@ -1046,14 +1055,23 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       if (pill.name === facts.actor) assert.deepEqual([pill.fill, pill.shadow === 'none'], ['rgb(0, 0, 0)', false], 'dark: the reader\'s pill is black with a thin edge');
       else assert.deepEqual([pill.fill === 'rgba(0, 0, 0, 0)', pill.shadow], [false, 'none'], `dark: ${pill.name}'s pill is filled, with no ring`);
     }
-    await dark.evaluate(`document.querySelector('#topic-people').scrollIntoView({block:'center'})`);
+    assert.deepEqual(await placed(dark).then(x => [x.header, x.underTitle, x.besideSubtitle, x.clear]), [true, true, true, true], 'dark: the Team in the same place');
     await shot(dark, 'header-people-dark');
     await dark.close();
-    const small = await page('header-people-phone', null, true, { beforeNavigate: phone });
-    await until(async () => (await people(small)).length >= 2, 'the people painted on a phone');
-    for (const pill of await people(small)) assert.equal(pill.remove?.inside, true, `390: ${pill.name}'s remove button is inside the pill`);
-    assert.equal(await noSideways(small), true, '390: no sideways scroll');
-    await small.close();
+    // On a phone, at each of its widths, light and dark: under the subtitle, clear of the title row, no sideways scroll.
+    for (const theme of ['light', 'dark']) {
+      const small = await page('header-people-phone-' + theme, null, true, { beforeNavigate: both(phone, scheme(theme)) });
+      await until(async () => (await people(small)).length >= 2, 'the people painted on a phone');
+      for (const width of [320, 375, 390]) {
+        await small.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        const at = await placed(small);
+        assert.deepEqual([at.header, at.heading, at.underSubtitle, at.clear, at.add, at.sideways], [true, 'Team', true, true, true, false], `${width}: the Team under the subtitle, clear of the title row, with "+ Add", nothing sideways: ` + JSON.stringify(at));
+        for (const pill of await people(small)) assert.equal(pill.remove?.inside, true, `${width}: ${pill.name}'s remove button is inside the pill`);
+        assert.equal(await noSideways(small), true, `${width}: no sideways scroll`);
+        await shot(small, `header-people-phone-${width}-${theme}`);
+      }
+      await small.close();
+    }
     // The owner removes the agent with a real press on the button inside its
     // pill, and a commit that repaints the people while the button is held
     // down does not swallow the press.
@@ -1079,5 +1097,104 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.equal(await p.evaluate(`document.activeElement?.matches('#participants .add-chip')`), true, 'the focus is on "+ Add"');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'Core took it out');
     assert.deepEqual(p.errors, []);
+  });
+
+  // Item 465: the header's arrow-key row holds every button drawn in it, so the Team's pills and "+ Add" join Topic
+  // settings and New message in it: → from New message walks the Team to "+ Add", ← walks back, and ↓ from any of
+  // them leaves the row for the first message, never along the pills.
+  await check('header → and ← move from New message along the Team\'s pills to "+ Add" and back, as one row; ↓ leaves for the first message', async () => {
+    await setState('header-row-active', { state: 'active', note: '' });
+    const p = await page('header-row', null, true, { beforeNavigate: scheme('light') });
+    await until(() => p.evaluate(`Boolean(document.querySelector('#participants .add-chip')) && document.querySelectorAll('#topic-people .person-pill').length >= 1`), 'the Team painted with "+ Add"');
+    const at = () => p.evaluate(`(a=>a.closest('#topic-people')?'team:'+(a.matches('.add-chip')?'add':a.getAttribute('aria-label')||a.title||a.textContent):a.closest('#messages [data-id]')?'message':a.id)(document.activeElement)`);
+    const team = await p.evaluate(`[...document.querySelectorAll('#topic-people button')].filter(b=>b.getClientRects().length).map(b=>'team:'+(b.matches('.add-chip')?'add':b.getAttribute('aria-label')||b.title||b.textContent))`);
+    // The keys start on New message, the last of the title row's buttons.
+    await p.evaluate(`document.querySelector('#new-message').focus({preventScroll:true})`);
+    const walked = [];
+    for (let n = 0; n < team.length; n++) { await p.key('ArrowRight'); walked.push(await at()); }
+    assert.deepEqual(walked, team, '→ walks the Team\'s buttons in order, from New message to "+ Add"');
+    const back = [];
+    for (let n = 0; n < team.length; n++) { await p.key('ArrowLeft'); back.push(await at()); }
+    assert.deepEqual(back, [...team.slice(0, -1).reverse(), 'new-message'], '← walks back to New message');
+    await p.key('ArrowRight');
+    await p.key('ArrowDown');
+    assert.equal(await at(), 'message', '↓ from a pill leaves the row for the first message');
+    assert.deepEqual(p.errors, []);
+  });
+
+  // Item 465, the Team with "+ Add" open: the people to add come in under its pills, and the label stays with them,
+  // beside the first pill at the row's top, not floating between the two rows; the row of people to add takes no width
+  // of its own, so on a laptop the subtitle keeps the lines it had with "+ Add" closed, where the pills leave it room.
+  // Closed is the negative: the label beside the first pill already. At 1280 and 1440 by the pointer and at 390 by a
+  // finger, in light and dark.
+  await check('header the Team with "+ Add" open keeps its label beside its first pill, and the subtitle on its line', async () => {
+    await setState('header-add-open', { state: 'active', note: NOTE });
+    // The label's and the first pill's boxes, whether the people to add show under the pills, and the subtitle's
+    // lines, counted from where its words' boxes start.
+    const measure = p => p.evaluate(`(()=>{const label=document.querySelector('#people-heading').getBoundingClientRect(),pill=document.querySelector('#topic-people .person-pill').getBoundingClientRect(),
+      add=document.querySelector('#participants .people-add'),a=add.getBoundingClientRect(),sub=document.querySelector('#topic-description'),walk=document.createTreeWalker(sub,NodeFilter.SHOW_TEXT),tops=[];
+      for(let t=walk.nextNode();t;t=walk.nextNode()){const r=document.createRange();r.selectNodeContents(t);for(const b of r.getClientRects())if(b.width>0)tops.push(b.top)}
+      const lines=tops.sort((x,y)=>x-y).filter((top,i)=>!i||top-tops[i-1]>8).length;
+      return {addOpen:!add.hidden&&a.height>0,addUnder:add.hidden||a.top>=pill.bottom-0.5,label:[label.top,label.bottom].map(Math.round),pill:[pill.top,pill.bottom].map(Math.round),
+        offset:Math.round((label.top+label.height/2)-(pill.top+pill.height/2)),lines,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    for (const [device, width] of [['laptop', 1280], ['laptop', 1440], ['phone', 390]]) for (const theme of ['light', 'dark']) {
+      const size = q => q.send('Emulation.setDeviceMetricsOverride', { width, height: device === 'phone' ? 844 : 900, deviceScaleFactor: 1, mobile: device === 'phone' });
+      const p = await page(`header-add-open-${device}-${width}-${theme}`, null, true, { beforeNavigate: device === 'phone' ? both(phone, size, scheme(theme)) : both(size, scheme(theme)) });
+      await until(() => p.evaluate(`Boolean(document.querySelector('#participants .add-chip')?.getClientRects().length) && Boolean(document.querySelector('#topic-people .person-pill'))`), `${width}: the Team painted with "+ Add"`);
+      await p.evaluate('scrollTo(0, 0)');
+      const closed = await measure(p);
+      assert.deepEqual([closed.addOpen, Math.abs(closed.offset) <= 2, closed.sideways], [false, true, false], `${width} ${theme}: closed, the label sits beside the first pill: ${JSON.stringify(closed)}`);
+      if (device === 'phone') await tapOn(p, '#participants .add-chip'); else await p.point('#participants .add-chip');
+      await until(() => p.evaluate(`!document.querySelector('#participants .people-add').hidden`), `${width} ${theme}: the people to add show`);
+      const open = await measure(p);
+      assert.deepEqual([open.addOpen, open.addUnder, open.sideways], [true, true, false], `${width} ${theme}: the people to add show under the pills, nothing sideways: ${JSON.stringify(open)}`);
+      assert.ok(Math.abs(open.offset) <= 2 && open.label[0] < open.pill[1], `${width} ${theme}: with "+ Add" open, the label stays beside the first pill, at the row's top: ${JSON.stringify({ closed, open })}`);
+      // Its lines, not its box: the subtitle shares its row with the Team, and its box grows with the row.
+      if (device === 'laptop') assert.equal(open.lines, closed.lines, `${width} ${theme}: with "+ Add" open, the subtitle keeps its lines: ${JSON.stringify({ closed, open })}`);
+      await shot(p, `header-add-open-${device}-${width}-${theme}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 465, a long Team on a laptop: the subtitle beside it keeps at least 6rem, the Team wrapping its pills rather
+  // than leave it less, so the topic's state stays words, each of "Waiting on you" whole on its line, not a column one
+  // letter wide.
+  // A short Team, the person alone, is the negative: it keeps its own width, its pill on one line, and the subtitle
+  // takes the rest. At 1280 and 1440, in light and dark.
+  await check('header a long Team wraps before the subtitle beside it has less than 6rem', async () => {
+    const waiters = ['fixture-planning-agent', 'fixture-reviewing-agent', 'fixture-writing-agent'];
+    await control({ method: 'navigation_topics', topics: [{ id: 'header-short-team', title: 'A short Team' }, { id: 'header-long-team', title: 'A long Team' }] });
+    await control({ method: 'agent_message', operation_id: 'header-long-team-join', topic_id: 'header-long-team', source: 'topic', join: true, body: 'The first message here.' });
+    await setState('header-short-team-state', { state: 'active', note: NOTE }, 'header-short-team');
+    await control({ method: 'topic_state', operation_id: 'header-long-team-state', topic_id: 'header-long-team', participants: waiters,
+      args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
+    // The title row's grid and its gap, the root's rem, the Team's and the subtitle's boxes, the pills' tops, and the
+    // most lines any word of "Waiting on you" takes in the state.
+    const measure = p => p.evaluate(`(()=>{const row=document.querySelector('.topic-header>div'),style=getComputedStyle(row),team=document.querySelector('#topic-people').getBoundingClientRect(),
+      sub=document.querySelector('#topic-description').getBoundingClientRect(),state=document.querySelector('#topic-description .topic-state')?.getBoundingClientRect();
+      return {row:Math.round(row.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)),gap:parseFloat(style.columnGap),team:Math.round(team.width),sub:Math.round(sub.width),
+        rem:parseFloat(getComputedStyle(document.documentElement).fontSize),you:(text=>{if(!text||!text.data.startsWith('Waiting on you'))return null;return Math.max(...[[0,7],[8,10],[11,14]].map(([from,to])=>{const r=document.createRange();r.setStart(text,from);r.setEnd(text,to);
+          return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size}))})(document.querySelector('#topic-description .topic-state')?.firstChild),
+        state:state&&[Math.round(state.width),Math.round(state.height)],pillRows:new Set([...document.querySelectorAll('#topic-people .person-pill')].map(pill=>Math.round(pill.getBoundingClientRect().top))).size,
+        pills:document.querySelectorAll('#topic-people .person-pill').length,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    for (const width of [1280, 1440]) for (const theme of ['light', 'dark']) {
+      const size = q => q.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      const seen = {};
+      for (const [id, pills] of [['header-short-team', 1], ['header-long-team', 5]]) {
+        const p = await page(`header-team-width-${id}-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=${id}`, beforeNavigate: both(size, scheme(theme)) });
+        await until(() => p.evaluate(`document.querySelectorAll('#topic-people .person-pill').length >= ${pills} && Boolean(document.querySelector('#topic-description').textContent)`), `${width} ${theme}: ${id} painted with its Team`);
+        await p.evaluate('scrollTo(0, 0)');
+        seen[id] = await measure(p);
+        if (id === 'header-long-team') await shot(p, `header-long-team-${width}-${theme}`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+      const { 'header-short-team': short, 'header-long-team': long } = seen, at = `${width} ${theme}: ${JSON.stringify(seen)}`;
+      assert.equal(short.pillRows, 1, `a short Team keeps its pill on one line: ${at}`);
+      assert.ok(Math.abs(short.sub - (short.row - short.gap - short.team)) <= 1 && short.sub > 6 * short.rem, `a short Team keeps its own width, and the subtitle takes the rest: ${at}`);
+      assert.ok(long.pillRows > 1, `a long Team wraps its pills: ${at}`);
+      assert.ok(long.sub >= 6 * long.rem - 1, `the subtitle keeps at least 6rem: ${at}`);
+      assert.equal(long.you, 1, `each word of the topic's "Waiting on you" stays whole on its line: ${at}`);
+      assert.equal(long.sideways, false, `nothing goes sideways: ${at}`);
+    }
   });
 }
