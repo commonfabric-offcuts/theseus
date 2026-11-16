@@ -27,7 +27,11 @@ maximum, and on a phone never reach past the screen.
   native drag changes proportions and preserves typing".
 - `tests/reader_compose_native.mjs` (`native-compose`): the "size …" cases, at
   320, 375 and 390 points, a laptop and a window wider than the maximum
-  ([reader.md](reader.md), "Size").
+  ([reader.md](reader.md), "Size"); "phone …: reading shows at least 18 lines
+  of the message, writing with the keyboard up at least 7, …" and "laptop
+  stacked …: … at least 17 lines while writing", each with a long reply and
+  the To line under the who chip ([reader.md](reader.md), "Naming who a
+  message is to").
 - `tests/reader_native.mjs` (`native-reader-finished`): "finished the save
   status is one line whatever it says: …".
 - Gap: no check measures how much of a phone screen the message keeps while the
@@ -159,6 +163,14 @@ where they were asked for.
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",
   "live with no card on the screen, a message arriving scrolls nothing".
+- `tests/reader_inline_native.mjs` (`native-inline`): "inline find restore
+  owner switch arrival and exact source-free send": while a new message is
+  written at the topic page's end, a reply to the person's own message takes
+  the place of its stack's taller read latest reply, shrinking what is above
+  the writing by more than the page is scrolled, then a message of its own to
+  the topic grows it; through both the writing, its caret and its focus stay
+  where they were on screen, and no room is kept above the writing once the
+  page can hold it by scrolling ([attention.md](attention.md)).
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   "reading Show full message on a card scrolled inside keeps the words being
   read where they were"; `tests/stack_native.mjs` (the same steps): "reading

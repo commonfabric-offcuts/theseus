@@ -750,6 +750,8 @@ async function openSource(ref, opener, act = null) {
 // held is one the page draws (drawn, the page's one view) before and after
 // the repaint: when the repaint stops drawing it (put below More on another
 // device), the card drawn next below it is held instead.
+// roomy: the list keeping room at its end for a hold below it (holdRoom).
+let roomy = null;
 function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
@@ -760,8 +762,23 @@ function keepListAnchor(paint) {
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
   const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
   paint();
+  // Room an earlier hold kept is given back first; the hold measures without it.
+  if (roomy) { roomy.style.paddingBottom = ''; roomy = null; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
-  if (hold?.isConnected && !atTop) window.scrollBy(0, hold.getBoundingClientRect().top - tops.get(hold));
+  if (hold?.isConnected && !atTop) window.scrollBy(0, holdRoom(list, hold, tops.get(hold)));
+}
+// How far the page scrolls to put hold back where it was (top). Where what is
+// drawn above it shrank by more than the page is scrolled (a reply taking the
+// place of a taller one, docs/reply-stacks.md), no scroll can: the page's top
+// would cut it short. Then the list keeps the rest as room at its end, between
+// what changed and what follows it, so a hold below the list (the writing at
+// the topic page's end) stays exactly where it was (item 363). The next hold
+// gives that room back, and keeps only what it needs.
+function holdRoom(list, hold, top) {
+  const moved = hold.getBoundingClientRect().top - top, short = -(window.scrollY + moved);
+  if (!(short > 0) || list.contains(hold) || !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
+  list.style.paddingBottom = `${short}px`; roomy = list;
+  return hold.getBoundingClientRect().top - top;
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older

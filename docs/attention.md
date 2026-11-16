@@ -590,6 +590,15 @@ not scroll to keep the old card in place. Further down the topic, the card the
 reader is looking at stays where it was, a card in an opened reply stack too,
 when a reply arrives above it in its stack.
 
+A new message being written at the topic page's end stays where it was on
+screen as messages arrive above it, including one that makes the page shorter:
+a reply taking the place of its stack's taller read latest reply
+(docs/reply-stacks.md). Where the page is scrolled less than what above it
+shrank, so that no scroll can hold the writing, the message list keeps the
+difference as room at its end, between what changed and the writing, until the
+next arrival, which gives it back and keeps only what it needs (`web/app.mjs`,
+`keepListAnchor` and `holdRoom`).
+
 ## In the browser
 
 The page reads `attention` at start, after each announced commit, when the
