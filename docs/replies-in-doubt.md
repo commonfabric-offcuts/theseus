@@ -69,6 +69,15 @@ writing." Otherwise the line shows them, with Copy. Either way the line offers
 Undo, which puts the reply back in doubt and, while the writing still holds
 exactly the words put back, empties it again.
 
+An image goes back as a draft holds one, named by its id (Theseus keeps a
+draft's images so, and an image the person chose goes in so), so the draft this
+device keeps is the draft Theseus holds: the copy kept on this device is retired
+once it is saved, and after a reload the writing is ready to send with nothing
+to check in Review versions. Leaving a topic never waits on such an image: the
+departure guard holds only an image still on its way to Theseus, never one the
+draft names that Theseus already holds, even while the page is still checking
+it.
+
 A reply set aside is in doubt no more at once: the Review button and the
 departure guard stop counting it, after a reload too and on another device of
 the same reader, since all of them read Core's unsent list.

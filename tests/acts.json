@@ -16067,7 +16067,7 @@
    "break": [
     [
      "web/app-session.mjs",
-     "      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: words.attachments ?? [] });",
+     "      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: (words.attachments ?? []).map(({ id }) => ({ id })) });",
      "      editor.edit({});"
     ]
    ],
@@ -16124,6 +16124,35 @@
    "check": {
     "native": "rail",
     "case": "rail set aside attachment"
+   }
+  },
+  {
+   "item": 548,
+   "act": "A reply set aside puts its images back into the draft by id, as Theseus keeps a draft, so the copy kept on this device is retired and after a reload the writing is ready to send",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "attachments: (words.attachments ?? []).map(({ id }) => ({ id })) });",
+     "attachments: words.attachments ?? [] });"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail set aside attachment"
+   }
+  },
+  {
+   "item": 548,
+   "act": "The departure guard lets a press on another topic go while the page is still checking an image Theseus already holds",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      image.origin === 'retained-ref' ? editor.draft.attachments.some(ref => ref.id === image.retained_ref?.id) :\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
    }
   }
  ]

@@ -671,7 +671,10 @@ export class EditorRegistry {
     let restored = false;
     const current = this.sessions.get(editor.key) === session;
     if (aside && current && !holdsWriting(editor.draft) && !currentImages(editor).length && !editor.uploadOpaque && !editor.imageBusy && !editor.imageReservation && !editor.unavailable && !editor.conflict && !editor.authorityRecovery) {
-      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: words.attachments ?? [] });
+      // A reply names each image by its whole description; a draft names it by its id alone, as Theseus keeps it
+      // and as an image the person chose goes in. Put back so, the draft saved is the draft Theseus holds, and
+      // the copy kept on this device is retired as soon as it is saved, so no later page holds it for review.
+      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: (words.attachments ?? []).map(({ id }) => ({ id })) });
       (this.restoredAsides ??= new Map()).set(id, { key: editor.key, version: editor.localVersion, media: (words.attachments ?? []).map(ref => ref.id) });
       this.edited(editor); restored = true;
       // Each image comes back checked and kept on this device, as one the person chose does, so a reload

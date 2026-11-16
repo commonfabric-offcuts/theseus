@@ -178,28 +178,30 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await until(async () => JSON.stringify(wordsOf(await draft(s))) === JSON.stringify({ body: s.body, attachments: s.attachments.map(ref => ref.id) }), 'saved as the draft');
       await pressRow(p, s.away);
       await arrive(p, s.away);
-      // Back on the topic and the page reloaded, as a person reloads it: nothing is in doubt, the words are still
-      // the writing, and once the person has opened that writing (a message's, in the Reader) and closed it, a press
-      // on another topic goes on the first try. The image a reply set aside put back is in the draft as any image
-      // the person chose is, so it holds nothing (item 548, review B4).
-      await pressRow(p, s.here);
-      await arrive(p, s.here);
-      // The reload is waited for by a timeOrigin kept on the window; while the old document gives way to the new
-      // one a read of it can fail, which is not yet the new document.
+      // The page loaded again on the topic, as a reload loads it: nothing is in doubt, the words are still the
+      // writing, and once the person has opened that writing (a message's, in the Reader) and closed it, a press on
+      // another topic goes on the first try, at once, while the page may still be checking the image a reply set
+      // aside put back: Theseus holds it, so leaving loses nothing (item 548, review B4). The load is waited for by a
+      // timeOrigin kept on the window; while the old document gives way to the new one a read of it can fail.
       const loaded = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
-      await p.send('Page.reload', {});
+      await p.send('Page.navigate', { url: facts.origin + `/?topic=${s.here}` });
       await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready==='true' && (window.documentOrigin??=performance.timeOrigin) !== ${loaded} && new URL(location.href).searchParams.get('topic')===${q(s.here)}`); } catch { return false; } }, 'the page loads again on the topic');
       if (s.replyTo) { await openReader(p, s); await closeReader(p); }
       assert.deepEqual(await reviews(p), [], 'after a reload no Review button');
       assert.equal(await shownWriting(p, s), s.body, 'after a reload the words are the writing');
       await pressRow(p, s.away);
       await arrive(p, s.away);
-      // And in another tab of the same browser, opened on the topic while this one stays open.
+      // In another tab, the writing is ready to send: the draft this device kept is the draft Theseus holds, so the
+      // copy kept here was retired and nothing asks to be checked in Review versions first. Then the press goes.
       const again = await open(`aside-${shape}-again`, `/?topic=${s.here}`);
       await ready(again, s.here);
-      if (s.replyTo) { await openReader(again, s); await closeReader(again); }
       assert.deepEqual(await reviews(again), [], 'in another tab no Review button');
-      assert.equal(await shownWriting(again, s), s.body, 'in another tab the words are the writing');
+      if (s.replyTo) {
+        await openReader(again, s);
+        await until(() => again.evaluate(`document.querySelector('#send-reply').ariaDisabled !== 'true' && !('blocked' in document.querySelector('#save-state').dataset) && document.querySelector('#writing-body').value===${q(s.body)}`),
+          'the Reader\'s writing is ready to send').catch(async error => { throw Error(`${error.message}; it says ${q(await again.evaluate(`document.querySelector('#save-state').textContent`))}`); });
+        await closeReader(again);
+      } else assert.equal(await shownWriting(again, s), s.body, 'in another tab the words are the writing');
       await pressRow(again, s.away);
       await arrive(again, s.away);
     });

@@ -108,7 +108,13 @@ Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
 
 - `tests/set_aside_native.mjs` (`native-rail`, `native-webkit-rail`): "rail set
   aside composer", "rail set aside message", "rail set aside attachment" and
-  "rail set aside looks right" (1280, 320, 375 and 390, light and dark).
+  "rail set aside looks right" (1280, 320, 375 and 390, light and dark). Each
+  shape loads the page again on the topic, opens its writing (a message's in
+  the Reader), closes it and presses another topic, which goes on the first
+  try; then, in a second tab, the writing is ready to send and the press goes.
+- Node units: `tests/ui_topic_navigation.test.mjs`, "an image retained from
+  the draft lets the page leave while it is still being checked; one the draft
+  does not name holds".
 - Core: `tests/test_set_aside.py`.
 
 ## Your place holds
