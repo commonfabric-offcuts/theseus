@@ -1138,6 +1138,80 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // REVIEW 550 (independent reviewer, not shipped): a dossier the reader opened, or placed, keeps that when Earlier
+  // messages loads an older reply straight under its first message. Fictional shipyard fixture.
+  const rvSeed = async topic => {
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Where should the shipyard keep the spare sailcloth?', { join: true })],
+      ['ferry', say(other, 'Who checks the buoy lights this week?')]];
+    for (let n = 0; n < 30; n++) said.push(['g' + n, say(other, `Dock note ${n}, a message of its own.`)]);
+    said.push(['old', say('aim-ux', 'The loft above the rope store is dry.', { join: true, reply_to: 'root' })]);
+    for (let n = 0; n < 29; n++) said.push(['f' + n, say(other, `Quay note ${n}, a message of its own.`)]);
+    said.push(['a1', say('aim-ux', 'The chandlery has an empty shelf.', { reply_to: 'root' })],
+      ['b1', say(other, 'Not near the tar barrels, please.', { reply_to: 'root' })],
+      ['a2', say(other, 'The chandlery shelf works for me.', { reply_to: 'a1' })],
+      ['c1', say(other, 'The loft leaks in March.', { reply_to: 'old' })],
+      ['s1', say(other, 'I can check them on Tuesday.', { reply_to: 'ferry' })],
+      ['b2', say('aim-ux', 'Agreed; well away from the tar.', { reply_to: 'b1' })],
+      ['c2', say('aim-ux', 'Then not the loft.', { reply_to: 'c1' })],
+      ['s2', say('aim-ux', 'Thanks for Tuesday.', { reply_to: 's1' })],
+      ['near', say(other, 'Is the slipway winch fixed?')],
+      ['near1', say('aim-ux', 'Fixed this morning.', { reply_to: 'near' })]);
+    return seed(topic, said);
+  };
+  const rvState = (p, ids) => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},key=id=>Object.keys(ids).find(k=>ids[k]===id)??id;
+    const s=document.querySelector('#messages [data-id="'+ids.a2+'"]')?.closest('.reply-stack');
+    const first=[...document.querySelectorAll('#messages > .reply-stack')].find(e=>e.getClientRects().length);
+    return {loaded:Boolean(document.querySelector('#messages [data-id="'+ids.old+'"]')),head:s?key(s.dataset.stack):null,
+      state:s?.querySelector(':scope > .stack-toggle')?.dataset.state??null,b1shown:Boolean(document.querySelector('#messages [data-id="'+ids.b1+'"]')?.getClientRects().length),
+      top:first?key(first.dataset.stack):null}})()`);
+  const rvEarlier = async (p, device) => {
+    const cards = await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+    await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+    await until(async () => (await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`)) > cards, `${device}: Earlier messages reads an older page`);
+  };
+  await check('reading stacks review550 a dossier opened by the reader stays open when Earlier messages loads an older reply to its first message', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'rv550-open-' + device, ids = await rvSeed(topic);
+      const p = await open(topic, device, topic, ids.near1);
+      await until(async () => (await rvState(p, ids)).head !== null, `${device}: the shipyard dossier is drawn`);
+      const before = await rvState(p, ids);
+      assert.equal(before.loaded, false, `${device}: the older reply is above the loaded page`);
+      await dossierOpen(p, device, ids[before.head]);
+      assert.equal((await rvState(p, ids)).state, 'open', `${device}: the reader opened the dossier holding a2`);
+      await rvEarlier(p, device);
+      const after = await rvState(p, ids);
+      assert.equal(after.loaded, true, `${device}: the older reply loaded`);
+      assert.equal(after.state, 'open', `${device}: the dossier holding a2 is still open after Earlier messages: ${JSON.stringify({ before, after })}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  await check('reading stacks review550 a dossier the reader placed keeps its place when Earlier messages loads an older reply to its first message', async () => {
+    const topic = 'rv550-place', ids = await rvSeed(topic);
+    const p = await open(topic, 'laptop', topic, ids.near1);
+    await until(async () => (await rvState(p, ids)).head !== null, 'the shipyard dossier is drawn');
+    assert.equal((await rvState(p, ids)).top, 'near', 'the winch stack is on top, newest');
+    // ⌘↑ from the dossier's head card until it is on top, each press waiting for the order to change.
+    const order = () => p.evaluate(`[...document.querySelectorAll('#messages > .reply-stack')].filter(e=>e.getClientRects().length).map(e=>e.dataset.stack).join(' ')`);
+    for (let step = 0; step < 8; step++) {
+      const now = await rvState(p, ids);
+      if (now.top === now.head) break;
+      const was = await order();
+      await keyTo(p, ids[now.head]); await p.key('ArrowUp', 4);
+      await until(async () => (await order()) !== was, `⌘↑ ${step + 1} moves the shipyard dossier up`);
+    }
+    assert.equal((await rvState(p, ids)).top, (await rvState(p, ids)).head, '⌘↑ placed the shipyard dossier on top');
+    const placed = await actsOf(topic, ids[(await rvState(p, ids)).head]);
+    assert.equal(typeof placed?.placed, 'number', 'Core holds the reader\'s place');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the place is answered');
+    const before = await rvState(p, ids);
+    await rvEarlier(p, 'laptop');
+    const after = await rvState(p, ids);
+    assert.equal(after.loaded, true, 'the older reply loaded');
+    assert.equal(after.top, after.head, `the shipyard dossier the reader placed on top is still on top after Earlier messages: ${JSON.stringify({ before, after })}`);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Item 378, where the button never shows: the Reader on a message the page's stacks do not hold, which ⋯ offers no
   // move either. Each such state on a laptop and at 320, 375 and 390 by a finger, beside the message it does show for.
   // With the button hidden, a phone's header keeps one row: the title row beside ✕, not on a row of its own under it.
