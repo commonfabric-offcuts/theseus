@@ -2792,6 +2792,22 @@
     "46388d7997e79f4db8b91eaccb6b483573d35d0295a184383c4af6b1d14a84fd:1": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "46388d7997e79f4db8b91eaccb6b483573d35d0295a184383c4af6b1d14a84fd:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cf99546beb796deb44592486cde907d0501314db737ad7b864a2f68ebc6baaf0": {
+      "inputs": [
+        "tests/card_marks_native.mjs",
+        "tests/fence_copy_native.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/reader_native.mjs",
+        "tests/reader_openings_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_tools_checks_trial.py": {
@@ -3510,6 +3526,30 @@
     "61bd97de00ed1694f75989d68906ac1a62f166c943137c11160ec5120ab0964b": {
       "inputs": [],
       "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_quarantine.py": {
+    "0a77164d8414220455858a9d5bb6f545af16bf7f7bf859727898d348a563934b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "51cfa349be5fe2aa4efe284b9dbfcb48527915b88d49294e3de746b6f96b8406": {
+      "inputs": [
+        ".github/check-baseline.json"
+      ],
+      "scope": "repository"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7:1": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_tools_release_check.py": {
