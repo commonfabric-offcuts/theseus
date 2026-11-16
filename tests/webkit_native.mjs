@@ -136,24 +136,55 @@ const untilChecks = async ({ check, page }) => {
       error => /closed/.test(error.message) && !/Timed out/.test(error.message));
     assert.equal(reads, 1, 'a closed page is read once');
   });
+  // A wait ends at its own bound: no read begins after it, and the wait ends within LATE of it, or of its last read's
+  // answer when that came later. A bound of another size in place of the wait's own (its 8 s default, the whole bound
+  // again once a read's page has left, or the loop run on past it) ends the wait seconds late, and fails here.
+  const LATE = 1000;
+  const timesOut = async (bound, description, probe, refused) => {
+    const reads = [], started = Date.now();
+    await assert.rejects(ended(until(async () => {
+      const read = { began: Date.now() - started };
+      reads.push(read);
+      try { return await probe(reads.length); } finally { read.answered = Date.now() - started; }
+    }, description, bound), 30000, `until on ${description}`), refused);
+    const took = Date.now() - started, last = reads.at(-1);
+    assert.ok(took >= bound, `not before its bound of ${bound} ms: ended at ${took} ms`);
+    assert.ok(reads.every(read => read.began < bound + LATE), `no read begins after its bound of ${bound} ms: ${JSON.stringify(reads)}`);
+    assert.ok(took <= Math.max(bound, last.answered) + LATE, `ends at its bound of ${bound} ms, or its last read's answer: ended at ${took} ms, reads ${JSON.stringify(reads)}`);
+    return reads;
+  };
   await check('notebook harness until still times out at its own bound: a condition that never holds, and a page gone to a document that never loads', async () => {
     const p = await page('until-bound', null, true);
-    let started = Date.now();
-    await assert.rejects(ended(until(() => p.evaluate('false'), 'a condition that never holds', 400), 30000, 'until on a condition that never holds'),
-      { message: 'Timed out: a condition that never holds' });
-    assert.ok(Date.now() - started >= 400, 'not before its bound');
-    // The page goes to a document whose module script is held, so it never has its DOMContentLoaded.
+    await timesOut(400, 'a condition that never holds', () => p.evaluate('false'), { message: 'Timed out: a condition that never holds' });
+    // The page goes to a document whose module script is held, so it never has its DOMContentLoaded. Its read leaves
+    // two thirds of the way into the wait's bound, so the wait for the page it went to has only what is left of it.
     let release;
     const released = new Promise(resolve => { release = resolve; });
     await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
-    let reads = 0;
-    started = Date.now();
     try {
-      await assert.rejects(ended(until(() => { reads += 1; return p.evaluate("(location.assign('/?topic=t1'), new Promise(() => {}))"); }, 'a document that never loads', 1500), 30000, 'until on a document that never loads'),
+      const reads = await timesOut(3000, 'a document that never loads',
+        () => p.evaluate("new Promise(resolve => setTimeout(resolve, 2000)).then(() => (location.assign('/?topic=t1'), new Promise(() => {})))"),
         error => /^Timed out: a document that never loads/.test(error.message));
-      assert.ok(Date.now() - started >= 1500, 'not before its bound');
-      assert.equal(reads, 1, 'no read again before the page it went to has its document');
+      assert.equal(reads.length, 1, 'no read again before the page it went to has its document');
     } finally { release(); }
+  });
+  await check('notebook harness until ends at once when its page closes while it waits for the page a read went to: the closed page\'s own error, on one read more', async () => {
+    const p = await page('until-close', null, true);
+    // The page goes to a document whose module script is held, so it has no DOMContentLoaded before it closes.
+    let release, closing = null;
+    const released = new Promise(resolve => { release = resolve; });
+    await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
+    let reads = 0;
+    try {
+      await assert.rejects(ended(until(() => {
+        reads += 1;
+        if (reads > 1) return p.evaluate('true');
+        // The read leaves with its page. Its error carries the wait for the page it went to, and only then does the page close.
+        return p.evaluate("(location.assign('/?topic=t1'), new Promise(() => {}))").catch(error => { closing = p.pw.close(); throw error; });
+      }, 'a page closed while its wait is out', 10000), 30000, 'until on a page closed while its wait is out'),
+        error => /closed/.test(error.message) && !/Timed out/.test(error.message));
+      assert.equal(reads, 2, 'read once before the close, and once after it, which the closed page refuses');
+    } finally { release(); await closing; }
   });
 };
 
