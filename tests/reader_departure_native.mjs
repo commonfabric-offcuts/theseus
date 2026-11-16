@@ -347,7 +347,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
         assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
       }
       // Where the arrows bring the focus to the acknowledgement (↓ from the footer while the box scrolls, then ↑),
-      // ↓ goes on to Prepare this reply again; the focus is shown there in light and dark, for the evidence.
+      // the arrows go on to Prepare this reply again; the focus is shown there in light and dark, for the evidence.
       await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
       await walk('ArrowDown',[]);await p.key('ArrowUp');
       const on=await where();
@@ -358,8 +358,10 @@ export async function departureChecks({check,page,until,facts,view,control,obser
         await shot(p,`review-arrows-acknowledgement-${width}-${theme}`);
       }
       await p.send('Emulation.setEmulatedMedia',{features:[]});
-      const trail=['the acknowledgement'];await walk('ArrowDown',trail);
-      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ↓ from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
+      // Prepare this reply again follows the acknowledgement's words: beside it where they fit its line (→), else below (↓).
+      const beside=await p.evaluate(`(a=>{const b=[...document.querySelectorAll('#review-content button')].find(e=>e.textContent===${JSON.stringify(PREPARE)}).getBoundingClientRect();return b.top<a.bottom&&b.bottom>a.top})(document.querySelector('${ACK}').getBoundingClientRect())`);
+      const way=beside?'ArrowRight':'ArrowDown',trail=['the acknowledgement'];await walk(way,trail);
+      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ${beside?'→':'↓'} from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
       assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
     }
     await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
