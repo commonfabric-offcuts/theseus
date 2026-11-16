@@ -17830,6 +17830,613 @@
     "native": "card-marks",
     "case": "head rows at 320px light"
    }
+  },
+  {
+   "item": 321,
+   "act": "A line of a card's words that holds only ![name](attachment:ID) is one of its images, and the card's words leave it out",
+   "break": [
+    [
+     "web/deck.mjs",
+     "const image = IMAGE_LINE.exec(line); return image && {",
+     "const image = null; return image && {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image line inside a fenced block is words, as a heading there is",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    const named = !before && !fence && take(lineText(line));",
+     "    const named = take(lineText(line));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The line the deck writes for an image keeps brackets and line breaks in its name from ending the line",
+   "break": [
+    [
+     "web/deck.mjs",
+     "name.replace(/[ \\t]*[[\\]\\\\\\r\\n]+[ \\t]*/g, ' ')",
+     "name"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A file that is not a PNG, JPEG, GIF or WebP image is refused at once, in words that say what was not added and why",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(!TYPES.has(file.type)||!file.size)throw",
+     "if(!file.size)throw"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image one byte past Core's image limit is refused at once, saying the limit; one at the limit is taken",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "if(file.size>limits.image_bytes)throw",
+     "if(file.size>limits.image_bytes+1)throw"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The page's limits count the images still being read in, not only those uploading",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const pending=[...w.images.filter(i=>!i.removed&&!i.ready),...this.arriving.values()];",
+     "const pending=[...w.images.filter(i=>!i.removed&&!i.ready)];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image removed while it is still being read in is never taken in",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(this.dropped.delete(media))return null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image taken in uploads under the media id the card names it by",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const id=e.media??crypto.randomUUID()",
+     "const id=crypto.randomUUID()"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Core opens a card's image through the page only for someone who may read the page",
+   "break": [
+    [
+     "aim_next/media.py",
+     "            source = self._source(db, actor, args[\"source_ref\"])",
+     "            source = self._source(db, row[\"actor_id\"] if row else actor, args[\"source_ref\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Through the page, only an image the page carries opens, whatever a card's words name",
+   "break": [
+    [
+     "aim_next/media.py",
+     "            allowed = any(ref.get(\"id\") == media_id for ref in source[\"attachments\"])",
+     "            allowed = True"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image pasted into a card being written is named in that card and shows in it at once, the box keeping its words",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "      if(field!==this.text){event.preventDefault();this.addToCard(files,field);return;}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image file dropped on a card being written goes into it",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "lit(false);this.addToCard([...event.dataTransfer.files],this.editing.field);});",
+     "lit(false);});"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card's image shows from this device while it uploads",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    const local=own?.bytes?new Blob([own.bytes],{type:own.type}):own?.file??null;",
+     "    const local=null;"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The card box leaves the card's image lines out and shows its images under the words, each with its ×",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    return { words: shown.words, stacks, images: shown.images.map(image => image.line) };",
+     "    return { words, stacks, images: [] };"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "× takes an image out of the card and off the page",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id,{keep:true})",
+     "    if(false)this.images.remove(image.id)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The page's own list of images leaves an image a card shows to the card",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "const attached=w.value.attachments.filter(ref=>!named.has(ref.id)).map(",
+     "const attached=w.value.attachments.map("
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a card being written"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card's image already on the page is read through the page as it stands, so a reader sees an image another uploaded",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     ":(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob)",
+     ":(await this.api.media(this.bootstrap.instance_id,attached)).blob)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images every state of a card's image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A refusal says what was not added and why, and nothing refused goes to Core",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "      try {admitted=this.images.admit(file);} catch(error) {this.imageError=error.message;break;}",
+     "      try {admitted=this.images.admit(file);} catch(error) {break;}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images a file that is not an image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "On a phone a card image's × is a 44-point target",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(pointer:coarse){.deck-image-remove{width:2.75rem;height:2.75rem}}",
+     "@media(pointer:coarse){.deck-image-remove{width:2rem;height:2rem}}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images every state of a card's image"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Undo after × puts the image back on the page, so the card never names an image the page lost: one uploaded, one still uploading, and one someone else added",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "for(const id of this.namedImages(body))if(this.images.released.has(id))",
+     "for(const id of this.namedImages(body))if(false)"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images Undo after × puts the image back on the page"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image × took off the page goes back on it, once, from what it reached: attached again, its upload going on, or by its id",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(old.ready){old.removed=false;old.associated=false;this.associate(old);w.notify();return old;}\n",
+     "    if(old.ready){old.removed=false;old.associated=false;w.notify();return old;}\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image still uploading when × took it off goes on uploading from its bytes when Undo puts it back",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "const entry={...old,id:crypto.randomUUID(),bytes:kept.bytes,",
+     "const entry={...old,id:crypto.randomUUID(),bytes:null,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Only an image × took off is put back; one removed from the page's list stays off",
+   "break": [
+    [
+     "web/notebook-images.mjs",
+     "    if(keep)this.released.set(",
+     "    this.released.set("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Core takes back from a writer of a page an image one of its revisions carried, though another uploaded it",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        return media_id in self.current or self.db.execute(",
+     "        return media_id in self.current or None and self.db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A revise reads the revision it follows, not the page's history, so an ordinary save costs the same however many revisions the page has",
+   "break": [
+    [
+     "aim_next/memory.py",
+     "        retained = () if creating else _Carried(db, item_id, json.loads(current[\"attachments\"]))",
+     "        retained = [] if creating else [ref[\"id\"] for row in db.execute(\"SELECT attachments FROM memory_revisions WHERE item_id=?\", (item_id,)) for ref in json.loads(row[\"attachments\"])]"
+    ]
+   ],
+   "check": {
+    "python": "test_memory_card_images.py"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An attachment put back on the page is described as Core described it once its revision is saved",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };",
+     "attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_notebook_writing.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Someone else's image put back by Undo after × shows on its card as before",
+   "break": [
+    [
+     "web/notebook-writing.mjs",
+     "attachments: sent.args.attachments.map(ref => this.described.get(ref.id) ?? ref) };",
+     "attachments: sent.args.attachments.map(ref => this.base.source.attachments.find(a => a.id === ref.id) ?? ref) };"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images Undo after × puts the image back on the page"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A new card holding only images is made, named for the first of them",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  return written;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image pasted into a new card with no words makes a card named for it",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  return written;\n"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an image pasted into a new card with no words"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A card cleared of its text is removed with its images, and an empty new card is never made",
+   "break": [
+    [
+     "web/deck.mjs",
+     "  if (!fresh || !images.length) return written;\n",
+     "  if (!images.length) return written;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image picked with #img while a card is written is named in that card",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "if(field!==this.text&&this.editing?.field===field)this.addToCard([file],field);",
+     "if(false)this.addToCard([file],field);"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook images paste and img picker"
+   }
+  },
+  {
+   "item": 321,
+   "act": "× keeps an image on the page while another card still shows it",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(!this.namedImages(this.previewBody()).has(image.id))this.images.remove(image.id,{keep:true})",
+     "    if(true)this.images.remove(image.id,{keep:true})"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images × keeps an image on the page while another card shows it"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image × took off the page stays off when the page draws what Core confirmed: only words the person changed bring an image back",
+   "break": [
+    [
+     "web/notebook-page.mjs",
+     "    if(edited)this.keepNamed(body);\n  }\n  save() {",
+     "    this.keepNamed(body);\n  }\n  save() {"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images × keeps an image on the page while another card shows it"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Outside its card, the Reader shows a card's image line as the image at its reading size, read through the page, never the line's markup",
+   "break": [
+    [
+     "web/reader.mjs",
+     "      images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });",
+     "      images: null });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the Reader shows"
+   }
+  },
+  {
+   "item": 321,
+   "act": "A page opened in place on its outcome's page shows a card's image line as the image, read through the page",
+   "break": [
+    [
+     "web/page-here.mjs",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc, pageImages(source, this.media && (attachment => this.media(attachment, source.source_ref)))));",
+     "    body.append(...linkedFenceNodes(source.body ?? '', this.doc));"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images a page opened in place"
+   }
+  },
+  {
+   "item": 321,
+   "act": "The topic's Notebook card names a card's image after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/app.mjs",
+     "      linkWords(body, imageStandIns(item.body, { partial: item.preview === true }), { partial: item.preview === true });",
+     "      linkWords(body, item.body, { partial: item.preview === true });"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images the topic's Notebook card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An ask about a card quotes its image by name after an image glyph, never by its markup",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "...imageStandIns(cardStacks(card.words, messageOf).words).split('\\n')];",
+     "...cardStacks(card.words, messageOf).words.split('\\n')];"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook card images an ask about a card"
+   }
+  },
+  {
+   "item": 321,
+   "act": "What changed in a page names an image a card gained or lost after its glyph, never by its markup",
+   "break": [
+    [
+     "web/page-changes.mjs",
+     "  const runs = changes(imageStandIns(before), imageStandIns(after));",
+     "  const runs = changes(before, after);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where a page's images are drawn, an image line is a passage of its own, even straight under words",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j, images)) tick(meter, lines[j++].text.length + 1);",
+     "    while (j < n && !blank(lines[j]) && !startsBlock(lines, j)) tick(meter, lines[j++].text.length + 1);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An image the page does not carry shows its name alone where the page is read, and nothing is read for it",
+   "break": [
+    [
+     "web/page-image.mjs",
+     "  if (attached?.inline && read) paintThumb(figure, 'card:' + image.id, () => read(attached), img => caption.before(img));",
+     "  if (read) paintThumb(figure, 'card:' + image.id, () => read(attached ?? image), img => caption.before(img));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_image_words.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "Where only words show, an image line inside a fenced block stays words",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    if (before || fence) return line;\n    const image = lineImage(line), end",
+     "    const image = lineImage(line), end"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
+  },
+  {
+   "item": 321,
+   "act": "An excerpt cut inside an image line's address still names the image after its glyph",
+   "break": [
+    [
+     "web/deck.mjs",
+     "    const cut = partial && i === lines.length - 1 && CUT_LINE.exec(line);",
+     "    const cut = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_images.test.mjs"
+   }
   }
  ]
 }

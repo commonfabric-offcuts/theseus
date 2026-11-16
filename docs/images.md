@@ -1,7 +1,9 @@
 # Images while writing
 
 How an image gets into a reply or a new message on the topic page and in the
-Reader (`web/image-pick.mjs`, `web/reader.mjs`, `web/inline-composer.mjs`).
+Reader (`web/image-pick.mjs`, `web/reader.mjs`, `web/inline-composer.mjs`). A
+Notebook card takes an image the same ways, pasted, dropped or picked with
+`#img`, and shows it under its words ([decks.md](decks.md#images-in-a-card)).
 Every way in ends in the same place: the image goes through `Uploads`
 (`web/uploads.mjs`), with the same limits, device copy and confirmation as a
 file chosen with Add image.

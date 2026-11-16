@@ -13,6 +13,8 @@
 // too many places to mark, which is true however much of it changed. The
 // bound keeps the work proportional to the page and the size of the change.
 
+import { imageStandIns } from './deck.mjs';
+
 export const LIMIT = 2000;
 export const CONTEXT = 120;
 
@@ -95,9 +97,9 @@ const node = (doc, tag, text, className) => {
 };
 
 // Draws into host what changed from before to after; returns how many runs
-// were added and removed.
+// were added and removed. A card's image line reads as the image's name after its glyph (deck.mjs, imageStandIns).
 export function paintChanges(host, before, after, doc = globalThis.document) {
-  const runs = changes(before, after);
+  const runs = changes(imageStandIns(before), imageStandIns(after));
   host.replaceChildren();
   if (!runs) {
     host.append(node(doc, 'p', 'This page changed in too many places since then to mark them here. The whole page as it now stands is below.', 'changes-summary'));
