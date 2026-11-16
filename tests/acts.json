@@ -24674,6 +24674,104 @@
    "check": {
     "python": "test_tools_train.py"
    }
+  },
+  {
+   "item": 608,
+   "act": "A small fix's scoped summary is taken with known reds: a browser step its confirmed scope did not run is not missing",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return [name for name in NATIVE if name not in ran]",
+     "    return []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "With known reds, a scoped summary's units, deploy refusals or wake replay that did not run stay missing",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return [name for name in NATIVE if name not in ran]",
+     "    return [name for name in release_check.REQUIRED if name not in ran]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A listed known red of a step a scoped run did not run is said not run, never not needed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "if step not in unrun and case not in failures.get(step, ())",
+     "if case not in failures.get(step, ())"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a live commit that is not the full 40-character commit, before running anything",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if not re.fullmatch(r\"[0-9a-f]{40}\", scoped):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a change whose step rules at the commit cannot be read, rather than choosing no step",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        raise Refused(\"the browser steps the changes since %s touch cannot be chosen at %s: %s\" % (live[:12], commit[:12], error))",
+     "        chosen = {\"steps\": [], \"notes\": [str(error)]}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a chosen step this release check does not run",
+   "break": [
+    [
+     "tools/release_check.py",
+     "    if unknown:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy takes no scoped summary beside a live commit it cannot read",
+   "break": [
+    [
+     "tools/deploy.py",
+     "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if head.returncode != 0:",
+     "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
   }
  ]
 }
