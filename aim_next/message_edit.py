@@ -391,7 +391,7 @@ BASE = "base_revision is one of the message's revisions"
 class MessageEdit:
     def _editable(self, db, actor, message_id, reached=True):
         """Slice 1's checks 1 to 4, in order: the actor reaches the message (a whisper outside them, or a message they
-        cannot read, is refused as an unknown id), is a person, wrote it, and its outcome is not reached (skipped by
+        cannot read, is refused as an unknown id), is a person, wrote it, and its outcome is not kept to read (skipped by
         message.edit_close, so a hold can always be ended)."""
         message = self._message_access(db, actor, _identifier(message_id, "message_id"))
         if self._actor(db, actor)["kind"] != "human":
@@ -399,12 +399,9 @@ class MessageEdit:
         if message["author_id"] != actor:
             raise Refusal("FORBIDDEN", ONLY_AUTHOR)
         if reached:
-            # An edit writes only actor-scoped changes, which the reached guard passes.
-            row = db.execute("SELECT w.title,r.reached_ms FROM topics t JOIN outcome_reached r ON r.workspace_id=t.workspace_id "
-                             "JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?", (message["topic_id"],)).fetchone()
-            if row is not None:
-                from .outcome_kind import _clock
-                raise Refusal("OUTCOME_REACHED", "%s was reached on %s; its topics are kept to read." % (row[0], _clock(row[1])))
+            # An edit writes only actor-scoped changes, which the guard passes: refused here in an outcome kept to
+            # read, reached, archived or completed (item 404).
+            self._refuse_if_closed(db, actor, db.execute("SELECT workspace_id FROM topics WHERE id=?", (message["topic_id"],)).fetchone()[0])
         return message
 
     def _command_message_edit(self, db, actor, envelope):

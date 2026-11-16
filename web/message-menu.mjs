@@ -27,6 +27,7 @@ import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow 
 import { revealSelection } from './reveal.mjs';
 import { FeedPassages } from './feed-passages.mjs';
 import { reach } from './arrow-reach.mjs';
+import { glyph } from './glyphs.mjs';
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -472,19 +473,25 @@ const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), 
 
 // anchor: a ⋯ button, or the card a right-click landed on; at: where the
 // pointer was for a right-click, else the menu sits under the anchor. items:
-// [{ label, act, keys }] in order; act may answer a promise; keys, the keys
-// that do the same, shown at the item's end.
+// [{ label, glyph, act, keys }] in order; glyph, the name of the glyph shown
+// before its words (glyphs.mjs, items 602 and 601), which every item names;
+// act may answer a promise; keys, the keys that do the same, shown at the
+// item's end.
 // sheet: on a phone (a narrow window) the menu opens as a sheet from the
 // bottom of the window, its items full width, rather than under its button.
 export function openMessageMenu({ anchor, at = null, items, label = 'Message', sheet = false, doc = globalThis.document, win = globalThis }) {
   if (open?.anchor === anchor && !at) { open.close(true); return null; }
+  // Every item's glyph is drawn before anything changes on the page: an item that names none, or one nobody draws, opens nothing.
+  const glyphs = items.map(item => glyph(item.glyph, doc));
   open?.close(false);
   if (!items.length) return null;
   const root = element(doc, 'div', { className: 'message-menu-list' });
   root.setAttribute('role', 'menu'); root.setAttribute('aria-label', label);
-  const buttons = items.map(item => {
+  const buttons = items.map((item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.setAttribute('role', 'menuitem');
+    // The glyph follows the words in the document and is drawn before them (aim.css), so the row reads as its words.
+    button.append(glyphs[index]);
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
     button.onclick = event => { event.stopPropagation(); menu.close(true); item.act(); };
     return button;

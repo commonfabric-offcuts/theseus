@@ -229,15 +229,15 @@ class Reactions:
     def _thumb_ask_topic(self, db, actor, message):
         """The topic whose wait a thumb by actor on message would answer, or None: the message is a plain
         ask (no go-ahead, no record's) to actor, a person, in a topic they read that still keeps its waits
-        (not replaced by a conversation, its outcome not reached). A whisper never asks (whispers.py's
+        (not replaced by a conversation, its outcome not reached, archived or completed). A whisper never asks (whispers.py's
         whisper_shape), and message.thumb refuses a thumb on one's own message, so neither is asked here."""
         if (message["intent"] != "ask" or message["go_ahead"] or actor not in json.loads(message["addressees"])
                 or self._actor(db, actor)["kind"] != "human"):
             return None
         topic = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND t.replaced_by IS NULL "
-                           "AND NOT EXISTS (SELECT 1 FROM outcome_reached r WHERE r.workspace_id=t.workspace_id) AND " + READABLE,
-                           {"topic": message["topic_id"], "actor": actor}).fetchone()
-        if topic is None or record_ask(db, message["id"], topic["workspace_id"], topic["id"]):
+                           "AND " + READABLE, {"topic": message["topic_id"], "actor": actor}).fetchone()
+        # An outcome kept to read (reached, archived or completed, item 404) keeps its waits as they are.
+        if topic is None or self._closed(db, topic["workspace_id"]) is not None or record_ask(db, message["id"], topic["workspace_id"], topic["id"]):
             return None
         return topic
 

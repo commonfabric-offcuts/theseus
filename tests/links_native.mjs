@@ -196,8 +196,9 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await p.point(menuMore);
     await menuOpen(p, ['Copy Link', 'Mark unread']);
     const list = await p.box('.message-menu-list');
-    // Its longest words are a stack's move with its keys ("Join the stack above ⇧⌘↑").
-    assert.ok(list.width < 260, 'the menu is as wide as its words: ' + list.width);
+    // Its longest words are a stack's move with its keys ("Join the stack above ⇧⌘↑"), with the glyph each item shows
+    // before its words, 18px and a 10px gap (items 602 and 601).
+    assert.ok(list.width < 288, 'the menu is as wide as its words: ' + list.width);
     assert.ok(Math.abs(list.x + list.width - (more.x + more.width)) < 2 && list.y >= more.y + more.height, 'under the ⋯, their right edges lined up');
     assert.equal(await p.evaluate(`document.activeElement?.textContent`), 'Star for me', 'the first item has the focus');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).getAttribute('aria-expanded')`), 'true');

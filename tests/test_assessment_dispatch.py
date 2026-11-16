@@ -347,3 +347,41 @@ class DispatchCase(unittest.TestCase):
         self.assertEqual(self.count('thread/resume'),1)
         self.assertEqual(self.count('turn/start'),0)
         self.assertEqual(self.core.record(self.identity)['state'],'attached')
+
+    def test_an_archived_or_completed_outcome_is_never_dispatched_and_spends_nothing(self):
+        # Item 404: kept to read as a reached outcome is; the request was made before the outcome was archived or completed.
+        for state in ('archived','completed'):
+            with self.subTest(state=state):
+                test_assessments.AssessmentCase.end_outcome(self,state)
+                with self.assertRaisesRegex(DispatchError,'OUTCOME_CLOSED'): self.run_assessment()
+                self.assertEqual(self.native.calls,[])
+                self.assertEqual(self.core.record(self.identity)['state'],'requested')
+                test_assessments.AssessmentCase.end_outcome(self,'open')
+        # Brought back, it runs.
+        self.assertEqual(self.run_assessment()['status'],'reported')
+        self.assertEqual(self.count('turn/start'),1)
+
+    def test_an_attached_request_in_an_archived_outcome_starts_no_model_turn(self):
+        self.native.fail = 'thread/resume'
+        with self.assertRaises(DispatchError): self.run_assessment()
+        thread = self.core.record(self.identity)['thread_id']
+        test_assessments.AssessmentCase.end_outcome(self,'archived')
+        calls = list(self.native.calls)
+        with self.assertRaisesRegex(DispatchError,'OUTCOME_CLOSED'): self.run_assessment()
+        self.assertEqual(self.native.calls,calls)
+        self.assertEqual(self.count('turn/start'),0)
+        record = self.core.record(self.identity)
+        self.assertEqual((record['state'],record['thread_id']),('attached',thread))
+
+    def test_an_outcome_completed_while_resuming_still_starts_no_model_turn(self):
+        original = self.native.call
+        def complete_during_resume(method, params):
+            result = original(method, params)
+            if method == 'thread/resume':
+                test_assessments.AssessmentCase.end_outcome(self,'completed')
+            return result
+        self.native.call = complete_during_resume
+        with self.assertRaisesRegex(DispatchError,'OUTCOME_CLOSED'): self.run_assessment()
+        self.assertEqual(self.count('thread/resume'),1)
+        self.assertEqual(self.count('turn/start'),0)
+        self.assertEqual(self.core.record(self.identity)['state'],'attached')

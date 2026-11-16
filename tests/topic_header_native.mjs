@@ -347,6 +347,10 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await shot(p, 'header-renamed-team');
       await p.point('#team-people [aria-label="Remove codex"]');
       await until(async () => !await inTeam(), 'remove uses the same actor');
+      // Core answers before the page draws it: the page reads the team again and repaints the row, codex's pill gone and
+      // the filter's "codex" offered again as a chip beside it, which moves the field. Aim once that repaint is on screen.
+      await until(() => p.evaluate(`!document.querySelector('#team-people [aria-label="Remove codex"]') && Boolean(document.querySelector('${chip}'))`),
+        'the page shows codex gone from the team and offered again');
       await p.point('#team-people .people-add input');
       await p.key('a', 4);
       await p.send('Input.insertText', { text: 'CoDeX' });

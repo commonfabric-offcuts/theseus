@@ -40,7 +40,7 @@ opener.onclick = () => reader.show(source, { reply, note }, {
 // page's does (docs/links.md, "A message's menu").
 const menu = document.querySelector('#reader-menu');
 menu.onclick = () => openMessageMenu({ anchor: menu, label: 'This message',
-  items: reader.layoutChoice ? [{ label: reader.layoutChoice, act: () => reader.toggleLayout() }] : [] });
+  items: reader.layoutChoice ? [{ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() }] : [] });
 // Read-only observations for the test, never invoked to perform an interaction.
 window.fixtureSnapshot = () => ({ events: structuredClone(events), reply: reply.snapshot(), note: note.snapshot() });
 document.body.dataset.fixtureReady = 'true';

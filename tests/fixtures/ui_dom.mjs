@@ -19,6 +19,7 @@ export function dom() {
     querySelector(selector){const key=selector==='[data-more]'?'more':selector==='[data-history-retry]'?'historyRetry':null;return this.children.find(x=>key&&Object.hasOwn(x.dataset,key))??null;}
   }
   document.createElement=tag=>new Element(tag);
+  document.createElementNS=(ns,tag)=>new Element(tag);
   document.createTextNode=data=>Object.assign(new Element('#text'),{textContent:data});
   document.body=document.createElement('body');
   return document;

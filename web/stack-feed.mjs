@@ -805,36 +805,39 @@ export class StackFeed {
     return true;
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
-  // same; on a phone, the stack's moves and joins sit behind "Move or join…".
+  // same and each item's glyph (glyphs.mjs, items 602 and 601); on a phone,
+  // the stack's moves and joins sit behind "Move or join…".
   // first: what the message offers; last: its stack's moves and joins.
   menuItems(item, { phone = false, more = () => {} } = {}) {
     const entry = this.entryFor(item.id), found = entry && stackOf(this.list, entry);
     const starred = Boolean(this.actsOf(item.id, item).starred);
-    const items = [{ label: starred ? 'Unstar' : 'Star for me', act: () => this.star(item) }];
+    const items = [{ label: starred ? 'Unstar' : 'Star for me', glyph: starred ? 'starred' : 'star', act: () => this.star(item) }];
     if (!found) return { first: items, last: [] };
     const { stack } = found, state = this.state;
     if (found.head && stack.replies.length) {
-      items.push({ label: 'Rename', act: () => this.startRename(stack) });
+      items.push({ label: 'Rename', glyph: 'pencil', act: () => this.startRename(stack) });
       const open = state.levels.get(stack.id) === 'open';
-      items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages',
+      items.push({ label: open ? 'Show latest and unread replies' : 'Show all messages', glyph: open ? 'latest' : 'all',
         act: () => { setLevel(state, stack, open ? 'folded' : 'open'); this.arrange(); this.focusOn(stack.id); } });
     }
     // A star keeps a message in view: a starred message offers no Fold.
-    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', act: () => this.setFold(item, false) });
-    else if (!starred) items.push({ label: 'Fold', act: () => this.setFold(item, true) });
-    if (stack.joins.has(item.id)) items.push({ label: 'Split back out', act: () => this.split(item) });
+    if (this.actsOf(item.id, item).folded) items.push({ label: 'Unfold', glyph: 'unfold', act: () => this.setFold(item, false) });
+    else if (!starred) items.push({ label: 'Fold', glyph: 'fold', act: () => this.setFold(item, true) });
+    if (stack.joins.has(item.id)) items.push({ label: 'Split back out', glyph: 'split', act: () => this.split(item) });
     const moves = [
-      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', act: () => this.setAside(stack, !positionOf(stack).below) }] : []),
-      { label: 'Move its stack up', keys: '⌘↑', act: () => this.move(entry, 'up') },
-      { label: 'Move its stack down', keys: '⌘↓', act: () => this.move(entry, 'down') },
-      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', act: () => this.fold(entry, 'fold') }] : []),
-      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'open') ? [{ label: 'Open its stack', keys: '→', act: () => this.fold(entry, 'open') }] : []),
-      { label: 'Join the stack above', keys: '⇧⌘↑', act: () => this.join(entry, 'up') },
-      { label: 'Join the stack below', keys: '⇧⌘↓', act: () => this.join(entry, 'down') },
-      ...(stack.placed !== null ? [{ label: 'Let new replies move it', act: () => this.unplace(stack) }] : []),
-      ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', act: () => this.undo() }] : []),
+      // Item 601: Move below More shows the Reader's archive tray, Bring back above More the tray with an arrow out.
+      ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', glyph: positionOf(stack).below ? 'back' : 'archive',
+        act: () => this.setAside(stack, !positionOf(stack).below) }] : []),
+      { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
+      { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },
+      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', glyph: 'chevron', act: () => this.fold(entry, 'fold') }] : []),
+      ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'open') ? [{ label: 'Open its stack', keys: '→', glyph: 'chevdown', act: () => this.fold(entry, 'open') }] : []),
+      { label: 'Join the stack above', keys: '⇧⌘↑', glyph: 'joinup', act: () => this.join(entry, 'up') },
+      { label: 'Join the stack below', keys: '⇧⌘↓', glyph: 'joindown', act: () => this.join(entry, 'down') },
+      ...(stack.placed !== null ? [{ label: 'Let new replies move it', glyph: 'unpin', act: () => this.unplace(stack) }] : []),
+      ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', glyph: 'undo', act: () => this.undo() }] : []),
     ];
-    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };
+    return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };
   }
   // Lands on a message, opening its stack (and, for its first message, the full words).
   land(id) {

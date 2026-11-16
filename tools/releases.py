@@ -16,11 +16,13 @@ claim after the revert ships it again. Other Train-Item values are display only.
 
 Usage: tools/releases.py attach-judgment RELEASE --config CONFIG.json --runs ID[,ID] --checks ID[,ID] --audit MESSAGE
 
-attaches the hosted judgment of an ordinary merged train's release, or the full
-run of a release deployed on a scoped run (item 608), once it has landed, to
-that release's record in the live instance (docs/tools.md, "A merged train" and
-"A small fix"): each run and check, read from GitHub, completed and naming that
-release's commit as its head. Nothing else in the record changes.
+attaches the hosted judgment of an ordinary merged train's release, of one
+deployed on the run of another commit with its tree (item 588), or the full run
+of a release deployed on a scoped run (item 608), once it has landed, to that
+release's record in the live instance (docs/tools.md, "A merged train", "A
+merged head its pull request's run judged" and "A small fix"): each run and
+check, read from GitHub, completed and naming that release's commit as its head.
+Nothing else in the record changes.
 """
 
 import json
@@ -107,9 +109,11 @@ def reverted(commits, flagged=()):
             + [{"item": item, "commit": None, "by": "flag"} for item in flagged])
 
 
-def measurements(summary, known_reds=()):
+def measurements(summary, known_reds=(), judged=None):
     """The release check's counts for one release record (docs/releases.md), and the known reds the deploy accepted
-    (item 178: failed cases the live commit fails too, still counted as failed)."""
+    (item 178: failed cases the live commit fails too, still counted as failed). judged (item 588): for a summary of
+    another commit with the deployed commit's tree, {judged_commit, commit, tree}, kept as `judged_tree` with the hosted
+    judgment of the deployed commit itself pending until attach-judgment attaches it."""
     steps = {step.get("name"): step.get("counts") or {} for step in summary.get("steps") or [] if isinstance(step, dict)}
     native = {name[len("native-"):]: {"pass": counts.get("pass", 0), "total": counts.get("tests", 0)}
               for name, counts in steps.items() if name.startswith("native-")}
@@ -126,7 +130,8 @@ def measurements(summary, known_reds=()):
             **({"scoped": scoped(summary)} if isinstance(summary.get("scoped"), dict) else {}),
             **({"known_reds": [{key: red[key] for key in ("step", "case", "live_summary", "live_commit", "why", "taken_by")}
                                 for red in known_reds]}
-               if known_reds else {})}
+               if known_reds else {}),
+            **({"judged_tree": dict(judged, judgment="pending")} if judged else {})}
 
 
 def scoped(summary):

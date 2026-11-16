@@ -29,6 +29,11 @@ const blockingName = short => short?.blocking === 'release' ? 'Blocking a releas
 // An ask's link names the message that asks, when a message did (item 148).
 const asked = fact => typeof fact.message_id === 'string' ? { message: fact.message_id } : {};
 
+// The leads of an outcome its owner archived or completed (item 404): kept to read, as a reached one is.
+export const ENDED = ['archived', 'completed'];
+// Whether the light says the outcome is kept to read: reached, archived or completed.
+export const keptToRead = answer => answer?.lead?.kind === 'reached' || ENDED.includes(answer?.lead?.kind);
+
 // The light's kind as the page names it on its lamp: the four, or unknown.
 export const lampKind = light => light?.light ?? 'unknown';
 
@@ -42,6 +47,9 @@ export function shortPieces(light) {
     case 'seen': return known(short.ms) ? [['Worked on'], time(short.ms, 'at')] : [['Being worked on'], []];
     case 'checks_pass': return [['Done'], []];
     case 'reached': return [['Done ·'], ['reached ', ...time(short.ms, 'dayAt')]];
+    // Its owner completed or archived it (item 404): the act and its day, never the work before it.
+    case 'completed': return [['Done ·'], ['completed ', ...time(short.ms, 'dayAt')]];
+    case 'archived': return [['Archived ·'], time(short.ms, 'day')];
     case 'no_topics': return [['No topics yet'], []];
     // Talk outside Now: quiet since the last work in Now; the talk is the outcome's Last line.
     case 'talk': return known(short.since_ms) ? [['Quiet since'], time(short.since_ms, 'short')] : [['Quiet'], []];
@@ -57,7 +65,9 @@ export function lightName(light) {
   if (light.light === 'waiting' && blockingName(short)) return [`${blockingName(short)}: waiting on you`];
   if (light.light === 'waiting') return short.kind === 'asks' ? [`Waiting on you · ${plural(short.count, 'question', 'questions')}`] : ['Waiting on you'];
   if (light.light === 'built') return known(short.ms) ? ['Worked on ', ...time(short.ms, 'at')] : ['Being worked on'];
-  if (light.light === 'done') return short.kind === 'reached' ? ['Done · reached ', ...time(short.ms, 'dayAt')] : ['Done'];
+  if (light.light === 'done') return short.kind === 'reached' ? ['Done · reached ', ...time(short.ms, 'dayAt')]
+    : short.kind === 'completed' ? ['Done · completed ', ...time(short.ms, 'dayAt')] : ['Done'];
+  if (short.kind === 'archived') return ['Archived · ', ...time(short.ms, 'day')];
   if (short.kind === 'no_topics') return ['No topics yet'];
   if (short.kind === 'talk') return known(short.since_ms) ? ['Quiet since ', ...time(short.since_ms, 'since')] : ['Quiet'];
   return known(short.ms) ? ['Quiet since ', ...time(short.ms, 'since')] : ['Quiet'];
@@ -70,6 +80,7 @@ export function lightName(light) {
 export function lastLine(answer) {
   const facts = Array.isArray(answer?.facts) ? answer.facts : [];
   if (answer?.lead?.kind === 'reached') return { text: [`${answer.lead.by} said it was reached`] };
+  if (ENDED.includes(answer?.lead?.kind)) return { text: [`${answer.lead.by} ${answer.lead.kind} it`] };
   for (const fact of facts) {
     switch (fact?.kind) {
       case 'ask': return { label: 'Asked:', by: fact.by, link: { topic: fact.topic_id, ...asked(fact), text: fact.title + (fact.title_truncated ? '…' : '') } };
@@ -99,6 +110,8 @@ export function leadWords(lead, facts = [], outcome = '') {
     case 'topics_work': return ['It has no pipeline, so work in any of its open topics counts. Worked on in the last hour:'];
     case 'done': return [lead.pipeline ? 'Everything in its pipeline has shipped, and all its checks pass:' : 'All its checks pass:'];
     case 'reached': return [`${lead.by} said ${outcome || 'it'} was reached`, ...(known(lead.ms) ? [',', ...whenAfter(lead.ms)] : []), ':'];
+    // Nothing follows an archive or a completion: its topics are archived, so the sentence ends here.
+    case 'archived': case 'completed': return [`${lead.by} ${lead.kind} ${outcome || 'it'}`, ...(known(lead.ms) ? [',', ...whenAfter(lead.ms)] : []), '.'];
     case 'topics_quiet': return ['Nothing has been posted or worked on in its open topics since then, and no one is waiting on an answer.'];
     case 'now_quiet':
       if (lead.of === 0) return ['Nothing is in Now, and no one is waiting on an answer.'];

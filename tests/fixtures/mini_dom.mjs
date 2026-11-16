@@ -76,6 +76,7 @@ export function miniDocument() {
   const ids = new Map();
   const document = { activeElement: null };
   document.createElement = tag => new Element(tag, document);
+  document.createElementNS = (ns, tag) => new Element(tag, document);
   document.byId = id => ids.get(id) ?? ids.set(id, Object.assign(document.createElement('div'), { id, root: true })).get(id);
   return document;
 }

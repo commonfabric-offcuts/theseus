@@ -1178,8 +1178,9 @@ def main():
                         # they read now. "record_checks" writes a release check's run as the
                         # deploy does, "release" a release record, and "attach_judgment" the
                         # hosted judgment of a merged train's release, as the operator's admin verb does.
+                        # {"sender": id} acts as someone else on the outcome's team (item 404: its owner when not the person).
                         kind, operation, workspace = request["kind"], request["operation_id"], request.get("workspace_id", "w1")
-                        sender = actor
+                        sender = request.get("sender", actor)
                         if kind == "record_checks":
                             answer = store().record_checks(dict(request["run"], outcome=workspace), sender)
                         elif kind == "release":
