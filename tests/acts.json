@@ -23858,6 +23858,90 @@
    "check": {
     "python": "test_tools_deploy.py"
    }
+  },
+  {
+   "item": 588,
+   "act": "A deploy on a pull request's run reads each failed step's evidence for its known reds in the shard of that run that ran it, downloaded beside the whole-run summary",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if shards is None:\n        return folder",
+     "    if True:\n        return folder"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run live summary's failed step is read from its shards too",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return ended_cases(step_evidence(summary, path.parent, found[0], \"the live %s\" % red[\"step\"]), found[0], \"the live\",",
+     "    return ended_cases(path.parent, found[0], \"the live\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run summary's shard of another commit is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(ran, dict) or ran.get(\"commit\") != summary.get(\"commit\"):",
+     "        if not isinstance(ran, dict):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A failed step no shard, or more than one, holds as the whole-run summary has it is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if len(holding) != 1:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A shard the whole-run summary names otherwise than check-N/summary.json is refused, never read",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(shard, str) or not SHARD.fullmatch(shard):",
+     "        if not isinstance(shard, str):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A summary refused as not describing the deployed commit records no judged tree, even when its tree is the deployed commit's",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    judged = judged[0] if judged and not foreign else None",
+     "    judged = judged[0] if judged else None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
   }
  ]
 }
