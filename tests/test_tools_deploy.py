@@ -2567,9 +2567,9 @@ class DeployRefusesKnownRedsOwnerAcceptance(KnownRedsFiles, DeployCase):
              "why": "fails on the live release too", "taken_by": "owner_acceptance"}])
         self.assertIn("known red: %s %r failed; an owner's acceptance took it (%s, by warp in m-accepted)"
                       % (RED_STEP, RED_CASE, self.acceptance), out.getvalue())
-        [taken] = json.loads((self.evidence / "00-release-check.json").read_text())["known_reds"]["accepted"]
-        self.assertEqual([line for line in out.getvalue().splitlines() if line.startswith("known red")], [taken.get("said")],
-                         "the line printed is the one recorded with the red")
+        self.assertEqual([line for line in out.getvalue().splitlines() if line.startswith("known red")],
+                         ["known red: %s %r failed; an owner's acceptance took it (%s, by warp in m-accepted): fails on the "
+                          "live release too" % (RED_STEP, RED_CASE, self.acceptance)], "one line, the whole of it")
 
     def test_an_owners_acceptance_takes_only_what_it_names_exactly_with_a_by_and_a_message(self):
         for change, words in (({"cases": [{"step": RED_STEP, "case": RED_CASE.upper()}]}, "but not of %s %r" % (RED_STEP, RED_CASE)),
