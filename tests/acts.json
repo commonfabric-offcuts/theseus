@@ -14687,13 +14687,28 @@
    "break": [
     [
      "web/stack-look.css",
-     "  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n",
+     "@media(max-width:403.98px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n}\n",
      ""
     ]
    ],
    "check": {
     "native": "reading",
     "case": "minted name"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone the folded Reply and Move below More are gone from the title bar, not drawn over the tab beside ⋯",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
    }
   },
   {
@@ -14734,6 +14749,16 @@
      "web/stack-look.css",
      ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
      ".reply-stack:not(.only-new *)>.stack-tools{visibility:hidden}\n"
+    ],
+    [
+     "web/stack-look.css",
+     ">.stack-tools{opacity:1;pointer-events:auto}\n",
+     ">.stack-tools{visibility:visible}\n"
+    ],
+    [
+     "web/stack-look.css",
+     ">.stack-tools{pointer-events:auto;opacity:0}\n",
+     ">.stack-tools{visibility:visible;opacity:0}\n"
     ]
    ],
    "check": {
