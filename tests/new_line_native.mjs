@@ -666,12 +666,11 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const p = await open(topic, 'new-line-older-' + theme, theme);
       await until(() => p.evaluate("Boolean(document.querySelector('#messages .new-line'))"), theme + ': a line drawn');
       const marker = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),line=list.querySelector('.new-line');
-        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:![...list.children].slice([...list.children].indexOf(line)+1).some(e=>e.dataset.id||e.classList.contains('reply-stack')),tag:line.tagName,kind:line.dataset.line,text:line.textContent,
+        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,kind:line.dataset.line,text:line.textContent,
           label:line.querySelector('.new-line-label')?.textContent??null,
           color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${ids[0]}"]')),
           fill:c.backgroundColor,border:[c.borderTopWidth,c.borderBottomWidth,c.borderLeftWidth,c.borderRightWidth],more:document.querySelector('#more-messages').hidden,
           button:(b=>({fill:getComputedStyle(b).backgroundColor,border:getComputedStyle(b).borderTopColor}))(document.querySelector('#more-messages')),borderColor:c.borderTopColor}})()`);
-      // Last of the messages loaded; the New message composer resting under them (item 465) comes after it.
       assert.deepEqual([marker.count, marker.last, marker.tag, marker.kind, marker.label, marker.loaded], [1, true, 'BUTTON', 'older', 'More new below', false], theme + ': at the bottom of what is loaded, saying more new messages are below');
       assert.match(marker.text, new RegExp('^More new below · ' + SHOWN + '$'), theme + ': and when that message was sent');
       assert.ok(contrast(marker.color, marker.fill) >= 4.5, theme + ': readable');

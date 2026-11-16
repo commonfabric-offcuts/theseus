@@ -195,7 +195,7 @@ export class ComposeBar {
 
   // Escape while a panel is open puts it away, wherever the focus is, on any
   // surface the composer sits in: the Reader, the popped New message sheet,
-  // or its place in the topic page's feed, where no dialog is open to pass a key on. The bar
+  // or the topic page's end, where no dialog is open to pass a key on. The bar
   // hears it in the panel (before the page's own keys) and, while a panel is
   // open, on the document, so no surface passes Escape on. A close request
   // with no key (a phone's back) on a dialog the composer is in does the

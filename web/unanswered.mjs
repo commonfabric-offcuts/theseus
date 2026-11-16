@@ -51,8 +51,7 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, 
   const found = children.filter(child => ['new', 'older'].includes(child.dataset?.line));
   const cards = children.filter(child => !found.includes(child));
   const card = seq ? cards.find(child => Number(child.dataset?.seq) === seq) : null;
-  // The oldest message drawn: the last child that is one (a dossier, a card), not More or the composer under the messages.
-  const oldest = cards.filter(child => child.dataset?.seq).at(-1);
+  const oldest = cards.at(-1);
   const further = Boolean(seq && !card && oldest && seq < Number(oldest.dataset.seq));
   if (further && loadOlder !== null && typeof loadOlder !== 'function') throw Error('A New line for a message further back needs what loads the older messages.');
   const kind = card ? 'new' : further && loadOlder ? 'older' : null;
@@ -69,11 +68,9 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, 
   paintWords(line, kind, Number.isSafeInteger(sent) ? sent : null, doc);
   line.classList.toggle('new-line-read', !held); line.inert = !held;
   if (kind === 'older') line.onclick = () => loadOlder();
-  // Just below its card, or for a message further back just below the oldest message drawn, so above the
-  // New message composer resting under the messages (item 465).
-  const under = card ?? oldest, next = cards[cards.indexOf(under) + 1] ?? null;
+  const next = card ? cards[cards.indexOf(card) + 1] ?? null : null;
   const now = [...list.children];
-  if (now[now.indexOf(under) + 1] !== line) list.insertBefore(line, next);
+  if (card ? now[now.indexOf(card) + 1] !== line : now.at(-1) !== line) list.insertBefore(line, next);
   return line;
 }
 

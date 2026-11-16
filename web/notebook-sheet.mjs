@@ -21,7 +21,6 @@
 // there, and its way back goes back to this page of Theseus, the feed where it
 // was and the page over it with its card box open. One sheet, never a pile.
 import { paintChanges } from './page-changes.mjs';
-import { holdPlace } from './sheet-holder.mjs';
 
 const RETURN = 'notebook-return';
 // The card box a page had open when it was let go (another page, a move, a reload), opened again with it.
@@ -121,9 +120,9 @@ export class NotebookSheet {
   async open(id, { opener = null, write = null } = {}) {
     if (!this.dialog) return false;
     const serial = ++this.serial;
-    // The New message sheet, popped up, goes back to its place in the feed first, its writing kept; a page opened from
+    // The New message sheet, popped up, goes back to the page's end first, its writing kept; a page opened from
     // the Reader's words takes the Reader's place, its reply kept, so one window stands over the feed.
-    if (!this.showing) holdPlace(this.dialog);
+    if (!this.showing) this.hold();
     if (this.dialog.open && !this.showing) this.dialog.close();
     if (this.reader?.open && !this.aside) this.doc.getElementById('reader-close')?.click();
     if (!this.showing && !this.place) this.place = { x: globalThis.scrollX, y: globalThis.scrollY, opener: opener ?? this.doc.activeElement };
@@ -263,6 +262,16 @@ export class NotebookSheet {
     paintChanges(shown, earlier.body ?? '', source.body ?? '', this.doc);
     page.changes.replaceChildren(changes); page.changes.hidden = false;
   }
+  // The sheet at rest is the page's end, in the feed; up over the feed it leaves its place there, which a
+  // holder of its height keeps, so a feed read to its end does not move behind the backdrop.
+  hold() {
+    if (this.holder?.isConnected || this.dialog.open) return;
+    const style = globalThis.getComputedStyle(this.dialog);
+    this.holder ??= this.node('div', 'notebook-sheet-holder');
+    this.holder.setAttribute('aria-hidden', 'true');
+    this.holder.style.height = `${this.dialog.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)}px`;
+    this.dialog.before(this.holder);
+  }
   close() {
     if (!this.showing) return;
     this.dialog.close();
@@ -270,6 +279,7 @@ export class NotebookSheet {
   }
   closed() {
     if (!this.showing) return;
+    this.holder?.remove();
     this.still?.abort();
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }

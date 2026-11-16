@@ -1160,8 +1160,8 @@
    "break": [
     [
      "web/app.mjs",
-     "const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;",
-     "const anchor = writing ? inline.field : field ? at : first;"
+     "return first && !first.dataset.seq && !first.classList.contains('memory-card') ? $('messages') : first;",
+     "return first;"
     ]
    ],
    "check": {
@@ -3155,7 +3155,7 @@
   },
   {
    "item": 283,
-   "act": "A commit while a Team pill's remove button is held down does not swallow the press",
+   "act": "A commit while a button below the stacks is held down does not swallow the press",
    "break": [
     [
      "web/press-hold.mjs",
@@ -3165,7 +3165,7 @@
    ],
    "check": {
     "native": "header",
-    "case": "header the Team is one filled pill each"
+    "case": "header the people are one filled pill each after the last message"
    }
   },
   {
@@ -7395,8 +7395,8 @@
    "act": "Opening the sheet over a feed read to its end moves nothing behind",
    "break": [
     [
-     "web/sheet-holder.mjs",
-     "  dialog.before(holder);\n",
+     "web/notebook-sheet.mjs",
+     "    this.dialog.before(this.holder);\n",
      ""
     ]
    ],
@@ -8388,8 +8388,8 @@
    "break": [
     [
      "web/app.mjs",
-     "redrawn: () => { paintReaderStar(); paintReaderAside(); },",
-     "redrawn: () => { paintReaderAside(); },"
+     "redrawn: () => paintReaderStar() });",
+     "redrawn: () => {} });"
     ]
    ],
    "check": {
@@ -14961,369 +14961,6 @@
    "check": {
     "native": "reading",
     "case": "reading stacks a tap's light stays through the first mouse move after it"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button moves the message's whole dossier below More and brings it back, the same act as the ⋯ item",
-   "break": [
-    [
-     "web/app.mjs",
-     "$('reader-aside').onclick = () => asideFromReader();",
-     "$('reader-aside').onclick = () => {};"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button is labelled with the count of the messages that move below More with it, each stack's replies included",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "count + 1 + each.replies.length",
-     "count + 1"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button"
-   }
-  },
-  {
-   "item": 465,
-   "act": "The closed New message composer rests between the last dossier above More and the More line",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "if (resting) top.push(home);",
-     "if (resting) top.unshift(home);"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_inline_wiring.test.mjs"
-   }
-  },
-  {
-   "item": 465,
-   "act": "The popped New message composer is never moved while it is up, so it stays modal and the writing keeps its cursor",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "const resting = home && !home.open && !list.hidden;",
-     "const resting = Boolean(home) && !list.hidden;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer rests"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button counts every message the move takes, where the page draws the dossier as several stacks, its first message not loaded",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);",
-     "const dossier = [stack];"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button counts every message that moves with the dossier"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button shows for no message of the topic opened alone, its card on no loaded page",
-   "break": [
-    [
-     "web/app.mjs",
-     "  button.hidden = !offer;\n  if (!offer) return;\n  const words = `${offer.below",
-     "  button.hidden = false;\n  if (!offer) return;\n  const words = `${offer.below"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button shows for no message of the topic opened alone"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button goes when the Reader moves on to another topic's message, from its About link",
-   "break": [
-    [
-     "web/app.mjs",
-     "  button.hidden = !offer;\n  if (!offer) return;\n  const words = `${offer.below",
-     "  if (!offer) return;\n  button.hidden = false;\n  const words = `${offer.below"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button goes when the Reader moves"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button shows for no Notebook page in the Reader",
-   "break": [
-    [
-     "web/app.mjs",
-     "  button.hidden = !offer;\n  if (!offer) return;\n  const words = `${offer.below",
-     "  button.hidden = false;\n  if (!offer) return;\n  const words = `${offer.below"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button shows for no Notebook page"
-   }
-  },
-  {
-   "item": 378,
-   "act": "With the archive button hidden, a phone's Reader header keeps one row: the title beside ✕, not on a row of its own",
-   "break": [
-    [
-     "web/aim.css",
-     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}}",
-     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}}"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button shows for no Notebook page"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button shows for no message whose dossier Core has not placed",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "    if (!position) return null;\n    const dossier",
-     "    if (!position) return { stack, below: false, count: 1 };\n    const dossier"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button shows for no message whose dossier Core has not placed"
-   }
-  },
-  {
-   "item": 465,
-   "act": "On a page that draws no feed (an outcome's page), the New message sheet rests at the page's end, so a Notebook page opened there comes up on screen",
-   "break": [
-    [
-     "web/app.mjs",
-     "if (stackFeed) stackFeed.arrange(); else if (!on) $('main').append(sheet);",
-     "if (stackFeed) stackFeed.arrange();"
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "notebook in the composer: a page opened from the right rail's whole outcome"
-   }
-  },
-  {
-   "item": 465,
-   "act": "A topic the reader can no longer read hides its feed, and the composer resting there goes to the page's end, where it shows and comes up on screen",
-   "break": [
-    [
-     "web/reply-stacks.mjs",
-     "  else if (home && !home.open && home.parentElement === list) list.parentElement.append(home);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer, the topic no longer readable"
-   }
-  },
-  {
-   "item": 465,
-   "act": "A composer up over the feed as the topic closes to the reader is put back, its writing kept, rather than left up unseen",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (!on && sheet.open) sheet.close();\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer, the topic no longer readable"
-   }
-  },
-  {
-   "item": 465,
-   "act": "A New line for a message further back is still drawn with the composer under the messages, and sits above it",
-   "break": [
-    [
-     "web/unanswered.mjs",
-     "const oldest = cards.filter(child => child.dataset?.seq).at(-1);",
-     "const oldest = cards.at(-1);"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_unanswered.test.mjs"
-   }
-  },
-  {
-   "item": 465,
-   "act": "The Team sits on the title row's right, under the title, right of the subtitle on a laptop",
-   "break": [
-    [
-     "web/aim.css",
-     ".topic-people{grid-column:2!important;grid-row:3;",
-     ".topic-people{grid-column:1/-1!important;grid-row:auto;"
-    ]
-   ],
-   "check": {
-    "native": "header",
-    "case": "header the Team is one filled pill each"
-   }
-  },
-  {
-   "item": 465,
-   "act": "The Team's pills and + Add are in the header's arrow-key row with Topic settings and New message",
-   "break": [
-    [
-     "web/index.html",
-     "<section id=\"topic-people\" class=\"topic-people\" aria-labelledby=\"people-heading\"><h2 id=\"people-heading\">Team</h2><div id=\"participants\" class=\"participants\" aria-label=\"Topic participants\"></div></section><div id=\"outcome-purpose\"",
-     "<div id=\"outcome-purpose\""
-    ],
-    [
-     "web/index.html",
-     "      <section id=\"messages\" aria-label=\"Conversation\">",
-     "      <section id=\"topic-people\" class=\"topic-people\" aria-labelledby=\"people-heading\"><h2 id=\"people-heading\">Team</h2><div id=\"participants\" class=\"participants\" aria-label=\"Topic participants\"></div></section>\n      <section id=\"messages\" aria-label=\"Conversation\">"
-    ]
-   ],
-   "check": {
-    "native": "header",
-    "case": "header → and ← move from New message along the Team"
-   }
-  },
-  {
-   "item": 465,
-   "act": "The New message composer popped up keeps its place among the dossiers, so nothing behind the backdrop moves, by ✎ and by ⌘Return",
-   "break": [
-    [
-     "web/inline-composer.mjs",
-     "    holdPlace(this.sheet);\n    this.sheet.showModal(); this.popped = true;",
-     "    this.sheet.showModal(); this.popped = true;"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer popped up"
-   }
-  },
-  {
-   "item": 465,
-   "act": "In Safari's engine too, the popped New message composer leaves every dossier behind it where it was",
-   "break": [
-    [
-     "web/inline-composer.mjs",
-     "    holdPlace(this.sheet);\n    this.sheet.showModal(); this.popped = true;",
-     "    this.sheet.showModal(); this.popped = true;"
-    ]
-   ],
-   "check": {
-    "native": "webkit-reading",
-    "case": "reading stacks the New message composer popped up"
-   }
-  },
-  {
-   "item": 465,
-   "act": "What keeps the sheet's place is drawn only while the sheet is up, by the sheet's own open state and no script, so put back each dossier is where it was, before the close event is heard",
-   "break": [
-    [
-     "web/aim.css",
-     ".sheet-holder{display:none}.sheet-holder:has(+dialog[open]){display:block}",
-     ".sheet-holder{display:block}"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the New message composer popped up"
-   }
-  },
-  {
-   "item": 465,
-   "act": "With + Add open, the Team's label stays beside its first pill, at the row's top",
-   "break": [
-    [
-     "web/aim.css",
-     "display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.6rem",
-     "display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:.6rem"
-    ]
-   ],
-   "check": {
-    "native": "header",
-    "case": "header the Team with"
-   }
-  },
-  {
-   "item": 465,
-   "act": "With + Add open, the people to add take no width of their own, so the subtitle keeps its lines",
-   "break": [
-    [
-     "web/aim.css",
-     ".topic-people .participants>:is(.people-add,.notice){contain:inline-size}",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "header",
-    "case": "header the Team with"
-   }
-  },
-  {
-   "item": 465,
-   "act": "With the New message composer resting between the last card and More, what More loads at the top edge comes in where More was",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "live",
-    "case": "live More at the top edge shows the older messages"
-   }
-  },
-  {
-   "item": 465,
-   "act": "A long Team on a laptop wraps its pills before the subtitle beside it has less than 6rem",
-   "break": [
-    [
-     "web/aim.css",
-     "grid-template-columns:minmax(6rem,1fr) auto;column-gap:1.25rem",
-     "grid-template-columns:minmax(0,1fr) auto;column-gap:1.25rem"
-    ]
-   ],
-   "check": {
-    "native": "header",
-    "case": "header a long Team wraps"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
-   "break": [
-    [
-     "web/aim.css",
-     "background:transparent;font-size:1.15rem;line-height:1;color:var(--muted)}\n#reader-aside .aside-count",
-     "background:transparent;font-size:.8rem;line-height:1;color:var(--muted)}\n#reader-aside .aside-count"
-    ]
-   ],
-   "check": {
-    "native": "live",
-    "case": "live rendering: every pill"
    }
   },
   {

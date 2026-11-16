@@ -1672,10 +1672,10 @@ async function run() {
     await close(p);
   });
 
-  // Resting in the topic page's feed the composer is in no open dialog, so nothing
+  // At the topic page's end the composer is in no open dialog, so nothing
   // there would pass Escape on: the composer hears it itself, with focus on +
   // (reached by the keys alone from the writing) or on Send.
-  for (const on of ['+', 'Send']) await check(`stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on ${on}, outside the open who panel, puts it away and names what was typed in To, by the keys alone`, async () => {
+  for (const on of ['+', 'Send']) await check(`stacked: the New message composer at the topic page's end, in no dialog: Escape with focus on ${on}, outside the open who panel, puts it away and names what was typed in To, by the keys alone`, async () => {
     const p = await page('stacked'), at = NAMING['New message sheet'];
     const tab = back => p.keyboard.press(`${engine === 'webkit' ? 'Alt+' : ''}${back ? 'Shift+' : ''}Tab`);
     const focused = () => p.evaluate(() => document.activeElement?.id);
@@ -1713,7 +1713,7 @@ async function run() {
     const tab = back => p.keyboard.press(`${engine === 'webkit' ? 'Alt+' : ''}${back ? 'Shift+' : ''}Tab`);
     const focused = () => p.evaluate(() => document.activeElement?.id);
     const tabTo = async (id, back = false) => { for (let n = 0; n < 12 && await focused() !== id; n++) await tab(back); assert.equal(await focused(), id, `${back ? 'Shift+' : ''}Tab reaches #${id}`); };
-    // 1. Where it rests in the feed, warp typed in To and left unnamed by a press elsewhere.
+    // 1. At the page's end, warp typed in To and left unnamed by a press elsewhere.
     await until(p, () => !document.querySelector('#inline-composer').hidden, 'the topic\'s composer');
     await p.locator(at.field).focus();
     await tabTo('inline-who-chip', true);
@@ -1747,7 +1747,7 @@ async function run() {
     await until(p, () => !document.querySelector('#reader').open, '⌘⇧Return closes the Reader');
     const id = panel === 'who' ? '#who-panel' : '#plus-panel', chip = panel === 'who' ? '#who-chip' : '#plus-button';
     await until(p, ([s, c]) => document.querySelector(s).hidden && document.querySelector(c).getAttribute('aria-expanded') === 'false', `the Reader's ${panel} panel went with it`, [id, chip]);
-    // 4. Send where it rests in the feed waits on warp and opens the who panel.
+    // 4. Send at the page's end waits on warp and opens the who panel.
     await p.locator(at.field).focus();
     await p.keyboard.insertText('Home writing.');
     await p.keyboard.press('Meta+Enter');
@@ -2007,10 +2007,10 @@ async function runSizes() {
       if (!wide) {
         await until(p, () => !document.querySelector('#inline-composer').hidden, 'the topic\'s composer');
         if (draft === 'a long draft') {
-          // Held in the composer where it rests in the feed, where the field grew with it, then taken up into the sheet.
+          // Held in the composer at the page's end, where the field grew with it, then taken up into the sheet.
           await p.locator('#inline-writing-body').scrollIntoViewIfNeeded();
           await press(p, '#inline-writing-body');
-          await until(p, () => document.activeElement?.id === 'inline-writing-body' && document.querySelector('#inline-composer').dataset.compose === 'writing', 'the resting composer\'s field taking the writing');
+          await until(p, () => document.activeElement?.id === 'inline-writing-body' && document.querySelector('#inline-composer').dataset.compose === 'writing', 'the page end\'s field taking the writing');
           await p.keyboard.insertText(LONG);
         }
         await p.evaluate(() => scrollTo(0, 0));

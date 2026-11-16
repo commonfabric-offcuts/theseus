@@ -288,7 +288,7 @@ test('in Topic settings where it stands is chips and one line under its heading,
 });
 
 // The page's order, as index.html lays it out.
-test('the top of a topic is the eyebrow, the title row with the gear, the subtitle and the Team; the New message composer rests in the feed; where it stands is in Topic settings', () => {
+test('the top of a topic is the eyebrow, the title row with the gear, and the subtitle; the people follow More messages; where it stands is in Topic settings', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
   const header = main.slice(main.indexOf('<header class="topic-header">'), main.indexOf('</header>'));
@@ -298,15 +298,10 @@ test('the top of a topic is the eyebrow, the title row with the gear, the subtit
   assert.match(header, /<div class="title-row"><h1 id="topic-title"><\/h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden>/);
   assert.doesNotMatch(main, /This topic/);
   assert.equal(main.includes('id="topic-state"'), false, 'where it stands is not on the page');
-  // Item 465: the people are the Team, in the header after the subtitle, which aim.css sets on the title row's right.
-  const team = header.indexOf('id="topic-people"');
-  assert.ok(team > subtitle, 'the Team follows the subtitle, in the header');
-  assert.match(header, /<section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team<\/h2><div id="participants"/);
-  assert.equal(main.slice(main.indexOf('</header>')).includes('id="topic-people"'), false, 'no People after the messages');
-  // The New message composer at rest is in the feed (reply-stacks.mjs places it just above More), not after the Notebook.
-  const feed = main.slice(main.indexOf('<section id="messages"'), main.indexOf('<button id="more-messages"'));
-  assert.match(feed, /^<section id="messages" aria-label="Conversation">\s*<dialog id="new-message-sheet" class="composer-home"/);
-  assert.ok(main.indexOf('id="new-message-sheet"') < main.indexOf('id="notebook"'), 'before the Notebook');
+  const tags = [...main.matchAll(/<(?:section|button|div|p) id="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(tags[tags.indexOf('more-messages') + 1], 'topic-people', 'the people come right after More messages');
+  assert.ok(tags.indexOf('topic-people') > tags.indexOf('messages'));
+  assert.match(main, /<section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">People<\/h2><div id="participants"/);
   const dialog = html.slice(html.indexOf('<dialog id="topic-settings"'), html.indexOf('</dialog>', html.indexOf('<dialog id="topic-settings"')));
   assert.match(dialog, /aria-labelledby="settings-title"/);
   assert.match(dialog, /<h2 id="settings-title" tabindex="-1">Topic settings<\/h2><button id="settings-close" type="button" aria-label="Close topic settings">✕<\/button>/);

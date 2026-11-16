@@ -97,25 +97,6 @@ test('a line for a message not loaded yet sits at the bottom, says more new belo
   assert.deepEqual(order(top), [50, 40], 'no older line when nothing older can be loaded');
 });
 
-// Item 465: the New message composer rests among the messages, under the last
-// one shown above More, and carries no data-seq. The oldest message is the last
-// child that is one, so a line for a message further back is still drawn, and
-// both lines sit above the composer, never under it.
-test('the New message composer resting under the messages is never taken for the oldest message, and the line sits above it', () => {
-  const host = list(50, 40, 30), composer = new Element('dialog');
-  composer.className = 'composer-home'; host.insertBefore(composer, null);
-  const shown = () => host.children.map(node => node === composer ? 'composer' : node.dataset.line ?? Number(node.dataset.seq));
-  const marker = placeNewLine(host, 10, doc, () => {});
-  assert.equal(marker?.dataset.line, 'older', 'a message further back than the oldest loaded one still has its line');
-  assert.deepEqual(shown(), [50, 40, 30, 'older', 'composer'], 'under the oldest message, above the composer');
-  assert.equal(placeNewLine(host, 10, doc, () => {}), marker, 'placed again, it stays');
-  assert.deepEqual(shown(), [50, 40, 30, 'older', 'composer']);
-  placeNewLine(host, 30, doc);
-  assert.deepEqual(shown(), [50, 40, 30, 'new', 'composer'], 'on the oldest card itself: just under it, above the composer');
-  placeNewLine(host, 35, doc);
-  assert.deepEqual(shown(), [50, 40, 30, 'composer'], 'a message among the loaded ones without a card here still has no line');
-});
-
 // Once nothing at or above it is unread, the line stays in its place but
 // fades: .new-line-read, a CSS opacity transition, and inert, so no pointer,
 // Tab or screen reader finds it. Held again, the same line comes back.
