@@ -26,6 +26,8 @@ import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 import { carriesNode, carriesOf } from './marks.mjs';
+import { AGENT_PALETTE } from './author-colors.mjs';
+import { showGlyph } from './glyphs.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -207,7 +209,11 @@ export function lineSeq(list, seq) {
 // folded opens from its row for this view (a link, search, Starred), and its
 // fold stays theirs in Core: nothing is written; one in a dossier put below
 // More is drawn where the dossier sits (here) while Core holds the dossier at
-// the place it held then, until a Move below More or Bring back on any device.
+// the place it held when the link was followed, until a Move below More or
+// Bring back on any device. The page may not yet have heard of a move Core
+// made before then (item 426): until the page has read Core's place again,
+// the dossier is drawn where it sits wherever Core holds it (pending), and
+// that read's place is the one it holds to (stack-feed.mjs, landedBelow).
 // One among an open dossier's earlier messages opens their row and shows
 // whole (item 476), for this visit; its first message only when full is asked.
 export function reveal(entry, { full = false } = {}) {
@@ -232,7 +238,10 @@ export function reveal(entry, { full = false } = {}) {
     if (!state.whole.has(own)) { state.whole.add(own); changed = true; }
   }
   if (state.folded.has(own)) { state.peeked.add(own); changed = true; }
-  if (stack && positionOf(stack)?.below) { state.here.set(own, placeOf(positionOf(stack))); changed = true; }
+  if (stack && positionOf(stack)?.below) {
+    const mark = { place: placeOf(positionOf(stack)), pending: true };
+    state.here.set(own, mark); state.on?.landedBelow?.(own, mark); changed = true;
+  }
   if (changed) state.again();
   return entry;
 }
@@ -345,8 +354,76 @@ function makeStack(doc, id) {
   const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
   replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null });
+  parts.set(section, { replies, toggle, tools: makeTools(doc), lines: new Map(), placed: null, rename: null });
   return section;
+}
+
+// The title bar's glyphs (item 473), at the right of the dossier's title bar:
+// Reply to its first message, Move below More (Bring back above More once it
+// is there) and ⋯, the menu a right-click on its first message opens. Each is
+// a button of its own beside the head's card, never inside it (a card is
+// itself a button), so Tab reaches it; it is named, with that name as its
+// tooltip. stack-look.css shows them while the dossier is under the pointer,
+// selected or holds the focus, and keeps their place while they are hidden.
+function makeTools(doc) {
+  const tools = element(doc, 'div', 'stack-tools');
+  tools.setAttribute('role', 'group');
+  for (const name of ['reply', 'aside', 'menu']) {
+    const button = element(doc, 'button', 'stack-tool'); button.type = 'button'; button.dataset.tool = name;
+    tools.append(button);
+  }
+  const menu = tools.querySelector('[data-tool=menu]');
+  menu.setAttribute('aria-haspopup', 'menu'); menu.setAttribute('aria-expanded', 'false');
+  return tools;
+}
+
+// Names a title bar glyph: its accessible name and its tooltip are the same words.
+function nameTool(button, words) {
+  if (button.getAttribute('aria-label') !== words) button.setAttribute('aria-label', words);
+  if (button.title !== words) button.title = words;
+}
+
+function paintTools(tools, stack, shown, { state, doc }) {
+  const [reply, aside, menu] = tools.children, position = positionOf(stack);
+  tools.setAttribute('aria-label', `Dossier: ${shown.name}`);
+  nameTool(reply, 'Reply to the first message'); showGlyph(reply, 'reply', doc);
+  reply.onclick = () => state.on?.reply?.(stack);
+  // Core sends where a dossier sits with its messages; a page from a Core without positions has nowhere to move it.
+  aside.hidden = !position;
+  nameTool(aside, position?.below ? 'Bring back above More' : 'Move below More'); showGlyph(aside, position?.below ? 'back' : 'aside', doc);
+  aside.onclick = () => state.on?.aside?.(stack, !positionOf(stack)?.below);
+  nameTool(menu, 'More for this dossier');
+  if (menu.textContent !== '⋯') menu.textContent = '⋯';
+  // On a phone stack-look.css folds Reply and Move below More into ⋯: its menu then offers them first, by their names.
+  menu.onclick = () => {
+    const folded = !reply.getClientRects().length, below = positionOf(stack)?.below;
+    state.on?.menu?.(stack, menu, folded ? [{ label: reply.getAttribute('aria-label'), act: () => state.on?.reply?.(stack) },
+      ...(positionOf(stack) ? [{ label: aside.getAttribute('aria-label'), act: () => state.on?.aside?.(stack, !below) }] : [])] : []);
+  };
+}
+
+// A dossier's folder and title bar wear the colour of the agent who posted its
+// first message (item 477), across their whole face, as that agent's cards
+// do: the reader's own choice of colour for it, or its own. A dossier a
+// person began, the reader's own included, keeps the neutral folder.
+function paintFolderColor(section, stack, colorOf) {
+  const color = colorOf(stack.head) ?? null;
+  if (color !== null && !AGENT_PALETTE.includes(color)) throw Error(`A folder colour must be one of the palette's, not ${color}.`);
+  for (const name of AGENT_PALETTE) section.classList.toggle(`agent-${name}`, name === color);
+  const shown = color === null ? '' : 'agent';
+  if (section.dataset.color !== shown) section.dataset.color = shown;
+}
+
+// Each drawn dossier's folder in the colour the reader now sees its first
+// poster in, after they chose another colour for an agent: nothing else is
+// drawn again, so nothing moves and no card loses what marks it.
+export function paintFolderColors(list) {
+  const state = states.get(list);
+  if (!state) return;
+  for (const stack of state.stacks ?? []) {
+    const section = state.sections.get(stack.id);
+    if (section) paintFolderColor(section, stack, stack.replies.length ? state.colorOf : () => null);
+  }
 }
 
 // A line of the stack's (a fold line, a join line), kept across repaints by
@@ -483,7 +560,7 @@ export function renameInput(list, id) {
 }
 
 function paintStack(section, stack, byId, context) {
-  const { state, keep, unread, nameOf, doc } = context;
+  const { state, keep, unread, nameOf, colorOf, doc } = context;
   const p = parts.get(section), head = byId.get(stack.id), single = !stack.replies.length;
   const level = single ? 'open' : levelOf(state, stack.id);
   const coordination = state.coordination.has(stack.id);
@@ -583,8 +660,10 @@ function paintStack(section, stack, byId, context) {
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = single ? null : renameField(section, stack, shown, context);
-  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
-  if (single || rename) p.toggle.remove();
+  if (!single) paintTools(p.tools, stack, shown, context);
+  paintFolderColor(section, stack, single ? () => null : colorOf);
+  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle, p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  if (single || rename) { p.toggle.remove(); p.tools.remove(); }
   if (stack.placed === null) p.placed?.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
     single: String(single), renaming: String(state.renaming === stack.id) });
@@ -596,16 +675,19 @@ function paintStack(section, stack, byId, context) {
 // fold keeps in view; once kept it stays kept, so a reply the person is
 // reading is never folded away under them. unread(item): counted as new on a
 // fold line and the head. viewer: who reads. nameOf(actor): a person's name
-// as the page shows it. on: what the stack's own controls do (stack-feed.mjs).
+// as the page shows it. colorOf(item): the palette colour the reader sees the
+// item's author in when that is an agent other than them, else null; a
+// dossier's folder wears its first message's. on: what the stack's own
+// controls do (stack-feed.mjs).
 // home: the page's New message composer at rest (#new-message-sheet, item
 // 465), drawn just above More, under the last dossier shown above it; it is
 // never moved while it is up over the page, and goes to its place when next
 // drawn after it is put back. While the list is hidden it rests after it, at
 // the page's end.
 export function arrangeStacks(list, messages, options = {}) {
-  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, on = null, home = null, doc = list.ownerDocument } = options;
+  const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
-  Object.assign(state, { viewer, again: () => arrangeStacks(list, messages, options) });
+  Object.assign(state, { viewer, colorOf, again: () => arrangeStacks(list, messages, options) });
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
@@ -617,13 +699,13 @@ export function arrangeStacks(list, messages, options = {}) {
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));
   list.dataset.showCoordination = String(state.showCoordination);
   state.on?.coordinationCount?.(state.coordination.size);
-  const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, doc };
+  const top = [], aside = [], live = new Set(), context = { state, keep, unread, nameOf, colorOf, doc };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
     head.dataset.coordination = state.coordination.has(stack.id) ? 'agents' : '';
     // An agent coordination dossier moves below More like any other.
-    const below = drawnBelow(stack, item => state.here.get(item.id));
+    const below = drawnBelow(stack, item => { const mark = state.here.get(item.id); return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null; });
     if (below) state.below.add(stack.id);
     const destination = below ? aside : top;
     if (!stack.replies.length && stack.placed === null) { head.hidden = false; destination.push(head); continue; }

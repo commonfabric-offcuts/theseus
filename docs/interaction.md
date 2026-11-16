@@ -13,7 +13,13 @@ the pointer's way, the keys' and the phone's.
   for a go-ahead, Reply, and ⋯, the message's menu (Copy Link, Mark read or
   unread; docs/links.md; in the Reader also Start a topic from this and Add to
   pipeline, as a sheet from the bottom on a phone), which a right-click on the
-  message also opens. The bar is only as wide as its buttons, and never covers
+  message also opens. The bar is only as wide as its buttons (one taking more
+  than half its card, as on a phone, sits flush with the card's end), and never
+  wider than the window less 8px each side. Where its buttons, each a finger
+  wide on a phone, do not fit in one row (a go-ahead ask its card cuts off has
+  seven, too many for a 320px window, and "Link copied" widens its ⋯), it puts
+  Fold, then Show full message, behind its ⋯, whose menu offers both, and they
+  come back once there is room again. It never covers
   the reply arrow beside the card's time (docs/topic-reading.md): where it
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
@@ -86,7 +92,9 @@ the pointer's way, the keys' and the phone's.
 - **Return** opens the Reader on the lit message with the cursor in the reply:
   with the words selected on its card, or else its lit passages, quoted, as
   Return quotes them in the Reader, and nothing quoted when neither (a message
-  the keys lit). **Reply** on the bar (a phone's way) quotes nothing; to quote
+  the keys lit). **Reply** on the bar (a phone's way; its glyph is an arrow
+  turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
+  the message bar") quotes nothing; to quote
   part of the message there, select that part in the Reader and press Return. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
   saves it and Escape cancels; Space folds and opens the dossier. Return in
