@@ -7,6 +7,7 @@ Every outcome, item and word here is invented: outcome w1 ("Isolated test") is o
 agent-b a member; its items are about a kite club's pages."""
 
 import json
+import os
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -20,11 +21,20 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "start_line.py"
 CLI = ROOT / "bin" / "aim-next"
 
-# The stand-in brief-writer: it notes where it ran and what it was asked, then prints its line (or fails).
-WRITER = '''import json, os, sys
-log, line, code = sys.argv[1], sys.argv[2], int(sys.argv[3])
-with open(log, "a") as out:
-    out.write(json.dumps({"cwd": os.getcwd(), "prompt": sys.stdin.read()}) + "\\n")
+# The stand-in brief-writer: each run leaves a folder of its own under RUNS, and it checks what it was given (the
+# live checkout as its working directory, each expected word in its prompt), failing loudly (exit 4) when it was not;
+# then it prints its line, or fails with the code it was told to.
+WRITER = '''import os, sys, uuid
+runs, surface, line, code = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+prompt = sys.stdin.read()
+os.mkdir(os.path.join(runs, "run-" + uuid.uuid4().hex))
+if os.path.realpath(os.getcwd()) != os.path.realpath(surface):
+    sys.stderr.write("ran in " + os.getcwd())
+    sys.exit(4)
+missing = [word for word in sys.argv[5:] if word not in prompt]
+if missing:
+    sys.stderr.write("the prompt lacks " + repr(missing))
+    sys.exit(4)
 sys.stdout.write(line)
 sys.exit(code)
 '''
@@ -46,7 +56,8 @@ class StartLineCase(AgentVerbCase):
             subprocess.run(git + step, check=True, capture_output=True)
         self.writer = place / "writer.py"
         self.writer.write_text(WRITER)
-        self.log = place / "writer.log"
+        self.writer_runs = place / "writer-runs"
+        self.writer_runs.mkdir()
         self.ok("pipeline-on", "w1")
 
     def ok(self, *argv, actor="agent-a", stdin=b""):
@@ -65,12 +76,12 @@ class StartLineCase(AgentVerbCase):
             capture_output=True, text=True)
         return answer.returncode, json.loads(answer.stdout) if answer.stdout.strip() else None, answer.stderr
 
-    def open(self, number, *flags, line=LINE, code=0, topic="t1"):
+    def open_line(self, number, *flags, line=LINE, code=0, topic="t1", expect=()):
         return self.tool("open", "w1", str(number), "--topic", topic, "--surface", str(self.surface), *flags,
-                         "--", sys.executable, "-I", str(self.writer), str(self.log), line, str(code))
+                         "--", sys.executable, "-I", str(self.writer), str(self.writer_runs), str(self.surface), line, str(code), *expect)
 
-    def opened(self, number, *flags, line=LINE):
-        code, result, err = self.open(number, *flags, line=line)
+    def opened(self, number, *flags, line=LINE, expect=()):
+        code, result, err = self.open_line(number, *flags, line=line, expect=expect)
         self.assertEqual((code, err), (0, ""), result)
         return result
 
@@ -83,7 +94,8 @@ class StartLineCase(AgentVerbCase):
         return result
 
     def runs(self):
-        return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
+        """How many times the writer ran."""
+        return len(os.listdir(str(self.writer_runs)))
 
     def message(self, message_id):
         return self.sql("SELECT topic_id,author_id,body,addressees,intent,reply_to FROM messages WHERE id=?", (message_id,))[0]
@@ -109,7 +121,9 @@ class StartLineCase(AgentVerbCase):
 class OpenCase(StartLineCase):
     def test_an_owners_item_gets_its_start_line_told_to_the_owner_in_the_pieces_topic_about_the_item(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
-        result = self.opened(number)
+        # The writer runs in the live checkout, asked with the item's words and where they came from: it fails otherwise.
+        result = self.opened(number, expect=("String lengths on the string page", "Show how long each kite's string is.",
+                                             "from the kite club's list"))
         self.assertEqual((result["owners_item"], result["to_owner"], result["posted"], result["brief"]), (True, True, True, LINE))
         topic, author, body, addressees, intent, _ = self.message(result["message_id"])
         self.assertEqual((topic, author, json.loads(addressees), intent), ("t1", "agent-a", ["owner"], "tell"))
@@ -120,11 +134,13 @@ class OpenCase(StartLineCase):
         self.assertEqual(self.sql("SELECT kind,ref FROM message_subjects WHERE message_id=?", (result["message_id"],)), [("item", str(number))])
         self.assertEqual(self.sql("SELECT kind FROM operations WHERE actor_id='agent-a' AND id=?", (result["operation_id"],)), [("message.post",)])
         self.assertEqual(result["operation_id"], "start-line-w1-%d-%s" % (number, result["revision"]))
-        # The writer ran once, in the live checkout, asked with the item's words and where they came from.
-        [run] = self.runs()
-        self.assertEqual(Path(run["cwd"]).resolve(), self.surface)
-        for words in ("String lengths on the string page", "Show how long each kite's string is.", "from the kite club's list"):
-            self.assertIn(words, run["prompt"])
+        self.assertEqual(self.runs(), 1)
+        # A writer that was not given what it needs (here, words the item does not have) refuses, and nothing more is posted.
+        before = self.count()
+        self.edit(number, description="Show how long each kite's string is, in metres.")
+        code, refused, err = self.open_line(number, expect=("words this item does not have",))
+        self.assertEqual((code, refused, self.count()), (1, None, before))
+        self.assertIn("refused: the brief-writer exited 4: the prompt lacks", err)
         self.assertEqual(result["surface_commit"], subprocess.run(["git", "-C", str(self.surface), "rev-parse", "HEAD"],
                                                                   capture_output=True, text=True).stdout.strip())
 
@@ -133,10 +149,9 @@ class OpenCase(StartLineCase):
         asked = self.sql("SELECT id FROM messages ORDER BY seq DESC LIMIT 1")[0][0]
         number = self.add("The reel page names the reel that is out", "Say which reel is out.")
         self.ok("add-source", "w1", str(number), "--from", asked)
-        result = self.opened(number)
+        result = self.opened(number, expect=("Could the reel page say which reel is out?",))
         self.assertEqual((result["owners_item"], result["to_owner"]), (True, True))
         self.assertEqual(self.told(result["message_id"]), ["owner"])
-        self.assertIn("Could the reel page say which reel is out?", self.runs()[0]["prompt"])
 
     def test_a_retry_of_the_same_revision_posts_nothing_and_never_runs_the_writer_again(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
@@ -146,16 +161,16 @@ class OpenCase(StartLineCase):
         again = self.opened(number, line="A different line the writer would write the second time.")
         self.assertEqual((again["message_id"], again["operation_id"], again["posted"], again["brief"]),
                          (first["message_id"], first["operation_id"], False, LINE))
-        self.assertEqual((self.count(), len(self.runs())), (before, 1), "a retry posts nothing and runs no writer")
+        self.assertEqual((self.count(), self.runs()), (before, 1), "a retry posts nothing and runs no writer")
         # A move is not a new revision of its words: still the line already asked.
         self.ok("move", "w1", str(number), "--below", str(other), actor="owner")
         moved = self.opened(number, line="Yet another line.")
-        self.assertEqual((moved["message_id"], moved["posted"], self.count(), len(self.runs())), (first["message_id"], False, before, 1))
+        self.assertEqual((moved["message_id"], moved["posted"], self.count(), self.runs()), (first["message_id"], False, before, 1))
         # New words are a new revision, so a new start line, asked once.
         self.edit(number, description="Show how long each kite's string is, in metres.")
         changed = self.opened(number, line="The string page shows each string's length in metres.")
         self.assertNotEqual((changed["message_id"], changed["operation_id"]), (first["message_id"], first["operation_id"]))
-        self.assertEqual((changed["posted"], changed["brief"], self.count(), len(self.runs())),
+        self.assertEqual((changed["posted"], changed["brief"], self.count(), self.runs()),
                          (True, "The string page shows each string's length in metres.", before + 1, 2))
 
     def test_an_item_nobody_asks_the_owner_about_is_kept_with_its_work_and_told_to_nobody(self):
@@ -186,7 +201,7 @@ class OpenCase(StartLineCase):
                                  ("One line.\nAnd a second.", 0, "the brief-writer wrote 2 lines; a start line is one"),
                                  ("x" * 301, 0, "the brief-writer wrote 301 characters; a start line is at most 300")):
             with self.subTest(said=said):
-                answer, result, err = self.open(number, line=line, code=code)
+                answer, result, err = self.open_line(number, line=line, code=code)
                 self.assertEqual((answer, result), (1, None))
                 self.assertIn("refused: " + said, err)
                 self.assertEqual(self.count(), before, "nothing is posted")
@@ -194,20 +209,37 @@ class OpenCase(StartLineCase):
         # A line of exactly the bound is one.
         self.assertEqual(self.opened(number, line="y" * 300)["brief"], "y" * 300)
 
-    def test_a_start_line_whose_first_send_was_not_recorded_is_sent_as_first_written(self):
+    def test_a_start_line_theseus_did_not_record_asks_nobody_and_the_next_open_posts_it_once(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
         before = self.count()
         blocker = sqlite3.connect(str(self.path), isolation_level=None)
         self.addCleanup(blocker.close)
         blocker.execute("BEGIN IMMEDIATE")
-        code, result, err = self.open(number)
+        code, result, err = self.open_line(number)
         self.assertEqual((code, result), (2, None))
         self.assertIn("the start line was not recorded (DATABASE_BUSY", err)
         blocker.rollback()
-        self.assertEqual(self.count(), before)
+        self.assertEqual(self.count(), before, "nobody was asked")
         again = self.opened(number, line="A second writing of the same start line.")
-        self.assertEqual((again["brief"], self.count()), (LINE, before + 1), "the request saved first is the one sent")
+        self.assertEqual((again["posted"], again["brief"], self.count()), (True, "A second writing of the same start line.", before + 1))
         self.assertEqual(self.opened(number, line="A third.")["message_id"], again["message_id"])
+
+    def test_a_start_line_theseus_refused_leaves_its_revision_free(self):
+        number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
+        before = self.count()
+        code, result, err = self.open_line(number, topic="t-nowhere")
+        self.assertEqual((code, result), (1, None))
+        self.assertIn("refused: the start line was refused: ", err)
+        self.assertEqual(self.count(), before)
+        # The refusal asked nobody, so the piece's topic takes the line for that same revision, under its next
+        # operation, once; and the cut reads it.
+        posted = self.opened(number)
+        self.assertEqual((posted["posted"], posted["topic_id"], self.count()), (True, "t1", before + 1))
+        self.assertEqual(posted["operation_id"], "start-line-w1-%d-%s.2" % (number, posted["revision"]))
+        again = self.opened(number, line="Another line.")
+        self.assertEqual((again["message_id"], again["posted"], self.count()), (posted["message_id"], False, before + 1))
+        cut = self.cut_ok(number)
+        self.assertEqual((cut["message_id"], cut["operation_id"], cut["answer"]), (posted["message_id"], posted["operation_id"], "silence"))
 
 
 class CutCase(StartLineCase):

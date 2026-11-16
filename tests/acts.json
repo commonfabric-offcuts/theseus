@@ -24540,8 +24540,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "    message = recorded(cli, operation)\n    if message is None:\n        commit = surface_commit(surface)",
-     "    message = None\n    if message is None:\n        commit = surface_commit(surface)"
+     "    if message is None:\n        commit = surface_commit(surface)",
+     "    if True:\n        commit = surface_commit(surface)"
     ]
    ],
    "check": {
@@ -24620,12 +24620,12 @@
   },
   {
    "item": 603,
-   "act": "A start line whose first send was not recorded is sent as first written, so the owner is asked once",
+   "act": "A start line Theseus refuses is refused with nothing posted, not read as unreadable",
    "break": [
     [
      "tools/start_line.py",
-     "                cli.retry(operation)\n",
-     "                pass\n"
+     "raise Refused(\"the start line was refused: %s %s; nobody was asked\"",
+     "raise Unread(\"the start line was refused: %s %s; nobody was asked\""
     ]
    ],
    "check": {
@@ -24696,6 +24696,20 @@
      "tools/start_line.py",
      "if \"\\n\" in words:",
      "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A refusal Theseus recorded spends only its own operation: the revision's next one posts the line, once",
+   "break": [
+    [
+     "tools/start_line.py",
+     "        attempt += 1\n",
+     "        return operation, None\n"
     ]
    ],
    "check": {

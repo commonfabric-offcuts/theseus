@@ -67,34 +67,37 @@ class LiveCli:
         except ValueError:
             return answer.returncode, None, answer.stderr.strip()
 
-    def view(self, name, args):
+    def binding(self):
         if self._binding is None:
             code, answer, said = self._run(["binding"])
             if code != 0 or not isinstance(answer, dict) or "binding" not in answer:
                 raise Unread("the live CLI's binding could not be read (exit %s): %s" % (code, said))
             self._binding = answer["binding"]
-        code, answer, said = self._run(["view", "-"], {"v": 1, "binding": self._binding, "view": {"name": name, "args": args}})
+        return self._binding
+
+    def view(self, name, args):
+        code, answer, said = self._run(["view", "-"], {"v": 1, "binding": self.binding(), "view": {"name": name, "args": args}})
         if not isinstance(answer, dict):
             raise Unread("the live CLI did not answer the %s view (exit %s): %s" % (name, code, said))
-        if answer.get("error"):
+        # A recorded refusal is what the operation view found, not a refusal of the read.
+        if answer.get("error") and not (name == "operation" and answer.get("recorded") is True):
             raise Unread("the %s view was refused: %s %s" % (name, answer["error"].get("code"), answer["error"].get("message")))
         return answer
 
     def post(self, topic, words, operation, number, to=None):
-        """One message.post under operation, about item number; its receipt, or the error it was refused with."""
-        argv = ["--json", "post", topic, "--operation", operation, "--subject", "item:%d" % number]
+        """One message.post under operation, about item number: its receipt, or the error it was refused with. It is
+        sent as a request of its own, never saved in the CLI's outbox: a post Core refused leaves the operation free,
+        and one Core recorded is found by the operation view, so nothing saved can stand between them."""
+        binding = self.binding()
+        args = {"body": words, "addressees": [to] if to else [], "subjects": [{"kind": "item", "ref": number}]}
         if to:
-            argv += ["--tells", to]
-        code, answer, said = self._run(argv + ["-"], text=words)
+            args["intent"] = "tell"
+        envelope = {"v": 1, "instance_id": binding["instance_id"], "operation_id": operation, "kind": "message.post",
+                    "target": {"topic_id": topic}, "args": args,
+                    "expected": {"authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
+        code, answer, said = self._run(["command", "-"], {"v": 1, "binding": binding, "command": envelope})
         if not isinstance(answer, dict):
             raise Unread("the live CLI did not answer the post (exit %s): %s" % (code, said))
-        return answer
-
-    def retry(self, operation):
-        """Sends the request saved under operation again, unchanged: Core answers with what it recorded, or records it."""
-        code, answer, said = self._run(["--json", "retry", operation])
-        if not isinstance(answer, dict):
-            raise Unread("the live CLI did not answer retry %s (exit %s): %s" % (operation, code, said))
         return answer
 
 
@@ -129,14 +132,19 @@ def owners_item(item, owner):
         for source in item["sources"]["shown"])
 
 
-def recorded(cli, operation):
-    """The message a recorded start line posted under operation, or None when none is recorded."""
-    found = cli.view("operation", {"operation_id": operation})
-    if found.get("recorded") is not True:
-        return None
-    if found.get("error"):
-        raise Refused("the start line's post %s was refused: %s %s" % (operation, found["error"].get("code"), found["error"].get("message")))
-    return found["result"]["message_id"]
+def find(cli, revision_operation):
+    """(operation, message): the start line recorded for this revision and its operation, or (the operation to post
+    under, None) when none is. A post Theseus refused and recorded (a topic the poster may not write in) asked nobody
+    and spent its operation, so the revision's next one is read: REV, then REV.2, REV.3 and on."""
+    attempt = 1
+    while True:
+        operation = revision_operation if attempt == 1 else "%s.%d" % (revision_operation, attempt)
+        found = cli.view("operation", {"operation_id": operation})
+        if found.get("recorded") is not True:
+            return operation, None
+        if not found.get("error"):
+            return operation, found["result"]["message_id"]
+        attempt += 1
 
 
 # open ------------------------------------------------------------------------------------------------------------
@@ -196,29 +204,25 @@ def surface_commit(surface):
 
 def open_line(cli, outcome, number, topic, surface, writer, user_facing=False, every_feature=False, owner_decides=False):
     item, owner = read_item(cli, outcome, number)
-    operation = operation_of(outcome, number, item)
+    revision_operation = operation_of(outcome, number, item)
     theirs = owners_item(item, owner)
     to_owner = theirs or owner_decides or (every_feature and user_facing)
-    result = {"item": number, "revision": operation.rsplit("-", 1)[1], "operation_id": operation, "owner": owner,
+    operation, message = find(cli, revision_operation)
+    result = {"item": number, "revision": revision_operation.rsplit("-", 1)[1], "operation_id": operation, "owner": owner,
               "owners_item": theirs, "to_owner": to_owner}
-    message = recorded(cli, operation)
     if message is None:
         commit = surface_commit(surface)
         line = write_brief(writer, surface, prompt(cli, outcome, number, item))
         answer = cli.post(topic, body(line, number, item, to_owner), operation, number, owner if to_owner else None)
-        if (answer.get("error") or {}).get("code") == "OPERATION_PAYLOAD_MISMATCH":
-            # Another run of this revision got there first, or its request was saved and never recorded: Core
-            # answers with what it holds, or the saved request goes, unchanged. Either way it is asked once.
-            message = recorded(cli, operation)
-            if message is None:
-                cli.retry(operation)
-                message = recorded(cli, operation)
-        elif answer.get("error"):
-            error = answer["error"]
-            if error.get("retryable"):
-                raise Unread("the start line was not recorded (%s: %s); run again: it is the same operation %s"
-                             % (error.get("code"), error.get("message"), operation))
-            raise Refused("the start line was refused: %s %s" % (error.get("code"), error.get("message")))
+        error = answer.get("error")
+        if error and error.get("code") == "OPERATION_PAYLOAD_MISMATCH":
+            # Another run of this revision recorded its line first: that line is the one asked, once.
+            result["operation_id"], message = find(cli, revision_operation)
+        elif error and error.get("retryable"):
+            raise Unread("the start line was not recorded (%s: %s); open it again: nobody was asked"
+                         % (error.get("code"), error.get("message")))
+        elif error:
+            raise Refused("the start line was refused: %s %s; nobody was asked" % (error.get("code"), error.get("message")))
         else:
             message = answer["result"]["message_id"]
             result.update(posted=True, surface_commit=commit)
@@ -246,13 +250,13 @@ def replies(cli, start, owner):
 
 def cut(cli, outcome, number):
     item, owner = read_item(cli, outcome, number)
-    operation = operation_of(outcome, number, item)
-    message = recorded(cli, operation)
+    revision_operation = operation_of(outcome, number, item)
+    operation, message = find(cli, revision_operation)
     if message is None:
-        raise Refused("no start line for %d at its current words (operation %s): open one first" % (number, operation))
+        raise Refused("no start line for %d at its current words (operation %s): open one first" % (number, revision_operation))
     start = cli.view("source", {"source_ref": {"kind": "message", "id": message}})
     written = start["body"].split("\n", 1)[0]
-    result = {"item": number, "revision": operation.rsplit("-", 1)[1], "operation_id": operation, "message_id": message,
+    result = {"item": number, "revision": revision_operation.rsplit("-", 1)[1], "operation_id": operation, "message_id": message,
               "topic_id": start["topic_id"], "owner": owner, "written": written, "brief": written}
     worded, acks = [], []
     for reply in replies(cli, start, owner):

@@ -256,11 +256,15 @@ words and its sources. A move of the item is not a new revision, so it never
 asks again; new words or a new source are, so they get a new start line. Before
 the writer runs, `open` reads that operation: a start line already recorded is
 answered as it stands (`posted: false`) and the writer is not run, so a retry,
-a regenerated piece or a second slot never asks the owner twice. A post whose
-answer was lost is sent again under the same operation, the request saved the
-first time and not a new writing of it (`retry`), so what the owner reads is
-what was first written. Operations are the poster's own, so the coordinator
-opens every start line.
+a regenerated piece or a second slot never asks the owner twice. The post is
+sent as a request of its own, not saved in the CLI's outbox, so nothing saved
+can stand between a refusal and the next try: a post Theseus did not record
+(busy, exit 2) asked nobody, and the next `open` writes and posts it; one
+Theseus refused and recorded (a topic the poster may not write in, exit 1)
+asked nobody and spent its operation, so the revision's next one takes the
+line (`REV.2`, then `REV.3`), and both verbs read them in that order. Two runs
+racing on one revision record one line, and the second answers with it.
+Operations are the poster's own, so the coordinator opens every start line.
 
 `cut` reads the start line of the item's current words and the owner's answer
 from Theseus: the owner's newest reply to it with words, in one line, is a
