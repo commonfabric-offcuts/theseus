@@ -107,7 +107,8 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   // pixel with every push (B6). With what the page holds ending at each tenth of a pixel in turn, and the window
   // resized at the page's end first when resize is given, pushing down there leaves the room as it was (or as none,
   // when none is given). At one fraction at least the view reaches past what the page holds, so the pushes test
-  // what B6 grew from.
+  // what B6 grew from. Then main's padding is its own again and the room measured anew, so what the case checks
+  // next sees the page as it is drawn: a padding left grown hid a room that crept down (a floor for the ceiling).
   const pushesLeaveRoom = async (p, label, { resize = null, none = false } = {}) => {
     const gaps = [];
     for (const fraction of [0.1, 0.3, 0.5, 0.7, 0.9]) {
@@ -124,6 +125,7 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       assert.deepEqual(rooms, Array(8).fill(before), at + ': pushing down at the page\'s end leaves the room as it was');
     }
     assert.ok(gaps.some(gap => gap > 0 && gap < 1), label + ': at some fraction the view reaches past what the page holds at its end: ' + gaps);
+    await p.evaluate("(async()=>{document.querySelector('main').style.paddingBottom='';for(let n=0;n<3;n++)await new Promise(r=>requestAnimationFrame(r))})()");
   };
   const roomNow = p => p.evaluate("document.querySelector('main').style.getPropertyValue('--line-room')||'0px'");
   // Changes the window's size and waits two frames, in whose rendering the resize is heard; says the window's
