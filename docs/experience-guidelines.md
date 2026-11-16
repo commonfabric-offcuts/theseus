@@ -110,9 +110,9 @@ Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
 
 - `tests/set_aside_native.mjs` (`native-rail`, `native-webkit-rail`): "rail set
   aside composer", "rail set aside message", "rail set aside attachment",
-  "rail set aside kept words", "rail set aside kept image", "rail set aside kept looks right", "rail set aside
-  whisper" and "rail set aside looks right" (1280, 320, 375 and 390, light and
-  dark).
+  "rail set aside kept words", "rail set aside kept image", "rail set aside
+  whisper", and "rail set aside looks right" and "rail set aside kept looks
+  right" (1280, 320, 375 and 390, light and dark).
 - `tests/ui_inline_wiring.test.mjs`: "a reply set aside with its words kept has
   a Set aside chip the guard does not name".
 - Core: `tests/test_set_aside.py`.

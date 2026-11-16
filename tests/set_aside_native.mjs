@@ -70,6 +70,13 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
     await p.evaluate(`document.querySelector(${q(topicRow(id))}).scrollIntoView({block:'center',inline:'nearest'})`);
     await p.point(topicRow(id));
   };
+  // A press on the composer's writing as a person makes it: scrolled to the middle of the window, once nothing is
+  // moving, so on a phone in WebKit the field is not under the window's edge or still settling.
+  const pressWriting = async p => {
+    await p.evaluate(`document.querySelector('#inline-writing-body').scrollIntoView({block:'center'})`);
+    await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'nothing is moving');
+    await p.point('#inline-writing-body');
+  };
   const card = s => `#review-content [data-id="${s.submission}"]`;
   const cardState = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,title:c.querySelector('h3').textContent,acts:[...c.querySelectorAll('.aside-act')].map(b=>({text:b.textContent,name:b.getAttribute('aria-label'),tip:b.title}))})(document.querySelector(${q(card(s))}))`);
   const openReader = async (p, s) => {
@@ -104,7 +111,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await ready(p, s.here);
       await until(async () => (await reviews(p)).join() === 'Review 2 replies', 'both replies are in doubt');
       // The person's own writing in the composer, which setting aside leaves as it was.
-      await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Mine, typed here' });
+      await pressWriting(p); await p.send('Input.insertText', { text: 'Mine, typed here' });
       await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value==='Mine, typed here'`), 'typed');
       await p.point('#inline-pending button');
       await until(async () => (await acts(p)).length === 2, 'each reply offers Set aside');
@@ -206,7 +213,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
   const keptLine = (p, s) => p.evaluate(`(c=>c&&{state:c.dataset.state,words:c.querySelector('pre')?.textContent??null,acts:[...c.querySelectorAll('.aside-act')].map(b=>b.textContent)})(document.querySelector(${q(card(s))}))`);
   const undo = s => `${card(s)} .aside-act[aria-label^="Undo"]`;
   const typeInComposer = async (p, s, text) => {
-    await p.point('#inline-writing-body'); await p.send('Input.insertText', { text });
+    await pressWriting(p); await p.send('Input.insertText', { text });
     await until(() => p.evaluate(`document.querySelector('#inline-writing-body').value===${q(text)}`), 'typed');
     await until(async () => (await draft(s))?.body === text, 'the typed words are saved as the draft');
   };
@@ -364,7 +371,7 @@ export async function setAsideChecks({ check, page, until, control, view, facts,
       await p.point(undo(t));
       await until(async () => (await cardState(p, t))?.state === 'doubt', 'Undo puts it back');
       await closeList(p);
-      await p.point('#inline-writing-body');
+      await pressWriting(p);
       await p.evaluate(`document.querySelector('#inline-writing-body').select()`);
       await p.key('Backspace');
       await until(async () => (await draft(s))?.body === '', 'the composer is empty and saved so');
