@@ -26,6 +26,18 @@ DRAFT_SCHEMA = [
 TELL_FIRST = "tell_first"
 
 
+# A reply set aside (item 548, docs/replies-in-doubt.md): the submissions table
+# is immutable, so the person's own committed submission.set_aside operations
+# record it, the latest of them saying whether it is aside now. Their ids begin
+# with ASIDE_PREFIX, the submission id and ":", so a read finds them through the
+# operations key alone, however long the person's history.
+ASIDE_PREFIX = "aside:"
+ASIDE = ("COALESCE((SELECT json_extract(a.outcome,'$.result.aside') FROM operations a WHERE a.actor_id=s.actor_id"
+         " AND a.id>='" + ASIDE_PREFIX + "'||s.id||':' AND a.id<'" + ASIDE_PREFIX + "'||s.id||';'"
+         " AND a.kind='submission.set_aside' AND json_extract(a.outcome,'$.status')='committed'"
+         " AND json_extract(a.outcome,'$.result.submission_id')=s.id ORDER BY a.rowid DESC LIMIT 1),0)")
+
+
 def _source_key(ref):
     if not isinstance(ref, dict):
         raise Refusal("INVALID_ARGUMENT", "A source reference is required")
@@ -261,7 +273,37 @@ class Drafts:
     def _view_submission(self, db, actor, args):
         row, snapshot = self._submission(db, actor, args.get("submission_id"))
         receipt = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, row["send_operation_id"])).fetchone()
+        # Its shape stays as it was: a page checks it field for field (cleanup.mjs), so whether the reply is set
+        # aside is said only by the unsent list leaving it out.
         return dict(snapshot, instance_id=self.instance_id, send_receipt=json.loads(receipt[0]) if receipt else None)
+
+    def _aside(self, db, actor, submission_id):
+        return bool(db.execute("SELECT " + ASIDE + " FROM submissions s WHERE s.actor_id=? AND s.id=?", (actor, submission_id)).fetchone()[0])
+
+    # The person sets one of their own replies aside, or puts it back (aside
+    # false, the Undo), so a reply prepared and never sent stops being in doubt
+    # (docs/replies-in-doubt.md). Its record and its words stay as they were.
+    # A reply whose send is recorded committed went, so it is refused; a send
+    # under way is the page's to wait for. Setting aside twice changes nothing.
+    def _command_submission_set_aside(self, db, actor, envelope):
+        args = envelope.get("args", {})
+        if set(args) != {"submission_id", "aside"} or envelope.get("target"):
+            raise Refusal("INVALID_ARGUMENT", "A reply is set aside by its submission_id and aside alone")
+        if not isinstance(args["aside"], bool):
+            raise Refusal("INVALID_ARGUMENT", "aside is true or false")
+        row, _ = self._submission(db, actor, args["submission_id"])
+        prefix = ASIDE_PREFIX + row["id"] + ":"
+        if not envelope["operation_id"].startswith(prefix) or envelope["operation_id"] == prefix:
+            raise Refusal("INVALID_ARGUMENT", "Setting a reply aside takes an operation id beginning " + prefix)
+        sent = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, row["send_operation_id"])).fetchone()
+        if sent and json.loads(sent[0])["status"] == "committed":
+            raise Refusal("ALREADY_SENT", "This reply was sent, so there is nothing to set aside")
+        changed = self._aside(db, actor, row["id"]) != args["aside"]
+        version = 1 + db.execute("SELECT count(*) FROM operations WHERE actor_id=? AND id>=? AND id<? AND kind='submission.set_aside'",
+                                 (actor, prefix, prefix[:-1] + ";")).fetchone()[0]
+        self._change(db, "actor", actor, "submission", row["id"], version + 1)
+        return {"submission_id": row["id"], "aside": args["aside"], "changed": changed}, [
+            {"kind": "submission", "id": row["id"], "version": version + 1}]
 
     # The person's own replies, oldest first. With unsent, only those whose send
     # is not recorded as committed: the replies that may be in doubt, a short
@@ -280,7 +322,8 @@ class Drafts:
             where += " AND s.source_key=? AND s.topic_id=?"
             values += [key, args.get("topic_id")]
         through = db.execute("SELECT COALESCE(MAX(s.seq),0) FROM submissions s WHERE " + where, values).fetchone()[0]
-        where += " AND s.seq>?" + (" AND (o.outcome IS NULL OR json_extract(o.outcome,'$.status')<>'committed')" if unsent else "")
+        # A reply set aside is not in doubt (item 548), so the unsent list leaves it out.
+        where += " AND s.seq>?" + (" AND (o.outcome IS NULL OR json_extract(o.outcome,'$.status')<>'committed') AND NOT " + ASIDE if unsent else "")
         rows = db.execute("SELECT s.seq,s.metadata,o.outcome FROM submissions s LEFT JOIN operations o ON o.actor_id=s.actor_id AND o.id=s.send_operation_id WHERE " + where + " ORDER BY s.seq LIMIT ?", values + [args.get("cursor", 0), limit + 1]).fetchall()
         items = []
         for row in rows[:limit]:

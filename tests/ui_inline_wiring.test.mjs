@@ -161,7 +161,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
-    doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions }, editor); },
+    doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions, asides: this.asides }, editor); },
     get inDoubt() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'inDoubt').get.call(this); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
@@ -1447,6 +1447,26 @@ test('a Review button counts a reply prepared here as sent only from a complete 
   f.registry.pending = () => undefined; f.changed(modal);
   assert.deepEqual(shown(), ['Review more replies'], 'a list never read is not an answer of none');
   assert.deepEqual(page([], null, 40), [], 'a whole list with nothing in it is');
+});
+
+// Item 548: a reply this page set aside is in doubt no more, even one prepared
+// here whose prepare answered no place in the list, and setting aside one
+// leaves the others in doubt.
+test('a reply set aside here has no Review button, and the others keep theirs', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  registered(f, modal); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const page = (items, next_cursor, through) => { f.registry.pending = () => ({ items, next_cursor, through }); f.changed(modal); return shown(); };
+  modal.submissions = [{ id: 'held', status: 'prepared', preparationConfirmed: true, prepareReceipt: { result: {} } }];
+  const listed = [{ id: 'other', send_status: 'unknown' }, { id: 'third', send_status: 'unknown' }];
+  assert.deepEqual(page(listed, null, 5), ['Review 3 replies']);
+  f.registry.asides = new Set(['held']);
+  assert.deepEqual(page(listed, null, 5), ['Review 2 replies'], 'the reply set aside is not counted; the others are');
+  f.registry.asides.add('other');
+  assert.deepEqual(page(listed, null, 5), ['Review 1 reply']);
+  f.registry.asides = new Set();
+  assert.deepEqual(page(listed, null, 5), ['Review 3 replies'], 'put back, it is in doubt again');
 });
 
 // Item 118: "Review 2 replies" opens those two. A reply checked as sent

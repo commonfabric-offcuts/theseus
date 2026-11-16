@@ -380,34 +380,77 @@ async function showPending(key, opener) {
   // The replies in doubt, and those that were while the list is open, so a
   // reply checked as sent says so in place.
   const shown = new Set();
+  // The replies set aside while the list is open, each with its words and
+  // whether they went back into the writing (registry.setAside): its line says
+  // so, or shows them with Copy, and offers Undo.
+  const asides = new Map();
+  // The writing as it is now, wherever it shows, after its words came back or went.
+  const redrawWriting = editor => {
+    if (inline?.editor === editor) { inline.drawEditor(); inline.paintStatus(); inline.paintImages(); }
+    if (reader?.editor === editor) { reader.drawEditor(); reader.paintStatus(); reader.paintImages(); }
+  };
+  const asideButton = (label, name, tip, action) => {
+    const control = button(label, action); control.setAttribute('aria-label', name); control.title = tip; control.classList.add('aside-act'); return control;
+  };
+  const makeCard = (item, editor, local, statusKey) => {
+    const card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
+    card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted'));
+    const aside = asides.get(item.id);
+    if (aside) {
+      card.dataset.state = 'aside';
+      if (aside.restored) card.append(node('p', 'Its words are back in your writing.', 'muted'));
+      else {
+        card.append(node('pre', aside.words.body ?? ''));
+        if (aside.words.attachments?.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, aside.words.attachments), 'muted'));
+        card.append(asideButton('Copy', 'Copy this reply\'s words', 'Copy its words', async () => { await navigator.clipboard.writeText(aside.words.body ?? ''); reviewStatus('Copied.'); }));
+      }
+      card.append(asideButton('Undo', 'Undo set aside: this reply may not have sent', 'Put it back with the replies that may not have sent', async () => {
+        await registry.setAside(writing(), item.id, false); asides.delete(item.id); redrawWriting(writing()); draw();
+      }));
+      return card;
+    }
+    card.dataset.state = 'doubt';
+    if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
+      if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
+    else card.append(button('Read submitted writing', async () => {
+      const detail = await registry.inspectPending(writing(), item.id);
+      if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
+      draw();
+    }));
+    card.append(button('Check confirmation', async () => { await registry.checkPending(writing(), item.id); draw(); }));
+    if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
+      card.append(button('Prepare this reply again', () => {
+        const now = writing(), kept = now?.submissions.find(entry => entry.id === item.id);
+        if (!kept) throw Error('This writing changed. Review it again.');
+        return showCorrection(now, kept, opener);
+      }));
+    }
+    // Item 548: a reply that may never go is set aside, so it is in doubt no more; its words are kept.
+    if (!['confirmed', 'committed'].includes(statusKey)) {
+      card.append(asideButton('Set aside', 'Set this reply aside', 'Set aside: stop counting it as maybe not sent. Its words are kept, and Undo puts it back.', async () => {
+        const answer = await registry.setAside(writing(), item.id, true);
+        asides.set(item.id, { item, ...answer }); redrawWriting(writing()); draw();
+      }));
+    }
+    return card;
+  };
   const draw = () => {
     const editor = writing();
     if (!current() || !editor) return;
     for (const id of registry.doubt(editor).ids) shown.add(id);
     const local = new Map(editor.submissions.map(item => [item.id, item]));
-    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
+    const listed = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
+    const ids = new Set(listed.map(item => item.id));
+    const entries = [...listed, ...[...asides.values()].map(aside => aside.item).filter(item => !ids.has(item.id))];
     for (const item of entries) {
       const statusKey = item.status ?? item.send_status;
       let card = [...host.children].find(child => child.dataset.id === item.id);
-      if (!card) {
-        card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
-        card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted')); host.append(card);
-        if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
-          if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
-        else card.append(button('Read submitted writing', async () => {
-          const detail = await registry.inspectPending(writing(), item.id);
-          if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
-          draw();
-        }));
-        card.append(button('Check confirmation', async () => { await registry.checkPending(writing(), item.id); draw(); }));
-        if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
-          card.append(button('Prepare this reply again', () => {
-            const now = writing(), kept = now?.submissions.find(entry => entry.id === item.id);
-            if (!kept) throw Error('This writing changed. Review it again.');
-            return showCorrection(now, kept, opener);
-          }));
-        }
+      if (!card || card.dataset.state !== (asides.has(item.id) ? 'aside' : 'doubt')) {
+        const made = makeCard(item, editor, local, statusKey);
+        if (card) card.replaceWith(made); else host.append(made);
+        card = made;
       }
+      if (asides.has(item.id)) { card.querySelector('h3').textContent = 'Set aside'; continue; }
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
       const reason = registry.pendingReason(editor, item);
       let explanation = card.querySelector('[data-refusal]');

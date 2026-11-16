@@ -17,6 +17,61 @@ answer, `EditorRegistry.doubt(editor)` in `web/app-session.mjs`.
   `seq` is its place in that order.
 - `submission.prepare` answers with the reply's `seq`, beside its
   `submission_id`.
+- A reply set aside (below) is not listed by `unsent: true`, and `through`
+  does not change, so a page that prepared it reads it as no longer in doubt.
+
+## Setting a reply aside
+
+A reply prepared and never sent (its send operation has no outcome at all)
+stays in doubt for good: Check confirmation can only say it is not known sent.
+Its line in the Review list therefore offers **Set aside**, a short word with
+its name and a tooltip, 44px to touch on a phone, beside Check confirmation.
+
+- `submission.set_aside` takes `args` `{submission_id, aside}` and no target.
+  `aside: true` sets the reply aside; `aside: false` puts it back in doubt
+  (Undo). Its `operation_id` begins `aside:<submission_id>:`. It answers
+  `{submission_id, aside, changed}`; setting aside a reply already set aside
+  changes nothing (`changed: false`), and the same operation again answers its
+  first receipt.
+- Only the reply's author can: another reader's act is refused `FORBIDDEN`,
+  as every read of someone else's reply is. A reply whose send is recorded
+  committed went, so it is refused `ALREADY_SENT`, either way. A send under
+  way on this page is the page's to wait for: it offers no Set aside then.
+- A reply set aside whose send later shows committed is simply sent.
+
+### How it is recorded, with no schema step
+
+The `submissions` table is immutable (its triggers abort any update or
+delete), so a reply's row and metadata never change. Setting aside is the
+person's own committed operation in `operations`, the journal every command
+already writes: the unsent list leaves a reply out when the latest committed
+`submission.set_aside` operation naming it says `aside: true`. The operation
+ids begin with `aside:<submission_id>:` so that read is a range of the
+operations table's own key (actor, id), however long the person's history; it
+then checks the submission id the receipt names, so one id beginning another's
+is not confused with it. No table, column or index is added, and
+`SCHEMA_VERSION` does not move.
+
+It is backward and forward compatible: an older server never sees the
+command (it refuses it `UNKNOWN_COMMAND` and records nothing), and an older
+page reading a newer server sees only a shorter unsent list, which it already
+reads as replies known sent. The `submission` view keeps its shape exactly (a
+page checks it field for field), so whether a reply is set aside is said only
+by the unsent list.
+
+### The words are kept
+
+Setting a reply aside never deletes anything: the submission keeps its words,
+quotes and attachments. When the writing the reply came from (the topic's
+composer, or the message's writing) is empty, they go back into it as its
+draft, attachments too, and the line says "Its words are back in your
+writing." Otherwise the line shows them, with Copy. Either way the line offers
+Undo, which puts the reply back in doubt and, while the writing still holds
+exactly the words put back, empties it again.
+
+A reply set aside is in doubt no more at once: the Review button and the
+departure guard stop counting it, after a reload too and on another device of
+the same reader, since all of them read Core's unsent list.
 
 ## The answer
 
@@ -28,7 +83,8 @@ A reply is in doubt unless one of these holds:
   `seq` no higher than `through`, so the read could see it and found it sent;
 - it is on its way (its send or its correction is under way here);
 - it was refused and replaced by a correction this device holds, which then
-  answers for its words.
+  answers for its words;
+- it was set aside (see "Setting a reply aside").
 
 A list not read to its end, or not read at all, is unread: more replies may be
 in doubt, so the answer is never "none". The button then reads "Review N+

@@ -535,6 +535,11 @@ def main():
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
                 "send_operation_id": operation}, {"topic_id": topic_id}, {"draft_revision": draft["revision"] + 1}, sender=sender)
+            if request.get("unsent"):
+                # With "unsent": true the reply is prepared and its send never
+                # made, as a reply left in doubt for good (item 548): a
+                # submission with a send operation id and no outcome.
+                return {"submission_id": operation + "-submission", "send_operation_id": operation}
             return read(command("message.send", operation, {"submission_id": operation + "-submission"},
                                 {"topic_id": topic_id}, sender=sender))
 

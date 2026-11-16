@@ -1082,3 +1082,4 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(hover:none),(pointer:coarse){.feed-fence-copy{opacity:1;pointer-events:auto}}
 
 .feed-fence-anchor:has(>.fence-copy-announcement){min-width:min(17rem,100%)}
+/* A reply set aside (item 548): Set aside, Copy and Undo are short words, each 44px to touch on a phone. */@media(max-width:760px),(pointer:coarse){#review-content .aside-act{min-height:44px;min-width:44px}}

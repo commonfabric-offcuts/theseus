@@ -1,8 +1,8 @@
-import { Editor, editorKey, restoreEditor } from './editor.mjs';
+import { Editor, editorKey, restoreEditor, holdsWriting } from './editor.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
-import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey } from './upload-state.mjs';
+import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
 // A listed copy that holds the reply for image review until it is resolved.
@@ -39,6 +39,8 @@ export class EditorRegistry {
     // When this page last saw each writing kept on this device, and saved to Theseus.
     this.savedTimes = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
+    // The replies this page set aside (setAside), which are in doubt no more.
+    this.asides = new Set();
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
@@ -648,6 +650,61 @@ export class EditorRegistry {
       typeof receipt.error?.message === 'string' && receipt.error.message.trim() ? receipt.error.message : null;
   }
 
+  // Sets one of this writing's replies in doubt aside, or with aside false
+  // puts it back in doubt (Undo). Core records it as the person's own
+  // operation and leaves it out of the replies not sent from then on, here,
+  // after a reload and on another device (docs/replies-in-doubt.md). Its words
+  // are kept: with the writing empty they go back into it as its draft
+  // (restored), and Undo takes them out again while they are as restored.
+  // Answers the reply's words and whether they went back into the writing.
+  async setAside(editor, id, aside) {
+    const session = this.sessionFor(editor);
+    if (session.underWay(id) === true) throw Error('This reply is on its way. Wait for it to finish.');
+    const local = editor.submissions.find(item => item.id === id);
+    const words = aside ? copy(local?.snapshot ?? this.pendingDetails.get(id) ?? await this.inspectPending(editor, id)) : null;
+    const { authority_id, authority_epoch } = this.runtime.current;
+    const receipt = await this.api.command({ v: 1, instance_id: this.bootstrap.instance_id, operation_id: `aside:${id}:${crypto.randomUUID()}`,
+      kind: 'submission.set_aside', target: {}, expected: { authority: { authority_id, authority_epoch } }, args: { submission_id: id, aside } });
+    if (receipt?.status !== 'committed' || receipt.instance_id !== this.bootstrap.instance_id || receipt.result?.submission_id !== id ||
+        receipt.result.aside !== aside) throw Error(receipt?.error?.message ?? 'Theseus did not confirm this. Try again.');
+    if (aside) this.asides.add(id); else this.asides.delete(id);
+    let restored = false;
+    const current = this.sessions.get(editor.key) === session;
+    if (aside && current && !holdsWriting(editor.draft) && !currentImages(editor).length && !editor.uploadOpaque && !editor.imageBusy && !editor.imageReservation && !editor.unavailable && !editor.conflict && !editor.authorityRecovery) {
+      editor.edit({ body: words.body ?? '', quotes: words.quotes ?? [], attachments: words.attachments ?? [] });
+      (this.restoredAsides ??= new Map()).set(id, { key: editor.key, version: editor.localVersion, media: (words.attachments ?? []).map(ref => ref.id) });
+      this.edited(editor); restored = true;
+      // Each image comes back checked and kept on this device, as one the person chose does, so a reload
+      // finds it ready to go and the departure guard does not hold it as an image still being saved.
+      if (words.attachments?.length) {
+        session.uploads.importRetained();
+        const back = new Set(words.attachments.map(ref => ref.id));
+        for (const entry of session.uploads.current().filter(entry => entry.origin === 'retained-ref' && back.has(entry.retained_ref?.id) && !entry.ready_descriptor)) {
+          await session.uploads.checkRetained(entry);
+        }
+      }
+    }
+    const kept = this.restoredAsides?.get(id);
+    if (!aside && kept) {
+      this.restoredAsides.delete(id);
+      if (current && kept.key === editor.key && kept.version === editor.localVersion) {
+        for (const entry of (editor.uploadState?.entries ?? []).filter(entry => entry.selected && kept.media.includes(entry.retained_ref?.id ?? entry.association?.media_id))) {
+          await session.uploads.remove(entry.selection_id);
+        }
+        editor.edit({ body: '', quotes: [], attachments: [] }); this.edited(editor);
+      }
+    }
+    await this.readPending(editor);
+    return { words, restored };
+  }
+  // The first page of this writing's replies not sent, read again.
+  async readPending(editor) {
+    const page = this.validatePage(await this.api.view('submissions', { source_ref: editor.sourceRef,
+      topic_id: editor.context.topicId, limit: this.pendingPageSize, unsent: true }));
+    if (this.sessions.get(editor.key)?.editor === editor) this.setPending(editor.key, page);
+    return page;
+  }
+
   pending(editor) { return this.pages.get(editor.key) ?? { instance_id: this.bootstrap.instance_id, items: [], next_cursor: null }; }
   async morePending(editor) {
     this.sessionFor(editor);
@@ -686,7 +743,7 @@ export class EditorRegistry {
     const sent = id => local.get(id)?.status === 'confirmed' || listed.get(id)?.send_status === 'committed' ||
       !unread && !listed.has(id) && local.get(id)?.status === 'prepared' && local.get(id).prepareReceipt?.result?.seq <= page.through;
     const items = [...new Map([...listed, ...local]).values()].filter(({ id }) => !sent(id) &&
-      !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true), ids = new Set(items.map(item => item.id));
+      !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true && !this.asides?.has(id)), ids = new Set(items.map(item => item.id));
     const count = unread ? (ids.size ? ids.size + '+' : 'more') : ids.size;
     return { ids, items, unread, count, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
   }
