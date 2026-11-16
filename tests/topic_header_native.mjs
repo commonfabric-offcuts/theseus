@@ -1203,6 +1203,9 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   // subtitle the gap is each pill's margin, the Team's row having none of its own; the pills and "+ Add" are children
   // of the panel's .chips, which draws no box (display:contents). The negative: the gap leaves the Team where it was,
   // its pills on one line on a laptop, "+ Add" last and flush with the title row's right, the label beside the first pill.
+  // The laptop draws a standard 15px scrollbar, as Chrome on Windows and Linux does on a page that scrolls (a Mac's
+  // overlay scrollbar takes no width, and hid a Team that wrapped "+ Add" there): the scrollbar is always shown, so it
+  // takes its width from the header whatever the topic holds, and the Team still keeps one line with room to spare.
   await check('header the Team\'s pills and "+ Add" stand apart, never touching, on a laptop and a phone, light and dark', async () => {
     await control({ method: 'navigation_topics', topics: [{ id: 'header-pill-gap', title: 'Pills apart' }] });
     await control({ method: 'agent_message', operation_id: 'header-pill-gap-join', topic_id: 'header-pill-gap', source: 'topic', join: true, body: 'Here with the person.' });
@@ -1213,10 +1216,14 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       const gaps=[];for(let i=1;i<boxes.length;i++)if(Math.abs(boxes[i].top-boxes[i-1].top)<2)gaps.push(Math.round((boxes[i].left-boxes[i-1].right)*10)/10);
       const row=document.querySelector('.topic-header .title-row').getBoundingClientRect(),label=document.querySelector('#people-heading').getBoundingClientRect(),add=document.querySelector('#participants .add-chip');
       return {parts:parts.length,gaps,rows:new Set(boxes.map(b=>Math.round(b.top))).size,addLast:parts.at(-1)===add,right:Math.round(row.right-boxes.at(-1).right),
-        offset:Math.round((label.top+label.height/2)-(boxes[0].top+boxes[0].height/2)),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+        offset:Math.round((label.top+label.height/2)-(boxes[0].top+boxes[0].height/2)),sideways:document.documentElement.scrollWidth>innerWidth,
+        bar:innerWidth-document.documentElement.clientWidth,
+        spare:Math.round((document.querySelector('#topic-description').getBoundingClientRect().width-6*parseFloat(getComputedStyle(document.documentElement).fontSize))*10)/10}})()`);
+    // A standard scrollbar, 15px wide, on every scrolling box of the page from its first layout, the page's always shown.
+    const bars = q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: `addEventListener('DOMContentLoaded',()=>{const s=document.createElement('style');s.textContent='html{overflow-y:scroll}::-webkit-scrollbar{width:15px;height:15px}::-webkit-scrollbar-thumb{background:#c1c1c1}';document.head.append(s)},{once:true})` });
     for (const [device, width] of [['laptop', 1280], ['phone', 320], ['phone', 375], ['phone', 390]]) for (const theme of ['light', 'dark']) {
       const size = q => q.send('Emulation.setDeviceMetricsOverride', { width, height: device === 'phone' ? 844 : 900, deviceScaleFactor: 1, mobile: device === 'phone' });
-      const p = await page(`header-pill-gap-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=header-pill-gap`, beforeNavigate: device === 'phone' ? both(phone, size, scheme(theme)) : both(size, scheme(theme)) });
+      const p = await page(`header-pill-gap-${width}-${theme}`, null, true, { url: `${facts.origin}/?topic=header-pill-gap`, beforeNavigate: device === 'phone' ? both(phone, size, scheme(theme)) : both(bars, size, scheme(theme)) });
       await until(() => p.evaluate(`document.querySelectorAll('#topic-people .person-pill').length >= 2 && Boolean(document.querySelector('#participants .add-chip')?.getClientRects().length)`), `${width} ${theme}: the Team painted, two pills and "+ Add"`);
       await p.evaluate('scrollTo(0, 0)');
       const at = await measure(p), said = `${width} ${theme}: ${JSON.stringify(at)}`;
@@ -1226,7 +1233,11 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.ok(at.gaps.every(gap => gap >= 4), `each pill and "+ Add" stands at least 4px from the one before it: ${said}`);
       assert.ok(at.gaps.every(gap => gap <= 10), `a modest gap, not a wide one: ${said}`);
       assert.deepEqual([at.addLast, Math.abs(at.offset) <= 2, at.sideways], [true, true, false], `"+ Add" comes last, the label sits beside the first pill, nothing sideways: ${said}`);
-      if (device === 'laptop') assert.deepEqual([at.rows, at.gaps.length, Math.abs(at.right) <= 2], [1, at.parts - 1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
+      if (device === 'laptop') {
+        assert.equal(at.bar, 15, `on a laptop the page's standard scrollbar takes 15px: ${said}`);
+        assert.deepEqual([at.rows, at.gaps.length, Math.abs(at.right) <= 2], [1, at.parts - 1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
+        assert.ok(at.spare >= 4, `with room to spare: the subtitle beside the Team keeps at least 4px (a quarter rem) more than its 6rem: ${said}`);
+      }
       await shot(p, `header-pill-gap-${device}-${width}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
     }
