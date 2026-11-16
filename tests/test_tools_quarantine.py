@@ -465,11 +465,12 @@ class Combine(unittest.TestCase):
         self.assertTrue((out / "summary.json").exists(), "the combine wrote no summary: %s" % result.stderr)
         return result, json.loads((out / "summary.json").read_text())
 
-    def colors(self, failed, held, unheld=(), **record):
+    def colors(self, failed, held, unheld=(), record=()):
+        """The native-colors step that failed on failed, its record holding held; record replaces fields of it."""
         step = {"name": "native-colors", "passed": False, "exit": 1, "counts": {"tests": 2, "fail": len(failed), "failed": list(failed)},
                 "quarantine": {"cases": [], "held": list(held), "unheld": [{"case": c, "why": "not quarantined"} for c in unheld],
                                "green": not unheld}}
-        step["quarantine"].update(record)
+        step["quarantine"].update(dict(record))
         return step
 
     def test_a_missing_required_step_is_never_green(self):
@@ -512,11 +513,15 @@ class Combine(unittest.TestCase):
 
     def test_a_record_that_disagrees_with_its_step_holds_nothing(self):
         # Each record breaks one condition and keeps the rest; the step's raw failure then stands.
-        for said, step in (("not green", self.colors(["a"], ["a"], green=False)),
-                           ("names a case it does not hold", self.colors(["a"], ["a"], unheld=[{"case": "b", "why": "not quarantined"}])),
-                           ("refused", self.colors(["a"], ["a"], refused="the harness did not reach its end")),
+        for said, step in (("not green", self.colors(["a"], ["a"], record={"green": False})),
+                           ("names a case it does not hold",
+                            self.colors(["a"], ["a"], record={"unheld": [{"case": "b", "why": "not quarantined"}]})),
+                           ("refused", self.colors(["a"], ["a"], record={"refused": "the harness did not reach its end"})),
                            ("no failed case", self.colors([], []))):
             with self.subTest(said=said):
+                # Only the condition named is broken: the record otherwise says green and holds exactly the failed cases.
+                record = step["quarantine"]
+                self.assertEqual((record["green"], record["held"]), (said != "not green", step["counts"]["failed"]))
                 self.reset()
                 result, combined = self.combine(step)
                 self.assertEqual(result.returncode, 1, result.stderr)

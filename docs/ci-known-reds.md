@@ -227,9 +227,12 @@ still records its failure: raw case and step verdicts are never rewritten. A
 step whose only failures are quarantined cases, each failing at the stage it
 was quarantined at in a run that ended as one with failed cases does, has a
 green quarantine record, and its shard and the whole run exit green; the step's
-output names each such case. A quarantined case failing at another stage, a
-case not on the list, a run that did not reach its end, and any unit, deploy
-refusal or wake replay failure stay red. A list that cannot be read (no event
+output names each such case. A quarantined case failing at another stage or
+with no stage to read (a stack that names no test source line, or no error at
+all), a case on the list only under another phase or engine, a case not on the
+list, a run that did not reach its end, and any unit, deploy refusal or wake
+replay failure stay red, and so does a run with a required step missing or a
+checkout a step changed. A list that cannot be read (no event
 base, as on a manual run; a later or unrelated commit; a malformed entry)
 quarantines nothing and the summary says why. With the list in place the push
 run on a merged head is expected green, so any red left is the train's own.
