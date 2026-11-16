@@ -298,7 +298,10 @@ the invitation as one act, `workspace.agent_invite`:
   another device forgets the first one) is committed with the agent as
   recorded, and nothing is registered or added again, so the outcome's
   version stands and no change is written. Its result carries this request's
-  `harness`, for the prompt. Anyone else typing the name (the coordinator
+  `harness`, for the prompt. The agent is found by its invitation and its
+  name, whatever rule made its ID: release 81 kept only ASCII letters, so
+  "Søren" invited then is `s-ren`, and the same person typing "Søren" gets
+  `s-ren` back, even once someone else has `soren`. Anyone else typing the name (the coordinator
   too), the same person in another outcome (even one whose team the
   agent is on), or after the agent has left the team or been disabled, is refused
   `NAME_TAKEN`. Core keeps who invited each agent into which
@@ -343,7 +346,11 @@ browser refuses, the page says so and selects the prompt.
   of this user's (a file others can read, a pipe, a folder, or a link,
   wherever it leads). A retry of either kind, the same request or the same
   name typed again, is refused the same way. The server refuses before asking Core, unrecorded,
-  `SIGN_IN_TAKEN`. A server started without a sign-in folder refuses every
+  `SIGN_IN_TAKEN`. The place it looks at is the one for the agent Core will
+  answer with, read in a short read before the act: the agent this same
+  request's recorded receipt names, else the agent given back to this
+  inviter (`s-ren.profile.json` for Søren above, never `soren.profile.json`),
+  else the ID the name makes. A server started without a sign-in folder refuses every
   invitation, `NO_SIGN_IN_FOLDER`.
 - An answer that never came keeps the exact request, and the next Return
   sends it again; so does Try again after a file that could not be written.

@@ -3921,6 +3921,10 @@ class InviteStepCase(MigrationCase):
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         folder = self.folder()
+        # Someone else typing Søren is refused, and nothing is written.
+        refused = invite(self.store, "agent-a", self.envelope("Søren", "coordinator-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        self.assertEqual(os.listdir(folder), [])
         theirs = folder / "soren.profile.json"
         write_profile(theirs, self.path, "test-instance", "agent-a", binding=self.binding)
         held, actors = theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")
@@ -3931,13 +3935,15 @@ class InviteStepCase(MigrationCase):
                              ({"id": "s-ren", "name": "Søren", "kind": "agent"}, True, str(folder / "s-ren.profile.json")))
         self.assertEqual(load_profile(folder / "s-ren.profile.json").actor_id, "s-ren")
         self.assertEqual((theirs.read_bytes(), self.sql("SELECT * FROM actors ORDER BY id")), (held, actors), "kept, and no one registered")
-        # Someone else typing Søren is refused, and gets nothing at either place.
-        refused = invite(self.store, "agent-a", self.envelope("Søren", "coordinator-types-it"), folder)
-        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
-        self.assertEqual(sorted(os.listdir(folder)), ["s-ren.profile.json", "soren.profile.json"])
-        # A new name is given an ID by 525's rule, and the old ID stands.
-        self.assertEqual(invite(self.store, "owner", self.envelope("Bjørn", "fresh"), folder)["result"]["agent"]["id"], "bjorn")
-        self.assertEqual(self.sql("SELECT id,name FROM actors WHERE id IN ('s-ren','soren','bjorn') ORDER BY id"), [("bjorn", "Bjørn"), ("s-ren", "Søren")])
+        # New names get IDs by 525's rule and the old ID stands: Bjørn is bjorn, and Soren, a name of its own, is soren.
+        theirs.unlink()
+        for name, agent in (("Bjørn", "bjorn"), ("Soren", "soren")):
+            self.assertEqual(invite(self.store, "owner", self.envelope(name, "fresh-" + agent), folder)["result"]["agent"]["id"], agent)
+        self.assertEqual(self.sql("SELECT id,name FROM actors WHERE id IN ('s-ren','soren','bjorn') ORDER BY id"),
+                         [("bjorn", "Bjørn"), ("s-ren", "Søren"), ("soren", "Soren")])
+        # With soren taken by another agent, the inviter typing Søren still gets s-ren back, found by its invitation.
+        again = invite(self.store, "owner", self.envelope("Søren", "retyped-again"), folder)
+        self.assertEqual((again["status"], again["result"]["agent"]["id"], again["sign_in"]["written"]), ("committed", "s-ren", True), again)
 
     def test_someone_elses_file_at_the_invited_agents_own_place_is_refused_before_core_is_asked(self):
         # The place checked before Core is asked is the invited agent's own, s-ren.profile.json, under 324's ID.

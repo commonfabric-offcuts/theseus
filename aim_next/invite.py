@@ -110,9 +110,11 @@ def _free(db, name):
     return None
 
 
-def _given_back(db, workspace, actor, name, holders):
-    """The agent this actor's own invitation put on this outcome's team under this name, when that is the one holder."""
-    if len(holders) != 1 or holders[0]["name"].casefold() != name.casefold() or not holders[0]["enabled"]:
+def _given_back(db, workspace, actor, name):
+    """The agent this actor's own invitation put on this outcome's team under this name, found through its invitation
+    whatever rule made its ID (item 324's made Søren s-ren), while it is enabled, on the team and the one with the name."""
+    holders = db.execute("SELECT id,name,enabled FROM actors WHERE name=? COLLATE NOCASE", (name,)).fetchall()
+    if len(holders) != 1 or not holders[0]["enabled"]:
         return None
     agent = holders[0]["id"]
     invited = db.execute("SELECT 1 FROM agent_invitations WHERE agent_id=? AND workspace_id=? AND inviter_id=?",
@@ -140,12 +142,12 @@ class Invites:
         agent = agent_id(name)
         if not agent:
             raise Refusal("NAME_UNUSABLE", "An agent's name needs a letter from a to z or a digit, for the name people address it by.")
-        holders = _holders(db, name, agent)
-        given = _given_back(db, workspace["id"], actor, name, holders)
+        given = _given_back(db, workspace["id"], actor, name)
         if given is not None:
             # The same invitation asked again as a new request: its agent, as recorded, and nothing changes.
             return {"workspace_id": workspace["id"], "title": workspace["title"], "version": workspace["version"],
                     "harness": args["harness"], "agent": {"id": given["id"], "name": given["name"], "kind": "agent"}}, []
+        holders = _holders(db, name, agent)
         if holders:
             other = _free(db, name)
             raise Refusal("NAME_TAKEN", "There is already someone called %s here. Choose another name%s." % (
@@ -164,6 +166,24 @@ class Invites:
         return {"workspace_id": workspace["id"], "title": workspace["title"], "version": version, "harness": args["harness"],
                 "agent": {"id": agent, "name": name, "kind": "agent"}}, [
             {"kind": "workspace", "id": workspace["id"], "version": version}]
+
+    def invitation_place(self, actor, envelope):
+        """The ID of the agent this request would answer with, read before Core is asked to take it: the agent a
+        recorded receipt of this same request names, else the one its inviter is given back, else the name's own ID."""
+        place = self._execute_command(actor, envelope, preflight=self._invitation_place)
+        if isinstance(place, str):
+            return place
+        if place.get("status") == "committed" and place.get("kind") == KIND:
+            return place["result"]["agent"]["id"]
+        # A request Core would refuse is checked at its name's own place, as it always was.
+        args = envelope.get("args") if isinstance(envelope, dict) else None
+        name = args.get("name") if isinstance(args, dict) else None
+        return agent_id(" ".join(name.split())) if isinstance(name, str) else ""
+
+    def _invitation_place(self, db, actor, envelope):
+        name = _name(envelope["args"].get("name"))
+        given = _given_back(db, _identifier(envelope["target"].get("workspace_id"), "workspace_id"), actor, name)
+        return given["id"] if given is not None else agent_id(name)
 
 
 def sign_in_path(folder, agent):
@@ -249,9 +269,8 @@ def invite(store, actor, envelope, folder):
     if folder is None:
         return _refused(envelope, "NO_SIGN_IN_FOLDER", "This server keeps no folder for sign-in files, so it cannot invite an agent.")
     folder = Path(folder)
-    args = envelope.get("args")
-    name = args.get("name") if isinstance(args, dict) else None
-    agent = agent_id(" ".join(name.split())) if isinstance(name, str) else ""
+    # The place is the agent's Core would answer with: one invited under an older ID rule keeps its own (item 525).
+    agent = store.invitation_place(actor, envelope)
     # A file already in the new agent's place, for anyone else, is never overwritten or adopted.
     if agent and _held(sign_in_path(folder, agent), store, agent) == OTHER:
         return _refused(envelope, "SIGN_IN_TAKEN", "A sign-in file named %s is already in this instance's folder, for someone else. "

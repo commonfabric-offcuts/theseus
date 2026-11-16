@@ -15602,8 +15602,8 @@
    "break": [
     [
      "aim_next/invite.py",
-     "if len(holders) != 1 or holders[0]",
-     "if not holders or holders[0]"
+     "if len(holders) != 1 or not",
+     "if not holders or not"
     ]
    ],
    "check": {
@@ -16005,6 +16005,48 @@
      "aim_next/invite.py",
      "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], inviter))",
      "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], \"owner\"))"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The place checked before Core is asked is the invited agent's own, found through its invitation: Søren invited as s-ren under 324's rule is given back, whatever is at soren.profile.json",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        given = _given_back(db, _identifier(envelope[\"target\"].get(\"workspace_id\"), \"workspace_id\"), actor, name)\n        return given[\"id\"] if given is not None else agent_id(name)\n",
+     "        return agent_id(name)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "The same request sent again after a lost answer is checked at the place its recorded receipt names",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "        if place.get(\"status\") == \"committed\" and place.get(\"kind\") == KIND:\n            return place[\"result\"][\"agent\"][\"id\"]\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An agent is given back by its invitation and its name, though another actor has the ID the name makes now",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "    holders = db.execute(\"SELECT id,name,enabled FROM actors WHERE name=? COLLATE NOCASE\", (name,)).fetchall()\n",
+     "    holders = _holders(db, name, agent_id(name))\n"
     ]
    ],
    "check": {
