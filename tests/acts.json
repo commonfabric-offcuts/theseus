@@ -3125,36 +3125,6 @@
   },
   {
    "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
    "act": "An act's answer landing under a held press waits for the press to end, so nothing moves under the pointer",
    "break": [
     [
@@ -13568,6 +13538,36 @@
    }
   },
   {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -15988,8 +15988,8 @@
    "break": [
     [
      "tools/train.py",
-     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\")",
-     "\"tools/ci_known_reds.py\")"
+     "\"tools/ci_known_reds.py\", \"tools/ci_input_reads.py\", \"tools/ci-input-reads.json\",",
+     "\"tools/ci_known_reds.py\","
     ]
    ],
    "check": {
@@ -21408,6 +21408,538 @@
    "check": {
     "native": "webkit-reading",
     "case": "reading stacks an earlier message the reader folded opens in the Reader"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A browser step whose only failures are quarantined cases failing at their stage does not fail the release check's exit, and the step names them",
+   "break": [
+    [
+     "tools/release_check.py",
+     "return 0 if summary[\"passed\"] or held_by.get(\"green\") is True else 1",
+     "return 0 if summary[\"passed\"] else 1"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case's step keeps its raw verdict: passed false, its case failed",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    record[\"green\"] = not record[\"unheld\"]\n    return record",
+     "    record[\"green\"] = not record[\"unheld\"]\n    result[\"passed\"] = record[\"green\"]\n    return record"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case that fails at another stage than the one it was quarantined at is not held",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "        if stage != entry[\"red_in\"][0][\"stage\"]:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A step with a failed case the quarantine does not list stays red",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    record[\"green\"] = not record[\"unheld\"]",
+     "    record[\"green\"] = bool(record[\"held\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A run that did not end as one with failed cases ends holds nothing",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "        failed = known_reds.ended_cases(out, result, \"this run\")",
+     "        failed = {row[\"name\"]: row for row in rows.values() if not row.get(\"passed\")}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case's pass or failure is recorded in every run, so the rule to leave is read from the runs",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "\"passed\": rows[key].get(\"passed\") is True if key in rows else None}",
+     "\"passed\": None}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine is read at the event base, so a candidate's own entry never holds its red",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    shown = _git(root, \"show\", \"%s:%s\" % (commit, POLICY))",
+     "    shown = _git(root, \"show\", \"HEAD:%s\" % POLICY)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The checked commit itself is never the event base",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    if head.stdout.strip() == commit:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A commit that is not an earlier commit of the one checked is never the event base",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    if ancestor.returncode == 1:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The event base is a pull request's base or the commit a push moved its branch from",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "if name == \"pull_request\" else event.get(\"before\")",
+     "if name == \"pull_request\" else event.get(\"after\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A run whose event has no base quarantines nothing",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "    if name not in EVENT_BASES:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A case enters the quarantine only with two live runs it was red in",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "        if len({run[\"run\"] for run in runs}) < 2 or",
+     "        if len({run[\"run\"] for run in runs}) < 1 or"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A case enters the quarantine only red at one stage in each run it names",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "        if any(run[\"stage\"] != runs[0][\"stage\"] for run in runs):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A mutant's result is never quarantined",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "        if case[\"expectedFailure\"] is not False:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine count reads the policy at the commit it is given",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "            entries = _policy_at(REPO, args.at)",
+     "            entries = load(json.loads((REPO / POLICY).read_text()))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine count prints no number for a malformed list",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "                entries = load(json.loads((REPO / POLICY).read_text()))",
+     "                entries = json.loads((REPO / POLICY).read_text()).get(FIELD, [])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine's passes count only the runs a case passed in",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "                    counts[0] += case[\"passed\"] is True",
+     "                    counts[0] += 1"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The Checks run's combine job exits green when its only failures are held quarantined cases, its raw verdict kept",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "sys.exit(0 if combined[\"passed\"] or combined[\"quarantine\"][\"green\"] else 1)",
+     "sys.exit(0 if combined[\"passed\"] else 1)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job takes a step as held only when its record holds exactly its failed cases",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "and bool(failed) and sorted(record.get(\"held\") or []) == sorted(failed))",
+     "and bool(failed))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job is green only when every shard read one event base",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases) == 1",
+     "\"green\": (not missing and combined[\"tree_unchanged\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "Every shard of the Checks run reads the quarantine at the event base",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     " \\\n            --quarantine-at event",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The classifier's policy loader takes the quarantine list beside the admissions",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "fields | {'transitions', 'quarantine'}",
+     "fields | {'transitions'}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "An ordinary train may not change the release check's quarantine module, which the deploy loads",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/ci-input-reads.json\",\n               \"tools/quarantine.py\")",
+     "\"tools/ci-input-reads.json\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case whose failure names no test source line, or carries no error at all, is not held",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "            record[\"unheld\"].append({\"case\": case, \"why\": \"its stage cannot be read: %s\" % refusal})\n            continue",
+     "            record[\"held\"].append(case)\n            continue"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case is held only by its exact identity: one quarantined under another phase or engine is not",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "entry = mine.get(ci_known_reds.key(row))",
+     "entry = next((e for e in mine.values() if e[\"case\"][\"name\"] == row.get(\"name\")), None)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The release check is never green when a step changed the checkout, though its only failures are held",
+   "break": [
+    [
+     "tools/release_check.py",
+     "held_by[\"green\"] = (entries is not None and unchanged and ",
+     "held_by[\"green\"] = (entries is not None and "
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The release check never claims green for a quarantine it could not read, though every step passed",
+   "break": [
+    [
+     "tools/release_check.py",
+     "held_by[\"green\"] = (entries is not None and unchanged",
+     "held_by[\"green\"] = (unchanged"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job is never green when a required step is missing: a shard refused before running, or one that left no summary",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"green\": (not missing and combined[\"tree_unchanged\"]",
+     "\"green\": (combined[\"tree_unchanged\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job is never green when a shard's checkout changed, though its only failures are held",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases)",
+     "\"green\": (not missing and len(bases)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record is not green",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "return (record.get(\"green\") is True and not record.get(\"unheld\")",
+     "return (not record.get(\"unheld\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record names a case it does not hold",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "is True and not record.get(\"unheld\") and not record.get(\"refused\")",
+     "is True and not record.get(\"refused\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record was refused",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "not record.get(\"unheld\") and not record.get(\"refused\")\n",
+     "not record.get(\"unheld\")\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step that names no failed case",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "and bool(failed) and sorted(record",
+     "and sorted(record"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job folds a shard refused before running as its missing steps, not as a crash",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "commits = {d.get(\"commit\") for d in docs if d.get(\"steps\") or not d.get(\"refused\")}",
+     "commits = {d.get(\"commit\") for d in docs}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job exempts from the one commit only a refusal that ran nothing",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "if d.get(\"steps\") or not d.get(\"refused\")}",
+     "if not d.get(\"refused\")}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job refuses a shard that names no commit, and says the shards checked different commits",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "sorted(map(str, commits))",
+     "sorted(commits)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine's passes count a run only when the case ran in it",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "if counts is not None and case.get(\"passed\") is not None:",
+     "if counts is not None:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A pull request's event base is its base, never its head",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "((event.get(\"pull_request\") or {}).get(\"base\") or {}).get(\"sha\")",
+     "((event.get(\"pull_request\") or {}).get(\"head\") or {}).get(\"sha\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
    }
   }
  ]

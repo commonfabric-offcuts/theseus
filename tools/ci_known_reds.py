@@ -336,7 +336,8 @@ def load_policy(policy, base_root, steps=own_steps):
     runs the candidate's tools, so it passes those of the policy's own source commit (known_reds.steps_at)."""
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
     fields = {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'}
-    require(fields <= set(policy) <= fields | {'transitions'},
+    # quarantine is the release check's list (tools/quarantine.py, item 549), read and checked there; never an admission.
+    require(fields <= set(policy) <= fields | {'transitions', 'quarantine'},
             'invalid baseline fields')
     require(isinstance(policy['source_commit'], str) and SHA.fullmatch(policy['source_commit']), 'invalid source commit')
     required, native = steps(policy['source_commit'])

@@ -534,6 +534,15 @@ class Evidence(unittest.TestCase):
         with self.assertRaisesRegex(ci.Refused, 'baseline Compose completion unattested'):
             ci.load_policy(policy, self.repo)
 
+    def test_the_release_checks_quarantine_rides_in_the_policy_and_no_other_field_does(self):
+        # Item 549: the quarantine list shares the policy file, read at the event base, and is never an admission.
+        try:
+            ci.load_policy(dict(copy.deepcopy(self.policy), quarantine=[]), self.repo)
+        except ci.Refused as refusal:
+            self.fail('the policy with a quarantine list is refused: %s' % refusal)
+        with self.assertRaisesRegex(ci.Refused, 'invalid baseline fields'):
+            ci.load_policy(dict(copy.deepcopy(self.policy), quarantined=[]), self.repo)
+
     def test_load_sample_and_paths_are_diagnostic_only(self):
         profile = dict(self.profile, load_after=[9.2, 8.9, 8.1], chrome_path='/different/chrome', playwright_core='/different/pw')
         result = ci.classify(self.policy, [('native-inline', [self.row], profile, '/verified')], self.repo, self.sha)
