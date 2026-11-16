@@ -1179,7 +1179,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const lantern=${JSON.stringify(lantern)}.concat(own('fork')?['fork']:[],own('root')?['root']:[]);
         return {loaded:{root:Boolean(own('root')),fork:Boolean(own('fork'))},named:tabs.filter(t=>t.name===${JSON.stringify(words)}),
           lantern:[...new Set(lantern.map(stackOf).map(key))],ferry:[stackOf('s1'),stackOf('s2')].map(key),near:[stackOf('near'),stackOf('near1')].map(key),
-          ferryTab:tabs.find(t=>t.stack===key(stackOf('s2')))??null,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          ferryTab:tabs.find(t=>t.stack===key(stackOf('s2')))??null,sideways:document.documentElement.scrollWidth>innerWidth,
+          once:(c=>c.length===new Set(c).size)([...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>e.dataset.id))}})()`);
       const ferryTab = (stack, name, count = '1 reply') => ({ stack, name, named: false, count });
       const stages = [
         { loaded: { root: false, fork: false }, head: 'a1', count: '5 replies', ferry: ferryTab('s1', 'I can keep it until the twentieth.') },
@@ -1192,7 +1193,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await until(async () => (await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`)) > cards, `${device}: Earlier messages reads an older page`);
         }
         const want = { loaded: stage.loaded, named: [{ stack: stage.head, name: words, named: true, count: stage.count }], lantern: [stage.head],
-          ferry: [stage.ferry.stack, stage.ferry.stack], near: ['near', 'near'], ferryTab: stage.ferry, sideways: false };
+          ferry: [stage.ferry.stack, stage.ferry.stack], near: ['near', 'near'], ferryTab: stage.ferry, sideways: false, once: true };
         for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
           if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
           await becomes(look, want, `${device} ${width}, ${['the first message and the fork above the page', 'the fork loaded', 'the first message loaded'][at]}: the lantern dossier is one stack under ${stage.head}, its name once with its mark and ${stage.count}; the ferry dossier is its own under its first line; the loaded dossier reads as before`);
