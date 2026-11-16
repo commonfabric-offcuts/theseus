@@ -3799,6 +3799,31 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 558: an earlier message the reader folded (as their reply folds what it answers, item 377) opens in the
+  // Reader by presses alone, as a person reaches it: the earlier-messages row, then the message as it shows, each
+  // press showing more of it until one opens it. On a laptop, by the mouse, in Chrome and Safari's engine.
+  await check('reading stacks an earlier message the reader folded opens in the Reader from a press on the earlier-messages row and then presses on the message, each showing more of it until one opens it', async () => {
+    const topic = 'stack-earlier-reader', ids = await earlierSeed(topic);
+    await dossierFold(topic, ids.r5);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await dossierOpen(p, 'laptop', ids.root);
+    await becomes(() => earlierLook(p, ids), { fold: 'open', button: '8 earlier messages', messages: closedLook }, 'open, the newest seven are cards and one row stands for the eight before them');
+    await centre(p, earlierButton(ids.root)); await p.point(earlierButton(ids.root));
+    await becomes(async () => (await earlierLook(p, ids)).messages, openedLook, 'pressed, the earlier messages are rows, the reader\'s fold its own row');
+    const face = async () => (await earlierLook(p, ids)).messages.find(m => m.startsWith('r5:')).slice(3);
+    const faces = [await face()];
+    while (await readerOn(p) === null) {
+      assert.ok(faces.length <= 3, `the message opens in the Reader within three presses on it: it showed ${faces.join(', then ')}`);
+      await centre(p, card(ids.r5)); await p.point(card(ids.r5));
+      await until(async () => await readerOn(p) !== null || await face() !== faces.at(-1), `a press on the message as ${faces.at(-1)} shows more of it or opens it`);
+      if (await readerOn(p) === null) faces.push(await face());
+    }
+    assert.ok((await readerOn(p)).startsWith('Reply 5 about the cabin.'), `the Reader opens on the message pressed: ${await readerOn(p)}`);
+    observations.push({ name: 'reading stacks an earlier message the reader folded opens in the Reader', engine, faces });
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('reading stacks the earlier-messages row is reached by Tab and opened by Return, the keys going on to the first earlier message; a link to an earlier message opens the row and shows it whole; a dossier of seven or fewer shows none', async () => {
     const seven = await seed('stack-earlier-seven', [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Seven in all.' }],
       ...Array.from({ length: 6 }, (_, n) => [`s${n + 1}`, { sender: other, reply_to: 'root', addressees: [facts.actor], body: `Seven, reply ${n + 1}.`, read: n === 5 }])]);

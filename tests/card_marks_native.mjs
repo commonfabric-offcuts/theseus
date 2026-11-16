@@ -44,6 +44,21 @@ const until = async (p, expression, description, arg) => {
   try { return await p.waitForFunction(expression, arg, { polling: 'raf', timeout: 15000 }); }
   catch { throw Error(`Timed out: ${description}`); }
 };
+// The name on the first line of Playwright's accessibility snapshot of a button, exactly, or null when that line is no
+// named button. Playwright writes each line as a YAML key, `- button "<name as JSON>"`, and quotes the whole key when
+// YAML would read part of it as syntax (": " in the name, as an image's "Image: screen.png" puts there):
+// `- 'button "<name as JSON>"'`, a ' inside it doubled.
+const buttonName = snapshot => {
+  const line = snapshot.split('\n')[0], quoted = /^- '((?:[^']|'')*)'(?::|$)/.exec(line);
+  const key = quoted ? quoted[1].replace(/''/g, "'") : line.startsWith('- ') ? line.slice(2) : '';
+  const named = /^button ("(?:[^"\\]|\\.)*")(?: \[[^\]]*\])*:?$/.exec(key);
+  return named ? JSON.parse(named[1]) : null;
+};
+// Both forms read back to the exact name, a ' and an escaped " in it kept; a line that is no button reads as none.
+assert.equal(buttonName('- button "fixture-notebook-agent · 3:47 AM Has an image \\"A\\" picture.":\n  - text: x'), 'fixture-notebook-agent · 3:47 AM Has an image "A" picture.');
+assert.equal(buttonName(`- 'button "It''s here · Has an image. Image: screen.png"':\n  - 'img "Image: screen.png"'`), "It's here · Has an image. Image: screen.png");
+assert.equal(buttonName(`- 'img "Image: screen.png"'`), null);
+assert.equal(buttonName('- text: button "not a button"'), null);
 const WORDS = { image: 'Has an image', note: 'Your private note, which only you can see', reply: 'Your reply, saved and not sent' };
 const card = id => `.message-card[data-id="${id}"]`;
 // Each engine reads a topic of its own, so what one engine's cases change the other's never see.
@@ -268,7 +283,7 @@ async function run() {
   }
 
   // The name a screen reader hears for a card, as the browser computes it: Chromium's own accessibility tree, and in
-  // Safari's engine the name Playwright's accessibility snapshot gives the card's button.
+  // Safari's engine the name Playwright's accessibility snapshot gives the card's button (buttonName).
   const accessibleName = async (p, selector) => {
     if (engine === 'chromium') {
       const cdp = await p.context().newCDPSession(p);
@@ -282,10 +297,9 @@ async function run() {
         return String(found.name?.value ?? '');
       } finally { await cdp.detach(); }
     }
-    const snapshot = await p.locator(selector).ariaSnapshot();
-    const named = /^- button "((?:[^"\\]|\\.)*)"/.exec(snapshot);
-    assert.ok(named, `${selector} is a named button: ${snapshot}`);
-    return JSON.parse(`"${named[1]}"`);
+    const snapshot = await p.locator(selector).ariaSnapshot(), name = buttonName(snapshot);
+    assert.ok(name !== null, `${selector} is a named button: ${snapshot}`);
+    return name;
   };
   await check('whisper: a whisper card with an image and a note says its marks in the name the browser gives it, as another card does', async () => {
     const w = whisperIds[engine], p = await open(`/?topic=whisper-${engine}`, { width: 390 });

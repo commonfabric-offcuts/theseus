@@ -1251,11 +1251,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // empty, refused for an empty Return, busy while its command is on its way, and refused by the server,
   // at 320, 375 and 390 in the open drawer and on a laptop, light and dark. The command is held here
   // before the server has it (Chrome's Fetch at the request stage, WebKit's route), so the refusal
-  // given in its place leaves nothing made.
+  // given in its place leaves nothing made. The engine decides the path, not whether the page offers an
+  // intercept: WebKit's page offers one too (webkit_native.mjs, for its invite mode), and it holds an answer
+  // after the server has the command, which would make what the refusal says was not made.
   const TRY_AGAIN = ' Press Return to try once more.';
   const REFUSAL = 'Only the people on this outcome’s team can start something in it; ask its owner to add you.';
   const holdCommands = async (p, kind) => {
-    if (p.intercept) {
+    if (!p.pw) {
       const from = p.held.length;
       await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
       p.intercept((payload, event) => event.responseStatusCode === undefined && payload?.kind === kind);
