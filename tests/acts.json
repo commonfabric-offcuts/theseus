@@ -24680,8 +24680,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "(worded if WORDED.search(words) else acks)",
-     "(worded if True else acks)"
+     "if plain and not any(token in NO for token in tokens)",
+     "if tokens and plain and not any(token in NO for token in tokens)"
     ]
    ],
    "check": {
@@ -24710,6 +24710,188 @@
      "tools/start_line.py",
      "        attempt += 1\n",
      "        return operation, None\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An item someone else raised is not the owner's, so its start line goes to nobody",
+   "break": [
+    [
+     "tools/start_line.py",
+     "return item.get(\"raised_by\") == owner or any(",
+     "return item.get(\"raised_by\") is not None or any("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An item from someone else's message is not the owner's, so its start line goes to nobody",
+   "break": [
+    [
+     "tools/start_line.py",
+     "source.get(\"readable\") and source.get(\"author\") == owner",
+     "source.get(\"readable\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A new title is a new revision of the item, so it gets a new start line",
+   "break": [
+    [
+     "tools/start_line.py",
+     "json.dumps([item[\"title\"], item[\"description\"], sources]",
+     "json.dumps([item[\"description\"], sources]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A new source is a new revision of the item, so it gets a new start line and the cut never reads the old one's answer as its own",
+   "break": [
+    [
+     "tools/start_line.py",
+     "for source in item[\"sources\"][\"shown\"]]",
+     "for source in []]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The start line reads every source of the item, past the 32 a page of the pipeline shows",
+   "break": [
+    [
+     "aim_next/pipeline.py",
+     "item = self._item_view(db, actor, workspace, pipeline, row, releases, asks, by_item, cache, full=True)",
+     "item = self._item_view(db, actor, workspace, pipeline, row, releases, asks, by_item, cache, full=False)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Two opens racing on one revision record one line, and the second answers with it rather than being refused",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if error and error.get(\"code\") == \"OPERATION_PAYLOAD_MISMATCH\":",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A message held in Edit by its author is never read as one with no words: open and cut answer could-not-read",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if source.get(\"withheld\"):",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The cut reads the owner's replies past the first page of the start line's topic",
+   "break": [
+    [
+     "tools/start_line.py",
+     "cursor = page.get(\"next_cursor\")",
+     "cursor = None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An owner's reply that only says yes builds as written and never becomes the brief",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if plain and not any(token in NO for token in tokens)",
+     "if not tokens"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An owner's reply that only says no or wait names nothing to build, so the cut refuses",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if plain:\n        return \"no\"\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "An owner's reply that asks a question is not a brief, so the cut refuses",
+   "break": [
+    [
+     "tools/start_line.py",
+     "if \"?\" in words:\n        return \"question\"\n",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A yes after the owner's correction never takes the correction back",
+   "break": [
+    [
+     "tools/start_line.py",
+     "unbuilt, said_yes = None, True",
+     "unbuilt, said_yes, correction = None, True, None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A reply that is not a brief stops the cut only until a newer correction or yes answers past it",
+   "break": [
+    [
+     "tools/start_line.py",
+     "unbuilt, correction = None, (reply[\"id\"], words)",
+     "correction = (reply[\"id\"], words)"
     ]
    ],
    "check": {

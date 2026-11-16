@@ -18,9 +18,9 @@ otherwise to nobody, kept with the item's work. A start line already recorded fo
 stands and the writer is not run again, so a retry never asks the owner twice.
 
 `cut` reads the owner's answer to the start line of the item's current words, from Theseus: a reply of the owner's
-in one line is a correction and becomes the brief; otherwise (their 👍, a reply with no words, or no answer) the
-brief is the line as written. A reply of more than one line is not a brief: the cut refuses rather than build as
-written.
+in one line is a correction and becomes the brief; otherwise (their 👍, a reply that only says yes or has no words,
+or no answer) the brief is the line as written. A reply of more than one line, one that only says no or wait, or one
+that asks a question is not a brief: the cut refuses rather than build as written or build that reply.
 
 Each prints one JSON object. Exit 0: done; 1: refused, one line on stderr naming why, nothing posted; 2: Theseus
 could not be read or did not record the post (never read as "nothing there"). docs/tools.md, "Start line".
@@ -37,9 +37,17 @@ import sys
 PYTHON = "/usr/bin/python3"
 LINE_MAX = 300
 NAME = re.compile(r"[A-Za-z0-9._@-]+")
-# A reply whose words hold no letter or digit (a 👍 typed as a reply) says yes; it changes nothing.
-WORDED = re.compile(r"[^\W_]")
 PAGE = 100
+# How the cut reads a reply (answer_of): its words, an apostrophe kept inside one. A reply made only of words that say
+# yes and the words around them, or of no word at all (a 👍 typed as a reply), says yes and changes nothing; one made
+# only of those and words that say no or wait names nothing to build.
+WORD = re.compile(r"[^\W_]+(?:'[^\W_]+)*")
+YES = frozenset(("yes yeah yea yep yup ya ok okay k kk sure fine good great perfect lgtm thanks thank ty approved approve "
+                 "agreed agree right correct exactly nice cool alright absolutely definitely love sounds looks works go "
+                 "ahead ship build proceed").split())
+NO = frozenset("no nope nah not don't dont stop wait hold cancel pause skip later never hang".split())
+AROUND = frozenset(("it this that that's thats the line as is written do please me to for now all set on off with just "
+                    "you so a yet sec second moment minute bit").split())
 
 
 class Refused(Exception):
@@ -132,6 +140,16 @@ def owners_item(item, owner):
         for source in item["sources"]["shown"])
 
 
+def read_message(cli, message_id):
+    """A message's source view, with its words. A message its author has open in Edit is held from agents and its
+    words are left out: that is never read as a message with no words, so a correction being written is not a 👍
+    and an ask being written is not an empty one."""
+    source = cli.view("source", {"source_ref": {"kind": "message", "id": message_id}})
+    if source.get("withheld"):
+        raise Unread("%s has %s open in Edit; it is read once they save or leave the edit" % (source.get("author"), message_id))
+    return source
+
+
 def find(cli, revision_operation):
     """(operation, message): the start line recorded for this revision and its operation, or (the operation to post
     under, None) when none is. A post Theseus refused and recorded (a topic the poster may not write in) asked nobody
@@ -153,7 +171,7 @@ def prompt(cli, outcome, number, item):
     lines = []
     for source in item["sources"]["shown"]:
         if source["kind"] == "message" and source.get("readable"):
-            words = cli.view("source", {"source_ref": {"kind": "message", "id": source["message_id"]}})["body"]
+            words = read_message(cli, source["message_id"])["body"]
             lines.append('- %s wrote, in "%s":\n%s' % (source["author"], source["topic_title"], words.strip()))
         elif source["kind"] == "message":
             lines.append("- a message you can't open")
@@ -229,7 +247,7 @@ def open_line(cli, outcome, number, topic, surface, writer, user_facing=False, e
         if message is None:
             raise Unread("the start line under %s is not recorded" % operation)
     result.setdefault("posted", False)
-    source = cli.view("source", {"source_ref": {"kind": "message", "id": message}})
+    source = read_message(cli, message)
     result.update(message_id=message, topic_id=source["topic_id"], brief=source["body"].split("\n", 1)[0])
     return result
 
@@ -248,30 +266,54 @@ def replies(cli, start, owner):
     return found
 
 
+def answer_of(words):
+    """What one reply of the owner's says: "yes", "lines" (more than one), "question", "no" or "correction"."""
+    tokens = WORD.findall(words.lower().replace("\u2019", "'"))
+    plain = all(token in YES or token in NO or token in AROUND for token in tokens)
+    if plain and not any(token in NO for token in tokens) and "?" not in words:
+        return "yes"
+    if "\n" in words:
+        return "lines"
+    if "?" in words:
+        return "question"
+    if plain:
+        return "no"
+    return "correction"
+
+
+NOT_A_BRIEF = {"lines": "is more than one line", "question": "asks a question",
+               "no": "says not to build it as written and names nothing to build"}
+
+
 def cut(cli, outcome, number):
     item, owner = read_item(cli, outcome, number)
     revision_operation = operation_of(outcome, number, item)
     operation, message = find(cli, revision_operation)
     if message is None:
         raise Refused("no start line for %d at its current words (operation %s): open one first" % (number, revision_operation))
-    start = cli.view("source", {"source_ref": {"kind": "message", "id": message}})
+    start = read_message(cli, message)
     written = start["body"].split("\n", 1)[0]
     result = {"item": number, "revision": revision_operation.rsplit("-", 1)[1], "operation_id": operation, "message_id": message,
               "topic_id": start["topic_id"], "owner": owner, "written": written, "brief": written}
-    worded, acks = [], []
+    # Read oldest first: a correction stands until a newer one replaces it, and a reply that is not a brief stops the
+    # cut until a newer correction or yes answers past it; a yes never takes a correction back.
+    correction, unbuilt, said_yes = None, None, False
     for reply in replies(cli, start, owner):
-        if reply.get("withheld"):
-            raise Unread("%s is editing a reply to the start line (%s); the cut reads it once it is saved" % (owner, reply["id"]))
-        words = cli.view("source", {"source_ref": {"kind": "message", "id": reply["id"]}})["body"].strip()
-        (worded if WORDED.search(words) else acks).append((reply["id"], words))
+        words = read_message(cli, reply["id"])["body"].strip()
+        said = answer_of(words)
+        if said == "yes":
+            unbuilt, said_yes = None, True
+        elif said == "correction":
+            unbuilt, correction = None, (reply["id"], words)
+        else:
+            unbuilt = (reply["id"], NOT_A_BRIEF[said])
+    if unbuilt:
+        raise Refused("%s's reply %s to the start line of %d %s: read it and cut the brief by hand" % (owner, unbuilt[0], number, unbuilt[1]))
     thumbed = any(thumb.get("actor_id") == owner for thumb in (start.get("reactions") or {}).get("thumbs", []))
-    if worded:
-        reply_id, words = worded[-1]
-        if "\n" in words:
-            raise Refused("%s's reply %s to the start line of %d is more than one line: read it and cut the brief by hand"
-                          % (owner, reply_id, number))
+    if correction:
+        reply_id, words = correction
         result.update(brief=words, answer="correction", answer_message_id=reply_id)
-    elif thumbed or acks:
+    elif thumbed or said_yes:
         result.update(answer="thumbs-up")
     else:
         result.update(answer="silence")

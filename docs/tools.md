@@ -234,7 +234,10 @@ its stdin the item's title, words and where it came from (each message's
 words, each note), reads the page, view, command or tool the item names as it
 is now, and prints one line of at most 300 characters. Anything else (a
 failed exit, nothing, a second line, a longer line) is refused (exit 1) and
-nothing is posted.
+nothing is posted. A message the item came from that its author has open in
+Edit is held from agents without its words: it is never given to the writer
+as a message with no words, so `open` answers exit 2, runs no writer and posts
+nothing, and the next `open` once the edit is saved or left writes from it.
 
 The line is posted in TOPIC, about item N (`--subject item:N`), followed by a
 sentence naming the item. The brief is written for every build; who is told
@@ -242,7 +245,8 @@ is one rule:
 
 - to the owner, as a tell, when the item is theirs: they raised it, or one of
   the messages it came from is theirs. Their message says "👍 or no answer
-  builds it as written; a reply of one line becomes what it builds."
+  builds it as written; a reply of one line becomes what it builds." An item
+  someone else raised from someone else's message is not theirs.
 - to the owner when `--owner-decides` says the build holds a product decision
   they own;
 - to the owner when the `--every-feature` switch is on and `--user-facing` says
@@ -252,8 +256,11 @@ is one rule:
 
 One operation per revision of the item's words: `start-line-OUTCOME-N-REV`,
 where REV is the first twelve hex digits of the sha256 of the item's title, its
-words and its sources. A move of the item is not a new revision, so it never
-asks again; new words or a new source are, so they get a new start line. Before
+words and its sources, every one of them (the item's record, not the first 32 a
+page of the pipeline shows). A move of the item is not a new revision, so it
+never asks again; a new title, new words or a new source are, so they get a
+new start line, and the cut never reads the answer to the item without that
+source as the answer to the item with it. Before
 the writer runs, `open` reads that operation: a start line already recorded is
 answered as it stands (`posted: false`) and the writer is not run, so a retry,
 a regenerated piece or a second slot never asks the owner twice. The post is
@@ -263,20 +270,36 @@ can stand between a refusal and the next try: a post Theseus did not record
 Theseus refused and recorded (a topic the poster may not write in, exit 1)
 asked nobody and spent its operation, so the revision's next one takes the
 line (`REV.2`, then `REV.3`), and both verbs read them in that order. Two runs
-racing on one revision record one line, and the second answers with it.
+racing on one revision record one line: Theseus refuses the second post as a
+different payload under the same operation (`OPERATION_PAYLOAD_MISMATCH`), and
+the second run answers with the line recorded (`posted: false`).
 Operations are the poster's own, so the coordinator opens every start line.
 
 `cut` reads the start line of the item's current words and the owner's answer
-from Theseus: the owner's newest reply to it with words, in one line, is a
-correction and becomes the brief (`answer: "correction"`, with its message);
-otherwise their 👍 on it, or a reply with no letter or digit (a 👍 typed as a
-reply), is `thumbs-up`, and nothing is `silence`; both build the line as
-written. Only the owner's 👍 and replies count. A reply of more than one line
-is refused (exit 1) with its message named, to be read and cut by hand, never
-built as written. With no start line for the item's current words (none was
-opened, or its words changed since) the cut is refused: open one first. A
-reply the owner has open in Edit is not read yet (exit 2). A later preview
-posted as a reply to the start line is recorded against the same revision.
+from Theseus. It reads the start line's topic from the start line on, page by
+page to its end, so an answer after a hundred other messages is still read.
+Only the owner's 👍 and replies count, and each reply is one of:
+
+- a yes: only words that say yes and the words around them ("Yes, go ahead.",
+  "Ship it!", "Looks good, thanks", "✅ Go ahead"), or no letter or digit at all
+  (a 👍 typed as a reply). It changes nothing.
+- not a brief: more than one line, a question (it holds a `?`), or only words
+  that say no or wait ("No, not yet.", "Hold on", "🚫 Don't").
+- a correction: any other one line, such as "Yes, but in metres on the reel
+  page too."
+
+The replies are read oldest first. The newest correction becomes the brief
+(`answer: "correction"`, with its message), and a later yes never takes it back.
+A reply that is not a brief, with no newer correction or yes after it, refuses
+the cut (exit 1) with its message named, to be read and cut by hand: it is
+never built as written and never becomes the brief. With no correction, the
+owner's 👍 on the line or a yes reply is `thumbs-up`, and nothing is
+`silence`; both build the line as written. With no start line for the item's
+current words (none was opened, or its words changed since) the cut is
+refused: open one first. A reply the owner has open in Edit is held from
+agents without its words; it is never read as a reply with no words, so the
+cut answers exit 2 until they save or leave the edit. A later preview posted
+as a reply to the start line is recorded against the same revision.
 
 Each verb prints one JSON object: `item`, `revision`, `operation_id`,
 `message_id`, `topic_id`, `owner` and the brief (`brief`; `open` adds
