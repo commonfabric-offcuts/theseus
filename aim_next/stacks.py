@@ -491,8 +491,11 @@ class Stacks:
         if (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value:
             return dict(result, **value, **{expected_name: current, "changed": False}), []
         revision = current + 1
+        # The newest act in the topic its reader had heard of before this one: a page that read the topic's places at
+        # that act or later knows that only its own act came since (docs/reply-stacks.md, item 426).
+        before = _seen_acts(db, actor, message["topic_id"])
         version = self._record_act(db, kind, message, owner, actor, value, revision)
-        return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version}), [
+        return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version, "acts_before": before}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
     def _record_act(self, db, kind, message, owner, actor, value, revision, tell=True):

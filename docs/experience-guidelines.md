@@ -265,7 +265,8 @@ content needs: a title line is about a sentence wide, and a few sentences about
 ## No coloured left edges
 
 Nothing is marked by a coloured edge or bar down one side. A card's colour
-covers its whole face.
+covers its whole face, and a dossier's colour, its first poster's when that
+is an agent, covers its folder and its title bar, and nothing else (item 477).
 
 - Node units, `tests/ui_author_colors.test.mjs`: "nothing on the page wears a
   colored left edge or bar", "an agent's card is colored across its whole face,
@@ -273,6 +274,9 @@ covers its whole face.
 - `tests/reader_colors_native.mjs` (`native-colors`, `native-webkit-colors`):
   the hovered card is black on both sides, with no edge or bar, measured from
   screenshot pixels.
+- `tests/ui_folder_colour.test.mjs`: "the coloured folder covers a whole
+  face"; `tests/stack_native.mjs`, "reading stacks a dossier an agent began
+  wears its colour …", measures no edge on the folder or its tab.
 
 ## Colours come from the theme's tokens
 

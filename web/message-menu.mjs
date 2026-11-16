@@ -4,9 +4,12 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The message under the pointer lights, as a passage lights in the Reader,
 // and a small bar of buttons sits over its top corner: 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
-// Reply (the Reader opens on the message with the cursor in the reply), and ⋯, the message's
-// menu (Copy Link, Mark read or unread; docs/links.md), which a right-click on
-// the message opens too, where the pointer is. Under the pointer a passage
+// Reply's glyph (the Reader opens on the message with the cursor in the
+// reply), Show full message while the card cuts the message off, Fold (Unfold
+// on a folded message; none on a starred one), and ⋯, the message's menu (Copy
+// Link, Mark read or unread; docs/links.md), which a right-click on the message
+// opens too, where the pointer is (item 473: glyphs, each named, with its name
+// as its tooltip). Under the pointer a passage
 // of the message lights too, as in the Reader (FeedPassages): Return on it
 // quotes it in the Reader's reply, and ⌘C copies it; with none lit, Return
 // replies with nothing quoted, as Reply does. ↑ and ↓ move the light;
@@ -25,6 +28,7 @@ import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
+import { showGlyph } from './glyphs.mjs';
 import { FeedPassages } from './feed-passages.mjs';
 import { reach } from './arrow-reach.mjs';
 
@@ -68,9 +72,14 @@ export class MessageMenu {
   // copy(item, words): puts the message's words on the clipboard, or the
   // words given, a passage of them (⌘C, copies). quote(id, card, chosen): the
   // Reader on it with chosen ({start, end, text} of its words) quoted.
-  constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, mac, doc });
+  // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
+  // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
+  constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
     this.lit = null; this.touch = false; this.before = null;
+    // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
+    this.behind = new Set();
     this.bar = this.buildBar();
     this.passages = new FeedPassages({ host, doc, lights: () => this.returns(), entryOf: target => this.entryOf(target) });
     // Scrolling or a repaint can put another card under a stationary pointer
@@ -138,7 +147,7 @@ export class MessageMenu {
     doc.addEventListener('pointerup', event => {
       if (event.pointerType !== 'touch' || !this.lit) return;
       const at = event.composedPath().find(node => node.nodeType === 1 && node.isConnected) ?? null;
-      if (!this.entryOf(at) && !this.bar.contains(at) && !at?.closest?.('dialog, .message-menu-list')) this.light(null);
+      if (!this.entryOf(at) && !this.ownsControls(at) && !at?.closest?.('dialog')) this.light(null);
     });
     doc.addEventListener('focusin', event => {
       const entry = this.entryOf(event.target), reverse = reverseTab;
@@ -172,10 +181,12 @@ export class MessageMenu {
     doc.defaultView.addEventListener('resize', () => this.place());
     // Content above the lit card can grow or shrink without a scroll (the
     // side rail filling in above the topic on a phone, a card arriving): the
-    // page's size changes, and the bar follows its card. The bar's own width
-    // changes too ("Link copied" on its ⋯), and it keeps to its corner.
+    // page's size changes, and the bar follows its card. Its ⋯ changes width
+    // too ("Link copied"), and the bar fits the window again (fit) and keeps to
+    // its corner. The ⋯ is watched, not the bar, whose width fit itself changes:
+    // a change made in the observer to what it watches is a loop WebKit reports.
     this.sizes = new doc.defaultView.ResizeObserver(() => this.place());
-    this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.bar);
+    this.sizes.observe(doc.body); this.sizes.observe(host); this.sizes.observe(this.buttons.more);
     // A reply stack's head that comes to show only its row loses its bar, and
     // gets it back once its full message shows again, as a message a dossier
     // folds and unfolds does (barless). A lit message
@@ -202,9 +213,12 @@ export class MessageMenu {
       thumb: make('thumb', '👍', 'Thumbs-up: read and understood'),
       yes: make('yes', '✅', 'Go ahead'),
       no: make('no', '🚫', "Don't"),
-      reply: make('reply', 'Reply', 'Reply (Return)'),
+      reply: make('reply', '', 'Reply (Return)'),
+      full: make('full', '', 'Show full message'),
+      fold: make('fold', '', 'Fold'),
       more: make('more', '⋯', 'More for this message'),
     };
+    showGlyph(this.buttons.reply, 'reply', doc); showGlyph(this.buttons.full, 'full', doc);
     this.buttons.more.setAttribute('aria-haspopup', 'menu'); this.buttons.more.setAttribute('aria-expanded', 'false');
     bar.append(...Object.values(this.buttons));
     doc.body.append(bar);
@@ -213,7 +227,8 @@ export class MessageMenu {
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
   entryOf(target) { return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target); }
-  ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list')); }
+  // A dossier's title bar glyphs are its controls too (reply-stacks.mjs): pressing or focusing one keeps the light.
+  ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list, .stack-tools')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
   entries() {
     return navigationStops(this.host);
@@ -277,6 +292,15 @@ export class MessageMenu {
     const answerable = mayAnswer(item, this.viewer, this.kind), mine = answerOf(item, this.viewer);
     yes.hidden = no.hidden = !answerable;
     yes.setAttribute('aria-pressed', String(mine === 'yes')); no.setAttribute('aria-pressed', String(mine === 'no'));
+    const { full, fold } = this.buttons, folding = this.foldState(item);
+    full.hidden = card.hidden || !this.clipped(card, item);
+    fold.hidden = !folding;
+    this.behind.clear();
+    if (folding) {
+      const words = folding === 'unfold' ? 'Unfold' : 'Fold';
+      if (fold.title !== words) { fold.title = words; fold.setAttribute('aria-label', words); }
+      showGlyph(fold, folding, this.doc);
+    }
     this.bar.hidden = false;
     this.place();
   }
@@ -304,9 +328,13 @@ export class MessageMenu {
   place() {
     if (this.lit && !this.lit.getClientRects().length) { this.light(null); return; }
     if (this.bar.hidden || !this.lit) return;
-    const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
     const view = this.doc.documentElement.clientWidth;
-    const left = Math.max(8, Math.min(box.right - width - 12, view - width - 8));
+    this.fit(view - 16);
+    const box = this.lit.getBoundingClientRect(), width = this.bar.offsetWidth, height = this.bar.offsetHeight;
+    // A bar taking more than half its card (on a phone, four buttons a finger wide) sits flush with the card's end,
+    // so it reaches over as little of the card as it can: clear of the star after who wrote it (item 473).
+    const inset = width > box.width / 2 ? 0 : 12;
+    const left = Math.max(8, Math.min(box.right - width - inset, view - width - 8));
     const tab = this.lit.closest('.reply-stack')?.querySelector(':scope > [data-id] .stack-head, :scope > .stack-rename')?.getBoundingClientRect();
     const floor = Math.max(4, tab?.height ? tab.bottom + 2 : 4);
     let top = Math.min(Math.max(4, box.top - height / 2), box.bottom - height);
@@ -320,6 +348,18 @@ export class MessageMenu {
     }
     this.bar.style.left = `${left}px`;
     this.bar.style.top = `${top}px`;
+  }
+  // A bar wider than the window less 8px each side (a go-ahead ask its card cuts off has seven buttons a finger
+  // wide, and "Link copied" widens its ⋯) puts Fold, then Show full message, behind its ⋯, whose menu offers both,
+  // so it keeps to one row in the window, clear of the card's words and star (item 473). Each comes back once there
+  // is room again.
+  fit(room) {
+    for (const button of this.behind) button.hidden = false;
+    this.behind.clear();
+    for (const button of [this.buttons.fold, this.buttons.full]) {
+      if (this.bar.offsetWidth <= room) return;
+      if (!button.hidden) { button.hidden = true; this.behind.add(button); }
+    }
   }
   // A repaint: each loaded card's reaction line, and the bar as it now stands.
   paint() {
@@ -336,6 +376,8 @@ export class MessageMenu {
     const card = cardIn(entry);
     if (name === 'reply') return this.reply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);
+    if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
+    if (name === 'fold') return this.fold(item);
     if (name === 'thumb' && mayThumb(item, this.viewer)) return this.thumb(item, !thumbed(item, this.viewer));
     if ((name === 'yes' || name === 'no') && mayAnswer(item, this.viewer, this.kind) && name in ANSWER_WORDS) return this.answer(item, name);
   }

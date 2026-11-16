@@ -215,7 +215,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
-  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
+  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/glyphs.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
