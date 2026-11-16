@@ -559,7 +559,7 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.equal((await pipeline('pipeline.piece_finish', { piece_id: piece }, {})).status, 'committed');
   });
 
-  await check('pipeline Now lists its pieces nearest to live first: Waits to combine, then Review by when each started, then Build, then what is not started, and the right rail's Now group reads the same; Next keeps its order, at 320, 375, 390 and a laptop, light and dark', async () => {
+  await check('pipeline Now lists its pieces nearest to live first: Waits to combine, then Review by when each started, then Build, then what is not started, and the right rail’s Now group reads the same; Next keeps its order, at 320, 375, 390 and a laptop, light and dark', async () => {
     // Item 567, in an outcome of its own. Four pieces started in the order Build, Waits to combine, Review, Review;
     // the later-started of the two in Review enters it first, and the oldest piece is sent back to Build after every
     // other moved, so neither when a piece entered its stage nor when it started alone gives the order asked for.
