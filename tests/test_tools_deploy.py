@@ -1248,7 +1248,8 @@ class DeployRefusesJudgedTree(KnownRedsFiles, DeployCase):
         self.summary.write_text(json.dumps(dict(summary(commit=commit), **written)))
 
     def evidence_of(self, name):
-        return json.loads((self.evidence / (name + ".json")).read_text())
+        # The known reds' own reader of a step's evidence, whose read tools/ci-input-reads.json already declares.
+        return DeployRefusesKnownReds.evidence_of(self, name)
 
     def refused_before_anything(self, host, words, **release):
         refusal = self.refused(host, sha=self.merged, **release)
