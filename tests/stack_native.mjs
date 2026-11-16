@@ -759,16 +759,25 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await keyed(), 'header:add', `${device}: ↑ goes back up to "+ Add"`);
       // The header's buttons end at their own row: → from "+ Add" goes on to the right rail, never to a filter. Where no
       // rail takes the keys it goes on to the nearest control that way on screen (item 301; on a phone the Team wraps,
-      // and a pill's × can stand to the right of "+ Add"), and stays where none does.
-      const beside = await p.evaluate(`(b=>[...document.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].some(x=>x!==document.activeElement&&x.tabIndex>=0&&!x.disabled&&!x.closest('[inert],[aria-hidden="true"]')&&x.checkVisibility()&&(c=>c.width>0&&c.left>b.left&&c.right>b.right&&c.left+c.right>b.left+b.right+1)(x.getBoundingClientRect())))(document.activeElement.getBoundingClientRect())`);
-      const from = await p.evaluate(`JSON.stringify(document.activeElement.getBoundingClientRect())`);
+      // and a pill's × stands to the right of "+ Add"), and stays where none does. Nearest as docs/interaction.md says
+      // ("The arrows everywhere"): one beside it in its row first, else the least gap that way plus twice the gap
+      // across. The control that rule names is marked before the press, and the press must land on it.
+      const ahead = await p.evaluate(`(()=>{const e=document.activeElement,b=e.getBoundingClientRect(),mid=r=>(r.left+r.right)/2;
+        const all=[...document.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&x.tabIndex>=0&&!x.disabled&&!x.closest('[inert],[aria-hidden="true"]')&&x.checkVisibility())
+          .map(x=>({x,c:x.getBoundingClientRect()})).filter(({c})=>c.width>0&&c.left>b.left&&c.right>b.right&&mid(c)>mid(b)+0.5);
+        const across=c=>Math.max(0,c.top-b.bottom,b.top-c.bottom),row=all.filter(({c})=>across(c)===0);
+        let best=null,score=Infinity;for(const {x,c} of row.length?row:all){const v=Math.max(0,c.left-b.right)+2*across(c);if(v<score){score=v;best=x}}
+        for(const x of document.querySelectorAll('[data-nearest-right]'))delete x.dataset.nearestRight;
+        if(!best)return null;best.dataset.nearestRight='';return {team:Boolean(best.closest('#participants')),said:best.getAttribute('aria-label')||best.textContent.trim(),of:all.length}})()`);
       await p.key('ArrowRight');
       const to = await keyed();
-      if (rail || !beside) assert.equal(to, rail ? 'things' : 'header:add',
+      if (rail || !ahead) assert.equal(to, rail ? 'things' : 'header:add',
         `${device}: → from "+ Add", the header's last, goes ${rail ? 'to the right rail' : 'nowhere, nothing lying that way'}, not on to a filter`);
       else {
-        assert.ok(to !== 'header:add' && to !== 'chip' && to !== 'read-it', `${device}: → from "+ Add", with a control that way and no right rail taking keys, goes on to it, not on to a filter: ${to}`);
-        assert.equal(await p.evaluate(`(b=>(c=>c.left>b.left&&c.right>b.right)(document.activeElement.getBoundingClientRect()))(${from})`), true, `${device}: → from "+ Add" lands to its right: ${to}`);
+        // On a phone the wrapped Team puts a pill's × there: the nearest that way is the Team's own.
+        assert.equal(ahead.team, true, `${device}: the nearest control to the right of "+ Add" is the Team's, as the wrapped header draws it: ${JSON.stringify(ahead)}`);
+        assert.equal(await p.evaluate(`document.activeElement?.hasAttribute('data-nearest-right')===true`), true,
+          `${device}: → from "+ Add", no right rail taking keys, lands on the nearest control that way (${ahead.said}, of ${ahead.of}), not on a farther one: ${to}`);
       }
       // No arrow pressed a filter: no Reader opened, the mark is still there, and the agents' dossier still shows.
       assert.equal(await readerOn(p), null, `${device}: no arrow on Read it opened the Reader`);
