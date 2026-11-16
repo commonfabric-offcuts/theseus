@@ -340,10 +340,12 @@ is a little nearer off to the side, ← and → along the row where something is
 beside, else to the nearest that way. What it reaches comes into view by the
 rule above. (`web/arrow-reach.mjs`)
 
-- **Past a pane's edge.** ↑ above the outline's first row goes on up the side
-  rail: New outcome, "N new" and "N waiting on you", then the logo block (the
-  wordmark, "? Pointer, keys and taps", Health, Turn on notifications); ↓
-  below its last row reaches Keys. ↑ above the right rail's first section
+- **Past a pane's edge.** ↑ above the outline's first row, New outcome (the
+  Outcomes heading's pencil), goes on up the side rail: "N new" and "N waiting
+  on you", then the logo block (the wordmark, "? Pointer, keys and taps",
+  Health, Turn on notifications); ↓ below its last row reaches Keys. → from
+  New outcome, a row with nothing under it, goes on into the messages, as
+  from a topic. ↑ above the right rail's first section
   reaches its name, "Just this topic" and "All of this outcome". ↓ past the
   last message goes on down the page: More messages, the People row, the
   Notebook and the reply; ↑ from there comes back to the last message. Into a
@@ -372,8 +374,8 @@ rule above. (`web/arrow-reach.mjs`)
   first control from the right or the left: on a phone both, and on an iPad
   with a keyboard → (the right rail is behind "Pipeline & pages" below 1181px).
 - **On a phone**, in the side rail's drawer, the arrows move as they do beside
-  the topic: the outline's rows, New outcome, the chips and the logo block,
-  never the page behind the drawer. The drawer opens with the focus on the
+  the topic: the outline's rows (New outcome the first), the chips and the
+  logo block, never the page behind the drawer. The drawer opens with the focus on the
   open topic where it shows and is live, never on a copy of it in a list not
   drawn or kept inert while the outline draws its own, so the arrows always
   start there.

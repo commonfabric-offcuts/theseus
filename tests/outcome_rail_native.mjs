@@ -3719,6 +3719,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
           edges.push({ from: node.id, key, to });
           if (to === node.id) { const lies = await p.evaluate(LIES(key)); if (lies.length) dead.push(`${label(node.id)} ${home} then ${key} stays; lies that way: ${lies.join(' | ')}`); }
         }
+        // → from its first row: the outline's is the Outcomes heading's pencil (item 305), a row with nothing under it,
+        // so → goes on into the messages, as from a topic; the side rail's one way to the page, now New outcome is a row.
+        via = null;
+        await p.evaluate(`(rows=>{const row=rows.find(e=>e.tabIndex===0)??rows[0];row?.focus()})(${treeRows(node.id)})`);
+        await p.key('Home'); await p.key('ArrowRight');
+        edges.push({ from: node.id, key: 'ArrowRight', to: await landed() });
         // → from each open row that holds a control of its own (the Notebook row's pencil).
         const holders = await p.evaluate(`${treeRows(node.id)}.filter(e=>e.getAttribute('aria-expanded')!=='false'&&[...e.querySelectorAll('button,a[href]')].some(b=>b.checkVisibility())).length`);
         for (let n = 0; n < holders; n++) {
@@ -3770,18 +3776,31 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await arrowsAt('rail-arrows-outline-' + theme, '/?topic=t1', 'laptop', theme);
       await settled(p, 'the topic is up');
       await tabToOutline(p);
+      // The outline's first row is the Outcomes heading's pencil, New outcome (item 305): Home lands on it, and it is
+      // just above the first outcome.
       await p.key('Home');
-      assert.match(await keyedAt(p), /^(name|topic):/, 'Home is the outline\'s first row');
+      assert.equal(await keyedAt(p), 'outline:outline-new-outcome', 'Home is the outline\'s first row, New outcome');
+      await p.key('ArrowDown');
+      assert.match(await keyedAt(p), /^(name|topic):/, '↓ from New outcome is the first outcome');
+      await p.key('ArrowUp');
+      assert.equal(await keyedAt(p), 'outline:outline-new-outcome', '↑ above the first outcome is New outcome, just above it');
       const up = await walk(p, 'ArrowUp');
       assert.ok(!up.includes('page'), 'no arrow loses the focus to the page: ' + up.join(' → '));
-      assert.ok(up.length > 2 && up.slice(1).every(at => at.startsWith('rail:') && !at.startsWith('rail:row:')), '↑ goes on up the side rail, out of the outline: ' + up.join(' → '));
-      assert.equal(up[1], 'rail:outline-new-outcome', '↑ above the first row is New outcome, just above it');
+      assert.ok(up.length > 2 && up.slice(1).every(at => at.startsWith('rail:') && !at.startsWith('rail:row:')), '↑ above New outcome goes on up the side rail, out of the outline: ' + up.join(' → '));
       assert.ok(up.some(at => /^rail:(Theseus Outcomes|health-link|How Theseus answers)/.test(at)), '↑ reaches the logo block: ' + up.join(' → '));
       await shot(p, 'rail-arrows-logo-laptop-' + theme);
       // Back down, into the outline's one stop.
       const down = await walk(p, 'ArrowDown', 30, at => at.startsWith('rail:row:'));
       assert.ok(!down.includes('page'), 'no arrow loses the focus coming down: ' + down.join(' → '));
-      assert.match(await keyedAt(p), /^(name|topic):/, '↓ comes back into the outline: ' + down.join(' → '));
+      assert.match(await keyedAt(p), /^(name:|topic:|outline:outline-new-outcome$)/, '↓ comes back into the outline: ' + down.join(' → '));
+      // → from New outcome, a row with nothing under it, goes on into the messages (docs/interaction.md, "Between the
+      // panes"): the side rail's way on to the page. ← comes back.
+      await p.key('Home');
+      assert.equal(await keyedAt(p), 'outline:outline-new-outcome', 'Home is New outcome again');
+      await p.key('ArrowRight');
+      assert.match(await keyedAt(p), /^message:/, '→ from New outcome goes on into the messages');
+      await p.key('ArrowLeft');
+      assert.match(await keyedAt(p), /^(name|topic):/, '← from the messages comes back to the outline');
       // Below the last row: Keys, and ↑ from it back to the outline.
       await p.key('End');
       const last = await keyedAt(p);
@@ -3814,10 +3833,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => p.evaluate("[...document.querySelectorAll('#outline [role=treeitem]')].some(e=>e.checkVisibility())"), size + ': the outline shows in the drawer')
         .catch(async error => { await shot(p, 'rail-arrows-drawer-missing-' + size); throw Error(error.message + ': ' + await p.evaluate("JSON.stringify({rows:[...document.querySelectorAll('#outline [role=treeitem]')].map(e=>[e.textContent.trim().slice(0,30),e.checkVisibility()]),outline:document.getElementById('outline')?.innerHTML.length,open:document.getElementById('rail').className})")); });
       await p.evaluate("(rows=>(rows.find(e=>e.tabIndex===0)??rows[0]).focus())([...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()))");
+      // The outline's first row is New outcome (item 305): Home lands on it, just above the first outcome, and ↑ goes on
+      // up out of the outline from it.
       await p.key('Home');
+      assert.equal(await keyedAt(p), 'outline:outline-new-outcome', `${size}: Home is the outline's first row, New outcome`);
+      await p.key('ArrowDown'); await p.key('ArrowUp');
+      assert.equal(await keyedAt(p), 'outline:outline-new-outcome', `${size}: ↑ above the first outcome is New outcome`);
+      // → from it, the page behind the drawer taking no keys, stays in the drawer.
+      await p.key('ArrowRight');
+      assert.match(await focusAt(p), /^rail:/, `${size}: → from New outcome stays in the drawer, never the page behind`);
+      await p.evaluate("document.getElementById('outline-new-outcome').focus()");
       const up = await walk(p, 'ArrowUp');
       assert.ok(!up.includes('page'), `${size}: no arrow loses the focus: ${up.join(' → ')}`);
-      assert.equal(up[1], 'rail:outline-new-outcome', `${size}: ↑ above the first row is New outcome: ${up.join(' → ')}`);
+      assert.ok(up.length > 1 && up.slice(1).every(at => !at.startsWith('rail:row:')), `${size}: ↑ above New outcome goes on up, out of the outline: ${up.join(' → ')}`);
       assert.ok(up.every(at => at.startsWith('rail:')), `${size}: the arrows stay in the drawer: ${up.join(' → ')}`);
       if (size === '390') await shot(p, 'rail-arrows-drawer-390-dark');
       const { missing, lost, dead, count } = await arrowClosure(p, '#rail', treeStart(p, '#outline'));
