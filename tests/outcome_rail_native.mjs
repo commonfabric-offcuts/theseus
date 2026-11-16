@@ -2816,11 +2816,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const was = await q.evaluate("(b=>{const was=b.scrollTop,more=document.createElement('div');more.id='arrow-more';more.textContent='More words.\\n'.repeat(120);b.append(more);return was})(document.getElementById('source-body'))");
       const read = await q.evaluate("(b=>{b.scrollTop=b.scrollHeight;const l=document.getElementById('arrow-link').getBoundingClientRect(),k=b.getBoundingClientRect();return {top:b.scrollTop,hidden:l.bottom<=k.top,at:[Math.round(l.top),Math.round(l.bottom),Math.round(k.top),b.scrollTop,b.scrollHeight,b.clientHeight].join(' ')}})(document.getElementById('source-body'))");
       assert.equal(read.hidden, true, `${size}: the link in the words is scrolled up out of the message's box (link top, bottom, box top, scrolled, height, shows: ${read.at})`);
-      for (const id of ['reader-parent', 'reader-close']) {
-        await q.evaluate(`document.getElementById('${id}').focus()`);
+      const heads = await q.evaluate("[...document.querySelectorAll('#reader .reader-header a[href],#reader .reader-header button')].filter(e=>e.checkVisibility()).length");
+      assert.ok(heads > 2, `${size}: the header's controls show (${heads})`);
+      for (let n = 0; n < heads; n++) {
+        const from = await q.evaluate(`(e=>(e.focus(),e.id||e.textContent.trim()))([...document.querySelectorAll('#reader .reader-header a[href],#reader .reader-header button')].filter(e=>e.checkVisibility())[${n}])`);
         await q.key('ArrowUp');
-        assert.equal(await focusAt(q), 'dialog:' + id, `${size}: ↑ from ${id} finds nothing above it`);
-        assert.equal(await q.evaluate("document.getElementById('source-body').scrollTop"), read.top, `${size}: ↑ from ${id} leaves the message scrolled where it was read to, not back up toward the link out of sight in its box`);
+        assert.notEqual(await focusAt(q), 'dialog:arrow-link', `${size}: ↑ from ${from} never lands on the link scrolled out of the message's box`);
+        assert.equal(await q.evaluate("document.getElementById('source-body').scrollTop"), read.top, `${size}: ↑ from ${from} leaves the message scrolled where it was read to, not back up toward the link out of sight in its box`);
       }
       await q.evaluate(`(b=>{document.getElementById('arrow-more').remove();b.scrollTop=${was}})(document.getElementById('source-body'))`);
       const readerFirst = async () => { await q.evaluate("document.getElementById('reader-parent').focus()"); return q.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
