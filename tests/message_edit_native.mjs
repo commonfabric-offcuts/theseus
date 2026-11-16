@@ -1679,5 +1679,140 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await p.close();
     }
   });
+
+  // A page loaded across a deploy (item 523, docs/rails.md, "One build per document"): its index.html from one server
+  // and its modules asked for once the next one has started, or while none is up. The page's boot (web/boot.js) loads
+  // afresh on the build the server serves, or says it could not open the page, with Reload; it never stays blank.
+  // Each document this page loads counts itself (sessionStorage.loads), so a load the boot asked for is counted.
+  const LOADS = `(()=>{try{sessionStorage.loads=String(Number(sessionStorage.loads||0)+1)}catch(e){}})()`;
+  const loads = p => p.evaluate('Number(sessionStorage.loads)');
+  // What the document loaded: its modules' addresses, whether it read the build, and what its status line says.
+  const loaded = p => p.evaluate(`({ modules: performance.getEntriesByType('resource').map(e => new URL(e.name)).filter(u => /\\.m?js$/.test(u.pathname)).map(u => u.pathname),
+    readBuild: performance.getEntriesByType('resource').some(e => new URL(e.name).pathname === '/api/build'),
+    status: document.querySelector('#app-status').hidden ? '' : document.querySelector('#app-status').textContent, ready: document.body?.dataset.ready ?? null })`).catch(() => null);
+  // Every module the page asks for under a build is held unsent, as a slow connection holds it: step() sends on those
+  // asked so far and holds the next, let(lose) sends on every one held, or loses it (a dropped connection), and holds no more.
+  const holdModules = async p => {
+    const isModule = url => { const u = new URL(url); return u.origin === facts.origin && u.pathname.startsWith('/b/'); };
+    if (engine === 'webkit') {
+      const routes = []; let holding = true;
+      const match = url => isModule(url.href), handler = route => { if (holding) routes.push(route); else route.continue(); };
+      await p.pw.route(match, handler);
+      const go = (lose = false) => Promise.allSettled(routes.splice(0).map(route => lose ? route.abort('connectionrefused') : route.continue()));
+      return { asked: () => routes.map(route => new URL(route.request().url()).pathname), step: () => go(),
+        let: async (lose = false) => { holding = false; await go(lose); await p.pw.unroute(match, handler); } };
+    }
+    const mine = () => p.held.filter(h => h.event.responseStatusCode === undefined && isModule(h.event.request.url));
+    const go = (lose = false) => Promise.allSettled(mine().map(h => { p.held.splice(p.held.indexOf(h), 1);
+      return p.send(lose ? 'Fetch.failRequest' : 'Fetch.continueRequest', { requestId: h.event.requestId, ...(lose ? { errorReason: 'ConnectionRefused' } : {}) }); }));
+    p.intercept((payload, event) => event.responseStatusCode === undefined && isModule(event.request.url));
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, { urlPattern: facts.origin + '/b/*', requestStage: 'Request' }] });
+    return { asked: () => mine().map(h => new URL(h.event.request.url).pathname), step: () => go(), let: async (lose = false) => { p.intercept(null); await go(lose); } };
+  };
+  // The page loads again with every module held: its index.html comes from the server as it stands, and its entry
+  // module is let through, so the entry's own imports are what wait. Gives the build index.html named and the held modules.
+  const reloadHeld = async (p, what) => {
+    const held = await holdModules(p);
+    const reloading = p.send('Page.reload').catch(error => error);
+    await until(() => held.asked().some(at => /^\/b\/[^/]+\/app\.mjs$/.test(at)), `${what}: the page asks for its entry under its build`);
+    const [, , build] = held.asked().find(at => /^\/b\/[^/]+\/app\.mjs$/.test(at)).split('/');
+    await held.step();
+    await until(() => held.asked().length > 0, `${what}: the entry's own imports are asked for, and held`);
+    return { build, held, reloading };
+  };
+  const comesUp = (p, topic, first, what) => until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + topic)} && document.body?.dataset.ready === 'true'
+    && Boolean(document.querySelector(${JSON.stringify(card(first))}))`).catch(() => false), what, 15000)
+    .catch(async error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify({ loads: await loads(p).catch(() => null), loaded: await loaded(p) }) }); });
+  const onOneBuild = (seen, build, what) => {
+    assert.ok(seen.modules.length > 10, `${what}: the page's modules are listed (${seen.modules.length})`);
+    assert.deepEqual(seen.modules.filter(at => !at.startsWith(`/b/${build}/`)), [], `${what}: every module is of build ${build}, none of another`);
+  };
+
+  await check('reading edit build a page whose modules are asked for once the server has started on another build loads afresh on it, once, and comes up on that build alone: on a laptop and at 390 by touch', async () => {
+    const next = anotherBuild();
+    let onNext = false;
+    try {
+      for (const device of ['laptop', 'phone']) {
+        const name = `edit-build-boot-${device}`;
+        const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page loaded across a deploy.' }]]);
+        const p = await open(name, device, name, ids.note, LOADS);
+        const before = await loads(p);
+        const { build: first, held, reloading } = await reloadHeld(p, device);
+        // The deploy: the next server serves another build before the first one's modules are asked for.
+        onNext = !onNext; await restartOn(onNext ? next : null);
+        const served = await servedBuild();
+        assert.ok(served && served !== first, `${device}: the server now serves another build than the page's index.html named`);
+        await held.let();
+        await reloading;
+        await comesUp(p, name, ids.note, `${device}: the page comes up, rather than stay blank`);
+        assert.equal(await loads(p), before + 2, `${device}: by one load of its own after the reload, no more`);
+        assert.equal(await pageBuild(p), served, `${device}: on the build the server serves`);
+        const seen = await loaded(p);
+        onOneBuild(seen, served, device);
+        assert.equal(seen.status, '', `${device}: saying nothing`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    } finally {
+      await restartOn(null);
+      rmSync(path.dirname(next), { recursive: true, force: true });
+    }
+  });
+
+  await check('reading edit build a page whose modules the server could not give says Theseus could not open this page, with Reload, and loads nothing by itself: a module lost on its own build, and the server away mid-deploy; Reload brings it up: on a laptop and at 390 by touch', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const name = `edit-build-said-${device}`;
+      const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page whose modules were lost.' }]]);
+      const p = await open(name, device, name, ids.note, LOADS);
+      for (const way of ['lost', 'away']) {
+        const what = `${device}, ${way}`;
+        const before = await loads(p);
+        const { build, held, reloading } = await reloadHeld(p, what);
+        if (way === 'away') await control({ method: 'server_stop' });
+        // Lost: the server serves the page's own build, so loading again would meet the same; away: nothing answers.
+        await held.let(way === 'lost');
+        await reloading;
+        await until(async () => (await loaded(p))?.status !== '', `${what}: the page says it could not open, rather than stay blank`, 15000)
+          .catch(async error => { throw Object.assign(error, { message: error.message + ' ' + JSON.stringify({ loads: await loads(p).catch(() => null), loaded: await loaded(p) }) }); });
+        const seen = await loaded(p);
+        assert.deepEqual({ status: seen.status, ready: seen.ready, readBuild: seen.readBuild, loads: await loads(p) },
+          { status: 'Theseus could not open this page.Reload', ready: null, readBuild: true, loads: before + 1 }, `${what}: in plain words with Reload, having read the build and loaded nothing by itself`);
+        assert.equal(await p.evaluate(`Boolean(document.querySelector('#app-status').getClientRects().length && document.querySelector('#app-status .updated-reload').getClientRects().length)`), true, `${what}: where the person sees it`);
+        await shot(p, `edit-build-said-${device}-${way}`);
+        if (way === 'away') {
+          const restarted = await control({ method: 'server_start' });
+          assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
+          facts.token = restarted.token;
+        }
+        assert.equal(await servedBuild(), build, `${what}: the server serves the page's build`);
+        await press(p, device, '#app-status .updated-reload');
+        await comesUp(p, name, ids.note, `${what}: Reload brings the page up`);
+        assert.equal(await loads(p), before + 2, `${what}: by the one load Reload asked for`);
+        onOneBuild(await loaded(p), build, what);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading edit build a page on one build, its modules slow but the server the same, loads once and reads no build; nor does a page opened plainly', async () => {
+    const name = 'edit-build-once';
+    const ids = await seed(name, [['note', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'A page on one build.' }]]);
+    const p = await open(name, 'laptop', name, ids.note, LOADS);
+    const served = await servedBuild();
+    let seen = await loaded(p);
+    assert.deepEqual({ loads: await loads(p), readBuild: seen.readBuild, status: seen.status }, { loads: 1, readBuild: false, status: '' }, 'opened plainly: one load, no build read, nothing said');
+    onOneBuild(seen, served, 'opened plainly');
+    const { build, held, reloading } = await reloadHeld(p, 'slow');
+    assert.equal(build, served, 'the page asks for the build the server serves');
+    await held.let();
+    await reloading;
+    await comesUp(p, name, ids.note, 'slow: the page comes up');
+    seen = await loaded(p);
+    assert.deepEqual({ loads: await loads(p), readBuild: seen.readBuild, status: seen.status }, { loads: 2, readBuild: false, status: '' }, 'slow: the reload alone, no build read, nothing said');
+    onOneBuild(seen, served, 'slow');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
   void DEVICES;
 }
