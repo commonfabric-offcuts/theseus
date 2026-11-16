@@ -423,16 +423,20 @@ until Core answers that same request (`web/stack-feed.mjs`, item 547):
   refused, as a restarted server does: "… Theseus restarted." None of these is
   called a lost connection.
 
-The acts are read again the first time, so the card shows what Core holds
-meanwhile. The act is kept with its exact request, and once Theseus has
-answered anything since (a read, another command, a commit on the live feed;
-never a timer) it goes again under the same operation. Core answers an
-operation it recorded with what it recorded, and records one it never saw, so
-the act is made once. That answer settles it, and its words go; an ask that
-fails, or a read that fails, settles nothing and waits for the next answer.
-Each act not settled is said, in the order made, so settling one leaves the
-others said. The page's own acts (a stack dealt with as the reader's reply
-arrives) are settled the same way without a word.
+The acts are read again at once the first time, so the card shows what Core
+holds meanwhile. The act is kept with its exact request, and once Theseus has
+answered anything since (that read, another command, a commit on the live
+feed; never a timer of its own) it goes again under the same operation. Core
+answers an operation it recorded with what it recorded, and records one it
+never saw, so the act is made once. That answer settles it, and its words go.
+An ask that fails, or a read that fails, settles nothing: an ask that got no
+answer at all reads the acts again, paced as the page's reads are when they
+fail, and a busy or unconfirmed answer waits for Theseus to answer something
+else. Each act not settled is said, in the order made, so settling one leaves
+the others said. The page's own acts (a stack dealt with as the reader's reply
+arrives) are settled the same way without a word. An act not settled when the
+page moves on in place still goes, from the page it was made on, until Core
+answers it.
 
 A refusal is said in words of its act: "Folding “…” was not saved: it changed
 on another tab or device. The card shows what Theseus holds." It goes at the
@@ -561,6 +565,9 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | an act whose answer is lost: said with its card until Core answers the same request again, then gone; made once; the page's own deal says nothing | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act whose answer is lost …" |
 | an act Theseus was too busy to take: said as busy, never as a lost connection, after the acts are read again; sent again under its operation | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Theseus was too busy to take …" |
 | two acts not settled: each said; a failed read or ask clears neither; one answered leaves the other | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks two acts not settled …" |
+| an act refused for a session the server no longer holds, as after a deploy restarts it | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act refused for a session …" |
+| an act Core refuses: said in words of its act and card, gone at the next act Core takes | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Core refuses …" |
+| a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
 
 `tests/acts.json` names the break each act must catch.
 
