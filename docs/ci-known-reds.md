@@ -75,7 +75,14 @@ The producer adapter is available; real hosted controller/status integration
 remains under joint review. This draft is not yet the required GitHub verdict.
 
 The reviewed base policy has version 1, source_commit, required (the complete
-release-check step list), source_hashes (Git blob hashes of inventory sources),
+release-check step list of the commit it reviewed: `load_policy` checks it, the
+inventory's steps, the harness sources and the admissions' steps, for the policy
+and each transition's plan alike, against one step list, by default that of the
+tools it runs from, the event base's here; a local deploy, which runs the
+candidate's tools, passes the step list of the policy's own source_commit, read
+at that commit, since the live commit may have added a step and left the policy
+as it was, and a policy whose steps differ from the candidate's admits nothing
+there), source_hashes (Git blob hashes of inventory sources),
 inventory (native/unit/deploy step to check identity lists), and reds. An identity records
 name, phase, engine and expectedFailure, including null/false defaults. This is
 an explicit inventory reviewed against the harness sources, not a count or an
