@@ -401,7 +401,9 @@ They show while a pointer is over the dossier, and are there to be found
 dossier or one of its messages is selected; by the keys, as soon as one of
 them holds the focus, or the dossier or one of its messages is selected. Their
 place is kept while they are hidden, so showing them moves nothing, and the
-tab's name leaves room for them. A message on its own has no title bar and no
+tab's name leaves room for them. Hidden by touch they take no press: a tap
+where ⋯ sits lands on the dossier beneath it, not on ⋯, until the dossier is
+selected; the keys still reach them. A message on its own has no title bar and no
 glyphs; a dossier being renamed and Only new show none.
 
 Each glyph is a real button beside the first message's card, after its
@@ -652,7 +654,7 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
-| the title bar's glyphs: shown under the pointer or once selected by touch, named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
+| the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
 | the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |
 | the message bar's Reply glyph, Show full message only on a cut-off message, Fold and Unfold, none on a starred message | `tests/stack_native.mjs`, "reading stacks the message bar's Reply is a glyph …", in Chrome and Safari's engine |
 | the message bar in the window: a go-ahead ask's bar, short and cut off, plain and with "Link copied", in one row at 390, 375 and 320 pixels with Fold and Show full message behind its ⋯ where they do not fit and back once they do, nothing put away on a laptop or where there is room | `tests/topic_reading_native.mjs`, "reading a go-ahead ask's bar keeps every button in the window …", in Chrome and Safari's engine |

@@ -14767,6 +14767,36 @@
    }
   },
   {
+   "item": 473,
+   "act": "By touch, at rest, a press at the title bar's hidden ⋯ does not land on it, at 320, 375 and 390 pixels",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
+     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0}\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "By touch, at rest, a press at the title bar's hidden ⋯ does not land on it, at 320, 375 and 390 pixels, in Safari's engine",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
+     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0}\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
    "item": 324,
    "act": "Only the outcome's owner or coordinator may invite an agent: Core refuses anyone else, a member too, whatever the page shows",
    "break": [
