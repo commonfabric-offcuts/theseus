@@ -12,6 +12,7 @@ import { cardIn } from './fold.mjs';
 import { navigationStops, shownSelected, stopAt } from './reply-stacks.mjs';
 import { keyAction, writing, pageItself } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
+import { reach as reachOn } from './arrow-reach.mjs';
 
 const shown = el => Boolean(el?.isConnected) && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 // On screen: shown, inside the window, and not behind an open drawer.
@@ -42,16 +43,18 @@ export function feedStop(doc, { first = false } = {}) {
 
 // The buttons at the top of the feed, in rows top down, each row's in their
 // order, those shown: the topic's or the Conversation's header, with Topic
-// settings, New message and the rest drawn there; then the row of view filters
-// just over the messages ("Read it", Only new, Show agent coordination). A row
-// with none shown is left out. The filters were once nobody's, so the keys on
-// one, reached by Tab or a click, moved nothing (item 403); as a row of these
-// the keys leave them like any other: ↑ and ↓ go from row to row.
+// settings, New message and the rest drawn there; on a phone the line under it
+// saying what is new in the other outcomes (outline-rail.mjs), a row of its
+// own; then the row of view filters just over the messages ("Read it", Only
+// new, Show agent coordination). A row with none shown is left out. The
+// filters were once nobody's, so the keys on one, reached by Tab or a click,
+// moved nothing (item 403); as a row of these the keys leave them like any
+// other: ↑ and ↓ go from row to row, and pass over none of them (item 301).
 export function headerRows(doc) {
   const usable = el => !el.disabled && shown(el) && !el.closest('[inert]');
-  return [['#main > .topic-header', 'button, a[href]'], ['#main > .feed-filters', 'button']].map(([row, each]) => {
+  return [['#main > .topic-header', 'button, a[href]'], ['#main > #outline-elsewhere', null], ['#main > .feed-filters', 'button']].map(([row, each]) => {
     const host = doc.querySelector(row);
-    return { host, buttons: host ? [...host.querySelectorAll(each)].filter(usable) : [] };
+    return { host, buttons: !host ? [] : (each ? [...host.querySelectorAll(each)] : [host]).filter(usable) };
   }).filter(row => row.buttons.length);
 }
 // Whether the keys are on the first message of the feed, the one at its top.
@@ -104,14 +107,18 @@ const landing = row => { const last = panes.button.get(row.host); return row.but
 
 // The keys on the buttons at the top of the feed, in row r: ← and → along its
 // buttons, and past either end on to the outline or the right rail as from the
-// messages; ↑ to the row above, nothing on the top one; ↓ to the row below, and
-// from the last on to the first message. Return and Space are the button's own.
-// Answers whether the keys moved.
+// messages; ↑ to the row above; ↓ to the row below, and from the last on to the
+// first message, or with none, on down the column. Return and Space are the
+// button's own. Answers whether the keys moved: what they leave unmoved (↑
+// from the top row, ← or → past an end with no rail on screen that way) goes
+// on to the nearest control that way in the column (arrow-reach.mjs, by
+// rails.mjs), so on a phone ↑ from Topic settings reaches the right rail's button above it.
 function headerKey(action, rows, r, doc) {
   const buttons = rows[r].buttons, at = buttons.indexOf(doc.activeElement);
   if (action === 'up') return r > 0 && reach(landing(rows[r - 1]));
   if (action === 'down' && r < rows.length - 1) return reach(landing(rows[r + 1]));
-  if (action === 'down') return panes.feed(doc, { first: true });
+  // With no message to go to (a Conversation not yet written in), on down the column: the reply.
+  if (action === 'down') return (Boolean(feedStop(doc, { first: true })) && panes.feed(doc, { first: true })) || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });
   if (action === 'left') return at > 0 ? reach(buttons[at - 1]) : panes.step('feed', 'left', doc);
   if (action === 'right') return at < buttons.length - 1 ? reach(buttons[at + 1]) : panes.step('feed', 'right', doc);
   return false;

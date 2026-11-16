@@ -439,7 +439,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.deepEqual([held.count, held.kind, held.after, held.faded], [1, 'new', ids[0], false], theme + ': read during the visit, the line holds where it was placed, still showing what is unread above it');
       // Opening the topic again places it afresh, under the oldest still unread.
       const again = await open(topic, 'new-line-again-' + theme, theme);
-      await until(async () => (await drawn(again)).after === next?.id, theme + ': opened again, the line is under the oldest still unread');
+      // Under the oldest still unread as the server has it then: the first page, still open, may read past next meanwhile.
+      await until(() => agreed(again, topic), theme + ': opened again, the line is under the oldest still unread')
+        .catch(async error => { throw Error(error.message + ' ' + JSON.stringify({ next: next?.id, now: (await unread(topic))?.id, drawn: await drawn(again) })); });
+      assert.notEqual((await drawn(again)).after, ids[0], theme + ': placed afresh, not where the visit before held it');
       await again.close();
       await p.send('Page.bringToFront');
       // Read to the end on screen: nothing at or above the line is unread, yet

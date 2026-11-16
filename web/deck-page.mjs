@@ -6,6 +6,7 @@ import { routeHref } from './topic-navigation.mjs';
 import { timeNode } from './times.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { revealSelection } from './reveal.mjs';
+import { reach } from './arrow-reach.mjs';
 
 export const UNDO_LIMIT = 50;
 const KEYS = '↑ ↓ pick · ⇧↑ ⇧↓, ⌘-click select · ⌘↑ ⌘↓ move · ⇧⌘↑ ⇧⌘↓ merge · Tab under the card above, ⇧Tab out · ← fold, → unfold, ⇧⌘← ⇧⌘→ all · Return new card, ⌥Return above · click or ⌘Return edit, Escape done · ⌘⌫ remove · ⌘Z undo · → its speech bubble';
@@ -383,6 +384,12 @@ export class DeckPage {
     if (bubble && (event.key === 'Enter' || event.key === ' ')) return;
     if (bubble && event.key === 'ArrowLeft') { event.preventDefault(); this.show(true); return; }
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
+    // Past the first card or the last, the arrow goes on to what lies that way
+    // on the page: the bar above the cards, the header (arrow-reach.mjs). With
+    // nothing focused the arrows stay the deck's, picking a card; but on a
+    // phone, where a pick moves no focus, so past the edge they go on too.
+    const plainArrow = !command && !event.shiftKey && !event.altKey && (this.list.contains(event.target) || (this.phone && event.target === this.doc.body));
+    if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }
     if ((up || down) && command && !event.altKey && event.shiftKey) this.act({ kind: 'merge', text, step: up ? -1 : 1, near });
     else if ((up || down) && command && !event.altKey) this.actOn('move', up ? -1 : 1);
     else if ((up || down) && event.shiftKey && !event.altKey) this.extend(this.beside(this.picked, up ? -1 : 1));
@@ -453,6 +460,11 @@ export class DeckPage {
     else if (children && folded) this.fold(i);
     else if (!command) this.toBubble();
     else if (children) this.pick(i + 1);
+  }
+  // The arrow on from the picked card to what lies that way.
+  handOn(way) {
+    const from = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
+    return Boolean(from) && reach(from, way, { doc: this.doc });
   }
   // → or ⌥→: the picked card's speech bubble takes the focus, and ← gives it back to the card.
   toBubble() {

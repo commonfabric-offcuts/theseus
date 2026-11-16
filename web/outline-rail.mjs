@@ -148,7 +148,9 @@ export class OutlineRail {
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
-    this.tree = new KeyTree({ root: this.list, doc: this.doc, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, also: [this.newOutcome] });
+    // ↑ above its first row (New outcome, the heading's pencil) and ↓ below its last go on in the side rail: up to the
+    // chips and the logo block, down to Keys (arrow-reach.mjs).
+    this.tree = new KeyTree({ root: this.list, doc: this.doc, column: this.host.closest('.rail') ?? this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, also: [this.newOutcome] });
     // ⇧⌘→ and ⇧⌘← open and fold every outcome from anywhere in the outline:
     // its rows (the tree hears those), its chips, New outcome or its Keys.
     this.host.addEventListener('keydown', event => {

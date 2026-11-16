@@ -15,6 +15,7 @@ const SIMPLE = {
   'button:not([disabled])': e => e.tag === 'button' && !e.disabled,
   '#rail-open': e => e.id === 'rail-open',
   '[data-opens-rail]': e => 'data-opens-rail' in e.attrs,
+  '[inert]': e => e.inert,
 };
 const matches = (e, selector) => selector.split(', ').some(one => {
   if (!SIMPLE[one]) throw Error('unexpected selector ' + one);
@@ -36,8 +37,10 @@ function page({ current = 't2', place = null } = {}) {
     closest(selector) { for (let at = this; at; at = at.parent) if (matches(at, selector)) return at; return null; }
     all() { return this.children.flatMap(kid => [kid, ...kid.all()]); }
     querySelector(selector) { return this.all().find(e => matches(e, selector)) ?? null; }
+    querySelectorAll(selector) { return this.all().filter(e => matches(e, selector)); }
     focus(options) { doc.activeElement = this; this.focusedWith = options ?? {}; }
     scrollIntoView(options) { this.scrolled.push(options); }
+    checkVisibility() { for (let at = this; at; at = at.parent) if (at.hidden) return false; return true; }
   }
   const topic = id => new El('a', { classes: ['nav-item'], attrs: { href: '/?topic=' + id, ...(id === current ? { 'aria-current': 'page' } : {}) } }).add(new El('span'));
   const wordmark = new El('a', { classes: ['wordmark'], attrs: { href: '/' } });
@@ -97,6 +100,32 @@ test('where the rail puts the focus itself as the drawer opens, the drawer leave
   assert.deepEqual(p.topics[2].focusedWith, { preventScroll: true, focusVisible: true }, 'as the rail gave it: the drawer does not focus it again');
   assert.deepEqual(p.topics[2].scrolled, [{ block: 'center' }], 'and it is brought to the middle');
   assert.deepEqual(p.topics[1].scrolled, [{ block: 'center' }], 'the open topic is not scrolled to again');
+});
+
+test('the drawer opens on the open topic where it is live, never in a list kept on show, inert, while the outline draws its own', () => {
+  const p = page();
+  // The list the run before drew stays in view, before the new one, and nothing in it acts (outline-rail.mjs).
+  const kept = new p.El('ul'); kept.inert = true;
+  const stale = new p.El('a', { classes: ['nav-item'], attrs: { href: '/?topic=t2', 'aria-current': 'page' } });
+  kept.add(stale); p.rail.children.unshift(kept); kept.parent = p.rail;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.topics[1], 'the focus is on the live open topic, not the inert one before it');
+  // With only inert places, the first live control.
+  p.press(p.control);
+  for (const topic of p.topics) delete topic.attrs['aria-current'];
+  kept.children.unshift(new p.El('a', { attrs: { href: '/' } })); kept.children[0].parent = kept;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.wordmark, 'no live open topic: the first live place, past the inert list');
+});
+
+test('the drawer opens on the open topic where it shows, never its copy in a list not drawn', () => {
+  const p = page();
+  // The topic list the outline stands in for, still in the page but not drawn, before the outline's own.
+  const undrawn = new p.El('ul'); undrawn.hidden = true;
+  undrawn.add(new p.El('a', { classes: ['nav-item'], attrs: { href: '/?topic=t2', 'aria-current': 'page' } }));
+  p.rail.children.unshift(undrawn); undrawn.parent = p.rail;
+  p.press(p.control);
+  assert.equal(p.doc.activeElement, p.topics[1], 'the focus is on the open topic that shows');
 });
 
 test('with no open topic in it, the drawer opens on the first place it can go', () => {
