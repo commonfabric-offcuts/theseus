@@ -2561,7 +2561,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const [a, b] = [boxes[i], boxes[j]];
       assert.ok(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0], `${at}: ${seen.shown[i].id} and ${seen.shown[j].id} never draw over each other: ${JSON.stringify(seen)}`);
     }
-    for (const item of seen.shown) assert.ok(item.ownMiddle, `${at}: nothing draws over ${item.id}: ${JSON.stringify(seen)}`);
+    // What is in sight shows itself: nothing draws over it. (In the phone's drawer scrolled down they are out of sight, above.)
+    for (const item of seen.shown.filter(each => each.inRail)) assert.ok(item.ownMiddle, `${at}: nothing draws over ${item.id}: ${JSON.stringify(seen)}`);
   };
 
   await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
