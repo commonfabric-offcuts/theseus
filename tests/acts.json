@@ -19435,6 +19435,76 @@
    "check": {
     "python": "test_migrations.py"
    }
+  },
+  {
+   "item": 363,
+   "act": "With the To line under the who chip and a long reply, a phone with the keyboard up still shows 7 lines of the message",
+   "break": [
+    [
+     "web/aim.css",
+     ".composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0;margin-bottom:.15rem}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone light: reading shows at least 18 lines"
+   }
+  },
+  {
+   "item": 363,
+   "act": "With the To line under the who chip and a long reply, a stacked laptop Reader still shows 17 lines of the message",
+   "break": [
+    [
+     "web/aim.css",
+     ".composer[data-compose=writing]>.compose-head:has(>.to-note:not([hidden])){row-gap:0;margin-bottom:.15rem}\n",
+     ""
+    ],
+    [
+     "web/aim.css",
+     "font-size:.75rem;line-height:1.2;white-space:nowrap",
+     "font-size:.75rem;white-space:nowrap"
+    ],
+    [
+     "web/aim.css",
+     "  .composer[data-compose=writing]:has(>.compose-head>.to-note:not([hidden])){padding-top:.35rem}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium laptop stacked light: the message fills"
+   }
+  },
+  {
+   "item": 363,
+   "act": "The writing at the topic page's end stays where it was when a reply arriving shrinks what is above it by more than the page is scrolled",
+   "break": [
+    [
+     "web/app.mjs",
+     "  list.style.paddingBottom = `${short}px`;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "inline",
+    "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
+   "item": 363,
+   "act": "The room the list kept to hold the writing is given back once the page can hold it by scrolling",
+   "break": [
+    [
+     "web/app.mjs",
+     "  // Room an earlier hold kept is given back first; the hold measures without it.\n  list.style.paddingBottom = '';\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "inline",
+    "case": "inline find restore owner switch arrival and exact source-free send"
+   }
   }
  ]
 }
