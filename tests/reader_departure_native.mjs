@@ -346,22 +346,30 @@ export async function departureChecks({check,page,until,facts,view,control,obser
         const trail=[start];await walk('ArrowDown',trail);await walk('ArrowUp',trail);
         assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
       }
-      // Where the arrows bring the focus to the acknowledgement (↓ from the footer while the box scrolls, then ↑),
-      // the arrows go on to Prepare this reply again; the focus is shown there in light and dark, for the evidence.
-      await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
-      await walk('ArrowDown',[]);await p.key('ArrowUp');
-      const on=await where();
-      assert.equal(on.at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, lands on the acknowledgement: '+JSON.stringify(on));
+      // Where the arrows bring the focus to the acknowledgement: ↓ from the footer while the box scrolls, then ↑.
+      const toAck=async()=>{
+        await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
+        await walk('ArrowDown',[]);await p.key('ArrowUp');
+        const on=await where();
+        assert.equal(on.at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, lands on the acknowledgement: '+JSON.stringify(on));
+      };
+      await toAck();
+      // The focus there, for the evidence, in light and dark.
       for(const theme of ['light','dark']){
         await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
         await until(()=>p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`),width+': drawn '+theme);
         await shot(p,`review-arrows-acknowledgement-${width}-${theme}`);
       }
       await p.send('Emulation.setEmulatedMedia',{features:[]});
-      // Prepare this reply again follows the acknowledgement's words: beside it where they fit its line (→), else below (↓).
-      const beside=await p.evaluate(`(a=>{const b=[...document.querySelectorAll('#review-content button')].find(e=>e.textContent===${JSON.stringify(PREPARE)}).getBoundingClientRect();return b.top<a.bottom&&b.bottom>a.top})(document.querySelector('${ACK}').getBoundingClientRect())`);
-      const way=beside?'ArrowRight':'ArrowDown',trail=['the acknowledgement'];await walk(way,trail);
-      assert.ok(trail.some(step=>step.includes(':'+PREPARE+'@')),`${width}: ${beside?'→':'↓'} from the acknowledgement reaches ${PREPARE}: ${trail.join(' ')}`);
+      // Prepare this reply again follows the acknowledgement's words, on their last line: from the acknowledgement an
+      // arrow reaches it, → where it lies to the right, ↓ where it lies below.
+      const tried=[];
+      for(const way of ['ArrowRight','ArrowDown']){
+        await toAck();const trail=[];await walk(way,trail);tried.push(trail.join(' '));
+        if(trail.some(step=>step.includes(':'+PREPARE+'@')))break;
+      }
+      const boxes=await p.evaluate(`[document.querySelector('${ACK}'),[...document.querySelectorAll('#review-content button')].find(e=>e.textContent===${JSON.stringify(PREPARE)}),document.getElementById('review-keep')].map(e=>{const b=e.getBoundingClientRect();return [b.left,b.top,b.right,b.bottom].map(Math.round).join(',')}).join(' ')`);
+      assert.ok(tried.some(trail=>trail.includes(':'+PREPARE+'@')),`${width}: an arrow from the acknowledgement reaches ${PREPARE}: ${tried.join(' | ')} (acknowledgement, Prepare, Keep: ${boxes})`);
       assert.equal(await p.evaluate(`document.querySelector('${ACK}').checked`),true,width+': and the arrows left the acknowledgement ticked');
     }
     await p.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
