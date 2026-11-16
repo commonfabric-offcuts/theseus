@@ -472,9 +472,9 @@ async function run() {
     ['unavailable', 'The source is unavailable. Your private writing is kept.', 'shown'],
     ['available, topic updates paused', 'This source is available. Topic updates remain paused.', 'hidden'],
     ['unavailable, topic updates paused', 'The source is unavailable. Your private writing is kept. Topic updates are paused. Retry access checks only this source.', 'shown'],
-  ]) await check(`access notice ${state}: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, ${retry === 'hidden' ? 'no Retry access' : `Retry access ${retry === 'waiting' ? 'waiting ' : ''}at 44px`}; on a laptop its room as before`, async () => {
-    for (const shape of ['stacked', 'phone-320', 'phone-375', 'phone-390']) {
-      const p = await page(shape);
+  ]) await check(`access notice ${state}: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, ${retry === 'hidden' ? 'no Retry access' : `Retry access ${retry === 'waiting' ? 'waiting ' : ''}at 44px`}; on a laptop its room as before, light and dark`, async () => {
+    for (const scheme of ['light', 'dark']) for (const shape of ['stacked', 'phone-320', 'phone-375', 'phone-390']) {
+      const p = await page(shape, scheme);
       await open(p, second);
       // Painted and measured at once: the layout read is the one the state gives.
       const at = await p.evaluate(([words, retry]) => {
@@ -493,12 +493,12 @@ async function run() {
           retry: button.getClientRects().length ? [Math.round(button.getBoundingClientRect().width), Math.round(button.getBoundingClientRect().height)] : null, over,
           sideways: document.documentElement.scrollWidth > innerWidth };
       }, [words, retry]);
-      measured.push({ engine, shape, scheme: 'light', state: `access notice ${state}`, ...at });
+      measured.push({ engine, shape, scheme, state: `access notice ${state}`, ...at });
       await shot(p, `access-${state.replace(/[^a-z]+/g, '-')}`);
       const phone = shape.startsWith('phone');
       // The pane's own room above what it shows first, as before item 593: .5rem on a phone, .9rem on a laptop.
       assert.deepEqual([at.twoRows, at.gap, at.overMessage <= 0, at.over, at.sideways], [phone, phone ? 8 : 14.4, true, [], false],
-        `${shape}: the notice keeps the pane's room under the header, and sits over nothing: ${JSON.stringify(at)}`);
+        `${shape} ${scheme}: the notice keeps the pane's room under the header, and sits over nothing: ${JSON.stringify(at)}`);
       if (retry === 'hidden') assert.equal(at.retry, null, `${shape}: no Retry access while access is not blocked`);
       else assert.ok(at.retry && (!phone || Math.min(...at.retry) >= 44), `${shape}: Retry access shows${phone ? ', 44px' : ''}: ${JSON.stringify(at)}`);
       await close(p);
