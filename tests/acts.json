@@ -19435,6 +19435,51 @@
    "check": {
     "python": "test_migrations.py"
    }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, a read out when its page navigates is \"not yet\": until() waits for the page it went to and reads it, instead of throwing \"Execution context was destroyed\"",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "      if (!error.navigation) throw error;\n",
+     "      throw error;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until reads on through a navigation"
+   }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, any error but a destroyed context still ends until() at once: a read the page refuses, and a read of a closed page, are each read once",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "catch (error) { throw DESTROYED.test(error.message) ? Object.assign(error, { navigation: nextDocument(opened, seen) }) : error; }",
+     "catch (error) { throw Object.assign(error, { navigation: nextDocument(opened, seen) }); }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until throws any other error at once"
+   }
+  },
+  {
+   "item": 418,
+   "act": "In the WebKit harness, until() waits for the page a read left to within its own bound: a page gone to a document that never loads times out there, with no read again",
+   "break": [
+    [
+     "tests/webkit_native.mjs",
+     "      if (!await within(error.navigation, deadline - Date.now())) { left = ' (its page left during a read, and the page it went to never had its document)'; break; }\n",
+     "      await error.navigation;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook harness until still times out at its own bound"
+   }
   }
  ]
 }
