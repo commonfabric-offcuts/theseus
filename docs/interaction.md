@@ -331,7 +331,8 @@ rule above. (`web/arrow-reach.mjs`)
   that takes no focus is no such way in, so what it has scrolled out of sight
   lies where it is drawn, and is scrolled toward: in a reply's review, with
   versions taller than its box, ↓ from Keep both for now below scrolls the
-  versions toward the acknowledgement, and ↑ then lands on it. From a control
+  versions toward the acknowledgement and Prepare this reply again, and ↑
+  then reaches them. From a control
   in a box that scrolls, the box scrolls toward the next one out of sight in
   it, and the focus scrolled out of the box meanwhile is where it went out, on
   the box's edge, never over what lies past it.
