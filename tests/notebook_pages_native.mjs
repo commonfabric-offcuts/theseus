@@ -347,6 +347,11 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const item = `nb-rail-page-${String(n).padStart(2, '0')}`;
       assert.equal((await control({ method: 'outcome_reference', operation_id: item, item_id: item, workspace_id: many, title: `Rail page ${n}`, body: `Page ${n}.` })).status, 'committed');
     }
+    // A preview posted in its Conversation, so a section follows the Notebook for ↓ to reach (Skills and tools, which
+    // once always followed it, now hides when the place has none: docs/skills-and-tools.md).
+    const talk = (await view('conversation', { workspace_id: many })).conversation.topic_id;
+    assert.equal((await control({ method: 'agent_message', operation_id: 'nb-rail-many-preview', topic_id: talk, sender: 'person',
+      body: 'The pages as they stand: http://bench.example.ts.net:5192/preview/pages.' })).status, 'committed');
     const SIZE = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, 320: { width: 320, height: 700, deviceScaleFactor: 2, mobile: true },
       375: { width: 375, height: 760, deviceScaleFactor: 2, mobile: true }, 390: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
     const ROWS = RAIL_NOTEBOOK + ' .things-list a.row', MORE = RAIL_NOTEBOOK + ' .things-more';
