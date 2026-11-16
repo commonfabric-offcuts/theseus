@@ -2601,6 +2601,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       if (laptop) await p.point(row); else await tap(p, row);
       await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
+      // The phone's drawer closes as a row is tapped; the notices are read in it, opened again.
+      if (!laptop && !(await drawer(p)).open) { await p.evaluate('scrollTo(0,0)'); await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens again'); }
       const both = await until(async () => { const seen = await notices547(p); return seen.shown.length === 2 ? seen : null; }, at + ': both notices show').catch(async error => {
         throw Error(`${error.message}: ${JSON.stringify(await notices547(p))} ${await p.evaluate("JSON.stringify({status:document.getElementById('app-status').outerHTML.slice(0,300),drawer:document.getElementById('rail').className})")}`); });
       assert.ok(both);
