@@ -310,7 +310,10 @@ bound CLI instructions. `model_reasoning_effort` is set when selected.
    where the message and delivery ids are Core's, and the topic and author ids
    appear only when they are plain tokens (letters, digits, `.`, `_`, `-`,
    starting with a letter or digit); otherwise the line says `(not shown: run
-   inbox)`. A `Read: aim-next read T --after S` line is written for each plain
+   inbox)`. A delivery carrying `name_it` adds `; its dossier has no name and
+   you name it: mint ROOT --expected N "two to five words"` to its line, once
+   per dossier ([reply-stacks.md](reply-stacks.md#minted-names-479)). A
+   `Read: aim-next read T --after S` line is written for each plain
    topic id only. Titles (cut at 80 characters), the full ids and previews are
    other people's words: they never enter the text, and travel as
    `additionalContext` `theseus.previews.<attempt_id>` of kind `untrusted`, one

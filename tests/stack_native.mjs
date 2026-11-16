@@ -4352,6 +4352,83 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 479: a minted name. When the first reply on the record lands in a dossier nobody has named, its namer (the
+  // outcome's coordinator when it is an agent taking part in the topic, or else the first agent to reply) mints a name, and the tab says "Named by" it on its
+  // second line, at every width, in light and dark. Core refuses a mint from anyone else, and a name the person types
+  // replaces the minted one and its mark. The page never mints: a mint is the agent's act, arriving as any act does.
+  await check('reading stacks a minted name says Named by the agent that minted it in the dossier\'s tab, on a laptop and phones 320 to 390 wide, light and dark, folded and open; a mint from anyone else is refused, and a name the person types replaces it and its mark', async () => {
+    const minter = 'aim-ux', words = 'Cabin week plan';
+    // The tab, as a person sees it: its name, its "Named by" mark (null without one), whether the two keep to the
+    // tab's two lines inside the dossier, whether the mark's words show whole (an agent's name as short as aim-ux
+    // is never cut, even at 320: the count gives way first), and the mark's contrast on the folder.
+    const tab = (p, id) => p.evaluate(`(()=>{const c=document.querySelector('#messages .message-card[data-id="${id}"]'),row=c?.querySelector(':scope > .stack-head');
+      if(!row)return null;const n=row.querySelector('.stack-name'),m=row.querySelector('.stack-named'),s=c.closest('.reply-stack'),box=e=>e.getBoundingClientRect();
+      if(!m)return {name:n.textContent,named:null,title:n.title,sideways:document.documentElement.scrollWidth>innerWidth};
+      const r=box(row),nb=box(n),mb=box(m),sb=box(s),who=box(row.querySelector('.stack-who'));
+      const pixel=color=>{const x=document.createElement('canvas').getContext('2d');x.fillStyle=color;x.fillRect(0,0,1,1);return [...x.getImageData(0,0,1,1).data].slice(0,3)},
+        lum=a=>a.map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((t,v,i)=>t+v*[.2126,.7152,.0722][i],0),
+        contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
+      return {name:n.textContent,named:m.textContent,title:n.title,markTitle:m.title,
+        secondLine:mb.top>=nb.bottom-2&&Math.abs(mb.top-who.top)<2,inTab:mb.left>=r.left-.5&&mb.right<=r.right+.5&&mb.bottom<=r.bottom+.5,inDossier:r.right<=sb.right+.5,
+        whole:m.scrollWidth<=m.clientWidth+.5,contrast:Math.round(contrast(pixel(getComputedStyle(m).color),pixel(getComputedStyle(row).backgroundColor))*100)/100,
+        sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-minted-' + device;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Can we lock the cabin for the week of July 12 before Friday?', read: true }],
+        ['reply', { sender: minter, join: true, reply_to: 'root', addressees: [facts.actor], body: 'Friday works; I will book it.', read: true }],
+        ['last', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Booked for the twelfth.', read: true }]]);
+      const p = await open(topic, device, topic, ids.root);
+      // Unnamed, the tab shows the first line and no mark.
+      await becomes(async () => { const t = await tab(p, ids.root); return t && [t.name, t.named]; }, ['Can we lock the cabin for the week of July 12 before Friday?', null], `${device}: unnamed, the first line and no mark`);
+      // Core says who names it, and refuses anyone else's mint: here the first agent to reply, as w1 has no coordinator.
+      const namer = await control({ method: 'agent_view', actor: minter, name: 'stack_namer', args: { message_id: ids.last } });
+      assert.deepEqual([namer.root_id, namer.namer, namer.name_revision], [ids.root, minter, 0], `${device}: the first agent to reply names it`);
+      const refused = await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-not-the-namer`, args: { name: 'Not the namer', minted: true } });
+      assert.equal(refused.error?.code, 'NOT_THE_NAMER', `${device}: the root's author, who did not reply first, may not mint it`);
+      const minted = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-mint`, args: { name: words, minted: true } });
+      assert.equal(minted.status, 'committed', `${device}: the namer mints it`);
+      // The mint arrives as any act does: the tab takes the name and says who named it, with no reload.
+      await becomes(async () => { const t = await tab(p, ids.root); return t && [t.name, t.named && t.named.startsWith('Named by ') && t.named.includes(minter)]; }, [words, true], `${device}: the minted name arrives with its mark`);
+      for (const level of ['folded', 'open']) {
+        if (level === 'open') await fullyOpen(p, device, ids);
+        for (const width of device === 'phone' ? [390, 375, 320] : [1280]) {
+          if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+          for (const theme of ['light', 'dark']) {
+            await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+            await becomes(async () => { const t = await tab(p, ids.root); return t && { secondLine: t.secondLine, inTab: t.inTab, inDossier: t.inDossier, whole: t.whole, sideways: t.sideways }; },
+              { secondLine: true, inTab: true, inDossier: true, whole: true, sideways: false }, `${device} ${width}px ${theme} ${level}: the mark keeps to the tab's second line, inside the dossier, its words whole`);
+            const seen = await tab(p, ids.root);
+            assert.ok(seen.contrast >= 4.5, `${device} ${width}px ${theme}: the mark reads at 4.5 or more on the folder: ${seen.contrast}`);
+            assert.match(seen.markTitle, /^Named by .* when the first reply landed/, 'its tooltip says how it was named');
+            observations.push({ name: 'minted name', engine, device, width, theme, level, ...seen });
+            await shot(p, `stack-minted-${device}-${width}-${level}-${theme}`);
+          }
+        }
+      }
+      // A second mint, even the namer's, is refused: a dossier is minted once.
+      const again = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-again`, args: { name: 'Another name entirely', minted: true } });
+      assert.equal(again.error?.code, 'ALREADY_NAMED', `${device}: minted once`);
+      if (device === 'laptop') {
+        // The person's name replaces the minted one, and the mark goes: a typed name says who typed it in its tooltip.
+        const input = `#messages .reply-stack[data-stack="${ids.root}"] .stack-rename-input`;
+        await centre(p, `${card(ids.root)} .stack-name`);
+        await p.point(`${card(ids.root)} .stack-name`);
+        await until(() => p.evaluate(`document.activeElement?.matches?.(${JSON.stringify(input)})`), `${device}: the minted name opens to rename`);
+        assert.equal(await p.evaluate(`document.activeElement.value`), words, `${device}: starting from the minted name`);
+        await p.evaluate(`document.activeElement.select()`);
+        await p.send('Input.insertText', { text: 'Cabin, July 12' });
+        await p.key('Enter');
+        await until(async () => (await actsOf(topic, ids.root))?.name?.text === 'Cabin, July 12', `${device}: Core holds the typed name`);
+        assert.equal((await actsOf(topic, ids.root)).name.minted, undefined, `${device}: a typed name is not minted`);
+        await becomes(async () => { const t = await tab(p, ids.root); return t && [t.name, t.named, /^Named by You for everyone here/.test(t.title)]; }, ['Cabin, July 12', null, true], `${device}: the typed name, no mark, and its tooltip says the person named it`);
+        const late = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-late`, args: { name: words, minted: true } });
+        assert.equal(late.error?.code, 'ALREADY_NAMED', `${device}: a typed name is never replaced by a mint`);
+        assert.equal((await tab(p, ids.root)).name, 'Cabin, July 12', `${device}: and the person's name stays`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 433: an act's answer lands on the message the page holds when it lands. A 👍's read of its message's
   // reactions, or a page of messages, puts a new copy of the message in the page while an act about it is out;
   // the answer once went only to the copy the act began with, so the card was drawn again from the copy as Core

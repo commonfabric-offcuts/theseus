@@ -21,6 +21,8 @@ import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
+// The narrower phones a look is checked at, beside DEVICES' phone (390): a page opened at one of these only looks.
+const NARROW = { 'phone-320': { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, 'phone-375': { width: 375, height: 812, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
 // A message's card: the entry itself, or the card a folded line holds; either carries its id.
 const card = id => `#messages .message-card[data-id="${id}"]`;
@@ -69,7 +71,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
   // query: the page's address after the origin, the topic's page unless given.
   const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic) => {
-    const metrics = DEVICES[device];
+    const metrics = DEVICES[device] ?? NARROW[device];
     const p = await page(name, null, true, { url: facts.origin + query, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
@@ -1034,6 +1036,170 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(covers, false, device + ': the bar does not cover the reply arrow');
       assert.deepEqual(q.errors, []);
       await q.close();
+    }
+  });
+
+  // Item 475: after the person posts, the Conversation's three dots show on their message until the first reply from
+  // anyone else (aim_next/stacks.py, awaiting_fields; web/card-reading.mjs). How a message's dots stand on the page:
+  // null when it draws none; else how many, their name, whether they show inside the card, how many pulse, and whether
+  // each dot is in the card's own ink, read in one look.
+  const WAITING = 'Waiting for a reply';
+  const dots = (p, id) => p.evaluate(`(c=>{const w=c&&c.querySelector(':scope > .reply-wait .item-waiting');if(!w)return null;
+    const b=w.getBoundingClientRect(),k=c.getBoundingClientRect(),ink=getComputedStyle(c).color;
+    return {count:w.children.length,role:w.getAttribute('role'),label:w.getAttribute('aria-label'),title:w.title,
+      shown:b.width>0&&b.height>0&&w.getClientRects().length>0,inside:b.left>=k.left&&b.right<=k.right&&b.top>=k.top&&b.bottom<=k.bottom,
+      running:[...w.children].filter(d=>getComputedStyle(d).animationName==='item-waiting').length,
+      ink:[...w.children].every(d=>getComputedStyle(d).backgroundColor===ink)}})(document.querySelector(${JSON.stringify(card(id))}))`);
+  const showing = d => d !== null && d.count === 3 && d.role === 'img' && d.label === WAITING && d.title === WAITING && d.shown && d.inside && d.ink;
+  // What Core says of each of the person's messages in a topic: whether it waits for a reply, by its words.
+  const waits = async topic => Object.fromEntries((await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+    .filter(item => item.author_id === facts.actor).map(item => [item.body, item.awaiting_reply]));
+  // The person writes in the topic's composer and sends, as they do; the id Core gives the message, once its card is drawn.
+  const post = async (p, device, topic, text) => {
+    await into(p, device, '#inline-writing-body');
+    await p.send('Input.insertText', { text });
+    await until(async () => await valueOf(p, '#inline-writing-body') === text, `${device} composer: "${text}" is written`);
+    await centre(p, '#inline-send');
+    await press(p, device, '#inline-send');
+    const id = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+      .find(item => item.author_id === facts.actor && item.body === text)?.id, `${device}: Core holds "${text}"`);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})) && window.fetchesOut === 0`), `${device}: "${text}" is drawn and the page has no read out`);
+    return id;
+  };
+  // A reload, waited on as a new document holding every card named.
+  const reload = async (p, ids) => {
+    await front(p);
+    const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && window.fetchesOut === 0 &&
+      ${JSON.stringify(ids)}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with every card');
+  };
+
+  await check('reading dots after the person posts to an agent show on their message until anyone else replies: their own next message and a whisper draw none and clear none, a reply in another dossier clears nothing, and a reload keeps each', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-' + device;
+      const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }]]);
+      const p = await open('reading-dots-' + device, device, topic, ids.a);
+      // Posted to aim-core, which takes part: three dots, in the card's ink, named for a screen reader and the pointer.
+      // That they pulse is the Conversation's own element and its check (conversation_native.mjs, item 389); a hosted
+      // runner's Chrome may run no CSS animation (the 459 runner-only conversation dots red), so here it is recorded only.
+      const first = await post(p, device, topic, '@aim-core can you check the build?');
+      await until(async () => showing(await dots(p, first)), `${device}: the dots show on the person's message`);
+      observations.push({ name: 'reading dots pulse', engine, device, running: (await dots(p, first)).running });
+      assert.equal(await dots(p, ids.a), null, device + ': none on aim-core\'s message');
+      await shot(p, 'reading-dots-' + device);
+      // The person's own second message waits too, and ends nothing.
+      const second = await post(p, device, topic, 'And the release notes, when you can.');
+      await until(async () => showing(await dots(p, second)), `${device}: the second message waits too`);
+      assert.ok(showing(await dots(p, first)), device + ': the person\'s own second message leaves the first one\'s dots');
+      // A whisper of theirs draws none, and clears none.
+      const whisper = (await control({ method: 'agent_message', operation_id: topic + '-whisper', topic_id: topic, source: 'topic', sender: 'person',
+        whisper: true, addressees: ['aim-core'], body: 'Just between us.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(whisper))})) && window.fetchesOut === 0`), device + ': the whisper is drawn');
+      assert.equal(await dots(p, whisper), null, device + ': never on a whisper');
+      assert.ok(showing(await dots(p, first)) && showing(await dots(p, second)), device + ': a whisper clears nothing');
+      // The topic's first message was the person's, before aim-core took part: nobody else received it.
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the build?': true, 'And the release notes, when you can.': true, 'Just between us.': false },
+        device + ': Core says the same');
+      // A reload keeps it: the page reads it from the topic, not from what it drew.
+      await reload(p, [first, second, whisper]);
+      await until(async () => showing(await dots(p, first)) && showing(await dots(p, second)), `${device}: loaded again, both still wait`);
+      assert.equal(await dots(p, whisper), null, device + ': loaded again, the whisper draws none');
+      // aim-core answers the first: its dots go while the page is open; the second, in a dossier of its own, still waits.
+      const answer = (await control({ method: 'agent_message', operation_id: topic + '-answer', topic_id: topic, sender: 'aim-core', reply_to: first,
+        body: 'Looking at the build now.' })).result.message_id;
+      await until(async () => await dots(p, first) === null && Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(answer))})`)), `${device}: aim-core's reply ends the first one's dots`);
+      assert.ok(showing(await dots(p, second)), device + ': a reply in another dossier ends nothing');
+      assert.equal(await dots(p, answer), null, device + ': none on aim-core\'s reply');
+      // Another person answers the second: a person's reply ends it as an agent's does.
+      await control({ method: 'agent_message', operation_id: topic + '-person', topic_id: topic, sender: 'fixture-other-person', join: true, reply_to: second,
+        body: 'I have the release notes.' });
+      await until(async () => await dots(p, second) === null, `${device}: another person's reply ends the second one's dots`);
+      await reload(p, [first, second, answer]);
+      assert.deepEqual([await dots(p, first), await dots(p, second)], [null, null], device + ': loaded again, neither waits');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the build?': false, 'And the release notes, when you can.': false, 'Just between us.': false },
+        device + ': and Core says so');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // Item 475's words, "until the first reply from anyone else" (warp's ruling, codex #5267): a reply that answers the
+  // message from another stack, an agent's thumbs-up on it, and a message naming the person each end the dots.
+  await check('reading dots end on a reply joined to another stack, an agent\'s thumbs-up and a message naming the person in a subject of its own, and a reload keeps each ended; a person\'s thumbs-up and a message to nobody end none', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-outside-' + device;
+      const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }],
+        ['p', { sender: 'fixture-other-person', join: true, body: 'Another person is here too.' }]]);
+      const p = await open('reading-dots-outside-' + device, device, topic, ids.a);
+      const drawn = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})) && window.fetchesOut === 0`);
+      // aim-core answers the first message, and someone joins the answer to another stack: it still answers it.
+      const joined = await post(p, device, topic, '@aim-core can you check the notes?');
+      await until(async () => showing(await dots(p, joined)), `${device}: the first message waits`);
+      const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, sender: 'aim-core', reply_to: joined,
+        body: 'Checked the notes.' })).result.message_id;
+      await until(async () => await dots(p, joined) === null && await drawn(reply), `${device}: aim-core's reply ends the first one's dots`);
+      await control({ method: 'stack_act', sender: 'fixture-other-person', kind: 'stack.join', message_id: reply, operation_id: topic + '-join', args: { into: ids.p } });
+      await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+        .find(item => item.id === reply)?.stack_position.root_id === ids.p, `${device}: Core holds the reply in the other person's stack`);
+      // A person's thumbs-up is no reply; aim-core's is.
+      const thumbed = await post(p, device, topic, '@aim-core and the release, when you can?');
+      await until(async () => showing(await dots(p, thumbed)), `${device}: the second message waits`);
+      const thumbs = () => p.evaluate(`document.querySelector(${JSON.stringify(card(thumbed) + ' > .message-reactions .reaction-number')})?.textContent ?? null`);
+      await control({ method: 'agent_thumb', operation_id: topic + '-person-thumb', sender: 'fixture-other-person', message_id: thumbed });
+      await until(async () => await thumbs() === '1', `${device}: the other person's thumbs-up shows on the card`);
+      assert.ok(showing(await dots(p, thumbed)), device + ': a person\'s thumbs-up leaves the dots');
+      await control({ method: 'agent_thumb', operation_id: topic + '-thumb', sender: 'aim-core', message_id: thumbed });
+      await until(async () => await thumbs() === '2' && await dots(p, thumbed) === null, `${device}: aim-core's thumbs-up ends the second one's dots, with no reload`);
+      // A message to nobody is no reply; one naming the person, in a subject of its own, is.
+      const told = await post(p, device, topic, '@aim-core and the screenshots?');
+      await until(async () => showing(await dots(p, told)), `${device}: the third message waits`);
+      const everyone = (await control({ method: 'agent_message', operation_id: topic + '-everyone', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        body: 'A note for everyone here.' })).result.message_id;
+      await until(() => drawn(everyone), `${device}: aim-core's note to everyone is drawn`);
+      assert.ok(showing(await dots(p, told)), device + ': a message naming nobody leaves the dots');
+      const tell = (await control({ method: 'agent_message', operation_id: topic + '-tell', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        post_args: { addressees: [facts.actor], intent: 'tell' }, body: 'The screenshots are up.' })).result.message_id;
+      await until(async () => await dots(p, told) === null && await drawn(tell), `${device}: aim-core telling the person ends the third one's dots, with no reload`);
+      await reload(p, [joined, thumbed, told]);
+      assert.deepEqual([await dots(p, joined), await dots(p, thumbed), await dots(p, told)], [null, null, null],
+        device + ': loaded again, none waits: the reply joined to another stack, the thumbs-up and the tell each still answer theirs');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the notes?': false,
+        '@aim-core and the release, when you can?': false, '@aim-core and the screenshots?': false }, device + ': and Core says so');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading dots never show where no agent receives the message: a topic of people only, with nobody named', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-people-' + device;
+      const ids = await seed(topic, [['p', { sender: 'fixture-other-person', join: true, body: 'Only people take part here.' }]]);
+      const p = await open('reading-dots-people-' + device, device, topic, ids.p);
+      const own = await post(p, device, topic, 'Notes for the two of us.');
+      assert.equal(await dots(p, own), null, device + ': no agent received it, so no dots');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, 'Notes for the two of us.': false }, device + ': Core says none waits');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading dots on a waiting message sit inside its card in its ink at 320, 375 and 390 wide and on a laptop, light and dark, with nothing scrolling sideways', async () => {
+    const topic = 'reading-dots-look';
+    const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }],
+      ['own', { sender: 'person', reply_to: 'a', addressees: ['aim-core'], body: 'Could you look at the failing check on the phone layout before the release goes out this evening?' }]]);
+    for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) {
+      const p = await open('reading-dots-look-' + size, size, topic, ids.own);
+      for (const theme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`), `${size}: the page reads ${theme}`);
+        await centre(p, card(ids.own));
+        await until(async () => showing(await dots(p, ids.own)), `${size} ${theme}: the dots show inside the card, in its ink`);
+        assert.ok(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), `${size} ${theme}: nothing scrolls sideways`);
+        await shot(p, `reading-dots-look-${size}-${theme}`);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
     }
   });
 

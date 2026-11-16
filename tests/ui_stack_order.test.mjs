@@ -307,6 +307,21 @@ test('a dossier\'s name is its first message\'s, read from the position where th
   assert.equal(headOf(older).name, 'On the reply', 'a page whose Core sends no position reads the head\'s own acts');
 });
 
+// Item 479: a minted name says who minted it, as "Named by" in the row; a typed name, and a name an older Core
+// kept, carry no minted mark, so the row says nothing more than it did.
+test('a minted name says the agent that minted it; a typed name and an old one say no one', () => {
+  const at = name => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: 1, at: { acts: 1, messages: 0 } });
+  const minted = { text: 'Cabin week plan', by: 'agent-a', at_ms: 1, minted: true };
+  const [whole] = stacksOf([message(1, { acts: { name: minted } }), message(2, { reply_to: 'm1' })]);
+  assert.deepEqual([headOf(whole).name, headOf(whole).mintedBy], ['Cabin week plan', 'agent-a']);
+  const [partial] = stacksOf([message(3, { reply_to: 'm2', stack_position: at(minted) }), message(4, { reply_to: 'm3', stack_position: at(minted) })]);
+  assert.equal(headOf(partial).mintedBy, 'agent-a', 'a page holding only replies says it from the position');
+  for (const name of [{ text: 'Typed', by: 'owner', at_ms: 2 }, { text: 'Old', by: 'owner', at_ms: 2, minted: 'yes' }, null]) {
+    const [stack] = stacksOf([message(1, { acts: { name } }), message(2, { reply_to: 'm1' })]);
+    assert.equal(headOf(stack).mintedBy, null, JSON.stringify(name));
+  }
+});
+
 // Item 470: where the page holds the first message as the head, its own acts name the dossier, though the newest
 // position says another name (an answer the page has, its positions not yet read again).
 test('with the first message loaded as the head, its own acts name the dossier over a position that says another', () => {

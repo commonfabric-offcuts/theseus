@@ -73,7 +73,11 @@ class DeliveryBoundsCase(DeliveryCase):
         _, baseline_read = self.measured(lambda: self.pending(limit=1))
         _, baseline_remove = self.measured(lambda: self.command("participation.set", {"actor_id": "agent-a", "present": False}, target={"topic_id": "t1"}, expected={"topic_revision": 1}))
         self.command("participation.set", {"actor_id": "agent-a", "present": True}, target={"topic_id": "t1"})
-        self.send_next("Before bulk")
+        # A reply's delivery does work a topic's first message's does not (an agent is told whether it names the
+        # reply's dossier, item 479), so the bulk read of a reply is held to the read of a reply before the bulk.
+        before = self.send_next("Before bulk")
+        page, baseline_reply_read = self.measured(lambda: self.pending(limit=1))
+        self.assertEqual([item["message_id"] for item in page["items"]], [before], page)
         started = time.monotonic()
         self.seed_pending(10000)
         setup_seconds = time.monotonic() - started
@@ -87,12 +91,12 @@ class DeliveryBoundsCase(DeliveryCase):
         # Count VM instructions, not just elapsed wall time: a deliberately
         # regressed scan must fail even on a fast machine or a warm page cache.
         self.assertGreater(baseline_read["vm_steps"], 0)
-        self.assertLess(bulk_read["vm_steps"], baseline_read["vm_steps"] + 250)
+        self.assertLess(bulk_read["vm_steps"], baseline_reply_read["vm_steps"] + 250)
         self.assertLess(bulk_remove["vm_steps"], baseline_remove["vm_steps"] + 350)
         plans = self.sql("EXPLAIN QUERY PLAN SELECT id FROM delivery_groups INDEXED BY eligible_groups WHERE recipient_id='agent-a' AND active=1 AND pending_count>0 AND id>=0 ORDER BY id LIMIT 100")
         self.assertTrue(any("eligible_groups" in str(row) for row in plans), plans)
         print(json.dumps({"phase": "delivery_bounds", "setup_seconds": setup_seconds, "pages_to_fresh": 1,
-            "baseline_read": baseline_read, "bulk_read": bulk_read, "baseline_remove": baseline_remove,
+            "baseline_read": baseline_read, "baseline_reply_read": baseline_reply_read, "bulk_read": bulk_read, "baseline_remove": baseline_remove,
             "bulk_remove": bulk_remove, "query_plan": plans}, sort_keys=True))
 
     def test_one_hundred_fifty_groups_continue_and_new_early_group_work_is_found_on_restart(self):

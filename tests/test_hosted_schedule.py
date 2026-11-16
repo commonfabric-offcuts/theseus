@@ -180,9 +180,10 @@ class HostedCase(runner_tests.RunnerCase):
         self.hand(self.claim_now())
         self.send_next("Follow-up")
         live = self.claim_now()
-        # The live claim's notice starts from the handed seq: it names the follow-up only.
+        # The live claim's notice starts from the handed seq: it names the follow-up only. (Its line may end with the
+        # mint agent-a, the coordinator, is told to run for the follow-up's unnamed dossier, item 479: the id ends at ";".)
         told = hosted_notice.notice(self.pending()["items"], live["handed_seq"], "agent-a", live["attempt_id"])
-        self.assertEqual([line.split(", delivery ")[1] for line in told["input"][0]["text"].splitlines() if ", delivery " in line],
+        self.assertEqual([line.split(", delivery ")[1].split(";")[0] for line in told["input"][0]["text"].splitlines() if ", delivery " in line],
                          [self.pending()["items"][1]["id"]])
         self.now += 3
         self.assertTrue(self.end("failed", error_code="httpConnectionFailed")["rearmed"])

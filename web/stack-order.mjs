@@ -166,14 +166,15 @@ export function rowsOf(stack, { level = 'folded', kept, unread = () => false, pe
 // and what is new: the head itself, or how many replies. The typed name is the dossier's (item 470): its
 // first message's, which Core sends with the position of every message in it,
 // so a page holding only replies shows it too; where the page holds that
-// message, its own acts say it.
+// message, its own acts say it. mintedBy: the agent that minted the name
+// (item 479), which the row says as "Named by"; null for a typed name or none.
 export function headOf(stack, { preview = item => String(item.body ?? '').split('\n')[0], unread = () => false } = {}) {
   const position = positionOf(stack);
   const typed = position && position.root_id !== stack.head.id && 'name' in position ? position.name : actsOf(stack.head).name;
   const repliers = [];
   for (const item of stack.replies) if (!repliers.includes(item.author_id)) repliers.push(item.author_id);
   const headNew = unread(stack.head);
-  return { name: typed?.text || preview(stack.head), typed: typed ?? null, count: stack.replies.length, repliers,
+  return { name: typed?.text || preview(stack.head), typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
 }
 
