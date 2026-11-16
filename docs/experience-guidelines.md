@@ -112,9 +112,16 @@ Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
   aside composer", "rail set aside message", "rail set aside attachment",
   "rail set aside kept words", "rail set aside kept image", "rail set aside
   whisper", and "rail set aside looks right" and "rail set aside kept looks
-  right" (1280, 320, 375 and 390, light and dark).
+  right" (1280, 320, 375 and 390, light and dark). Each of the composer,
+  message and attachment shapes loads the page again on the topic, opens its
+  writing (a message's in the Reader), closes it and presses another topic,
+  which goes on the first try; then, in a second tab, the writing is ready to
+  send and the press goes.
 - `tests/ui_inline_wiring.test.mjs`: "a reply set aside with its words kept has
   a Set aside chip the guard does not name".
+- Node units: `tests/ui_topic_navigation.test.mjs`, "an image retained from
+  the draft lets the page leave while it is still being checked; one the draft
+  does not name holds".
 - Core: `tests/test_set_aside.py`.
 
 ## Your place holds

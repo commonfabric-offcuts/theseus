@@ -6,9 +6,13 @@ import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, 
 
 const copy = value => structuredClone(value);
 // Every field of a writing but where its caret sits, empty; and a reply's words as such a writing: its body, quotes
-// and images, and who it goes to and how (a whisper stays a whisper to the same one, an ask an ask).
+// and images, and who it goes to and how (a whisper stays a whisper to the same one, an ask an ask). A reply names
+// each image by its whole description; a draft names it by its id alone, as Theseus keeps it and as an image the
+// person chose goes in. Put back so, the draft saved is the draft Theseus holds, and the copy kept on this device is
+// retired as soon as it is saved, so no later page holds it for review.
 const emptyWriting = () => { const { caret, ...fields } = noWriting(); return fields; };
-const writingOf = words => Object.fromEntries(Object.entries(emptyWriting()).map(([field, empty]) => [field, copy(words[field] ?? empty)]));
+const writingOf = words => ({ ...Object.fromEntries(Object.entries(emptyWriting()).map(([field, empty]) => [field, copy(words[field] ?? empty)])),
+  attachments: (words.attachments ?? []).map(({ id }) => ({ id })) });
 // A listed copy that holds the reply for image review until it is resolved.
 const imageCopy = item => item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable';
 const same = (a, b) => {
