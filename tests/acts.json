@@ -19494,6 +19494,34 @@
   },
   {
    "item": 567,
+   "act": "The CLI's pipeline listing prints the items of the release being put together first, as the page draws it above Now",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "([head[\"release_piece\"]] if head.get(\"release_piece\") else [])",
+     "[]"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 567,
+   "act": "The CLI's pipeline listing prints a piece's items in the piece's member order, as its card on the page names them",
+   "break": [
+    [
+     "aim_next/cli_outcome.py",
+     "(rank, index) for rank",
+     "(rank, -index) for rank"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_verbs_pipeline.py"
+   }
+  },
+  {
+   "item": 567,
    "act": "The pipeline page draws Now's piece cards nearest to live first, then what is not started, at 320, 375, 390 and a laptop, light and dark (Chrome)",
    "break": [
     [

@@ -28,6 +28,15 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertEqual((code, err), (0, ""), out)
         return out
 
+    def open_topics(self, *topics):
+        # More topics in w1, so each piece of work has its own (a topic holds one piece under way).
+        for topic in topics:
+            source = {"kind": "new_topic", "id": "opening-" + topic, "workspace_id": "w1"}
+            self.committed(self.save_draft("draft-" + topic, source, topic, "Opening " + topic,
+                                           opening={"workspace_id": "w1", "title": "Topic " + topic, "participants": ["agent-a"]}))
+            self.committed(self.prepare("draft-" + topic, topic, submission="sub-" + topic, send_op="open-" + topic))
+            self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic}, target={"topic_id": topic}, op="open-" + topic))
+
     def test_the_coordinator_turns_it_on_adds_and_moves_and_the_listing_reads_it_back(self):
         self.assertEqual(self.ok("pipeline-on", "w1"), "pipeline w1 on\n")
         self.assertEqual(self.ok("add", "w1", "--title", "Say which release is live", "--section", "next", "--note", "the page", "--size", "small", "Words."),
@@ -290,12 +299,7 @@ class PipelineVerbCase(AgentVerbCase):
         patch = mock.patch("aim_next.pipeline._now_ms", side_effect=lambda: clock[0])
         patch.start()
         self.addCleanup(patch.stop)
-        for topic in ("t2", "t3"):
-            source = {"kind": "new_topic", "id": "opening-" + topic, "workspace_id": "w1"}
-            self.committed(self.save_draft("draft-" + topic, source, topic, "Opening " + topic,
-                                           opening={"workspace_id": "w1", "title": "Topic " + topic, "participants": ["agent-a"]}))
-            self.committed(self.prepare("draft-" + topic, topic, submission="sub-" + topic, send_op="open-" + topic))
-            self.committed(self.command("topic.create_and_send", {"submission_id": "sub-" + topic}, target={"topic_id": topic}, op="open-" + topic))
+        self.open_topics("t2", "t3")
         self.ok("pipeline-on", "w1")
         stages = Path(self.temp.name) / "stages.json"
         stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}, {"stage_id": "review", "name": "Review"},
@@ -313,6 +317,32 @@ class PipelineVerbCase(AgentVerbCase):
             self.ok("add", "w1", "--title", title, "--section", "next", "--note", "n", "-")
         self.ok("move", "w1", "6", "--above", "5")
         self.assertEqual([line.split()[0] for line in self.ok("pipeline", "w1", "--section", "next").splitlines() if line[:1].isdigit()], ["6", "5"])
+
+    def test_now_lists_the_release_being_put_together_first_and_each_pieces_items_in_its_member_order(self):
+        # Item 567: the page draws the release being put together above Now, and a piece card names its items in
+        # the piece's member order (the order it was started on), not the placed order. The CLI prints the same.
+        self.open_topics("t2", "t3")
+        self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
+        self.ok("pipeline-on", "w1", "--releases", actor="owner")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "build", "name": "Build"}, {"stage_id": "wait", "name": "Waits to combine"},
+                                      {"stage_id": "ship", "name": "Ship", "scope": "release"}]))
+        self.ok("stages", "w1", "--set", str(stages), actor="owner")
+        for number in range(1, 8):
+            self.ok("add", "w1", "--title", "Item %d" % number, "--section", "now", "--size", "small", "--note", "n", "-")
+        # Placed 1 to 7. The release is combined from a piece started on 7 then 5; a piece waits to combine with 4
+        # then 3; 1 is in Build; 2 and 6 are not started.
+        released = self.ok("piece", "w1", "7,5", "--topic", "t1", "--stage", "wait").split()[2]
+        self.assertRegex(self.ok("combine", "w1", "--release", "23", "--pieces", released, "--topic", "t1"), r"^release 23 combined as p-\w+ with 7, 5\n$")
+        self.ok("piece", "w1", "4,3", "--topic", "t2", "--stage", "wait")
+        self.ok("piece", "w1", "1", "--topic", "t3", "--stage", "build")
+        listed = [int(line.split()[0]) for line in self.ok("pipeline", "w1", "--section", "now").splitlines() if line[:1].isdigit()]
+        self.assertEqual(listed, [7, 5, 4, 3, 1, 2, 6])
+        # The order the page draws, from the same view: the release's items, each piece's items, then the rest placed.
+        head = self.store.view("agent-a", "pipeline", {"workspace_id": "w1", "section": "now", "limit": 100})
+        self.assertEqual(head["release_piece"]["items"], [7, 5])
+        drawn = head["release_piece"]["items"] + [number for piece in head["pieces"] for number in piece["items"]]
+        self.assertEqual(listed, drawn + [item["number"] for item in head["items"] if item["number"] not in drawn])
 
     def test_combining_into_a_release_stage_on_the_owners_word_takes_an_ask(self):
         self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
