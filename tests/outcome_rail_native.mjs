@@ -2531,22 +2531,33 @@ export async function railChecks({ check, page, until, control, view, facts, sho
 
   // Item 547: requests the check picks, held at the network to drop, let through or answer: in Chrome with the
   // harness's interception, in Safari's engine with Playwright's routing. before: held before Core sees them.
+  // always(test, status, body): each request test picks is answered so at once, until always(null).
   const network547 = async (p, before = false) => {
     const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    let test = null, auto = null;
     if (!p.pw) {
       if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
-      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+      p.intercept(async (payload, event) => {
+        if (!auto?.test(payload)) return Boolean(test?.(payload));
+        event.answered = true;
+        await p.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: auto.status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(auto.body)).toString('base64') });
+        return true;
+      });
+      for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry);
+      return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; },
+        held: () => { for (const entry of p.held.filter(each => each.event.answered)) take(p.held, entry); return p.held; },
         drop: entry => { take(p.held, entry); return p.fail(entry); },
         pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
         answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
     }
-    const held = []; let test = null;
+    const held = [];
     await p.pw.route(facts.origin + '/api/*', async route => {
       let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (auto?.test(payload)) return route.fulfill({ status: auto.status, contentType: 'application/json', body: JSON.stringify(auto.body) });
       if (!test?.(payload)) return route.continue();
       held.push({ payload, route, response: before ? null : await route.fetch() });
     });
-    return { hold: given => { test = given; }, held: () => held,
+    return { hold: given => { test = given; }, always: (given, status, body) => { auto = given && { test: given, status, body }; }, held: () => held,
       drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
       pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
       answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
@@ -2685,19 +2696,19 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const card = `#messages .message-card[data-id="${message}"]`, row = `#outline a[data-topic-id="${other}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body')) && Boolean(document.querySelector(${JSON.stringify(row)}))`), at + ': the card, the writing box and the outline are up');
       const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
-      net.hold(payload => stars(payload) || sends(payload));
-      // The star: Theseus too busy to take it; its next try held.
+      // The star: Theseus too busy to take it, each time it goes, until the page has moved on.
+      const lane = { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } };
+      net.hold(sends); net.always(stars, 503, lane);
       await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
       if (laptop) await p.point(words, 'move'); else await tap(p, words);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
       if (laptop) await p.point(star); else await tap(p, star);
-      await net.answer(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star is on its way'), 503,
-        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
       const busy = 'Starring “The card starred while Theseus is busy.” is not saved yet: Theseus was busy. The page sends it again.';
       await until(() => p.evaluate(`document.getElementById('app-status').textContent===${JSON.stringify(busy)}`), at + ': the line says the star, its card, and busy')
         .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('app-status').textContent")}`); });
-      const again = await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star goes again; held');
+      const starTries = () => p.calls.filter(call => stars(call.payload)).length;
+      await until(() => starTries() >= 2, at + ': the star goes again as Theseus answers');
       // The reply: its send lost before Core saw it, so it is in doubt.
       await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
       if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
@@ -2718,8 +2729,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await arrived(p, '?topic=' + other, 'Away ' + size, at + ': the first press moves the page')
         .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('topic-navigation-status').textContent")}`); });
       assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, `${at}: nothing is said about leaving`);
-      // Theseus takes the star now, from the page that has gone: it is made once.
-      net.hold(null); await net.pass(again);
+      // Theseus takes the star now, at its next try from the page that has gone: it is made once.
+      const tries = starTries();
+      net.hold(null); net.always(null);
+      await control({ method: 'agent_message', operation_id: topic + '-later', topic_id: other, join: true, addressees: [facts.actor], body: 'Something new, so Theseus answers.' });
+      await until(() => starTries() > tries, at + ': the page that has gone sends the star again as Theseus answers');
       await until(async () => (await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message)?.acts?.starred === true, at + ': Core holds the star');
       assert.equal((await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message).acts.star_revision, 1, `${at}: made once`);
       assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: the page reached says nothing of it`);
