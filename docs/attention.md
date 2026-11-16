@@ -612,14 +612,14 @@ when a reply arrives above it in its stack. With More messages, or the line's
 where it was, under the last card shown before, and the New message composer
 resting above More goes down with More to the list's new end.
 
-A new message being written at the topic page's end stays where it was on
-screen as messages arrive above it, including one that makes the page shorter:
-a reply taking the place of its stack's taller read latest reply
-(docs/reply-stacks.md). Where the page is scrolled less than what above it
-shrank, so that no scroll can hold the writing, the message list keeps the
-difference as room at its end, between what changed and the writing, until the
-next arrival, which gives it back and keeps only what it needs (`web/app.mjs`,
-`keepListAnchor` and `holdRoom`).
+A new message being written in the New message composer resting among the
+messages stays where it was on screen as messages arrive above it, including
+one that makes the page shorter: a reply taking the place of its stack's taller
+read latest reply (docs/reply-stacks.md). Where the page is scrolled less than
+what above it shrank, so that no scroll can hold the writing, the message list
+keeps the difference as room just above the composer, between what changed and
+the writing, until the next arrival, which gives it back and keeps only what it
+needs (`web/app.mjs`, `keepListAnchor` and `holdRoom`).
 
 ## In the browser
 

@@ -337,8 +337,11 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.point('#inline-writing-body'); await p.key('e', 2); await p.key('ArrowLeft');
     const writingPosition = () => p.evaluate(`(()=>{const f=document.querySelector('#inline-writing-body'),b=f.getBoundingClientRect();return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,top:b.top,bottom:b.bottom,height:innerHeight}})()`);
     // What the page draws above the writing: the message list's own height,
-    // without the room it keeps at its end, and that room.
-    const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),room=parseFloat(s.paddingBottom);return {drawn:l.getBoundingClientRect().height-parseFloat(s.paddingTop)-room,room}})()`);
+    // without the room it keeps to hold the writing, and that room: at its
+    // end, and just above the New message composer resting among the
+    // messages (item 465), which the writing here is in.
+    const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),h=document.querySelector('#new-message-sheet'),room=parseFloat(s.paddingBottom)+(l.contains(h)&&!h.open?parseFloat(getComputedStyle(h).paddingTop):0);return {drawn:l.getBoundingClientRect().height-parseFloat(s.paddingTop)-room,room}})()`);
+    assert.equal(await p.evaluate('(()=>{const h=document.querySelector("#new-message-sheet");return document.querySelector("#messages").contains(h)&&!h.open})()'), true, 'the writing is in the New message composer resting among the messages');
     // The writing low on the screen, a little above its foot: the page is
     // scrolled no further than that, so what the reply below takes away
     // above it is more than any scroll can give back.
@@ -364,17 +367,25 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.ok(aboveBefore.drawn - aboveAfter.drawn > scrolledBefore, 'the reply shrank what is above the writing by more than the page was scrolled, so no scroll alone can hold it ' + JSON.stringify({ scrolledBefore, aboveBefore, aboveAfter, stacks: await stacks() }));
     holds(afterArrival, 'a reply shrinking what is above');
     assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'a reply shrinking what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, aboveBefore, aboveAfter, stacks: await stacks() }));
-    // A message of its own to the topic then arrives: a stack of its own at
-    // the top of the newest-first page, so the page grows above the writing.
-    // The writing holds by the page's own scroll, and the room the list kept
-    // for the reply is given back: none is left that nothing needs.
-    const topicArrival = 'A message of its own to the topic while writing inline';
-    assert.equal((await control({ method: 'agent_message', operation_id: 'inline-native-topic-arrival', body: topicArrival, topic_id: facts.topic_id, source: 'topic', addressees: [] })).status, 'committed');
-    await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(topicArrival)})`), 'the topic message renders without Refresh');
-    const afterGrowth = await writingPosition(), aboveGrown = await above();
-    assert.ok(aboveGrown.drawn > aboveAfter.drawn, 'the topic message drew more above the writing ' + JSON.stringify({ aboveAfter, aboveGrown }));
-    holds(afterGrowth, 'a message growing what is above');
-    assert.ok(Math.abs(afterGrowth.top - beforeArrival.top) <= 2, 'a message growing what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterGrowth, aboveGrown, stacks: await stacks() }));
+    // Messages of their own to the topic then arrive, one at a time: each a
+    // stack of its own at the top of the newest-first page, so the page grows
+    // above the writing. The writing holds at each, and the room the list kept
+    // for the reply is given back as the page grows, until it has grown enough
+    // to hold the writing by its own scroll: then none is left that nothing
+    // needs. One message alone grows the page by less than the reply took away
+    // (170px against 245px of room, item 589), so three arrive.
+    let aboveGrown = aboveAfter;
+    for (const [n, topicArrival] of ['A message of its own to the topic while writing inline', 'A second message of its own to the topic while writing inline', 'A third message of its own to the topic while writing inline'].entries()) {
+      const aboveLast = aboveGrown;
+      assert.equal((await control({ method: 'agent_message', operation_id: 'inline-native-topic-arrival' + (n ? '-' + n : ''), body: topicArrival, topic_id: facts.topic_id, source: 'topic', addressees: [] })).status, 'committed');
+      await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(topicArrival)})`), 'the topic message renders without Refresh ' + n);
+      const afterGrowth = await writingPosition();
+      aboveGrown = await above();
+      assert.ok(aboveGrown.drawn > aboveLast.drawn, 'the topic message drew more above the writing ' + JSON.stringify({ n, aboveLast, aboveGrown }));
+      holds(afterGrowth, 'a message growing what is above');
+      assert.ok(Math.abs(afterGrowth.top - beforeArrival.top) <= 2, 'a message growing what is above preserves the visible writing position ' + JSON.stringify({ n, beforeArrival, afterGrowth, aboveGrown, stacks: await stacks() }));
+      assert.ok(aboveGrown.room === 0 || aboveGrown.room < aboveLast.room, 'a message growing what is above gives back room the list kept ' + JSON.stringify({ n, aboveLast, aboveGrown }));
+    }
     assert.deepEqual([aboveBefore.room, aboveGrown.room], [0, 0], 'no room is kept above the writing once the page can hold it by scrolling ' + JSON.stringify({ aboveBefore, aboveAfter, aboveGrown }));
     observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
     await shot(p, 'inline-before-send'); noSend();

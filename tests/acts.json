@@ -23652,6 +23652,36 @@
    }
   },
   {
+   "item": 589,
+   "act": "The room that holds the writing is kept just above the New message composer resting among the messages, so a reply shrinking what is above leaves the writing where it was",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (!(short > 0) || !resting && (list.contains(hold) ||",
+     "if (!(short > 0) || (list.contains(hold) ||"
+    ]
+   ],
+   "check": {
+    "native": "inline",
+    "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
+   "item": 589,
+   "act": "The room kept above the resting New message composer is drawn, as space above it, only while it rests",
+   "break": [
+    [
+     "web/aim.css",
+     "margin:2rem 0 0;padding:var(--hold-room,0px) 0 0;",
+     "margin:2rem 0 0;padding:0;"
+    ]
+   ],
+   "check": {
+    "native": "inline",
+    "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
    "item": 363,
    "act": "With the To line under the who chip and a long reply, a phone with the keyboard up still shows 7 lines of the message",
    "break": [
@@ -23688,12 +23718,12 @@
   },
   {
    "item": 363,
-   "act": "The writing at the topic page's end stays where it was when a reply arriving shrinks what is above it by more than the page is scrolled",
+   "act": "The writing in the New message composer resting among the messages stays where it was when a reply arriving shrinks what is above it by more than the page is scrolled",
    "break": [
     [
      "web/app.mjs",
-     "  list.style.paddingBottom = `${short}px`; roomy = list;\n",
-     "  roomy = list;\n"
+     "  room.style.setProperty(side, `${short}px`); roomy = () => room.style.removeProperty(side);\n",
+     "  roomy = () => room.style.removeProperty(side);\n"
     ]
    ],
    "check": {
@@ -23707,7 +23737,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  // Room an earlier hold kept is given back first; the hold measures without it.\n  if (roomy) { roomy.style.paddingBottom = ''; roomy = null; }\n",
+     "  // Room an earlier hold kept is given back first; the hold measures without it.\n  if (roomy) { roomy(); roomy = null; }\n",
      ""
     ]
    ],

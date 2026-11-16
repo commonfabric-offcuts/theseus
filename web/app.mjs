@@ -751,7 +751,7 @@ async function openSource(ref, opener, act = null) {
 // held is one the page draws (drawn, the page's one view) before and after
 // the repaint: when the repaint stops drawing it (put below More on another
 // device), the card drawn next below it is held instead.
-// roomy: the list keeping room at its end for a hold below it (holdRoom).
+// roomy: gives back the room a hold kept (holdRoom).
 let roomy = null;
 function keepListAnchor(paint) {
   const at = document.activeElement, list = $('messages');
@@ -767,7 +767,7 @@ function keepListAnchor(paint) {
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
   paint();
   // Room an earlier hold kept is given back first; the hold measures without it.
-  if (roomy) { roomy.style.paddingBottom = ''; roomy = null; }
+  if (roomy) { roomy(); roomy = null; }
   const landed = control && last ? loadedAfter(list, present, last) : null;
   if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
   const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
@@ -776,14 +776,17 @@ function keepListAnchor(paint) {
 // How far the page scrolls to put hold back where it was (top). Where what is
 // drawn above it shrank by more than the page is scrolled (a reply taking the
 // place of a taller one, docs/reply-stacks.md), no scroll can: the page's top
-// would cut it short. Then the list keeps the rest as room at its end, between
-// what changed and what follows it, so a hold below the list (the writing at
-// the topic page's end) stays exactly where it was (item 363). The next hold
-// gives that room back, and keeps only what it needs.
+// would cut it short. Then the list keeps the rest as room between what changed
+// and the writing, so the writing stays exactly where it was (item 363): just
+// above the New message composer resting among the messages (item 465, the
+// sheet's --hold-room, aim.css), or at the list's end for a hold below it. The
+// next hold gives that room back, and keeps only what it needs.
 function holdRoom(list, hold, top) {
   const moved = hold.getBoundingClientRect().top - top, short = -(window.scrollY + moved);
-  if (!(short > 0) || list.contains(hold) || !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
-  list.style.paddingBottom = `${short}px`; roomy = list;
+  const home = $('new-message-sheet'), resting = home.parentElement === list && !home.open && home.contains(hold);
+  if (!(short > 0) || !resting && (list.contains(hold) || !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING))) return moved;
+  const [room, side] = resting ? [home, '--hold-room'] : [list, 'padding-bottom'];
+  room.style.setProperty(side, `${short}px`); roomy = () => room.style.removeProperty(side);
   return hold.getBoundingClientRect().top - top;
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }

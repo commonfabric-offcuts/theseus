@@ -945,7 +945,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 main:has(#inline-composer[hidden]) #new-message{display:none}
 /* What keeps the sheet's place among the dossiers while it is up (sheet-holder.mjs): drawn only while the sheet just after it is open, so the place comes back the moment it closes. This rule alone decides it: no script takes the holder away. */
 .sheet-holder{display:none}.sheet-holder:has(+dialog[open]){display:block}
-dialog.composer-home:not([open]){display:block;position:static;width:auto;height:auto;max-height:none;margin:2rem 0 0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:none}
+dialog.composer-home:not([open]){display:block;position:static;width:auto;height:auto;max-height:none;margin:2rem 0 0;padding:var(--hold-room,0px) 0 0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;animation:none}
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
 dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
