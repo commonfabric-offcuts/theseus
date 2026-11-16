@@ -14591,12 +14591,12 @@
   },
   {
    "item": 471,
-   "act": "The hover bar does not attach to a dossier's folded row",
+   "act": "The hover bar stays on a dossier's folded row and offers Unfold",
    "break": [
     [
      "web/message-menu.mjs",
-     "\n      || card.dataset.folded === 'true' && section.dataset.single === 'false';",
-     ";"
+     "return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false';",
+     "return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false' || card.dataset.folded === 'true';"
     ]
    ],
    "check": {

@@ -324,7 +324,8 @@ their acts.
 - **First messages.** A dossier's first message is a message like any other
   (item 471): with the dossier fully open it folds to its own row under the
   head row, by its header, x, a swipe or Fold in ⋯, and its row, x or Unfold
-  unfolds it; shown whole it has its bar. The head row stays the dossier's
+  unfolds it; shown whole or folded it has its bar, which offers Unfold once
+  it is folded. The head row stays the dossier's
   title, the one special row, and says nothing of the fold. At latest and
   unread the head shows only that title row, and x there does nothing, as on
   the chevron. Among an open dossier's earlier messages (Earlier messages,
@@ -815,7 +816,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
 | inside a dossier: a message shown whole keeps its agent name's badge (its computed corner, fill, border and padding those of a message on its own), folded rows with a plain name, no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier a message shown whole keeps its agent name's pill …" |
-| inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
+| inside a dossier: a header press folds, the words open the Reader, a folded row keeps its bar with Unfold, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
 | Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds the message …" |
 | in a dossier longer than the loaded page, the messages not loaded fold too, by one request, another reader's folds stand, ⌘Z unfolds every one, and Earlier messages on a new document shows them folded | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds every message before it in a dossier longer than the loaded page …"; in Core, `tests/test_stacks.py` (`FoldThroughCase`) |
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |

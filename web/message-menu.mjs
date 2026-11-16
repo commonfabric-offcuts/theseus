@@ -306,14 +306,14 @@ export class MessageMenu {
     this.place();
   }
   // Whether the lit message shows no bar: a reply stack's head showing only its
-  // row, the stack's tab (reply-stacks.mjs), until its full message shows; and a
-  // message a dossier shows as its folded row (item 471), which a press unfolds.
+  // row, the stack's tab (reply-stacks.mjs), until its full message shows. A
+  // message a dossier shows as its folded row keeps its bar, which offers
+  // Unfold (item 473 over item 471's barless fold, by default pending Tony #6363).
   // Under Only new a stack draws nothing, and its messages read whole.
   barless() {
     const card = this.lit && cardIn(this.lit), section = card?.closest('.reply-stack');
     if (!section || card.closest('.only-new')) return false;
-    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false'
-      || card.dataset.folded === 'true' && section.dataset.single === 'false';
+    return card.classList.contains('stack-head-card') && section.dataset.headOpen === 'false';
   }
   // Over the lit card's top end corner, inside the window while any of the
   // card is, and scrolled away with it. Where that would cover the reply arrow

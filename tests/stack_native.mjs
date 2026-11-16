@@ -501,8 +501,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
   };
-  // The ⋯ menu of a message, from its bar, and the words of its items. A dossier's folded row has no bar (item 471):
-  // on a laptop its menu is the right click's.
+  // The ⋯ menu of a message, from its bar, and the words of its items. A message lit with no bar (a dossier's one-row
+  // head): on a laptop its menu is the right click's.
   const menuOf = async (p, device, id) => {
     await light(p, device, id);
     if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id));
@@ -4784,7 +4784,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  await check('reading stacks inside a dossier a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row has no bar, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header (item 471)', async () => {
+  await check('reading stacks inside a dossier a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row keeps its bar with Unfold on it, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header (item 471)', async () => {
     for (const device of Object.keys(DEVICES)) for (const width of widthsOf(device)) {
       const topic = `stack-inside-press-${device}-${width}`;
       const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -4810,9 +4810,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await foldOf(topic, ids.one, other), false, `${at}: another reader's view is unchanged`);
       await nothingElse('the header press');
       if (device === 'laptop') {
-        // Folded, its row lights under the pointer with no bar.
+        // Folded, its row lights under the pointer and keeps its bar, whose Fold is now Unfold (item 473 over 471's
+        // barless fold, by default pending Tony #6363).
         await p.point(row(ids.one), 'move');
-        await until(async () => (await lit(p)).includes(ids.one) && await bar(p) === null, `${at}: the folded row lights, with no bar`);
+        await until(async () => (await lit(p)).includes(ids.one) && await bar(p) !== null, `${at}: the folded row lights, with its bar`);
+        await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`),
+          `${at}: its bar offers Unfold`);
       }
       // A press on its row unfolds it; a press on its words opens the Reader, folding nothing.
       await press(p, device, row(ids.one));
