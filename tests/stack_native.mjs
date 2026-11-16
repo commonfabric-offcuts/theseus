@@ -1456,7 +1456,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // The negative: the branch gathered into the stack (b1) has no join line.
       assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .stack-join-line[data-join="${ids.b1}"]'))`), false, `${device}: the gathered branch is no join`);
       await centre(p, split); await press(p, device, split);
-      await until(async () => (await actsOf(topic, ids.x))?.joined?.into === null, `${device}: Split back out reaches Core`);
+      await until(async () => ((await actsOf(topic, ids.x))?.joined?.into ?? null) === null, `${device}: Split back out reaches Core`);
       await becomes(async () => (await stacks(p, ids)).includes('x'), true, `${device}: the brushes stack shows apart again`);
       assert.deepEqual(p.errors, []); await p.close();
     }
