@@ -444,21 +444,6 @@
   },
   {
    "item": 114,
-   "act": "↑ and ↓ move the light to the message below and above",
-   "break": [
-    [
-     "web/message-menu.mjs",
-     "index + (event.key === 'ArrowDown' ? 1 : -1)",
-     "index + (event.key === 'ArrowDown' ? -1 : 1)"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "↑ and ↓ move the light"
-   }
-  },
-  {
-   "item": 114,
    "act": "Return opens the Reader on the lit message",
    "break": [
     [
@@ -480,6 +465,21 @@
      "web/app.mjs",
      "else reader.reply({ kind: 'message', id });",
      "else return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "↑ and ↓ move the light"
+   }
+  },
+  {
+   "item": 114,
+   "act": "↑ and ↓ move the light to the message below and above",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     ": entries[index + step];",
+     ": entries[index - step];"
     ]
    ],
    "check": {
@@ -1983,8 +1983,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "onPage = pageItself(at, this.doc) || inList;",
-     "onPage = !at || at === this.doc.body || at.id === 'main' || inList;"
+     "onPage = pageItself(at, this.doc) || inList || onBar;",
+     "onPage = !at || at === this.doc.body || at.id === 'main' || inList || onBar;"
     ]
    ],
    "check": {
@@ -2216,8 +2216,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "  if (action === 'down') return panes.feed(doc, { first: true });",
-     "  if (action === 'down') return panes.feed(doc);"
+     "&& panes.feed(doc, { first: true })) ||",
+     "&& panes.feed(doc)) ||"
     ]
    ],
    "check": {
@@ -3121,36 +3121,6 @@
    "check": {
     "native": "reading",
     "case": "stacks the bar stays in the window while any of its card is"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
-   }
-  },
-  {
-   "item": 283,
-   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
-   "break": [
-    [
-     "web/app.mjs",
-     "pressHold.after(kind, () => paintViews(kind))",
-     "pressHold.after(kind, () => {})"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "stacks a reply arriving while a press is held"
    }
   },
   {
@@ -13568,6 +13538,36 @@
    }
   },
   {
+   "item": 283,
+   "act": "A reply arriving while a press is held waits for the press to end, so nothing moves under the pointer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
+   "item": 283,
+   "act": "A repaint held back by a press shows the moment the press ends, with nothing else drawing the page",
+   "break": [
+    [
+     "web/app.mjs",
+     "pressHold.after(kind, () => paintViews(kind))",
+     "pressHold.after(kind, () => {})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "stacks a reply arriving while a press is held"
+   }
+  },
+  {
    "item": 447,
    "act": "A folded message's row shows its author's own words: after a quote they began with, never cut at a colon",
    "break": [
@@ -20302,6 +20302,556 @@
    "check": {
     "native": "webkit-reading",
     "case": "reading dossier look a folded excerpt draws only its row"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above the outline's first row goes on up the side rail to New outcome, the chips and the logo block, and ↓ below its last row reaches Keys",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }",
+     "if (beyond) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the outline"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above the right rail's first section reaches its chips, Just this topic and All of this outcome",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (beyond) { if (reach(row.el, action, { within: this.column, doc: this.doc })) event.preventDefault(); return; }",
+     "if (beyond) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↓ past the last message goes on down the page to the People row and the reply, and ↑ comes back",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "if (from && reach(from, step > 0 ? 'down' : 'up',",
+     "if (false && reach(from, step > 0 ? 'down' : 'up',"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↓ past the last message"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a message's bar ↑ and ↓ go on from its message as from the message itself",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "const onBar = this.bar.contains(at) && event.key !== 'Enter' && this.lit?.isConnected;",
+     "const onBar = false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a message's bar"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a page with no panes' keys an arrow with nothing focused lands on a control in view, and the arrows reach every control from it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     ": reach(nothing ? null : at, way, { doc });",
+     ": false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ and ↓ in a one-line field go on to the control that way, and the line keeps its words",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "return way === 'up' || way === 'down' ? line || empty : empty;",
+     "return way === 'up' || way === 'down' ? empty : empty;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a pop-up the arrows move only among its own controls and never leave it for the page behind",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (modal.length) return modal.at(-1);\n  return at?.closest?.('dialog[open], [role=dialog]:not([hidden]), [role=menu]:not([hidden])') ?? doc.body;",
+     "  return doc.body;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a box with words in it every arrow is the writing's: the cursor moves and the focus stays",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "if ((at?.closest?.(FIELD) && !leavesLine(at, way)) ||",
+     "if (false ||"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in writing are the writing's"
+   }
+  },
+  {
+   "item": 301,
+   "act": "The nearest control that way is the one straight that way before one nearer but off to the side",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const value = gap + 2 * across(box) +",
+     "const value = gap + 0 * across(box) +"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "What holds the focused control, or lies inside it reaching no further that way, is never that way",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "(sign > 0 ? box[lo] > from[lo] && box[hi] > from[hi] : box[hi] < from[hi] && box[lo] < from[lo]) ||",
+     "true ||"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "While the next control that way is out of sight, the arrow scrolls toward it a third of a window at a time, and once it shows the next press lands on it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "if (!inSight(next, doc) && stepToward(next, way, doc)) return true;",
+     "if (false) return true;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows a control out of sight"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a control inside a tree's row (the pencil in the Notebook's heading) the arrows go on to the rows below and above",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "return Boolean(widget) && (widget === at || widget.getAttribute('role') !== 'treeitem');",
+     "return Boolean(widget);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ above a Notebook page's first card goes on to the page's controls above the cards, and ↓ comes back",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "    if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a Notebook page's cards"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a Conversation with no messages yet, ↓ with nothing focused lands on a control and the arrows reach every control",
+   "break": [
+    [
+     "web/rails.mjs",
+     "(onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]')))",
+     "onNothing(at, doc)"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "With no message to go to, ↓ from the buttons at the top of the feed goes on down the column to the reply",
+   "break": [
+    [
+     "web/panes.mjs",
+     " || reachOn(doc.activeElement, 'down', { within: doc.getElementById('main'), doc });",
+     ";"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "Every arrow in a field with nothing written in it goes on to the control that way: ← from an empty reply reaches the + beside it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "return way === 'up' || way === 'down' ? line || empty : empty;",
+     "return way === 'up' || way === 'down' ? line || empty : false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "In a pop-up over a pane (a Notebook page in the composer's sheet) the arrows move among the pop-up's controls, never those of the pane behind it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "scope = within && layer.contains(within) ? within : layer;",
+     "scope = within ?? layer;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a Notebook page's cards"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a field, a button set into its edge (Taller writing) is beside it, and the arrows reach it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     " || (inside && within(box))",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "A control set in an open tree row is the row's own: → on the right rail's open Notebook row gives its pencil the focus",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (action === 'right' && row.expanded !== false && setIn(row.el)) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a control set in a row, ← comes back to the row and → goes on to the first row under it",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "if (!row) return this.ownKey(event, action, rows);",
+     "if (!row) return;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows ↑ above the right rail"
+   }
+  },
+  {
+   "item": 301,
+   "act": "The phone drawer opens with the focus on the open topic that is live and shown, never on its copy in a list not drawn or kept inert",
+   "break": [
+    [
+     "web/rail-drawer.mjs",
+     "find(el => !el.closest('[inert]') && shown(el)) ?? null;",
+     "find(() => true) ?? null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rail_drawer.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "A focused box that can still scroll that way scrolls a third of what it shows at once, in every engine; at 390 ↓ through a long Reader message reaches the reply below",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  el.scrollBy(vertical ? { top: by, behavior: 'instant' } : { left: by, behavior: 'instant' });\n  return true;",
+     "  return true;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "What a box the focus is not in has scrolled out of sight lies no way of the focus: ↑ from the Reader's header leaves a message read to its end where it was, never scrolling it back toward a link out of sight in it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from, takesFocus));",
+     "const clippedAway = () => false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "A box that takes no focus is no way in to what it has scrolled out of sight: in a reply's review whose versions are taller than its box, the arrows from its header and footer reach the acknowledgement and Prepare this reply again below, the box scrolling toward them, at 1440, 390, 375 and 320",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const takesFocus = at => at.matches(CONTROL) && usable(at);",
+     "const takesFocus = () => true;"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation correction retry chain"
+   }
+  },
+  {
+   "item": 301,
+   "act": "Inside a box that scrolls, ↓ from a control in it reaches one out of sight in it, the box scrolling toward it first; the focus scrolled out of its box is judged where it went out, never over what lies past the box's edge",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const next = nearest(nothing ? edge(doc, way) : seenFrom(from, doc), list",
+     "const next = nearest(nothing ? edge(doc, way) : from.getBoundingClientRect(), list"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows a control out of sight is scrolled toward"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a box the focus reads in (a message's words in the Reader), → goes to the first link in it in sight, and ← from a link with nothing more to its left comes back to the box",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "    if (scrollsOn(at, way, view) || inOutOfBox(at, way, doc)) { event.preventDefault(); return; }",
+     "    if (scrollsOn(at, way, view)) { event.preventDefault(); return; }"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "Every arrow goes on from a checkbox, pressed and not typed in: from the reach box's \"Mark it reached anyway\" ↓ reaches the box for why below it and ↑ what lies above",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (!typingField(at)) return true;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows from the reach box's checkbox"
+   }
+  },
+  {
+   "item": 301,
+   "act": "From a reply review's acknowledgement checkbox ↓ goes on to Prepare this reply again and ↑ to what lies above it in the dialog",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (!typingField(at)) return true;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation correction retry chain"
+   }
+  },
+  {
+   "item": 301,
+   "act": "← and → go on from a select: from the agent a card's ask goes to, → reaches Ask beside it and ← comes back",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (at.tagName === 'SELECT') return way === 'left' || way === 'right';",
+     "  if (at.tagName === 'SELECT') return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows in a card's ask form"
+   }
+  },
+  {
+   "item": 301,
+   "act": "A select keeps ↑ and ↓, which choose among its options; only ← and → go on from it",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "  if (at.tagName === 'SELECT') return way === 'left' || way === 'right';",
+     "  if (at.tagName === 'SELECT') return true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_arrow_reach.test.mjs"
+   }
+  },
+  {
+   "item": 301,
+   "act": "↑ from the header's top row goes on to what lies above it: on a phone, from Topic settings and New message to Pipeline & pages",
+   "break": [
+    [
+     "web/rails.mjs",
+     "|| Boolean(doc.getElementById('messages')?.contains(at))),",
+     "|| Boolean(doc.getElementById('messages')?.contains(at)) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a topic with messages, ← and → with nothing focused go to the pane that way where it shows, else to the first control from the right or the left (a phone; → on an iPad)",
+   "break": [
+    [
+     "web/rails.mjs",
+     "feed() && ((way === 'up' || way === 'down') && (onNothing",
+     "feed() && ((onNothing"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 301,
+   "act": "← and → past a pane's edge, from a control the panes' keys do not answer (the logo block, the chips, People), go on to the pane beside",
+   "break": [
+    [
+     "web/rails.mjs",
+     "return Boolean(pane) && (way === 'left' || way === 'right') && !at.closest('.message-bar') && panes.step(pane, way, doc);",
+     "return false;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on the Outcomes home"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a message's bar ← and → move along its buttons, within the bar",
+   "break": [
+    [
+     "web/rails.mjs",
+     "at.closest('.message-bar') ?? at.closest(",
+     "at.closest("
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a message's bar"
+   }
+  },
+  {
+   "item": 301,
+   "act": "The phone drawer's outline takes its tree words on the focus coming into it, so the arrows move through its rows",
+   "break": [
+    [
+     "web/key-tree.mjs",
+     "      if (!this.placing && !(this.current && shown(this.current))) this.refresh();\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a phone, in the side rail's drawer"
+   }
+  },
+  {
+   "item": 301,
+   "act": "On a phone ↓ from the header reaches the line under it saying what is new in the other outcomes, and ↑ from the filters comes back to it: a row of the buttons at the top of the feed",
+   "break": [
+    [
+     "web/panes.mjs",
+     "['#main > #outline-elsewhere', null], ",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 301,
+   "act": "With the right rail open over the page and the keys on nothing, an arrow lands in the rail, never on the page under it",
+   "break": [
+    [
+     "web/rails.mjs",
+     " && !doc.getElementById('main')?.inert",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail at 900 and 390 the keys never act through"
    }
   },
   {

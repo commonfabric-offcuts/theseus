@@ -2415,12 +2415,15 @@ async function loadConversation() {
   if (!here.read && here.has) paintConversationNav();
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
-    here.view = answer.conversation; here.read = true;
+    const view = answer.conversation;
+    // On the page the waits and the items are taken together: a paint between the two reads
+    // (the messages' own, on every feed read) would put the new waits beside an item's old state.
+    const page = here.page && view ? checkedView(await api.view('topic_messages', { topic_id: view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
+      bootstrap.instance_id) : null;
+    here.view = view; here.read = true;
+    for (const item of page?.items ?? []) here.items.set(item.id, item);
     paintConversationNav();
-    if (here.page && here.view) {
-      const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
-        bootstrap.instance_id);
-      for (const item of page.items) here.items.set(item.id, item);
+    if (page) {
       if (topic) paintHeader(topic);
       paintConversationPage();
     }
