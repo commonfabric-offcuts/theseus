@@ -50,6 +50,9 @@ live head ([tools.md](tools.md#a-merged-train---train-file)).
 - A judged-first train whose deploy needs a run on its own commit merges once
   its source review is in and its reviews are approved. The merge only starts
   that push run; nothing deploys on a merge.
+- A merge made under a ruling is never undone by a hold that arrives after it
+  while nothing has deployed on it: a revert costs a run and moves nothing a
+  person sees.
 - A run on a tree already judged is never waited for. When the merged head's
   tree is the tree the pull request's run tested, the merged head deploys on
   that run, and its own push run is attached to the record later
@@ -63,7 +66,10 @@ live head ([tools.md](tools.md#a-merged-train---train-file)).
 ## Before the push
 
 - A train with more than eight selected steps (steps, not commits) runs none
-  of them on the pool before the merge. It merges on its items' reviews and
+  of them on the pool before the merge. No file in this repository holds the
+  threshold: it is the coordinator's train tooling outside the repository
+  that enforces it (its constant `LONG_TRAIN = 8`), refusing a pre-merge pool
+  run for such a train. It merges on its items' reviews and
   their own green target cases, and the merged head's push run is both the
   check and the judgment. A train with eight or fewer runs its steps before
   the merge. On a train of more than eight, the Python and Node units run
@@ -117,6 +123,9 @@ none of them is ever a known red.
   its assertions. Two assertion lines with one mechanism are one class. A
   deciding run is read per step to notice a pattern, but the fault is placed
   by its mechanism.
+- **A fault live shows too.** A fault the candidate shows that the shipping
+  head shows as well is filed as its own defect against live, never a hold on
+  the train.
 - **What holds a deploy.** A red still unplaced when the run ends holds the
   deploy only if it is a page fault on a phone or a wrong state a person sees.
   An unplaced timing or request-count red goes to the quarantine's list by its
@@ -161,6 +170,10 @@ from the push summary (`--known-reds`,
 live head. For a train with a migration, the migrate step exits 0 and the
 health view reads the new schema ([health.md](health.md)) before the record is
 written. After the deploy, the live head and the store's schema are read back.
+
+The deploy's word is given in advance, with the conditions the run must meet,
+so a landing waits on no seat. The owner gets one line per release, by what a
+person sees, from the seat that holds the release.
 
 ## Test-only fixes
 
