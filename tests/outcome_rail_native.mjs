@@ -2812,8 +2812,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(through.includes('dialog:who-chip'), `${size}: ↓ through the long message reaches the reply below it: ${through.join(' → ')}`);
       // Read to its end, the message's box has scrolled its link up out of sight, above the header on the page but
       // inside the box below it: ↑ from the header lands on nothing there, and leaves the message where it was read to.
-      const read = await q.evaluate("(b=>({top:b.scrollTop,hidden:document.getElementById('arrow-link').getBoundingClientRect().bottom<=b.getBoundingClientRect().top}))(document.getElementById('source-body'))");
-      assert.equal(read.hidden, true, size + ': the link in the words is scrolled up out of the message\'s box');
+      const read = await q.evaluate("(b=>{b.scrollTop=b.scrollHeight;const l=document.getElementById('arrow-link').getBoundingClientRect(),k=b.getBoundingClientRect();return {top:b.scrollTop,hidden:l.bottom<=k.top,at:[Math.round(l.top),Math.round(l.bottom),Math.round(k.top),b.scrollTop,b.scrollHeight,b.clientHeight].join(' ')}})(document.getElementById('source-body'))");
+      assert.equal(read.hidden, true, `${size}: the link in the words is scrolled up out of the message's box (link top, bottom, box top, scrolled, height, shows: ${read.at})`);
       for (const id of ['reader-parent', 'reader-close']) {
         await q.evaluate(`document.getElementById('${id}').focus()`);
         await q.key('ArrowUp');
