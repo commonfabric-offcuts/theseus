@@ -14486,6 +14486,34 @@
   },
   {
    "item": 426,
+   "act": "Core's answer to an act names the newest act its reader had heard of in the topic before it, counting no other reader's own",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"acts_version\": version, \"acts_before\": before}",
+     "\"acts_version\": version}"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 426,
+   "act": "The page's own fold, star or deal, following only acts the Reader's neighbours were read past, leaves them standing; its own Move below More asks for them afresh",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "    if (this.neighborsAt !== undefined && this.neighborsAt >= result.acts_before) this.neighborsAt = Math.max(this.neighborsAt, result.acts_version);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 426,
    "act": "A New line waiting at the bottom for an older message sits above More, never after a dossier below it",
    "break": [
     [

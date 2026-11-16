@@ -272,6 +272,14 @@ export class TopicViews {
     if (this.learnUnread(answer, afresh)) this.paint('line');
     return true;
   }
+  // The page's own act, as Core answered it (stack-feed.mjs). A fold, star or
+  // deal places no dossier, so when the neighbours were read at or after the
+  // last act the reader had heard of before it (acts_before), the acts read
+  // it brings has moved none of them, and asks for them nothing (item 426).
+  ownAct(kind, result) {
+    if (!['message.fold', 'message.star', 'message.deal'].includes(kind) || !integer(result?.acts_version) || !integer(result.acts_before)) return;
+    if (this.neighborsAt !== undefined && this.neighborsAt >= result.acts_before) this.neighborsAt = Math.max(this.neighborsAt, result.acts_version);
+  }
   // What people recorded about the loaded messages (docs/reply-stacks.md),
   // read again newest first down to the oldest message loaded: each loaded
   // message the answer names takes its acts as Core holds them. version: the

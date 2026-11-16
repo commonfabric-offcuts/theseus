@@ -871,7 +871,9 @@ function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
-    authority: () => registry.runtime.current, send: envelope => api.command(envelope),
+    authority: () => registry.runtime.current,
+    // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
+    send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,

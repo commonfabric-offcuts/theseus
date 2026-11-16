@@ -60,7 +60,9 @@ act's revision counts its rows for that message, kind and owner. A late
 request is refused with `REVISION_CONFLICT`, and the refusal carries the
 current revision. Sending a value the act already stands at records nothing
 and answers `changed: false`. An answer carries the value, the new revision,
-`changed` and, when it recorded a row, `acts_version`.
+`changed` and, when it recorded a row, `acts_version` and `acts_before`: the
+newest act in the topic its reader had heard of before this one (their own and
+the topic's, never another reader's own).
 
 These rules refuse an act:
 
@@ -721,7 +723,11 @@ neighbours of the Reader beyond what the page loaded are read again whenever
 an acts read reaches a later act than they were last read at, since a Move
 below More or Bring back on another device moves their dossier with no change
 to the topic; an acts read that reaches no later act leaves the neighbours
-already resolved as they stand (item 426). The New line,
+already resolved as they stand (item 426). The page's own fold, star or deal
+places no dossier: when the neighbours were read at or after the act its
+answer names as `acts_before`, they are taken as read at that act too, so the
+acts read it brings leaves them standing, while its own Move below More, or
+one following an act they were not read past, asks for them again. The New line,
 when the oldest new message is in a dossier below a closed More, takes the
 first place shown after it; when it is older than the page and waits at the
 bottom saying more new messages lie below, the bottom is the end of the run

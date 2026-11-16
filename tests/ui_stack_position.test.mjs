@@ -111,6 +111,28 @@ test('the first acts read, reaching only the act the loaded page was read at, as
   await views.readActs(3, read(3), () => true);
   assert.deepEqual(asked, [['neighbors', 3, true]], 'a later act asks for the neighbours afresh');
 });
+test('the page\'s own fold, star or deal, the next act its reader heard of after the neighbours were read, asks for no neighbours; its own move, or one past an act it missed, does', async () => {
+  const asked = [];
+  const views = new TopicViews({ instanceId:'i', topicId:'t', invalidate: (...args) => asked.push(args) });
+  const item = (id, seq) => ({ id, seq, topic_id:'t', body:'Words', author_id:'agent-1', acts:{}, stack_position: position(4, 2, { root_id:id }) });
+  views.messagesPage({ instance_id:'i', items:[item('a', 1), item('b', 2)], next_cursor:null, relevant_versions:{ topic:1 } }, { initial:true });
+  const read = version => async (name, args) => name === 'message_acts' ? { instance_id:'i', topic_id:'t', version, next_cursor:null, items:[] }
+    : { instance_id:'i', topic_id:'t', items: args.message_ids.map(message_id => ({ message_id, stack_position: position(4, version, { root_id:message_id }) })) };
+  for (const [kind, version] of [['message.fold', 3], ['message.star', 4], ['message.deal', 5]]) {
+    views.ownAct(kind, { changed:true, acts_version:version, acts_before:version - 1 });
+    await views.readActs(version, read(version), () => true);
+  }
+  assert.deepEqual(asked, [], 'the page\'s own fold, star and deal move no dossier: the neighbours read before them stand');
+  views.ownAct('stack.place', { changed:true, acts_version:6, acts_before:5 });
+  await views.readActs(6, read(6), () => true);
+  assert.deepEqual(asked, [['neighbors', 6, true]], 'its own Move below More moves a dossier: the neighbours are asked for afresh');
+  views.ownAct('message.fold', { changed:true, acts_version:8, acts_before:7 });
+  await views.readActs(8, read(8), () => true);
+  assert.deepEqual(asked, [['neighbors', 6, true], ['neighbors', 8, true]], 'act 7, which the neighbours were not read past, may have moved one');
+  views.ownAct('message.fold', { changed:false });
+  await views.readActs(9, read(9), () => true);
+  assert.deepEqual(asked.at(-1), ['neighbors', 9, true], 'a fold that recorded nothing names no act, and act 9 is another\'s');
+});
 test('acts read again are drawn though reading the places after them fails, and places learned before a failing page are drawn too', async () => {
   // A freshness read can fail after the acts are learned (superseded, or deferred behind the page's own reads); the
   // next read then finds nothing new, so what the failed one learned must be drawn by it.
