@@ -2148,7 +2148,7 @@ class DeployRefusesKnownRedsPolicyOfFewerSteps(PolicyRepository, KnownRedsFiles,
         self.assertNotIn(["git", "-C", str(self.config.live), "show", "%s:%s" % (self.sha, POLICY)], host.calls)
 
 
-class DeployKnownRedsPolicyOfAnEarlierSourceCommit(PolicyRepository, KnownRedsFiles, DeployCase):
+class DeployRefusesKnownRedsPolicyOfAnEarlierSourceCommit(PolicyRepository, KnownRedsFiles, DeployCase):
     """Item 553, the deploy after the one that adds a step: the policy file is the one reviewed at its source commit,
     whose release check lacks ADDED and its harness; the live commit added both and left the policy as it was, as train 21
     leaves .github/check-baseline.json; the candidate runs the live commit's steps. The policy has a reviewed transition,
