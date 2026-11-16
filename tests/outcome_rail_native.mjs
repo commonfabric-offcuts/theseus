@@ -2567,7 +2567,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
     const topic = 'rail-notices-t';
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
-    const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, source: 'topic', sender: 'aim-core', addressees: [facts.actor], body: 'A card whose star is not settled.' })).result.message_id;
+    const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, join: true, addressees: [facts.actor], body: 'A card whose star is not settled.' })).result.message_id;
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
       const at = `${size} ${theme}`, laptop = size === 'laptop';
       const p = await page('rail-notices-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
@@ -2636,7 +2636,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     net.hold(null);
     await p.send('Page.reload');
     await until(async () => (await placeOf(p)).ready && (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
-    await p.point(`#outline a[data-topic-id="${other}"]`);
+    const row = `#outline a[data-topic-id="${other}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the outline is up again');
+    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+    await p.point(row);
     await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page');
     assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, 'nothing is said about leaving');
     await p.evaluate('history.back()');
