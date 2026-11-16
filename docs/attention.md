@@ -447,11 +447,13 @@ under their view: the message they opened from the top of the window is
 where they left it when the Reader closes. As they scroll up the room goes
 with what the view no longer reaches, and it never comes back, so a reader
 who has read everything is left no blank window after the Notebook once
-they scroll away. The room comes after everything else on the page, so
-nothing in the feed moves (`web/line-room.mjs`). Since item 465 the
-topic's Team is in the header rather than after the messages, and without
-the room a short window ended with the oldest unread message still showing
-above the line.
+they scroll away. It never grows either: what the view reaches only
+lessens the room already kept, so pushing down at the page's end, or
+resizing the window there, leaves the page as long as it was. The room
+comes after everything else on the page, so nothing in the feed moves
+(`web/line-room.mjs`). Since item 465 the topic's Team is in the header
+rather than after the messages, and without the room a short window ended
+with the oldest unread message still showing above the line.
 
 For the line, a message is read when the reader opens it or answers it, not
 while they scroll past it. So the line holds while a message at or above it

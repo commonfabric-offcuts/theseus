@@ -15347,7 +15347,7 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
      "const room = needed;"
     ]
    ],
@@ -15362,8 +15362,8 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
-     "const room = shows ? needed : Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);"
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = shows ? needed : Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);"
     ]
    ],
    "check": {
@@ -15392,8 +15392,8 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
-     "const room = Math.max(needed, win.scrollY > 0 ? Math.floor(win.innerHeight - end) : 0);"
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.floor(win.innerHeight - end)) : 0);"
     ]
    ],
    "check": {
@@ -15407,8 +15407,38 @@
    "break": [
     [
      "web/line-room.mjs",
-     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);",
-     "const room = Math.max(needed, Math.ceil(win.innerHeight - end));"
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, Math.min(kept(), Math.ceil(win.innerHeight - end)));"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "Pushing down at the page's end leaves the room a faded or moved New line kept as it was: what the view reaches only lessens the room, so the page never grows a pixel per push",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.ceil(win.innerHeight - end) : 0);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: the room after the Notebook keeps"
+   }
+  },
+  {
+   "item": 465,
+   "act": "With no room kept, a window resized at the page's end makes none, and pushing down there makes none: no blank window after the Notebook with no New line",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept(), Math.ceil(win.innerHeight - end)) : 0);",
+     "const room = Math.max(needed, win.scrollY > 0 ? Math.min(kept() || 1, Math.ceil(win.innerHeight - end)) : 0);"
     ]
    ],
    "check": {

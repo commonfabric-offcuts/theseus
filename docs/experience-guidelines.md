@@ -173,7 +173,9 @@ page shorter under what is being read.
   "the room after the Notebook keeps the card being read in place as the New
   line fades or moves up, and goes as the person scrolls up", at a phone's
   320, 375 and 390 widths and a laptop: the message opened from the top of
-  the window is where it was when the Reader closes.
+  the window is where it was when the Reader closes, and pushing down at the
+  page's end, with the line showing, faded or moved, or with no room after
+  the window is resized there, leaves the room as it was.
 - `tests/reader_freshness_native.mjs` (`native-freshness`): the F-series. Reads
   continue through retries, resyncs and failures, and a "caught up" state is
   claimed only after a pass of reads has run to its end
