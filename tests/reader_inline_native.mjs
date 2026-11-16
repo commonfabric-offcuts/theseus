@@ -336,13 +336,23 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');
     await p.point('#inline-writing-body'); await p.key('e', 2); await p.key('ArrowLeft');
     const writingPosition = () => p.evaluate(`(()=>{const f=document.querySelector('#inline-writing-body'),b=f.getBoundingClientRect();return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,top:b.top,bottom:b.bottom,height:innerHeight}})()`);
-    const beforeArrival = await writingPosition();
+    const pageHeight = () => p.evaluate('document.documentElement.scrollHeight');
+    const beforeArrival = await writingPosition(), heightBefore = await pageHeight();
     assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
+    // The arrival is a message of its own to the topic, written from the topic
+    // (no message it answers), so it is a stack of its own drawn at the top of
+    // the newest-first page, above the writing: the page grows above what is
+    // being written, which holds its place. A reply into the stack on screen
+    // would instead take the place of its read latest reply
+    // (docs/reply-stacks.md, "Folding", item 342), which can leave the page
+    // shorter than the window, where no place can be held.
     const arrival = 'An independent automatic arrival while writing inline';
-    const received = await control({ method: 'agent_message', operation_id: 'inline-native-automatic-arrival', body: arrival, topic_id: facts.topic_id, addressees: [] });
+    const received = await control({ method: 'agent_message', operation_id: 'inline-native-automatic-arrival', body: arrival, topic_id: facts.topic_id, source: 'topic', addressees: [] });
     assert.equal(received.status, 'committed');
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(arrival)})`), 'automatic incoming render without Refresh');
     const afterArrival = await writingPosition();
+    const arrived = await p.evaluate(`(()=>{const c=[...document.querySelectorAll('#messages .message-card')].find(c=>c.textContent.includes(${JSON.stringify(arrival)}));return {above:Boolean(c)&&Boolean(c.compareDocumentPosition(document.querySelector('#inline-writing-body'))&Node.DOCUMENT_POSITION_FOLLOWING),shown:Boolean(c?.getClientRects().length)}})()`);
+    assert.deepEqual({ ...arrived, grew: await pageHeight() > heightBefore }, { above: true, shown: true, grew: true }, 'the arrival is drawn above the writing and the page grows by it');
     assert.deepEqual({ ...afterArrival, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, 'arrival preserves body, caret and focus');
     assert.ok(afterArrival.top >= 0 && afterArrival.bottom <= afterArrival.height, 'arrival keeps the writing area in view');
     assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, stacks: await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.className.split(' ')[0]+':'+(e.dataset.fold??''))`) }));
