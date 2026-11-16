@@ -15088,8 +15088,8 @@
    "break": [
     [
      "web/aim.css",
-     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}}",
-     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:.2rem;padding-bottom:.2rem}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}}"
+     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}#reader:has(#reader-aside:not([hidden])) .reading-pane article{padding-bottom:0}}",
+     "@media(max-width:480px){.reader-header:has(#reader-aside){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside) .reader-heading{display:contents}.reader-header:has(#reader-aside) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside) .reader-title-row>button{margin:0}#reader:has(#reader-aside) .reading-pane{padding-top:0}#reader:has(#reader-aside) .reading-pane article{padding-bottom:0}}"
     ]
    ],
    "check": {
@@ -23759,6 +23759,91 @@
    "check": {
     "native": "inline",
     "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
+   "item": 593,
+   "act": "On a phone with the keyboard up and a long reply, the message under the Reader's two-row header still shows 7 lines",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}"
+    ],
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}",
+     ""
+    ],
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane article{padding-bottom:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone light: reading shows at least 18 lines"
+   }
+  },
+  {
+   "item": 593,
+   "act": "The phone's two-row Reader header keeps no padding above or below its rows of 44px targets",
+   "break": [
+    [
+     "web/aim.css",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}",
+     ".reader-header:has(#reader-aside:not([hidden])){padding-top:.2rem;padding-bottom:.2rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the message starts right under it, with no gap of the pane's own",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
+   }
+  },
+  {
+   "item": 593,
+   "act": "Under the phone's two-row Reader header the message keeps no padding of its own after its end, so a long reply still leaves it 7 lines",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-aside:not([hidden])) .reading-pane article{padding-bottom:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "chromium phone light: reading shows at least 18 lines"
+   }
+  },
+  {
+   "item": 593,
+   "act": "The phone's Reader header keeps the whole title, on a row of its own under ← and ✕, at 320, 375 and 390",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(max-width:480px){.reader-header:has(#reader-aside:not([hidden])){flex-wrap:wrap;row-gap:0}.reader-header:has(#reader-aside:not([hidden])) .reader-heading{display:contents}.reader-header:has(#reader-aside:not([hidden])) #reader-origin{flex:1;min-width:0;margin:0;padding-left:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reader-header:has(#reader-aside:not([hidden])){padding-top:0;padding-bottom:0}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row{order:1;flex:1 0 100%;padding-left:.4rem}.reader-header:has(#reader-aside:not([hidden])) .reader-title-row>button{margin:0}#reader:has(#reader-aside:not([hidden])) .reading-pane{padding-top:0}#reader:has(#reader-aside:not([hidden])) .reading-pane article{padding-bottom:0}}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "header light: on a phone at 320, 375 and 390 the Reader's title"
    }
   }
  ]
