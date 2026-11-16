@@ -19841,6 +19841,34 @@
    "check": {
     "python": "test_tools_tool_check.py"
    }
+  },
+  {
+   "item": 17,
+   "act": "Topic settings reads its Tools this topic improves again each time it opens",
+   "break": [
+    [
+     "web/topic-settings.mjs",
+     "    this.heading.focus();\n    this.opened();",
+     "    this.heading.focus();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_header.test.mjs"
+   }
+  },
+  {
+   "item": 17,
+   "act": "An outcome's empty Skills and tools shows a writer only its heading and + Uses a tool",
+   "break": [
+    [
+     "web/skills.mjs",
+     "      answer.reader_may_use ? this.finder.node : null].filter(Boolean)), doc);",
+     "      answer.reader_may_use ? this.finder.node : null]), doc);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_skills.test.mjs"
+   }
   }
  ]
 }
