@@ -2611,6 +2611,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // goes), its next try held: the status line says so.
       await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      // Scrolled into view, the card's middle is its own once the page is at rest (WebKit scrolls after the call returns).
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
       if (laptop) await p.point(words, 'move'); else await tap(p, words);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
       if (laptop) await p.point(star); else await tap(p, star);
@@ -2732,6 +2734,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       net.hold(sends); net.always(stars, 503, lane);
       await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      // Scrolled into view, the card's middle is its own once the page is at rest (WebKit scrolls after the call returns).
+      if (!laptop) await until(() => p.evaluate(`(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})(document.querySelector(${JSON.stringify(words)}))`), at + ': the card is at rest, its words uncovered');
       if (laptop) await p.point(words, 'move'); else await tap(p, words);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
       if (laptop) await p.point(star); else await tap(p, star);
