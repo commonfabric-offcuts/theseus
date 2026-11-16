@@ -176,6 +176,16 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
   // A message's ⋯ is on the one bar over the lit message (docs/interaction.md): a card lights under the pointer, or from the keyboard.
   const menuCard = `#messages [data-id="${menuId}"]`, menuMore = '.message-bar [data-act=more]';
   const barShown = p => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return Boolean(b)&&!b.hidden&&b.offsetHeight>0})()`);
+  // A message marked unread brings the New line just below it, and Mark read, with nothing left unread, fades it
+  // (docs/attention.md). The room the line keeps after the page's content comes and goes with it (line-room.mjs),
+  // and with it the window's scrollbar where scrollbars take room: the card's width changes, and its bar follows it
+  // as the page draws its next frame. A press aimed in between, by a hit-test that sees the new card under the old
+  // bar, falls on the ⋯'s neighbour once that frame is drawn; a person aims at a frame the page has drawn, so the
+  // next press waits for the line to have done so and for a frame to be drawn.
+  const lineShows = async (p, shows) => {
+    await until(() => p.evaluate(`Boolean(document.querySelector('#messages > .new-line:not(.new-line-read)')) === ${shows}`), shows ? 'the New line shows' : 'the New line fades');
+    await frame(p);
+  };
   // The pointer rests on a card, which lights it and brings up its bar.
   const light = async (p, card) => {
     const b = await p.box(card); assert.ok(b && b.width > 0, 'visible ' + card);
@@ -217,8 +227,10 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(menuMore)}).textContent`), '⋯', 'until the next press');
     await choose(p, 'Mark unread');
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')}))`), 'the card is marked unread');
+    await lineShows(p, true);
     await light(p, menuCard); await p.point(menuMore); await menuOpen(p, ['Copy Link', 'Mark read']); await choose(p, 'Mark read');
     await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(menuCard + ' .unread-mark')})`), 'the mark is cleared');
+    await lineShows(p, false);
     assert.equal(await open(p, 'reader'), false, 'no press opened the card');
     // Where the clipboard refuses, the link is given to select.
     await clipboard(p, true);
