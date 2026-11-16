@@ -2373,9 +2373,30 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     // took their tree words since) is marked as it is found, and the arrows are pressed from it too.
     const landed = async () => { await p.evaluate(REMARK); const at = await p.evaluate(`(e=>{if(!e||e===document.body||e===document.documentElement)return 'page';const skip=${JSON.stringify(skip)};if(skip&&e.closest(skip))return 'out';if(e.getAttribute('role')==='treeitem')return 'tree'+Math.max(0,[...document.querySelectorAll('[role=tree]')].indexOf(e.closest('[role=tree]')));
       if(!e.dataset.arrowNode){window.__arrowFound=(window.__arrowFound??0)+1;e.dataset.arrowNode='found'+window.__arrowFound;const k=${SIG}(e);if(k)(window.__arrowSig??={})[k]??=e.dataset.arrowNode}return e.dataset.arrowNode})(document.activeElement)`);
-      if (at !== 'page' && at !== 'out' && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)") });
+      if (at !== 'page' && at !== 'out' && !explore.some(node => node.id === at)) explore.push({ id: at, label: await p.evaluate("(e=>e.id||e.tagName)(document.activeElement)"), via });
       return at; };
     const explore = [...nodes];
+    // How a control found as it was landed on was reached ({ from, key }): one drawn only while the keys are by it (a
+    // reply a stack shows while one of its messages is lit) is gone by the time its own presses come, and is
+    // reached again the same way first.
+    let via = null;
+    const focusNode = id => p.evaluate(`(e=>{if(!e||!e.isConnected)return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${id}"]'))`);
+    // Each way it was reached is tried in turn, the first first.
+    const reachAgain = async (node, depth = 0) => {
+      if (!node?.via || depth > 4) return false;
+      const ways = [node.via, ...edges.filter(edge => edge.to === node.id && !(edge.from === node.via.from && edge.key === node.via.key)).map(({ from, key }) => ({ from, key }))];
+      for (const way of ways) {
+        await p.evaluate(REMARK);
+        if (!await focusNode(way.from) && !await reachAgain(explore.find(each => each.id === way.from), depth + 1)) continue;
+        await arrowPress(p, way.key);
+        const got = await p.evaluate(`(e=>{if(!e||e===document.body)return 'page';if(!e.dataset.arrowNode)e.dataset.arrowNode=${JSON.stringify(node.id)};return e.dataset.arrowNode})(document.activeElement)`);
+        if (got === node.id) return true;
+        // Where that press lands now is a press like any other (the reply it reached was read, and no longer shows).
+        edges.push({ from: way.from, key: way.key, to: got });
+        console.log('arrow closure', 'reaching', node.id, 'again by', label(way.from), way.key, 'landed on', label(got));
+      }
+      return false;
+    };
     // A start given as a step: where that step, taken once the controls are marked, lands.
     if (typeof start === 'function') { await start(); start = await landed(); }
     const edges = [], dead = [], skipped = new Set();
@@ -2383,6 +2404,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const node = explore[i];
       if (node.id.startsWith('tree')) {
         for (const [home, key] of [['Home', 'ArrowUp'], ['End', 'ArrowDown']]) {
+          via = null;
           const on = await p.evaluate(`(rows=>{const row=rows.find(e=>e.tabIndex===0)??rows[0];row?.focus();return Boolean(row)&&document.activeElement===row})(${treeRows(node.id)})`);
           assert.equal(on, true, `${label(node.id)}: the keys are put on one of its rows`);
           await p.key(home); await p.key(key);
@@ -2403,7 +2425,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // A select's ↑ and ↓ are its own, choosing among its options (and opening its menu on a Mac): only ← and →.
       for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
         await p.evaluate(REMARK);
-        const ok = await p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||(e.matches('select')&&${key === 'ArrowUp' || key === 'ArrowDown'}))return false;e.focus();return document.activeElement===e})(document.querySelector('[data-arrow-node="${node.id}"]'))`);
+        via = { from: node.id, key };
+        const press = () => p.evaluate(`(e=>{if(!e||!e.isConnected||(e.matches('textarea,[contenteditable]')&&(e.value??e.textContent)!=='')||(e.matches('select')&&${key === 'ArrowUp' || key === 'ArrowDown'}))return false;e.focus();return document.activeElement===e})(document.activeElement?.dataset?.arrowNode==='${node.id}'?document.activeElement:[...document.querySelectorAll('[data-arrow-node="${node.id}"]')].find(x=>x.checkVisibility())??null)`);
+        let ok = await press();
+        if (!ok && node.via && await reachAgain(node)) ok = await press();
         if (!ok) { skipped.add(node.id); continue; }
         // While the next control is out of sight the arrow scrolls toward it; pressed on, it lands there.
         let to = node.id;
@@ -2904,6 +2929,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // settings and New message), and ← and → with nothing focused where no pane shows that way (a phone; → below
   // 1181px, where the right rail is behind its button). Pressed last: ← on a message folds it.
   await check('rail arrows on a topic and a Conversation, ↑ from the header\'s top row goes on to what lies above it, ← and → with nothing focused land on a control, and no arrow from any control stays put where a control lies that way, at 320, 375, 390, 820, 1024 and 1280', async () => {
+    // A question waits in another outcome, so on a phone the line under the header says so.
+    await control({ method: 'light_outcome', outcome: 'rail-arrows-panes-o', title: 'Panes elsewhere', topic: { id: 'rail-arrows-panes-t', title: 'Panes elsewhere topic' } });
+    await control({ method: 'agent_message', operation_id: 'rail-arrows-panes-elsewhere', body: 'Anything new?', topic_id: 'rail-arrows-panes-t', addressees: [facts.actor], intent: 'ask' });
+    const elsewhere = [];
     for (const size of ['320', '375', '390', '820', '1024', 'laptop']) for (const [name, url] of [['topic', '/?topic=t1'], ['conversation', '/?conversation=w1']]) {
       const where = `${size} ${name}`;
       const p = await arrowsAt(`rail-arrows-panes-${name}-${size}`, url, size, size === '390' || size === '1024' ? 'dark' : 'light');
@@ -2927,6 +2956,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         else if (at === 'main:' + id) wrong.push(`↑ from ${id} stays, though ${lies.join(' | ')} lies above it`);
         else if (!above) wrong.push(`↑ from ${id} lands on ${at}, not above it`);
       }
+      // On a phone the line under the header saying what is new elsewhere is a row of the header's keys: ↓ from the
+      // header's buttons comes to it, ↓ from it goes on into the feed, and ↑ from it goes back up to the buttons.
+      if (ARROW_SIZES[size].width <= 760 && name === 'topic' && await p.evaluate("(e=>Boolean(e)&&e.checkVisibility()&&!e.closest('[inert]'))(document.getElementById('outline-elsewhere'))")) {
+        elsewhere.push(size);
+        await p.evaluate("(scrollTo(0,0),document.getElementById('settings-open').focus())");
+        await p.key('ArrowDown');
+        if (await focusAt(p) !== 'main:outline-elsewhere') wrong.push(`↓ from Topic settings lands on ${await focusAt(p)}, not the line under the header`);
+        await p.evaluate("document.getElementById('outline-elsewhere').focus()");
+        await p.key('ArrowUp');
+        if (!await p.evaluate("Boolean(document.activeElement.closest('#main > .topic-header'))")) wrong.push(`↑ from the line under the header lands on ${await focusAt(p)}, not the header's buttons`);
+        await p.evaluate("document.getElementById('outline-elsewhere').focus()");
+        await p.key('ArrowDown');
+        if (!await p.evaluate("Boolean(document.activeElement.closest('#messages, #main > .feed-filters'))")) wrong.push(`↓ from the line under the header lands on ${await focusAt(p)}, not the feed`);
+      }
       assert.deepEqual(wrong, [], `${where}: every arrow lands on a control (nothing focused: ${JSON.stringify(nothing)})`);
       if (size === '390' || size === '1024') await shot(p, `rail-arrows-panes-${name}-${size}`);
       const first = async () => { await p.evaluate('(document.activeElement?.blur(), scrollTo(0, 0))'); await p.key('ArrowDown'); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
@@ -2939,5 +2982,6 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual(dead, [], `${where}: and none stays put where a control lies that way`);
       assert.deepEqual(p.errors, []); await p.close();
     }
+    assert.ok(elsewhere.length > 0, 'the line under the header shows on a phone at least once, so its keys were pressed');
   });
 }
