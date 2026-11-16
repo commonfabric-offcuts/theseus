@@ -16069,7 +16069,7 @@
    "break": [
     [
      "aim_next/releases.py",
-     "    if train.get(\"kind\") != \"ordinary\" or train.get(\"judgment\") != \"pending\":",
+     "    if not judgment_pending(json.loads(row[\"measurements\"]) if row[\"measurements\"] is not None else None):",
      "    if False:"
     ]
    ],
@@ -16195,8 +16195,8 @@
    "break": [
     [
      "tools/known_reds.py",
-     "ended_cases(out, step, \"the candidate's\")",
-     "ended_cases(out, step, \"the candidate's\", before_end_record=True)"
+     "\"the candidate's\") for step in failed}",
+     "\"the candidate's\", before_end_record=True) for step in failed}"
     ]
    ],
    "check": {
@@ -24631,6 +24631,188 @@
    "check": {
     "native": "compose",
     "case": "access notice unavailable, topic updates paused: on a phone"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy takes a release check's summary of another commit whose tree, read from the live checkout's git, is the commit it deploys, and says which commit it judged",
+   "break": [
+    [
+     "tools/deploy.py",
+     "lambda commit: judged.append(judged_tree(config, sha, commit)))",
+     "None)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A summary of a commit whose tree is not the deployed commit's is still refused",
+   "break": [
+    [
+     "tools/release_check.py",
+     "    if trees[0] != trees[1]:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A commit whose tree git cannot read is refused, never taken as the same tree",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if not COMMIT.fullmatch(tree):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "Only a full commit a summary names is asked of git; HEAD, a branch or an abbreviated commit is refused as another commit",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if tree is None or not isinstance(judged, str) or not COMMIT.fullmatch(judged):",
+     "        if tree is None or not isinstance(judged, str):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "The release record keeps both commits and the tree, its own commit's hosted judgment pending",
+   "break": [
+    [
+     "tools/releases.py",
+     "            **({\"judged_tree\": dict(judged, judgment=\"pending\")} if judged else {})}",
+     "            **({})}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "The push run on the merged head attaches to the release record of a deploy on its pull request's run, afterwards",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "            or (isinstance(judged, dict) and judged.get(\"judgment\") == \"pending\"))",
+     "            or False)"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy that measures an outcome takes only a summary of exactly the commit it deploys",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if config.outcome:\n        raise release_check.Refused(\"measuring %s records its run at the summary's own commit",
+     "    if False:\n        raise release_check.Refused(\"measuring %s records its run at the summary's own commit"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A deploy on a pull request's run reads each failed step's evidence for its known reds in the shard of that run that ran it, downloaded beside the whole-run summary",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if shards is None:\n        return folder",
+     "    if True:\n        return folder"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run live summary's failed step is read from its shards too",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return ended_cases(step_evidence(summary, path.parent, found[0], \"the live %s\" % red[\"step\"]), found[0], \"the live\",",
+     "    return ended_cases(path.parent, found[0], \"the live\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A whole-run summary's shard of another commit is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(ran, dict) or ran.get(\"commit\") != summary.get(\"commit\"):",
+     "        if not isinstance(ran, dict):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A failed step no shard, or more than one, holds as the whole-run summary has it is refused",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if len(holding) != 1:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A shard the whole-run summary names otherwise than check-N/summary.json is refused, never read",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "        if not isinstance(shard, str) or not SHARD.fullmatch(shard):",
+     "        if not isinstance(shard, str):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 588,
+   "act": "A summary refused as not describing the deployed commit records no judged tree, even when its tree is the deployed commit's",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    judged = judged[0] if judged and not foreign else None",
+     "    judged = judged[0] if judged else None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
    }
   }
  ]

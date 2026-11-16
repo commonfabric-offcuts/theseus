@@ -107,6 +107,10 @@ class FakeHost:
             out += "333 1 /usr/bin/python3 -I unrelated\n"
         elif argv[:2] == ["ps", "-o"]:
             out = "Thu Nov  5 15:02:31 2026     process %s" % argv[-1]
+        elif argv[0] == "git" and "rev-parse" in argv and argv[-1].endswith("^{tree}"):
+            # Item 588: a tree is read by real git, from the live path: a real repository where a case makes one, and
+            # no repository at all elsewhere, so git cannot read it there.
+            return subprocess.run(argv, capture_output=True, text=True)
         elif argv[0] == "git" and "rev-parse" in argv:
             out = self.head + "\n"
         elif argv[0] == "git" and "diff" in argv:
@@ -1025,11 +1029,13 @@ class FullDeploy(Restarting):
 
 class DeployRefuses(DeployCase):
     def test_a_summary_that_is_not_of_this_commit_is_refused_before_anything_is_read(self):
-        # 7.2 step 1: its counts do not describe this commit, so there is nothing to measure.
-        cases = ((None, "no readable release-check summary"),
-                 (summary(commit="d" * 40), "ran on " + "d" * 40),
-                 (dict(summary(), tree_unchanged=False), "the checkout changed while the release check ran"))
-        for written, reason in cases:
+        # 7.2 step 1: its counts do not describe this commit, so there is nothing to measure. Item 588: a summary of another
+        # commit is read only for its tree, which git cannot read here (no repository at the live path), so it is refused.
+        cases = ((None, "no readable release-check summary", []),
+                 (summary(commit="d" * 40), "ran on %s, not %s, and the tree of %s could not be read" % ("d" * 40, SHA, "d" * 40),
+                  ["d" * 40 + "^{tree}"]),
+                 (dict(summary(), tree_unchanged=False), "the checkout changed while the release check ran", []))
+        for written, reason, trees in cases:
             with self.subTest(reason):
                 if written is None:
                     self.summary.unlink()
@@ -1037,7 +1043,7 @@ class DeployRefuses(DeployCase):
                     self.summary.write_text(json.dumps(written))
                 host = FakeHost(self.config)
                 self.assertIn(reason, self.refused(host))
-                self.assertEqual(host.calls, [])
+                self.assertEqual([call[-1] for call in host.calls], trees, "nothing but a tree is read")
                 self.assertEqual(self.kills, [])
                 self.assertEqual(self.records(), ["00-release-check"])
                 self.assertFalse(json.loads((self.evidence / "00-release-check.json").read_text())["passed"])
@@ -1191,6 +1197,34 @@ class KnownRedsFiles:
         (out / "summary.json").write_text(json.dumps(result))
         return out / "summary.json"
 
+    def whole_run(self, folder, *runs, commit=SHA, shards=None, named=None, downloaded="all"):
+        """The Checks workflow's whole run of commit, its browser runs each (name, native_run kwargs), downloaded as
+        docs/tools.md ("A merged head its pull request's run judged") says: `gh run download RUN_ID -D folder` keeps each
+        artifact in a folder of its own, the whole-run summary in release-check/ and each shard's summary and evidence in
+        check-N/ beside it; downloaded="release-check" keeps the summary alone, as `-n release-check` does. The browser runs
+        are check-1's, every other step check-0's. shards(their summaries) changes the shards as written; named, the
+        shards the whole-run summary names. Returns the whole-run summary's path."""
+        top = Path(self.tmp.name) / folder
+        combined = summary(commit=commit, failed=tuple(name for name, _ in runs))
+        made = {name: native_run(top / "check-1", name, **args) for name, args in runs}
+        combined["steps"] = [made.get(step["name"], step) for step in combined["steps"]]
+        written = {"check-%d" % number: [step for step in combined["steps"] if (step["name"] in made) == bool(number)]
+                   for number in (0, 1)}
+        written = {name: {"tool": release_check.TOOL, "commit": commit, "tree_unchanged": True, "required": list(release_check.REQUIRED),
+                          "only": [step["name"] for step in steps], "steps": steps} for name, steps in written.items()}
+        combined.update(skipped=None, combined_from=named or [name + "/summary.json" for name in sorted(written)])
+        if downloaded == "release-check":
+            top = Path(self.tmp.name) / (folder + "-summary-alone")
+            top.mkdir()
+            (top / "summary.json").write_text(json.dumps(combined))
+            return top / "summary.json"
+        for name, shard in (shards(written) if shards else written).items():
+            (top / name).mkdir(exist_ok=True)
+            (top / name / "summary.json").write_text(json.dumps(shard))
+        (top / "release-check").mkdir()
+        (top / "release-check" / "summary.json").write_text(json.dumps(combined))
+        return top / "release-check" / "summary.json"
+
     def listing(self, *reds, live_commit=HEAD):
         """The --known-reds file: each red (step, case, live summary path)."""
         self.known.write_text(json.dumps({"live_commit": live_commit, "reds": [
@@ -1203,6 +1237,213 @@ class KnownRedsFiles:
         path = self.live_summary("live-check", (RED_STEP, live or {}))
         self.listing(*[(RED_STEP, case, path) for case in listed])
         return path
+
+
+class DeployRefusesJudgedTree(KnownRedsFiles, DeployCase):
+    """Item 588: a run on a tree already judged is never waited for. A pull request's run judges GitHub's merge of it,
+    which is neither the merged head nor the PR's head; --release-check takes that run's summary for a merged head whose
+    tree, read from the live checkout's git, is the judged commit's, and records both commits and the tree. The live
+    path is a real repository holding the judged commit, the merged head with its tree, and a commit with another."""
+
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+        self.live = Path(self.raw["live"])
+        self.live.mkdir()
+        self.git("init", "-q")
+        (self.live / "harbour.txt").write_text("the ferry leaves at dawn\n")
+        self.commit("the live plan")
+        (self.live / "harbour.txt").write_text("the ferry leaves at dusk\n")
+        self.judged = self.commit("what the pull request's run checked")
+        self.merged = self.commit("the train merged onto the release branch", "--allow-empty")
+        (self.live / "harbour.txt").write_text("the ferry stays in port\n")
+        self.other = self.commit("a change no run saw")
+        self.tree = self.git("rev-parse", self.merged + "^{tree}")
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.live)] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, message, *more):
+        self.git("add", "-A")
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", message, *more)
+        return self.git("rev-parse", "HEAD")
+
+    def host(self):
+        """The live HEAD and the merged head on the live checkout's line; everything else as FakeHost answers it."""
+        return FakeHost(self.config, line=(HEAD, self.merged))
+
+    def ran_on(self, commit, **written):
+        self.summary.write_text(json.dumps(dict(summary(commit=commit), **written)))
+
+    def evidence_of(self, name):
+        # The known reds' own reader of a step's evidence, whose read tools/ci-input-reads.json already declares.
+        return DeployRefusesKnownReds.evidence_of(self, name)
+
+    def refused_before_anything(self, host, words, **release):
+        refusal = self.refused(host, sha=self.merged, **release)
+        self.assertIn("the release check has not passed for %s: the release check ran on " % self.merged, refusal)
+        self.assertIn(words, refusal)
+        self.assertEqual(self.records(), ["00-release-check"])
+        self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+        self.assertEqual(self.kills, [])
+        written = self.evidence_of("00-release-check")
+        self.assertFalse(written["passed"])
+        self.assertNotIn("judged", written, "a summary that was not taken records no judged tree")
+        return refusal
+
+    def test_a_summary_of_a_commit_whose_tree_is_the_merged_heads_is_taken_and_recorded(self):
+        self.assertNotEqual(self.judged, self.merged)
+        self.ran_on(self.judged)
+        host = self.host()
+        self.planned(host, sha=self.merged)
+        written = self.evidence_of("00-release-check")
+        self.assertEqual((written["commit"], written["passed"], written["reasons"]), (self.merged, True, []))
+        self.assertEqual(written.get("judged"), {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree})
+        record = self.evidence_of("02-release")["record"]
+        self.assertEqual((record["commit"], record["items"]), (self.merged, [88]))
+        self.assertEqual(record["measurements"]["release_check"]["commit"], self.judged, "the counts are the judged run's")
+        self.assertEqual(record["measurements"].get("judged_tree"),
+                         {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree, "judgment": "pending"})
+        self.assertEqual([call[-1] for call in host.calls if call[-1].endswith("^{tree}")],
+                         [self.judged + "^{tree}", self.merged + "^{tree}"], "both trees are read from the live checkout's git")
+
+    def test_a_summary_of_exactly_the_commit_reads_no_tree_and_records_no_judged_tree(self):
+        self.ran_on(self.merged)
+        host = self.host()
+        self.planned(host, sha=self.merged)
+        self.assertNotIn("judged", self.evidence_of("00-release-check"))
+        self.assertNotIn("judged_tree", self.evidence_of("02-release")["record"]["measurements"])
+        self.assertEqual([call for call in host.calls if call[-1].endswith("^{tree}")], [])
+
+    def test_a_summary_of_a_commit_with_another_tree_is_refused_before_anything_stops(self):
+        self.ran_on(self.other)
+        tree = self.git("rev-parse", self.other + "^{tree}")
+        self.refused_before_anything(self.host(), "%s, not %s, and its tree %s is not %s's tree %s"
+                                     % (self.other, self.merged, tree, self.merged, self.tree))
+
+    def test_a_summary_whose_commit_git_cannot_read_is_refused_never_taken_as_the_same_tree(self):
+        missing = "e" * 40
+        self.ran_on(missing)
+        self.refused_before_anything(self.host(), "%s, not %s, and the tree of %s could not be read" % (missing, self.merged, missing))
+
+    def test_a_summary_naming_no_full_commit_is_refused_without_asking_git(self):
+        for name in ("HEAD", self.merged[:12]):
+            with self.subTest(name):
+                self.again()
+                self.ran_on(name)
+                host = self.host()
+                self.refused_before_anything(host, "%s, not %s" % (name, self.merged))
+                self.assertEqual(host.calls, [])
+
+    def again(self):
+        self.tearDown()
+        self.setUp()
+
+    def test_a_deploy_that_measures_an_outcome_takes_only_a_summary_of_exactly_the_commit(self):
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        self.config = deploy.load_config(self.config_path)
+        self.ran_on(self.judged)
+        host = self.host()
+        self.refused_before_anything(host, "measuring building-theseus records its run at the summary's own commit, so it takes "
+                                     "only a summary of exactly %s" % self.merged)
+        self.assertEqual(host.calls, [])
+
+    def test_known_reds_are_matched_against_the_judged_summary_as_against_any(self):
+        self.candidate_fails((RED_STEP, dict(failed=(RED_CASE, "a whisper keeps its colour"))), commit=self.judged)
+        live = self.live_summary("live-check", (RED_STEP, dict(failed=(RED_CASE, "a whisper keeps its colour"))))
+        self.listing((RED_STEP, RED_CASE, live), (RED_STEP, "a whisper keeps its colour", live))
+        self.planned(self.host(), sha=self.merged, known_reds=self.known)
+        written = self.evidence_of("00-release-check")
+        self.assertEqual((written["passed"], written["reasons"]), (False, ["%s failed (exit 1)" % RED_STEP]))
+        self.assertEqual([(red["case"], red["taken_by"]) for red in written["known_reds"]["accepted"]],
+                         [(RED_CASE, "live"), ("a whisper keeps its colour", "live")])
+        measured = self.evidence_of("02-release")["record"]["measurements"]
+        self.assertEqual([red["case"] for red in measured["known_reds"]], [RED_CASE, "a whisper keeps its colour"])
+        self.assertEqual(measured["native"]["steps"]["colors"], {"pass": 1, "total": 3}, "still counted as failed")
+        self.assertEqual((measured.get("judged_tree") or {}).get("judged_commit"), self.judged)
+
+    def test_a_red_the_known_reds_do_not_list_is_refused_for_the_judged_summary_as_for_any(self):
+        self.candidate_fails((RED_STEP, dict(failed=(RED_CASE, "a whisper keeps its colour"))), commit=self.judged)
+        self.listing((RED_STEP, RED_CASE, self.live_summary("live-check", (RED_STEP, dict(failed=(RED_CASE,))))))
+        refusal = self.refused(self.host(), sha=self.merged, known_reds=self.known)
+        self.assertIn("known reds: %s failed 'a whisper keeps its colour', which the known reds do not list" % RED_STEP, refusal)
+        self.assertEqual((self.records(), self.kills), (["00-release-check"], []))
+
+    RED_RUN = (RED_STEP, dict(failed=(RED_CASE, "a whisper keeps its colour")))
+
+    def test_known_reds_read_a_whole_run_downloaded_as_documented_from_the_shards_beside_its_summary(self):
+        # The pull request's run is the Checks workflow's: its whole-run summary keeps no evidence of its own, and each
+        # failed step's evidence is in the shard that ran it, which `gh run download RUN_ID -D DIR` puts beside it.
+        self.summary = self.whole_run("run-43", self.RED_RUN, commit=self.judged)
+        live = self.live_summary("live-check", self.RED_RUN)
+        self.listing((RED_STEP, RED_CASE, live), (RED_STEP, "a whisper keeps its colour", live))
+        self.planned(self.host(), sha=self.merged, known_reds=self.known)
+        written = self.evidence_of("00-release-check")
+        self.assertEqual((written["passed"], written["reasons"]), (False, ["%s failed (exit 1)" % RED_STEP]))
+        self.assertEqual([(red["case"], red["taken_by"]) for red in written["known_reds"]["accepted"]],
+                         [(RED_CASE, "live"), ("a whisper keeps its colour", "live")])
+        self.assertEqual(written.get("judged"), {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree},
+                         "a summary taken with known reds records the tree it judged")
+        measured = self.evidence_of("02-release")["record"]["measurements"]
+        self.assertEqual(measured["native"]["steps"]["colors"], {"pass": 1, "total": 3}, "still counted as failed")
+        self.assertEqual(measured["judged_tree"]["judged_commit"], self.judged)
+
+    def test_a_live_whole_run_is_read_from_the_shards_beside_its_summary_too(self):
+        self.candidate_fails(self.RED_RUN, commit=self.judged)
+        live = self.whole_run("live-run", self.RED_RUN, commit=HEAD)
+        self.listing((RED_STEP, RED_CASE, live), (RED_STEP, "a whisper keeps its colour", live))
+        self.planned(self.host(), sha=self.merged, known_reds=self.known)
+        self.assertEqual([(red["case"], red["live_summary"]) for red in self.evidence_of("00-release-check")["known_reds"]["accepted"]],
+                         [(RED_CASE, str(live)), ("a whisper keeps its colour", str(live))])
+
+    def test_a_whole_run_whose_shards_do_not_hold_the_step_as_it_says_is_refused(self):
+        said = "the candidate's %s" % RED_STEP
+        drift = lambda step: dict(step, counts=dict(step["counts"], tests=step["counts"]["tests"] + 1))
+        for words, run in (
+                # Downloaded as the summary alone: no shard is beside it.
+                ("%s has no readable evidence: its run's shard check-0/summary.json" % said, dict(downloaded="release-check")),
+                ("%s has no readable evidence: its run's shard check-1/summary.json" % said,
+                 dict(shards=lambda written: {"check-0": written["check-0"]})),
+                ("%s: its run's shard check-1/summary.json ran on %s, not {judged}" % (said, "d" * 40),
+                 dict(shards=lambda written: dict(written, **{"check-1": dict(written["check-1"], commit="d" * 40)}))),
+                ("%s: 0 of its run's shards hold the step as the summary has it, not one" % said,
+                 dict(shards=lambda written: dict(written, **{"check-1": dict(written["check-1"], steps=[
+                     drift(step) for step in written["check-1"]["steps"]])}))),
+                ("%s: 2 of its run's shards hold the step as the summary has it, not one" % said,
+                 dict(shards=lambda written: dict(written, **{"check-0": dict(written["check-0"], steps=written["check-0"]["steps"]
+                                                                              + written["check-1"]["steps"])}))),
+                ("%s: its run names the shard '../check-1/summary.json', not check-N/summary.json" % said,
+                 dict(named=["check-0/summary.json", "../check-1/summary.json"]))):
+            with self.subTest(words):
+                self.again()
+                self.summary = self.whole_run("run-43", self.RED_RUN, commit=self.judged, **run)
+                live = self.live_summary("live-check", self.RED_RUN)
+                self.listing((RED_STEP, RED_CASE, live), (RED_STEP, "a whisper keeps its colour", live))
+                refusal = self.refused(self.host(), sha=self.merged, known_reds=self.known)
+                self.assertIn("known reds: " + words.format(judged=self.judged), refusal)
+                self.assertEqual((self.records(), self.kills), (["00-release-check"], []))
+                # The summary describes the merged head's tree; it is the known reds that refuse, so the record of the
+                # attempt says which commit's run it read.
+                self.assertEqual(self.evidence_of("00-release-check").get("judged"),
+                                 {"judged_commit": self.judged, "commit": self.merged, "tree": self.tree})
+
+    def test_a_summary_of_the_same_tree_refused_for_another_reason_records_no_judged_tree(self):
+        # The tree is read, and is the merged head's, but the summary is still not one the deploy takes.
+        for written, words in ((dict(tree_unchanged=False), "the checkout changed while the release check ran"),
+                               (dict(only=[RED_STEP]), "the release check ran only %s, so it does not describe " % RED_STEP)):
+            with self.subTest(words):
+                self.again()
+                self.ran_on(self.judged, **written)
+                host = self.host()
+                refusal = self.refused(host, sha=self.merged)
+                self.assertIn("the release check has not passed for %s: %s" % (self.merged, words), refusal)
+                self.assertNotIn("ran on " + self.judged, refusal, "the tree is the merged head's")
+                self.assertEqual([call[-1] for call in host.calls if call[-1].endswith("^{tree}")],
+                                 [self.judged + "^{tree}", self.merged + "^{tree}"], "the tree was read")
+                self.assertEqual((self.records(), self.kills), (["00-release-check"], []))
+                recorded = self.evidence_of("00-release-check")
+                self.assertFalse(recorded["passed"])
+                self.assertNotIn("judged", recorded, "a summary that was not taken records no judged tree")
 
 
 class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
@@ -1528,7 +1769,8 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
 
     def test_an_only_candidate_or_one_of_another_commit_is_refused_as_before(self):
         for written, words in ((dict(only=[RED_STEP]), "the release check ran only %s, so it does not describe %s" % (RED_STEP, SHA)),
-                               (dict(commit="d" * 40), "the release check ran on %s, not %s" % ("d" * 40, SHA))):
+                               (dict(commit="d" * 40), "the release check ran on %s, not %s, and the tree of %s could not be read"
+                                % ("d" * 40, SHA, "d" * 40))):
             with self.subTest(words):
                 self.again()
                 self.red_on_both()
@@ -1537,7 +1779,9 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
                 refusal = self.refused(host, known_reds=self.known)
                 self.assertIn("the release check has not passed for %s: " % SHA, refusal)
                 self.assertIn(words, refusal)
-                self.assertEqual((host.calls, self.records(), self.kills), ([], ["00-release-check"], []))
+                # Item 588: a summary of another commit is read for its tree alone, which git cannot read here.
+                self.assertEqual([call for call in host.calls if not call[-1].endswith("^{tree}")], [])
+                self.assertEqual((self.records(), self.kills), (["00-release-check"], []))
 
     def test_a_malformed_known_reds_file_is_refused(self):
         self.red_on_both()

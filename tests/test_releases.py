@@ -170,6 +170,13 @@ def trained(kind="ordinary", judgment="pending"):
                       "hosted_run": None, "judgment": judgment}}
 
 
+def tree_judged(judgment="pending", commit=A):
+    """Item 588: the measurements of a release deployed on the run of another commit with its tree (tools/releases.py
+    measurements with judged): that run's counts, and the commits and the tree, the deployed commit's judgment pending."""
+    return dict(record()["measurements"], release_check={"commit": C, "started_at": None, "finished_at": None},
+                judged_tree={"judged_commit": C, "commit": commit, "tree": B, "judgment": judgment})
+
+
 def judgment(head=A, conclusion="success", audit="m-audit"):
     found = lambda kind, number: {"id": number, "name": "Checks", "head_sha": head, "status": "completed",
                                   "conclusion": conclusion, "kind": kind}
@@ -239,6 +246,36 @@ class HostedJudgment(ReleaseCase):
         for value in ({}, dict(judgment(), audit=""), dict(judgment(), producer_runs=[]), dict(judgment(), extra=1)):
             with self.subTest(value):
                 self.refused_attach(value, "INVALID_ARGUMENT")
+
+
+class HostedJudgmentOfAJudgedTree(HostedJudgment):
+    """Item 588: a release deployed on the run of another commit with its tree takes the hosted judgment of its own
+    commit, the push run, once it lands, as an ordinary train's release does; every case of HostedJudgment holds."""
+
+    def setUp(self):
+        ReleaseCase.setUp(self)
+        self.recorded(record(release=20, items=[481], measurements=tree_judged()))
+        self.before = self.only()
+
+    def test_a_pending_release_takes_its_judgment_once_and_nothing_else_in_its_record_changes(self):
+        code, answer = self.attach(judgment())
+        self.assertEqual((code, answer["attached"]), (0, True), answer)
+        after = self.only()
+        self.assertEqual(after["hosted_judgment"], judgment())
+        self.assertEqual({k: v for k, v in after.items() if k != "hosted_judgment"},
+                         {k: v for k, v in self.before.items() if k != "hosted_judgment"})
+        self.assertEqual(after["measurements"]["judged_tree"]["judgment"], "pending", "the record stays as it was written")
+        self.assertIn("never changes", self.refused_attach(judgment(conclusion="failure"), "RELEASE_JUDGED"))
+
+    def test_a_judgment_of_the_judged_commit_is_not_the_releases(self):
+        self.assertIn("not release 20's commit", self.refused_attach(judgment(head=C), "JUDGMENT_OF_ANOTHER_COMMIT"))
+
+    def test_only_a_judged_tree_that_says_its_judgment_is_pending_takes_one(self):
+        self.recorded(record(commit=C, previous=A, items=[482], measurements=tree_judged(judgment="judged", commit=C)))
+        self.recorded(record(commit=B, previous=C, items=[483], measurements=dict(tree_judged(commit=B), judged_tree="pending")))
+        for number in (21, 22):
+            with self.subTest(number):
+                self.refused_attach(judgment(head=C if number == 21 else B), "JUDGMENT_NOT_PENDING", number)
 
 
 class HealthOfATrainRelease(ReleaseCase):
@@ -313,6 +350,25 @@ class AttachJudgmentTool(ReleaseCase):
         self.assertEqual(github.asked, ["repos/%s/actions/runs/301" % self.trains.REPOSITORY,
                                         "repos/%s/check-runs/401" % self.trains.REPOSITORY,
                                         "repos/%s/check-runs/402" % self.trains.REPOSITORY])
+
+    def test_the_tool_attaches_the_push_run_to_a_release_deployed_on_a_judged_tree(self):
+        # Item 588: release 21 deployed on the pull request's run of C, whose tree is its commit B's; the push run on B lands.
+        self.recorded(record(commit=B, previous=A, items=[588], measurements=tree_judged(commit=B)))
+        listed = self.trains.listed
+        from tools import releases
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = releases.main(["attach-judgment", "21", "--config", str(self.config_path), "--runs", "301", "--checks", "401",
+                                  "--audit", "m-audit"], github=self.trains.FakeGitHub(runs=[listed(301, B)], checks=[listed(401, B)]))
+        self.assertEqual(code, 0, err.getvalue())
+        judged = {item["release"]: item["hosted_judgment"] for item in self.store.view("owner", "releases", {})["items"]}
+        self.assertEqual((judged[21]["head"], judged[20]), (B, None))
+        # The run of the judged commit is not the release's own judgment: it names C, not B.
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            code = releases.main(["attach-judgment", "21", "--config", str(self.config_path), "--runs", "302", "--checks", "402",
+                                  "--audit", "m-audit"], github=self.trains.FakeGitHub(runs=[listed(302, C)], checks=[listed(402, C)]))
+        self.assertEqual(code, 1)
+        self.assertIn("names %s as its head, not %s, release 21's commit" % (C, B), err.getvalue())
 
     def test_the_tool_finds_a_release_on_an_older_page_of_the_records(self):
         # B10: fifty later releases put release 20 on the second page the live CLI prints; the tool reads every page.
