@@ -1,0 +1,8 @@
+{
+ "step": "colors",
+ "cases": [
+  "colors open a message in the Reader and reply: the New line fades out where it is, with no Refresh"
+ ],
+ "label": "606-col-newline-diag-1",
+ "snapshot": "81b25d4078e598371ee83dfcafb1371b15c0043f"
+}
