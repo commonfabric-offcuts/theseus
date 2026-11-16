@@ -14122,6 +14122,21 @@
     "native": "live",
     "case": "live More at the top edge shows the older messages"
    }
+  },
+  {
+   "item": 465,
+   "act": "A long Team takes at most half the title row on a laptop, and the subtitle keeps the rest",
+   "break": [
+    [
+     "web/aim.css",
+     "grid-template-columns:minmax(0,1fr) fit-content(50%);column-gap:1.25rem",
+     "grid-template-columns:minmax(0,1fr) auto;column-gap:1.25rem"
+    ]
+   ],
+   "check": {
+    "native": "header",
+    "case": "header a long Team takes"
+   }
   }
  ]
 }
