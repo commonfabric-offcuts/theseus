@@ -351,7 +351,7 @@ async function run() {
       for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) {
         const p = await page(shape, scheme);
         await open(p, second);
-        const at = await p.evaluate(() => {
+        const at = await p.evaluate(id => {
           const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), row = rect('.reader-title-row'), close = rect('#reader-close');
           const title = document.querySelector('#reader-title'), article = document.querySelector('#source-body');
           const controls = [...document.querySelectorAll('#reader .reader-header button')].filter(e => e.getClientRects().length && e.getBoundingClientRect().width >= 1 && !e.closest('h2'));
@@ -361,16 +361,20 @@ async function run() {
             if (!(x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5)) over.push(`${e.id}/${f.id}`);
           }
           const top = Math.min(...controls.map(e => e.getBoundingClientRect().top)), border = parseFloat(getComputedStyle(document.querySelector('.reader-header')).borderBottomWidth);
-          return { title: title.textContent, whole: title.scrollWidth <= title.clientWidth + 1, twoRows: row.top >= close.bottom - 0.5, over,
+          // The name of the dossier the message is in, as its tab in the topic's feed shows it (item 561).
+          const tab = document.querySelector(`#messages [data-id="${id}"]`)?.closest('[data-stack]')?.querySelector(':scope .stack-head > .stack-name')?.textContent ?? null;
+          return { title: title.textContent, tab, whole: title.scrollWidth <= title.clientWidth + 1, twoRows: row.top >= close.bottom - 0.5, over,
             small: controls.map(e => [e.id, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]).filter(([, w, h]) => w < 44 || h < 44),
             above: Math.round((top - header.top) * 10) / 10, below: Math.round((header.bottom - border - row.bottom) * 10) / 10, gap: Math.round((article.getBoundingClientRect().top - header.bottom) * 10) / 10,
             room: ['.reader-header', '.reading-pane', '#source-body'].map(s => getComputedStyle(document.querySelector(s))).map((c, i) => i === 2 ? c.paddingBottom : `${c.paddingTop} ${c.paddingBottom}`),
             sideways: document.documentElement.scrollWidth > innerWidth };
-        });
+        }, second);
         measured.push({ engine, shape, scheme, state: 'header', ...at });
         await shot(p, 'header');
         if (shape.startsWith('phone')) {
-          assert.deepEqual([at.title, at.whole, at.twoRows], ['Read here', true, true], `${shape}: the whole title on the header's second row: ${JSON.stringify(at)}`);
+          // The title names the dossier a reply goes into (item 561), as its tab does.
+          assert.ok(at.tab, `${shape}: the message's dossier has a tab in the feed: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.title, at.whole, at.twoRows], [at.tab, true, true], `${shape}: the whole title, the dossier's name, on the header's second row: ${JSON.stringify(at)}`);
           assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);
           assert.deepEqual([at.above, at.below, at.gap], [0, 0, 0], `${shape}: the two rows are no taller than their targets, and the message starts right under them: ${JSON.stringify(at)}`);
           // The message read to its end: ↑ Previous · ↓ Next keeps the room the message's end has had, its own .5rem (8px), clear of the composer under it.
