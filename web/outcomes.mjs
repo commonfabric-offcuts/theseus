@@ -17,7 +17,7 @@ export class OutcomeRail {
     this.reachedCount=0;this.endedCount=0;
     this.read=async args=>{const answer=await read(args);this.reachedCount=Number.isSafeInteger(answer?.reached_count)?answer.reached_count:0;
       this.endedCount=Number.isSafeInteger(answer?.ended_count)?answer.ended_count:0;return answer;};
-    this.ended=document.createElement('details');this.ended.className='reached-outcomes ended-outcomes';this.ended.hidden=true;
+    this.ended=document.createElement('details');this.ended.className='ended-outcomes';this.ended.hidden=true;
     const endedSummary=document.createElement('summary');this.endedList=document.createElement('div');this.ended.append(endedSummary,this.endedList);this.endedLine=endedSummary;
     this.ended.ontoggle=()=>{if(this.ended.open){this.endedList.textContent='Reading…';this.readEnded(read);}};
     this.readEndedOf=read;
