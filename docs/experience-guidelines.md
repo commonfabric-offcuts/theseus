@@ -102,6 +102,15 @@ starts or ends inside the pop-up is not an outside press.
   explicit Close Escape and Topic cancel pending navigation with preserved
   writing".
 
+A reply in doubt that will never go can be set aside without losing its
+words: they go back into the empty writing, or stay readable with Copy, and
+Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
+
+- `tests/set_aside_native.mjs` (`native-rail`, `native-webkit-rail`): "rail set
+  aside composer", "rail set aside message", "rail set aside attachment" and
+  "rail set aside looks right" (1280, 320, 375 and 390, light and dark).
+- Core: `tests/test_set_aside.py`.
+
 ## Your place holds
 
 A message arriving never moves what is being read or written, and nor does
