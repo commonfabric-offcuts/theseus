@@ -135,6 +135,11 @@ where they were asked for.
 - `tests/reader_live_native.mjs` (`native-live`): "live a message arriving
   leaves the card being read in place, and a field scrolled away holds nothing",
   "live with no card on the screen, a message arriving scrolls nothing".
+- `tests/reader_inline_native.mjs` (`native-inline`): "inline find restore
+  owner switch arrival and exact source-free send": a message of its own
+  arriving while a new message is written at the topic page's end is drawn
+  above the writing, the page grows by it, and the writing, its caret and its
+  focus stay where they were on screen.
 - `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
   "reading Show full message on a card scrolled inside keeps the words being
   read where they were"; `tests/stack_native.mjs` (the same steps): "reading
