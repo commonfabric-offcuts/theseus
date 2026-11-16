@@ -2595,7 +2595,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
       await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way');
       const row = `#outline a[data-topic-id="${topic}-23"]`;
-      if (!laptop) { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens'); }
+      if (!laptop) { await p.evaluate('scrollTo(0,0)'); await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens'); }
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       if (laptop) await p.point(row); else await tap(p, row);
       await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
