@@ -32,6 +32,71 @@ later change to it is refused `OUTCOME_REACHED`, while a reader's own state
 there still saves. Reached outcomes leave the list and fold into one line,
 "Reached (N)", which reads them only when it is opened.
 
+## Archived and completed
+
+An outcome its owner is no longer pursuing can be **archived**, and one that is
+done can be **completed**, whatever its kind, as long as it is not reached.
+**Bring back** undoes either. Only the owner does any of the three, each with
+one press and no words to type, since one press undoes it. Completed is not
+Reached: it records no Reached, closes no topic and clears no wait, and it can
+be undone. The records are `aim_next/outcome_end.py`; the words the pages share
+are in `web/outcome-end.mjs`.
+
+- **The record.** `outcome_ends` (schema 44) keeps one row per act, oldest
+  first, never rewritten: the state (`archived`, `completed` or `open`), the
+  topics the act archived, who and when. The latest row is where the outcome
+  stands; an outcome with no row is open. The command is `outcome.end_set
+  {state}` on `{workspace_id}`, fenced on the outcome's version. The same state
+  twice answers `changed: false`.
+- **What it touches.** Archiving or completing an open outcome archives every
+  topic of it not yet archived, its Conversation too, and lists them on the
+  row. Bring back unarchives exactly those still archived, so a topic archived
+  on its own before the act stays archived, and nothing else changes: states,
+  notes, waits, asks, deliveries, marks, the Notebook and the pipeline stand as
+  they were. Between archived and completed the list is carried and no topic is
+  touched. The answer's `topics` counts the topics touched, 0 for a switch.
+- **Kept to read.** While it is archived or completed every command that writes
+  in the outcome is refused whole, `OUTCOME_ARCHIVED` or `OUTCOME_COMPLETED`,
+  in words that say who can bring it back ("Garden shed is archived; tony, its
+  owner, can bring it back."). A reader's own state there still saves, as in a
+  reached outcome (`REACHED_EXEMPT`), and so does the writing in a composer or a
+  draft: a message sent there is refused, and its writing is kept for review.
+  Reads work, and a write in another outcome lands.
+  Reached is refused while it is archived or completed: it is brought back
+  first. A reached outcome is never archived or completed.
+- **Lists.** It leaves the outcome list, as a reached outcome does
+  ([workspaces-query.md](workspaces-query.md)); its topics are archived topics,
+  so they count nowhere ([attention.md](attention.md)). Its light says "Archived
+  · Nov 15" (Quiet) or "Done · completed Nov 15" (Done)
+  ([outcome-light.md](outcome-light.md)).
+
+On the outcome's page the owner reads **Complete · Archive**, two quiet word
+buttons at the end of the kind block, with titles that say what each does. A
+press reads "Completing…" or "Archiving…", and a second press sends nothing;
+Core's refusal shows in the card's notice. Once it is done, "Where it stands"
+says "Archived · Nov 15" or "Done · completed Nov 15" and "tony archived it",
+with **Bring back** beside that line for the owner, where the keys go. The kind
+reads in words and "Say it is reached" is not offered. Bring back gives the keys
+to the word that ended it. Everyone else sees none of these controls.
+
+On the Outcomes home, archived and completed outcomes fold into one closed line,
+"Archived (N)", directly above "Reached (N)", hidden at 0, which reads them
+(`workspaces` with `ended: true`) only when it is opened. Each row is the
+outcome's name over "Archived Nov 15" or "Completed Nov 15"; a press opens what a
+home row opens. Its owner's row ends with Bring back, outside the link: the row
+goes, the outcome comes back to its place in the list, and the keys go to it.
+The outline has no Archived line.
+
+A topic or Conversation of an archived or completed outcome says so in one muted
+line under its title, "This outcome is archived; its topics are kept to read"
+or "This outcome was completed Nov 15; its topics are kept to read", followed by
+Bring back for the owner, which gives the keys to the writing. It offers no Edit.
+
+Every control is a real button, at least 44px tall at a phone's width, with its
+focus ring; nothing carries a coloured edge. A page from before this knows
+neither state: it lists the outcome nowhere, and its light, Quiet or Done, says
+"Quiet since" the act's time.
+
 ## The target and its word
 
 The owner or the coordinator writes the target with "Write the target": the

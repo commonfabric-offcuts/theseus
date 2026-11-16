@@ -249,6 +249,10 @@ Everything is reachable by touch on a phone. Touch targets are big enough,
 nothing scrolls sideways, and nothing depends on hover.
 
 - `tests/fence_copy_native.mjs` (`native-fence-copy`) checks touch targets, partial fences and visible clipboard refusals at 320, 375 and 390 pixels in both themes.
+- `tests/targets_native.mjs` (`native-targets`, `native-webkit-targets`):
+  "targets the owner's Complete · Archive, and Bring back on the page, the home
+  and a topic, are 44px tall at 320, 375 and 390 …", and "targets the owner
+  archives by touch …" (archived by a tap, brought back by the keys).
 - `tests/reader_navigation_native.mjs` (`native-navigation`): "navigation
   paging workspace denial retry and narrow touch targets".
 - `tests/reader_openings_native.mjs` (`native-openings`): "openings 390px touch

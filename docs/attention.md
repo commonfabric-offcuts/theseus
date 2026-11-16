@@ -97,6 +97,9 @@ else either: the outcome row, the totals,
 `latest_addressed`, `waiting_on_me` and `latest_waiting` all leave it out,
 save for a message sent by name to someone with no list of the outcome's
 topics (below).
+An outcome its owner archived or completed has every topic archived by the act
+(docs/targets.md, "Archived and completed"), so its topics count as archived
+topics do, and Bring back returns their counts.
 Archiving settles nothing. `workspace_topics` with `archived: true` still
 shows each archived topic's own `unread`, `addressed` and `waiting_on`, and
 when the topic is unarchived its counts return everywhere.
