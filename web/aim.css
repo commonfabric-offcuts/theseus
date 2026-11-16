@@ -243,7 +243,7 @@ button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brig
 /* Other outcomes' questions on an outcome's page: one quiet line, each link kept whole. */
 .also-waiting{margin:0 0 1rem;font-size:.88rem;color:var(--muted);overflow-wrap:anywhere}.also-waiting a{color:var(--accent);white-space:nowrap}
 /* No header bar: the logo block tops the rail, or the main column on a page with no rail; the page's notices sit under it. */
-.rail>.notice,main>.notice{margin:0 0 1rem}
+.rail>.notice,main>.notice,.page-notices>.notice{margin:0 0 1rem}/* In the rail the page's notices share its edges, one under the other (item 547). */.rail #page-notices>.notice{margin:0 0 .75rem}
 main>.brand{margin-bottom:.6rem}
 main>#outcomes-home{margin-bottom:.4rem}
 @media(max-width:760px){.brand{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.8rem;row-gap:.3rem;margin-bottom:.6rem}.brand #instance-label{min-width:0}.brand #notify{grid-column:1/-1;justify-self:start}}

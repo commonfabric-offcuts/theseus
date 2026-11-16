@@ -2590,6 +2590,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
     const topic = 'rail-notices-t';
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
+    const faults = [];
     for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
       const at = `${size} ${theme}`, laptop = size === 'laptop';
       // A card of its own each time, not starred yet.
@@ -2636,24 +2637,32 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const partly = await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=0;
         const a=document.getElementById('app-status').getBoundingClientRect(),t=document.getElementById('topic-navigation-status').getBoundingClientRect();
         return Math.max(1,Math.round(t.top-r.getBoundingClientRect().top-a.height/2))})()`);
+      // Each look is pictured first, and what it finds wrong is kept, so every size and theme is seen and pictured.
+      const fault = check => { try { check(); } catch (error) { faults.push(error.message); } };
       for (const where of ['partly', 'scrolled', 'top']) {
         await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : where === 'partly' ? partly : 'r.scrollHeight'}})()`);
         await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
-        const seen = await notices547(p);
-        if (where !== 'top') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
-        assert.deepEqual(seen.shown.map(item => item.id), ['app-status', 'topic-navigation-status'], `${at} ${where}: the status line, then why the move stayed`);
-        if (laptop || where === 'top') for (const item of seen.shown) assert.ok(item.inRail, `${at} ${where}: ${item.id} is in sight in the rail: ${JSON.stringify(seen)}`);
-        apart547(seen, `${at} ${where}`);
-        assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
         await shot(p, `rail-notices-${size}-${theme}-${where}`);
+        const seen = await notices547(p);
+        fault(() => {
+          if (where !== 'top') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
+          assert.deepEqual(seen.shown.map(item => item.id), ['app-status', 'topic-navigation-status'], `${at} ${where}: the status line, then why the move stayed`);
+          if (laptop || where === 'top') for (const item of seen.shown) assert.ok(item.inRail, `${at} ${where}: ${item.id} is in sight in the rail: ${JSON.stringify(seen)}`);
+          apart547(seen, `${at} ${where}`);
+          // In sight, they share the rail's edges.
+          const inSight = seen.shown.filter(item => item.inRail);
+          assert.ok(inSight.every(item => item.box[0] === inSight[0].box[0] && item.box[2] === inSight[0].box[2]), `${at} ${where}: the notices line up: ${JSON.stringify(seen)}`);
+          assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
+        });
       }
       const said = await p.evaluate("document.getElementById('app-status').textContent");
-      assert.match(said, /^Starring “A card whose star is not settled[^”]*” is not saved yet: Theseus was busy\. The page sends it again\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection`);
+      fault(() => assert.match(said, /^Starring “A card whose star is not settled[^”]*” is not saved yet: Theseus was busy\. The page sends it again\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection: ${said}`));
       net.hold(null);
       for (const entry of [...net.held()]) await net.pass(entry);
-      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes');
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes').catch(error => faults.push(error.message));
       assert.deepEqual(p.errors, []); await p.close();
     }
+    assert.deepEqual(faults, [], 'every size and theme');
   });
 
   await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back', async () => {
