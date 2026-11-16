@@ -2537,7 +2537,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
       return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
         drop: entry => { take(p.held, entry); return p.fail(entry); },
-        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); } };
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
     }
     const held = []; let test = null;
     await p.pw.route(facts.origin + '/api/*', async route => {
@@ -2547,7 +2548,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     });
     return { hold: given => { test = given; }, held: () => held,
       drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
-      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); } };
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
   };
   // The rail's notices as drawn: each one shown, its box, and whether it is what shows at its own middle.
   const notices547 = p => p.evaluate(`(()=>{const r=document.getElementById('rail'),rb=r.getBoundingClientRect();
@@ -2588,17 +2590,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       } });
       const card = `#messages .message-card[data-id="${message}"]`;
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body'))`), at + ': the card and the writing box are up');
-      const net = await network547(p), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
+      const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
       net.hold(payload => stars(payload) || sends(payload));
-      // A star whose answer is lost, its next ask held: the status line says it is not settled.
+      // A star Theseus is too busy to take, as in item 547 (its command lane full while the reader's own reply
+      // goes), its next try held: the status line says so.
       await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
       if (laptop) await p.point(words, 'move'); else await tap(p, words);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
       if (laptop) await p.point(star); else await tap(p, star);
-      await net.drop(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star reached Core; its answer is held'));
-      await until(() => net.held().find(entry => stars(entry.payload)), at + ': the page asks Core about the star again');
-      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.startsWith('Not known yet whether starring'))(document.getElementById('app-status'))"), at + ': the status line says the star is not settled');
+      await net.answer(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star is on its way'), 503,
+        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+      await until(() => p.evaluate("(n=>!n.hidden&&n.textContent.length>0)(document.getElementById('app-status'))"), at + ': the status line says what became of the star');
       // A send held on its way: a move now waits, and the rail says why.
       await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
       if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
@@ -2616,21 +2619,27 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const both = await until(async () => { const seen = await notices547(p); return seen.shown.length === 2 ? seen : null; }, at + ': both notices show').catch(async error => {
         throw Error(`${error.message}: ${JSON.stringify(await notices547(p))} ${await p.evaluate("JSON.stringify({status:document.getElementById('app-status').outerHTML.slice(0,300),drawer:document.getElementById('rail').className})")}`); });
       assert.ok(both);
-      // Scrolled down the rail (where a laptop pins its notices), and at its top.
-      for (const where of ['scrolled', 'top']) {
-        await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : 'r.scrollHeight'}})()`);
+      // The rail scrolled a little, so the second notice would pass under the first where only the first was
+      // pinned (Tony's screenshot); scrolled to its end (where a laptop pins its notices); and at its top.
+      const partly = await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=0;
+        const a=document.getElementById('app-status').getBoundingClientRect(),t=document.getElementById('topic-navigation-status').getBoundingClientRect();
+        return Math.max(1,Math.round(t.top-(a.top+a.height/2)))})()`);
+      for (const where of ['partly', 'scrolled', 'top']) {
+        await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : where === 'partly' ? partly : 'r.scrollHeight'}})()`);
         await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
         const seen = await notices547(p);
-        if (where === 'scrolled') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
+        if (where !== 'top') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
         assert.deepEqual(seen.shown.map(item => item.id), ['app-status', 'topic-navigation-status'], `${at} ${where}: the status line, then why the move stayed`);
         if (laptop || where === 'top') for (const item of seen.shown) assert.ok(item.inRail, `${at} ${where}: ${item.id} is in sight in the rail: ${JSON.stringify(seen)}`);
         apart547(seen, `${at} ${where}`);
         assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
         await shot(p, `rail-notices-${size}-${theme}-${where}`);
       }
+      const said = await p.evaluate("document.getElementById('app-status').textContent");
+      assert.match(said, /^Starring “A card whose star is not settled[^”]*” is not saved yet: Theseus was busy\. The page sends it again\.$/, `${at}: the line names the act and its card, and says busy, never a lost connection`);
       net.hold(null);
       for (const entry of [...net.held()]) await net.pass(entry);
-      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core answers the star, the status line goes');
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core takes the star, the status line goes');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
