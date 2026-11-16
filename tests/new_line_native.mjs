@@ -219,8 +219,10 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
       await scrollPage(p, 'end');
       assert.equal(await blankBelow(p), 0, label + ': and scrolled to the end again, it does not come back');
       // At the page's end with no room, the window shrinks and grows back: measured again where the view reaches a
-      // fraction past what the page holds, no room is made, and pushing down there makes none.
-      await pushesLeaveRoom(p, label + ' no room, the window resized at the end', { resize: metrics, none: true });
+      // fraction past what the page holds, no room is made, and pushing down there makes none. The window is 400 tall
+      // (the reviewer's 390x400), so the page, two messages long, scrolls at every width; then it is as it was.
+      await pushesLeaveRoom(p, label + ' no room, the window resized at the end', { resize: { ...metrics, height: 400 }, none: true });
+      assert.deepEqual(await resizeTo(p, metrics), { height: metrics.height, heard: true }, label + ': the window as it was');
       assert.equal(await blankBelow(p), 0, label + ': and the page ends where what it holds ends');
       // Both messages are marked unread elsewhere: the faded line comes back under the older one, showing, with its
       // room. The older card at the top of the window again, it is opened in the Reader, which reads it while the
