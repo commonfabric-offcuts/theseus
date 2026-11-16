@@ -20,7 +20,7 @@ whose check no longer exists fails the run.
 | --- | --- | --- |
 | `native-webkit-colors` | `tests/reader_colors_native.mjs` | Reading colours in light and dark: own and agent cards at rest, on hover and with keyboard focus; the hovered passage against a native selection; quoting a selection; colours at phone width with touch |
 | `native-webkit-whispers` | `tests/whisper_native.mjs` | Every whisper check, including the phone-width layout and the dashed line in both schemes |
-| `native-webkit-notebook` | `tests/notebook_pages_native.mjs` | Every Notebook page check, including 390 wide in light and dark |
+| `native-webkit-notebook` | `tests/notebook_pages_native.mjs` | Every Notebook page check, including 390 wide in light and dark, and the harness's own wait across a navigation (below, "A read across a navigation") |
 | `native-webkit-rail` | `tests/outcome_rail_native.mjs` | The rail at 1280 and 390 wide, Tab order, lit outcomes, the outline and the "☰ Outcomes" drawer at 390 wide, moves in place, the right rail as a sheet and a panel, and each pencil's title line in every state at 320, 375, 390 and 1280 wide, light and dark, its start held before the server has it with Playwright's own request routing, as Chrome's request-stage interception holds it |
 | `native-webkit-pipeline` | `tests/pipeline_native.mjs` | Every pipeline page check, including the page and an item's record at 1280 and 390 wide |
 | `native-webkit-device` | `tests/device_native.mjs` | The phone check page itself, below |
@@ -62,6 +62,22 @@ Chrome, and how the harness handled it.
   the page handles the failure; Chrome reports none. Such an error, arriving
   between the main frame's navigation request and its arrival, is recorded as
   an event of the leaving page, not an error (`tests/webkit_native.mjs`).
+- **A read across a navigation.** A read a check has out when its page
+  navigates (to a Notebook page, say) has no page left to answer it, and
+  Playwright ends it with "Execution context was destroyed". The harness's
+  wait, `until()`, takes that as "not yet": it waits for the page it went to
+  to have its document (its DOMContentLoaded), within the wait's own bound,
+  and then reads again. Any other error still ends the wait at once, and so
+  does a page closing while the wait is out for the page a read went to: the
+  wait reads once more and meets the closed page's own error. The Notebook
+  mode holds this on a real page with four checks of its own,
+  `notebook harness until …`: a read whose page navigates while it is out;
+  a read the page refuses and a read of a closed page (each read once); a
+  condition that never holds and a page gone to a document that never loads
+  (each timing out at its own bound and no later: no read begins after it,
+  and the wait ends within a second of it, or of its last read's answer; the
+  second with no read again); and a page that closes while the wait is out
+  for the page a read went to.
 
 Running these modes in WebKit found two faults, and both are fixed:
 

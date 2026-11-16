@@ -63,11 +63,133 @@ const SKIPPED = {
 }[mode] ?? {};
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A read out when its page navigates has no page left to answer it: Playwright ends it with "Execution context was
+// destroyed". Each page's documents are counted as each one's DOMContentLoaded arrives, and its closing counts as one
+// too (attach()), so such a read is thrown carrying the arrival of the next document after the one it was sent to
+// (item 418). until() takes that as "not yet": it waits on that arrival, within its own bound, and reads again. Any
+// other error ends the wait at once, and so does a closed page's: the read after its closing meets the close.
+const DESTROYED = /Execution context was destroyed/;
+const documents = new WeakMap();
+const nextDocument = (opened, seen) => new Promise(resolve => {
+  const known = documents.get(opened);
+  if (known.count > seen) resolve(); else known.waiting.push(resolve);
+});
+const read = async (opened, expression) => {
+  const seen = documents.get(opened).count;
+  try { return await opened.evaluate(expression); }
+  catch (error) { throw DESTROYED.test(error.message) ? Object.assign(error, { navigation: nextDocument(opened, seen) }) : error; }
+};
+// True when the promise settles within ms; false at once when no time is left.
+const within = async (promise, ms) => {
+  if (ms <= 0) return false;
+  let timer;
+  try { return await Promise.race([promise.then(() => true), new Promise(resolve => { timer = setTimeout(resolve, ms, false); })]); }
+  finally { clearTimeout(timer); }
+};
 async function until(probe, description, timeout = 8000) {
   const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
-  throw Error(`Timed out: ${description}`);
+  let left = '';
+  while (Date.now() < deadline) {
+    let value;
+    try { value = await probe(); }
+    catch (error) {
+      if (!error.navigation) throw error;
+      if (!await within(error.navigation, deadline - Date.now())) { left = ' (its page left during a read, and the page it went to never had its document)'; break; }
+      continue;
+    }
+    if (value) return value;
+    await sleep(25);
+  }
+  throw Error(`Timed out: ${description}${left}`);
 }
+
+// The harness's own wait, held on a real page in the Notebook mode, whose checks open Notebook pages (item 418): a page
+// that navigates while until()'s read is out leaves that read with no page to answer it, and until() reads again once
+// the page it went to has its document; any other error still ends the wait at once, and the wait keeps its own bound.
+// A hang here would hold the run until the job is cut off, so each wait these checks expect to end is raced against a
+// bound well past its own, which fails the check by name.
+const ended = async (promise, ms, what) => {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`${what}: still waiting ${ms} ms on`)), ms); })]); }
+  finally { clearTimeout(timer); }
+};
+const untilChecks = async ({ check, page }) => {
+  await check('notebook harness until reads on through a navigation during its read: the page that left is not yet, and the page it went to answers', async () => {
+    const p = await page('until-navigation', null, true);
+    let reads = 0;
+    const answered = await ended(until(async () => {
+      reads += 1;
+      // The first read marks its page and navigates, and is still out when its page goes; every later read asks the page it went to.
+      if (reads === 1) return p.evaluate("(window.leftHere = true, location.assign('/?topic=t1'), new Promise(() => {}))");
+      return p.evaluate("document.body?.dataset.ready === 'true' && !('leftHere' in window) && location.search");
+    }, 'the page navigated to answers'), 30000, 'until across a navigation');
+    assert.equal(answered, '?topic=t1', 'the page it went to answers');
+    assert.ok(reads >= 2, `read again on the page it went to, ${reads} reads`);
+  });
+  await check('notebook harness until throws any other error at once: a read the page refuses, and a read of a closed page, are each read once', async () => {
+    const p = await page('until-other-error', null, true);
+    let reads = 0;
+    await assert.rejects(ended(until(() => { reads += 1; return p.evaluate("(() => { throw Error('not a navigation'); })()"); }, 'a refused read'), 30000, 'until on a refused read'),
+      error => /not a navigation/.test(error.message) && !/Timed out/.test(error.message));
+    assert.equal(reads, 1, 'a refused read is read once');
+    await p.close();
+    reads = 0;
+    await assert.rejects(ended(until(() => { reads += 1; return p.evaluate('true'); }, 'a closed page'), 30000, 'until on a closed page'),
+      error => /closed/.test(error.message) && !/Timed out/.test(error.message));
+    assert.equal(reads, 1, 'a closed page is read once');
+  });
+  // A wait ends at its own bound: no read begins after it, and the wait ends within LATE of it, or of its last read's
+  // answer when that came later. A bound of another size in place of the wait's own (its 8 s default, the whole bound
+  // again once a read's page has left, or the loop run on past it) ends the wait seconds late, and fails here.
+  const LATE = 1000;
+  const timesOut = async (bound, description, probe, refused) => {
+    const reads = [], started = Date.now();
+    await assert.rejects(ended(until(async () => {
+      const read = { began: Date.now() - started };
+      reads.push(read);
+      try { return await probe(reads.length); } finally { read.answered = Date.now() - started; }
+    }, description, bound), 30000, `until on ${description}`), refused);
+    const took = Date.now() - started, last = reads.at(-1);
+    assert.ok(took >= bound, `not before its bound of ${bound} ms: ended at ${took} ms`);
+    const late = reads.filter(read => read.began >= bound + LATE);
+    assert.equal(late.length, 0, `no read begins after its bound of ${bound} ms: ${late.length} of ${reads.length} did, from ${JSON.stringify(late[0])}`);
+    assert.ok(took <= Math.max(bound, last.answered) + LATE, `ends at its bound of ${bound} ms, or its last read's answer: ended at ${took} ms, reads ${JSON.stringify(reads)}`);
+    return reads;
+  };
+  await check('notebook harness until still times out at its own bound: a condition that never holds, and a page gone to a document that never loads', async () => {
+    const p = await page('until-bound', null, true);
+    await timesOut(400, 'a condition that never holds', () => p.evaluate('false'), { message: 'Timed out: a condition that never holds' });
+    // The page goes to a document whose module script is held, so it never has its DOMContentLoaded. Its read leaves
+    // two thirds of the way into the wait's bound, so the wait for the page it went to has only what is left of it.
+    let release;
+    const released = new Promise(resolve => { release = resolve; });
+    await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
+    try {
+      const reads = await timesOut(3000, 'a document that never loads',
+        () => p.evaluate("new Promise(resolve => setTimeout(resolve, 2000)).then(() => (location.assign('/?topic=t1'), new Promise(() => {})))"),
+        error => /^Timed out: a document that never loads/.test(error.message));
+      assert.equal(reads.length, 1, 'no read again before the page it went to has its document');
+    } finally { release(); }
+  });
+  await check('notebook harness until ends at once when its page closes while it waits for the page a read went to: the closed page\'s own error, on one read more', async () => {
+    const p = await page('until-close', null, true);
+    // The page goes to a document whose module script is held, so it has no DOMContentLoaded before it closes.
+    let release, closing = null;
+    const released = new Promise(resolve => { release = resolve; });
+    await p.pw.route(/\/app\.mjs$/, async route => { await released; await route.continue().catch(() => {}); });
+    let reads = 0;
+    try {
+      await assert.rejects(ended(until(() => {
+        reads += 1;
+        if (reads > 1) return p.evaluate('true');
+        // The read leaves with its page. Its error carries the wait for the page it went to, and only then does the page close.
+        return p.evaluate("(location.assign('/?topic=t1'), new Promise(() => {}))").catch(error => { closing = p.pw.close(); throw error; });
+      }, 'a page closed while its wait is out', 10000), 30000, 'until on a page closed while its wait is out'),
+        error => /closed/.test(error.message) && !/Timed out/.test(error.message));
+      assert.equal(reads, 2, 'read once before the close, and once after it, which the closed page refuses');
+    } finally { release(); await closing; }
+  });
+};
 
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(['--colors', '--new-line', '--reading'].includes(mode) ? ['--agent-colors'] : []), ...(mode === '--reading' ? ['--other-person'] : []), '--freshness', '--images', '--media'], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
@@ -127,6 +249,12 @@ try {
       // page, not an error. Any other error, and any error at another time,
       // stays an error.
       let leaving = false;
+      const known = { count: 0, waiting: [] }, arrived = () => { known.count += 1; for (const resolve of known.waiting.splice(0)) resolve(); };
+      documents.set(opened, known);
+      // A new document of the main frame has parsed (Playwright tells this of the main frame only). A closed page will have
+      // none, so its closing counts as one: a wait on its next document ends, and the read after it meets the close.
+      opened.on('domcontentloaded', arrived);
+      opened.on('close', arrived);
       opened.on('request', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = true; });
       opened.on('framenavigated', frame => { if (frame === opened.mainFrame()) leaving = false; });
       opened.on('requestfailed', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = false; });
@@ -152,7 +280,7 @@ try {
       const response = await route.fetch();
       held.push({ payload, route, response });
     });
-    const evaluate = expression => pw.evaluate(`(async()=>(${expression}))()`);
+    const evaluate = expression => read(pw, `(async()=>(${expression}))()`);
     let touchAt = null;
     // The CDP calls the listed checks make, each done with WebKit's own input.
     const send = async (method, params = {}) => {
@@ -212,7 +340,7 @@ try {
         // Before its first navigation the page is blank and simply opens in the touch context.
         if (at !== 'about:blank') {
           await moved.goto(at);
-          await until(() => moved.evaluate('document.body?.dataset.ready === "true"'), 'the page started again with touch');
+          await until(() => read(moved, 'document.body?.dataset.ready === "true"'), 'the page started again with touch');
         }
         await pw.close(); pw = moved; p.pw = moved; touch = true;
         qualifications.add('turning touch on loads the page again in a touch context (WebKit cannot turn touch on for a page already open)');
@@ -379,6 +507,7 @@ try {
   } else if (mode === '--whispers') {
     await whispersChecks({ check, page, until, facts, view, control, replace, shot });
   } else if (mode === '--notebook') {
+    await untilChecks({ check, page });
     await notebookChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--pipeline') {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
