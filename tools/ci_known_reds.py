@@ -324,16 +324,22 @@ def unit_evidence(step, out, expected):
             name + ': reviewed check inventory omitted or duplicated')
 
 
-def load_policy(policy, base_root, steps=None):
-    """The policy, or Refused. steps: (the required step names, {native step: its harness}) of the commit whose policy
-    this is; by default this tool's own, which are the event base's when the base's tools run it, as here. A deploy runs
-    the candidate's tools, so it passes the base's (known_reds.steps_at)."""
-    required, native = steps if steps is not None else (
-        release_check.REQUIRED, {name: step.harness for name, step in NATIVE.items()})
+def own_steps(commit):
+    """This tool's release check's (required step names, {native step: its harness}), whatever commit is asked: the event
+    base's, when the base's tools run the classifier, as here."""
+    return release_check.REQUIRED, {name: step.harness for name, step in NATIVE.items()}
+
+
+def load_policy(policy, base_root, steps=own_steps):
+    """The policy, or Refused. steps(source_commit): the (required step names, {native step: its harness}) the policy's
+    steps, inventory and admissions are checked against, one list for the policy and each transition's plan. A deploy
+    runs the candidate's tools, so it passes those of the policy's own source commit (known_reds.steps_at)."""
     require(isinstance(policy, dict) and policy.get('version') == 1, 'unsupported baseline schema')
     fields = {'version', 'source_commit', 'source_hashes', 'required', 'inventory', 'reds'}
     require(fields <= set(policy) <= fields | {'transitions'},
             'invalid baseline fields')
+    require(isinstance(policy['source_commit'], str) and SHA.fullmatch(policy['source_commit']), 'invalid source commit')
+    required, native = steps(policy['source_commit'])
     require(unique(policy['required'], 'policy required steps') == set(required), 'incomplete reviewed steps')
     require(set(policy['inventory']) == set(native) | set(UNITS), 'incomplete reviewed check inventory')
     for name, rows in policy['inventory'].items():
@@ -386,7 +392,7 @@ def load_policy(policy, base_root, steps=None):
         require(isinstance(retired, list) and all(isinstance(path, str) and bool(path) for path in retired)
                 and len(set(retired)) == len(retired), 'invalid reviewed source retirements')
         require(isinstance(row['plan'], dict) and 'transitions' not in row['plan'], 'nested plan transitions forbidden')
-        load_policy(row['plan'], base_root, (required, native))
+        load_policy(row['plan'], base_root, lambda commit: (required, native))
         approved = {json.dumps(red, sort_keys=True) for red in policy['reds']}
         require({json.dumps(red, sort_keys=True) for red in row['plan']['reds']} <= approved,
                 'plan transition cannot add or change failure admissions')

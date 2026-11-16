@@ -15020,7 +15020,7 @@
    "break": [
     [
      "tools/known_reds.py",
-     "            ci_known_reds.load_policy(policy, root, steps)\n",
+     "            ci_known_reds.load_policy(policy, root, lambda source_commit: steps_at(root, source_commit))\n",
      "            pass\n"
     ]
    ],
@@ -19438,12 +19438,110 @@
   },
   {
    "item": 553,
-   "act": "The deploy checks the live commit's policy against the live commit's own steps, read at that commit, never the candidate's",
+   "act": "The deploy checks the live commit's policy against its own source commit's steps, not the candidate's",
    "break": [
     [
      "tools/known_reds.py",
-     "            ci_known_reds.load_policy(policy, root, steps)\n",
-     "            ci_known_reds.load_policy(policy, root)\n"
+     "            ci_known_reds.load_policy(policy, root, lambda source_commit: steps_at(root, source_commit))\n",
+     "            ci_known_reds.load_policy(policy, root, ci_known_reds.own_steps)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The deploy checks the live commit's policy against its own source commit's steps, not the live commit's, which may have added a step and left the policy as it was",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "            ci_known_reds.load_policy(policy, root, lambda source_commit: steps_at(root, source_commit))\n",
+     "            ci_known_reds.load_policy(policy, root, lambda source_commit: steps_at(root, base))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A transition's plan is checked against the policy's own step list, not the candidate's",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "        load_policy(row['plan'], base_root, lambda commit: (required, native))\n",
+     "        load_policy(row['plan'], base_root)\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The policy's harness sources are checked against its own source commit's browser steps, not the candidate's",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "    require(set(native.values()) <= set(policy['source_hashes']), 'inventory omits harness sources')\n",
+     "    require({s.harness for s in NATIVE.values()} <= set(policy['source_hashes']), 'inventory omits harness sources')\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The policy's inventory is checked against its own source commit's browser steps, not the candidate's",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "    require(set(policy['inventory']) == set(native) | set(UNITS), 'incomplete reviewed check inventory')\n",
+     "    require(set(policy['inventory']) == set(NATIVE) | set(UNITS), 'incomplete reviewed check inventory')\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The policy's required steps are checked against its own source commit's, not the candidate's",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "    require(unique(policy['required'], 'policy required steps') == set(required), 'incomplete reviewed steps')\n",
+     "    require(unique(policy['required'], 'policy required steps') == set(release_check.REQUIRED), 'incomplete reviewed steps')\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "An admission of a browser step the policy's source commit runs and the candidate no longer does is a policy the deploy takes",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "        require(red['step'] in native, 'non-browser exception forbidden')\n",
+     "        require(red['step'] in NATIVE, 'non-browser exception forbidden')\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "An admission's completion is read by its step's harness at the policy's source commit, not the candidate's",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "        if native[red['step']] == release_check.COMPOSE:\n",
+     "        if NATIVE[red['step']].harness == release_check.COMPOSE:\n"
     ]
    ],
    "check": {
@@ -19466,7 +19564,7 @@
   },
   {
    "item": 553,
-   "act": "The live commit's steps that cannot be read refuse rather than counting as a step list",
+   "act": "The policy's source commit's steps that cannot be read refuse rather than counting as a step list",
    "break": [
     [
      "tools/known_reds.py",
@@ -19480,12 +19578,12 @@
   },
   {
    "item": 553,
-   "act": "The deploy's record of its known reds names the steps the candidate's release check adds beyond the live policy",
+   "act": "Every deploy's release record names the steps the candidate's release check adds beyond the live policy",
    "break": [
     [
-     "tools/known_reds.py",
-     "        taken[\"steps_beyond_policy\"] = admits.beyond\n",
-     "        taken[\"steps_beyond_policy\"] = []\n"
+     "tools/deploy.py",
+     "    measured = dict(measured, **steps_beyond_policy(config, head))\n",
+     "    measured = dict(measured)\n"
     ]
    ],
    "check": {
@@ -19494,12 +19592,82 @@
   },
   {
    "item": 553,
-   "act": "The release record's measurements name the steps the candidate's release check adds beyond the live policy",
+   "act": "A local deploy whose summary passed, with or without --known-reds, records the steps beyond the live policy",
    "break": [
     [
      "tools/deploy.py",
-     "        measured = dict(measured, steps_beyond_policy=beyond)\n",
-     "        measured = dict(measured)\n"
+     "    measured = dict(measured, **steps_beyond_policy(config, head))\n",
+     "    measured = dict(measured, **(steps_beyond_policy(config, head) if known is not None and known['accepted'] else {}))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A merged train's release record names the steps beyond the live policy, though it never reaches the known reds' judge",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    measured = dict(measured, **steps_beyond_policy(config, head))\n",
+     "    measured = dict(measured, **(steps_beyond_policy(config, head) if trained is None else {}))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "The steps beyond the policy are read at the live commit, never the candidate's copy",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    measured = dict(measured, **steps_beyond_policy(config, head))\n",
+     "    measured = dict(measured, **steps_beyond_policy(config, sha))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A live policy that cannot be read is recorded as unread, not as no steps beyond it",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        return {\"steps_beyond_policy_unread\": str(refusal)}\n",
+     "        return {}\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A live policy that cannot be read does not stop a deploy that needs none",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        return {\"steps_beyond_policy_unread\": str(refusal)}\n",
+     "        raise Refused(str(refusal))\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 553,
+   "act": "A live policy that names no list of required steps is unread, not read as every step beyond it",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    if not (isinstance(required, list) and all(isinstance(name, str) for name in required)):\n",
+     "    if not isinstance(required, (list, str)):\n"
     ]
    ],
    "check": {

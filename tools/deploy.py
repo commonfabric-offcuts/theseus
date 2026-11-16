@@ -373,11 +373,9 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
-def policy_reds(config, base, sha):
-    """Item 481: the reds the policy at the event base (.github/check-baseline.json at BASE, the live commit) admits for
-    SHA, read from the live checkout's git and matched as GitHub's classifier matches them (known_reds.Admissions); None
-    when BASE keeps no policy. The candidate's own copy is never read, so its own admissions never count for it. A read
-    that fails, or a policy that classifier would not load, is refused, not taken as no policy."""
+def live_policy(config, base):
+    """.github/check-baseline.json at BASE, the live commit, read from the live checkout's git (never the candidate's
+    copy); None when BASE keeps none. A read that fails is refused, not taken as no policy."""
     listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", base, "--", known_reds_check.POLICY])
     if listed.returncode != 0:
         raise known_reds_check.Refused("whether %s keeps %s could not be read (exit %s): %s" % (
@@ -392,7 +390,35 @@ def policy_reds(config, base, sha):
     if policy is None:
         raise known_reds_check.Refused("%s at %s could not be read (exit %s): %s" % (
             known_reds_check.POLICY, base[:12], shown.returncode, (shown.stderr or shown.stdout).strip()[:300]))
-    return known_reds_check.Admissions(policy, config.live, sha, base)
+    return policy
+
+
+def policy_reds(config, base, sha):
+    """Item 481: the reds the policy at the event base (live_policy at BASE) admits for SHA, matched as GitHub's
+    classifier matches them (known_reds.Admissions); None when BASE keeps no policy. The candidate's own copy is never
+    read, so its own admissions never count for it. A read that fails, or a policy that classifier would not load, is
+    refused, not taken as no policy."""
+    policy = live_policy(config, base)
+    return None if policy is None else known_reds_check.Admissions(policy, config.live, sha, base)
+
+
+def steps_beyond_policy(config, live):
+    """Item 553: the record's word on the required steps this release check runs that the policy at LIVE, the live
+    commit, does not review, for the next policy to cover, whatever the deploy takes (a merged train, a summary that
+    passed, or known reds): {"steps_beyond_policy": [names]}, {} when there are none or LIVE keeps no policy, or
+    {"steps_beyond_policy_unread": why} when the policy cannot be read, which is not "none". Each is said on one line.
+    Never a refusal: a deploy that needs no policy is not stopped by one broken at the live commit."""
+    try:
+        policy = live_policy(config, live)
+        beyond = [] if policy is None else known_reds_check.steps_beyond(policy, live)
+    except known_reds_check.Refused as refusal:
+        print("the steps beyond %s could not be read: %s" % (known_reds_check.POLICY, refusal))
+        return {"steps_beyond_policy_unread": str(refusal)}
+    if not beyond:
+        return {}
+    print("the release check runs %s, which %s at %s did not review; the next policy covers %s"
+          % (", ".join(beyond), known_reds_check.POLICY, live[:12], "it" if len(beyond) == 1 else "them"))
+    return {"steps_beyond_policy": beyond}
 
 
 def live_head(config):
@@ -654,11 +680,6 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
                   % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
     for red in (known or {}).get("not_needed") or []:
         print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
-    # Item 553: steps this release check runs that the live policy did not review, named for the next policy to cover.
-    beyond = (known or {}).get("steps_beyond_policy") or []
-    if beyond:
-        print("the release check runs %s, which %s at %s did not review; the next policy covers %s"
-              % (", ".join(beyond), known_reds_check.POLICY, known["live_commit"][:12], "it" if len(beyond) == 1 else "them"))
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})
@@ -739,8 +760,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(not unpassed or accepted, unchecked)
     measured = (releases.train_measurements(trained) if trained is not None
                 else releases.measurements(json.loads(Path(summary).read_text()), accepted))
-    if beyond:
-        measured = dict(measured, steps_beyond_policy=beyond)
+    measured = dict(measured, **steps_beyond_policy(config, head))
     planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None

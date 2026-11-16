@@ -93,17 +93,21 @@ the live commit admits it), `live` (the live release's check failed it) or
 `owner_acceptance` (an owner's acceptance file, which `live_summary` names).
 `known_reds` is left out when there are none, so a record without it reads as
 before, and a reader that does not know it ignores it, as it does `skipped`.
-When the deploy read the live commit's policy and this release's check runs
-steps that policy did not review, `steps_beyond_policy` lists them by name
-(`["native-card-marks", "native-webkit-invite"]`), so the next policy covers
-them; it is left out when there are none, like `known_reds`.
+When this release's check runs steps that the live commit's policy
+(`.github/check-baseline.json`) does not review, `steps_beyond_policy` lists
+them by name (`["native-card-marks", "native-webkit-invite"]`), so the next
+policy covers them, whatever the deploy took: a summary that passed, known
+reds, or a merged train. It is left out when there are none, or the live
+commit keeps no policy, like `known_reds`. When the policy cannot be read, or
+names no list of required steps, `steps_beyond_policy_unread` says why
+instead: not read is not "none beyond it", and the deploy goes on.
 It sits inside `measurements`, which the store keeps as one JSON object of at
 most 16384 bytes, so the record's own fields and the admin verb are unchanged;
 a record too large for that is refused before anything stops.
 
 A release deployed from a merged train (docs/tools.md, "A merged train") ran no
 local release check, so its measurements hold none of those counts, only the
-train as the deploy read it:
+train as the deploy read it (and `steps_beyond_policy` when there are any):
 
 ```json
 {"train": {"file": "/abs/train.json", "pr": 31, "kind": "ordinary", "merge_commit": "...", "merged_tree": "...",
