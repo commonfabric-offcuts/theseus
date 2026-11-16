@@ -227,32 +227,25 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(before, 'a card is in view');
     await arrive('Arrives while a card is read');
     await stays(before, 'the card being read stays where it was');
-    // The page's own field is the people's add field: with the caret in it, it
-    // is scrolled away off the screen, on the side away from the messages, and
-    // a card is in view. Since item 378 the people sit in the topic's header,
-    // above the messages, so the field goes off the top; it went off the
-    // bottom while they sat below the messages.
-    const add = "document.querySelector('#participants .people-add input')";
-    // It waits behind "+ Add", which opens it with the caret in it.
-    await p.evaluate("document.querySelector('#participants .add-chip').scrollIntoView({block:'center'})");
-    await p.point('#participants .add-chip');
-    await until(() => p.evaluate(`document.activeElement === ${add}`), 'the add field opens with the caret in it');
-    await p.evaluate(`(field => { field.focus(); const box = field.getBoundingClientRect();
-      scrollBy(0, box.top < document.querySelector('#messages').getBoundingClientRect().top ? box.bottom + 100 : box.top - innerHeight - 100); })(${add})`);
-    assert.equal(await p.evaluate(`(box => (box.bottom <= 0 || box.top >= innerHeight) && document.activeElement === ${add})(${add}.getBoundingClientRect())`), true,
-      'the field with the caret is off the screen');
+    // A field on the page the person types in, below the messages, with the
+    // caret in it, scrolled away below the screen while a card is in view. The
+    // page's own such field was the people's add field, below the messages;
+    // since item 378 the people sit in the topic's header, above everything a
+    // message arriving moves, where holding the field or the card leaves the
+    // page the same. So the check puts a field where the people were, just
+    // below More: the rule is any field on the page the person types in.
+    await p.evaluate(`(() => { const field = document.createElement('input'); field.id = 'fixture-field'; field.type = 'text';
+      document.querySelector('#more-messages').after(field); })()`);
+    const typed = "document.querySelector('#fixture-field')";
+    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - innerHeight - 100); })(${typed})`);
+    assert.equal(await p.evaluate(`${typed}.getBoundingClientRect().top >= innerHeight && document.activeElement === ${typed}`), true,
+      'the field with the caret is below the screen');
     const away = await reading();
     assert.ok(away && away[1] < await p.evaluate('innerHeight'), `a card is in view: ${JSON.stringify(away)}`);
     await arrive('Arrives while focus is scrolled away');
     await stays(away, 'the card in view stays where it was, not the field out of view');
 
-    // A field on the screen being typed in holds still too; the cards above it
-    // move up. The page has no field of its own below the messages since the
-    // people moved to the header, so the check puts one where they were, just
-    // below More: the rule is any field on the page the person types in.
-    await p.evaluate(`(() => { const field = document.createElement('input'); field.id = 'fixture-field'; field.type = 'text';
-      document.querySelector('#more-messages').after(field); })()`);
-    const typed = "document.querySelector('#fixture-field')";
+    // A field on the screen being typed in holds still too; the cards above it move up.
     await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - 300); })(${typed})`);
     const typing = await p.evaluate(`Math.round(${typed}.getBoundingClientRect().top)`);
     const above = await reading();
