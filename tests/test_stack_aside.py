@@ -76,14 +76,14 @@ class AsideCase(StackCase):
         # the join revision Core holds for it, which the position carries; a dossier never joined says 0.
         lantern, ferry = self.post('Lantern dossier'), self.post('Ferry dossier')
         answer = self.post('An answer under the lantern dossier', reply_to=lantern)
-        self.assertEqual(self.position(answer)['join_revision'], 0)
+        self.assertEqual(self.position(answer).get('join_revision'), 0)
         self.committed(self.join(lantern, ferry))
         self.committed(self.join(lantern, None, revision=1))
-        self.assertEqual((self.position(answer)['root_id'], self.position(answer)['join_revision']), (lantern, 2), 'joined and split back: 2')
+        self.assertEqual((self.position(answer)['root_id'], self.position(answer).get('join_revision')), (lantern, 2), 'joined and split back: 2')
         self.rejected(self.join(lantern, ferry, revision=0), 'REVISION_CONFLICT')
-        self.committed(self.join(lantern, ferry, revision=self.position(answer)['join_revision']))
+        self.committed(self.join(lantern, ferry, revision=2))
         self.assertEqual(self.position(answer)['root_id'], ferry, 'the whole dossier joined')
-        self.assertEqual(self.position(answer)['join_revision'], 0, 'its position is now the ferry dossier\'s')
+        self.assertEqual(self.position(answer).get('join_revision'), 0, 'its position is now the ferry dossier\'s')
 
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()

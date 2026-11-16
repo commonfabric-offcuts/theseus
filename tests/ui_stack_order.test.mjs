@@ -414,9 +414,9 @@ test('the branches of one dossier whose fork sits above the loaded page are one 
   // nothing by them and takes none of its name.
   const split = stacksOf([...branches, message(40, { reply_to: 'm39', moving: true, acts: { joined: null, name: { text: 'Its own', by: 'owner', at_ms: 1 } }, stack_position: at('m1', minted) }),
     message(41, lantern({ reply_to: 'm40' }))]);
-  const out = split.find(stack => stack.id === 'm40');
-  assert.deepEqual([ids(out.replies), positionOf(out), headOf(out).name], [['m41'], null, 'Its own'], 'a split not yet answered stays out, under its own name');
-  assert.equal(split.filter(stack => headOf(stack).name === 'Lantern repair plan').length, 1);
+  assert.deepEqual(split.map(stack => [stack.head.id, ids(stack.replies), headOf(stack).name]),
+    [['m40', ['m41'], 'Its own'], ['m10', ['m11', 'm12', 'm13', 'm14', 'm15'], 'Lantern repair plan']], 'a split not yet answered stays out, under its own name');
+  assert.equal(positionOf(split[0]), null);
 });
 
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {
