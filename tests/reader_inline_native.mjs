@@ -342,7 +342,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     const above = () => p.evaluate(`(()=>{const l=document.querySelector('#messages'),s=getComputedStyle(l),b=l.getBoundingClientRect(),last=l.lastElementChild?.getBoundingClientRect();return {drawn:b.height-parseFloat(s.paddingTop)-parseFloat(s.paddingBottom),room:last?Math.round(b.bottom-last.bottom):0}})()`);
     const beforeArrival = await writingPosition(), aboveBefore = await above(), scrolledBefore = await p.evaluate('scrollY');
     assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
-    const held = (after, what) => {
+    const holds = (after, what) => {
       assert.deepEqual({ ...after, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, what + ' preserves body, caret and focus');
       assert.ok(after.top >= 0 && after.bottom <= after.height, what + ' keeps the writing area in view');
     };
@@ -359,7 +359,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(arrival)})`), 'automatic incoming render without Refresh');
     const afterArrival = await writingPosition(), aboveAfter = await above();
     assert.ok(aboveBefore.drawn - aboveAfter.drawn > scrolledBefore, 'the reply shrank what is above the writing by more than the page was scrolled, so no scroll alone can hold it ' + JSON.stringify({ scrolledBefore, aboveBefore, aboveAfter, stacks: await stacks() }));
-    held(afterArrival, 'a reply shrinking what is above');
+    holds(afterArrival, 'a reply shrinking what is above');
     assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'a reply shrinking what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterArrival, aboveBefore, aboveAfter, stacks: await stacks() }));
     // A message of its own to the topic then arrives: a stack of its own at
     // the top of the newest-first page, so the page grows above the writing.
@@ -370,7 +370,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(topicArrival)})`), 'the topic message renders without Refresh');
     const afterGrowth = await writingPosition(), aboveGrown = await above();
     assert.ok(aboveGrown.drawn > aboveAfter.drawn, 'the topic message drew more above the writing ' + JSON.stringify({ aboveAfter, aboveGrown }));
-    held(afterGrowth, 'a message growing what is above');
+    holds(afterGrowth, 'a message growing what is above');
     assert.ok(Math.abs(afterGrowth.top - beforeArrival.top) <= 2, 'a message growing what is above preserves the visible writing position ' + JSON.stringify({ beforeArrival, afterGrowth, aboveGrown, stacks: await stacks() }));
     assert.ok(Math.abs(aboveGrown.room - aboveBefore.room) <= 1, 'no room is kept above the writing once the page can hold it by scrolling ' + JSON.stringify({ aboveBefore, aboveAfter, aboveGrown }));
     observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
