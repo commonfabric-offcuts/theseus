@@ -2675,4 +2675,60 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(posted, false, 'and it was not sent');
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  await check('rail a star Theseus was too busy to take and a reply whose send is lost, together as on live: the line says the star with its card, no notice draws over another, nothing holds the move, the star is made once after the page has gone, and on coming back the card shows it and the reply its Review button', async () => {
+    for (const [size, theme] of [['laptop', 'light'], ['phone', 'dark']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop', topic = `rail-together-${size}`, other = `rail-together-${size}-away`;
+      await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Together ' + size }, { id: other, title: 'Away ' + size }] });
+      const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, join: true, addressees: [facts.actor], body: 'The card starred while Theseus is busy.' })).result.message_id;
+      const p = await open('rail-together-' + size, '/?topic=' + topic, size, theme);
+      const card = `#messages .message-card[data-id="${message}"]`, row = `#outline a[data-topic-id="${other}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body')) && Boolean(document.querySelector(${JSON.stringify(row)}))`), at + ': the card, the writing box and the outline are up');
+      const net = await network547(p, true), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
+      net.hold(payload => stars(payload) || sends(payload));
+      // The star: Theseus too busy to take it; its next try held.
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
+      if (laptop) await p.point(star); else await tap(p, star);
+      await net.answer(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star is on its way'), 503,
+        { error: { code: 'SERVER_BUSY', message: 'This request lane is busy; retain its operation.' } });
+      const busy = 'Starring “The card starred while Theseus is busy.” is not saved yet: Theseus was busy. The page sends it again.';
+      await until(() => p.evaluate(`document.getElementById('app-status').textContent===${JSON.stringify(busy)}`), at + ': the line says the star, its card, and busy')
+        .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('app-status').textContent")}`); });
+      const again = await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star goes again; held');
+      // The reply: its send lost before Core saw it, so it is in doubt.
+      await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
+      await p.send('Input.insertText', { text: 'A reply sent while Theseus is busy' });
+      await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
+      await net.drop(await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way'));
+      const review = () => p.evaluate("[...document.querySelectorAll('#inline-pending button, #topic-pending button')].map(b=>b.textContent)");
+      await until(async () => (await review()).includes('Review 1 reply'), at + ': the reply is in doubt: its Review button shows');
+      if (!laptop) await openDrawer547(p, at);
+      const seen = await notices547(p);
+      assert.deepEqual(seen.shown.map(item => item.id), ['app-status'], `${at}: the status line alone: ${JSON.stringify(seen)}`);
+      apart547(seen, at);
+      await shot(p, `rail-together-${size}-${theme}`);
+      // The first press on another topic moves the page, with nothing said.
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+      if (laptop) await p.point(row); else await tap(p, row);
+      await arrived(p, '?topic=' + other, 'Away ' + size, at + ': the first press moves the page')
+        .catch(async error => { throw Error(`${error.message}: ${await p.evaluate("document.getElementById('topic-navigation-status').textContent")}`); });
+      assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, `${at}: nothing is said about leaving`);
+      // Theseus takes the star now, from the page that has gone: it is made once.
+      net.hold(null); await net.pass(again);
+      await until(async () => (await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message)?.acts?.starred === true, at + ': Core holds the star');
+      assert.equal((await view('message_acts', { topic_id: topic })).items.find(item => item.message_id === message).acts.star_revision, 1, `${at}: made once`);
+      assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: the page reached says nothing of it`);
+      await p.evaluate('history.back()');
+      await arrived(p, '?topic=' + topic, 'Together ' + size, at + ': back');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.textContent === '★'`), at + ': the card shows its star');
+      await until(async () => (await review()).includes('Review 1 reply'), at + ': and the reply its Review button');
+      assert.equal(await p.evaluate("document.getElementById('app-status').hidden"), true, `${at}: nothing is said of the star`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
 }

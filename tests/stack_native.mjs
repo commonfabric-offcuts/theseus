@@ -1573,6 +1573,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
   });
 
+  await check('reading stacks an act refused for a session Theseus no longer holds, as after a deploy restarts it, says so with its card, goes again once the page holds a session, and Core holds it once', async () => {
+    const topic = 'stack-restart';
+    const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'The card folded across a restart.' }]]);
+    const p = await open(topic, 'laptop', topic, ids.a);
+    const net = await network(p, true), folds = payload => payload?.kind === 'message.fold';
+    net.hold(folds);
+    await menuOf(p, 'laptop', ids.a); await choose(p, 'laptop', 'Fold');
+    const first = await until(() => net.held().find(entry => folds(entry.payload)), 'the fold is on its way, before Core');
+    // The server's answer to a session it does not hold (aim_next/server.py), as a restarted server gives it.
+    await net.answer(first, 401, { error: { code: 'SESSION_REQUIRED', message: 'Session required.' } });
+    await becomes(() => statusLine(p), { shown: true, text: 'Folding “The card folded across a restart.” is not saved yet: Theseus restarted. The page sends it again.' },
+      'the line says the server restarted, names the act and its card');
+    const again = await until(() => net.held().find(entry => folds(entry.payload)), 'once Theseus answers again, the same fold goes again');
+    assert.equal(again.payload.operation_id, first.payload.operation_id, 'as the same request');
+    net.hold(null); await net.pass(again);
+    await until(async () => !(await statusLine(p)).shown, 'Core takes it: the line goes');
+    await until(() => foldedCard(p, ids.a), 'the card shows the fold Core holds');
+    assert.equal((await actsOf(topic, ids.a))?.fold_revision, 1, 'Core holds it once');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('reading stacks two acts not settled each say their own card; a read or an ask that fails clears neither, and Core\'s answer to one leaves the other said until its own answer', async () => {
     const topic = 'stack-two-lost';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'First card lost.' }],

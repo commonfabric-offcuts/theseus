@@ -150,8 +150,8 @@ export class StackFeed {
     // The acts not settled, by operation, each kept with its exact request
     // until Core answers it (waiting); and what the page says of each act not
     // settled or refused, by operation, in the order said.
-    this.doubts = new Map(); this.notices = new Map(); this.noticeShown = '';
-    this.unheard = heard(() => this.askAgain());
+    this.doubts = new Map(); this.notices = new Map(); this.noticeShown = ''; this.unheard = null;
+    this.listen();
     this.said = doc.createElement('div');
     this.said.className = 'sr-only'; this.said.setAttribute('aria-live', 'polite'); this.said.id = 'stack-said';
     doc.body.append(this.said);
@@ -305,7 +305,7 @@ export class StackFeed {
     const op = error.envelope.operation_id, what = doing(act.kind, act.item, act.args), why = waiting(error);
     this.notices.delete(op);
     if (why) {
-      this.doubts.set(op, { ...act, envelope: error.envelope, after: contact.answered, out: false });
+      this.doubts.set(op, { ...act, envelope: error.envelope, after: contact.answered, out: false }); this.listen();
       if (!QUIET.has(act.kind)) this.notices.set(op, { words: WAITING[why](what), settled: false });
     } else if (!QUIET.has(act.kind)) this.notices.set(op, { words: refused(what, error), settled: true });
     this.paintNotice();
@@ -322,7 +322,7 @@ export class StackFeed {
       this.chain = sent.catch(() => {});
       sent.then(() => { this.doubts.delete(op); this.notices.delete(op); this.committed(doubt.kind); },
         error => { this.doubts.delete(op); this.failed(doubt, error, false); })
-        .finally(() => this.settled(doubt.item.id));
+        .finally(() => { this.settled(doubt.item.id); if (this.gone && !this.doubts.size) this.deafen(); });
     }
   }
   // An act the person made committed: what was said of a refusal before it is over.
@@ -339,8 +339,14 @@ export class StackFeed {
     if (this.noticeShown && this.line()?.textContent === this.noticeShown) this.status('');
     this.noticeShown = '';
   }
-  // The page goes: nothing more is sent from it.
-  dispose() { this.unheard(); this.doubts.clear(); }
+  // The page goes (unloaded, or a move in place ended its run): an act not
+  // settled still goes again as Theseus answers, so it is made once whatever
+  // the reader does next, and what it says lands on the page it left
+  // (app.mjs, retired elements). Once none is left, it listens no more.
+  dispose() { this.gone = true; if (!this.doubts.size) this.deafen(); }
+  // Hearing each time Theseus answers anything (api.mjs heard), at most once.
+  listen() { this.unheard ??= heard(() => this.askAgain()); }
+  deafen() { this.unheard?.(); this.unheard = null; }
   // Draws the stacks again when a message's acts as shown are no longer what
   // they were last drawn with, or when an act on a dossier's unloaded root
   // settles, as its loaded replies show where it is; an answer landing under a
