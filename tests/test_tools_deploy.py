@@ -194,12 +194,18 @@ class DeployCase(unittest.TestCase):
         self.tmp.cleanup()
 
     def deploy(self, host, dry=False, sha=SHA, **release):
+        # What the deploy printed, kept for the lines the operator reads, a refusal or not.
+        self.printed = io.StringIO()
         with mock.patch.object(deploy, "run", host), \
                 mock.patch.object(deploy.os, "kill", lambda pid, sig: self.kills.append((pid, sig))), \
                 mock.patch.object(deploy, "wait_exit", return_value="exited"), \
                 mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")), \
-                redirect_stdout(io.StringIO()):
+                redirect_stdout(self.printed):
             deploy.deploy(self.config, sha, self.evidence, self.summary, dry, **release)
+
+    def known_lines(self):
+        """The lines the deploy printed about known reds, in order."""
+        return [line for line in self.printed.getvalue().splitlines() if line.startswith("known red")]
 
     def planned(self, host, **release):
         """A dry run that must not refuse; a refusal fails the test rather than erroring it."""
@@ -1325,6 +1331,8 @@ class DeployScopedKnownReds(KnownRedsFiles, DeployCase):
     stays missing, and a step the change touches that the summary did not run is refused before any red is read."""
 
     HEALTH_CASE = "health the release line says its full run"
+    # The line the operator reads for a listed red of a step the scoped run did not run (B3).
+    NOT_RUN = "known red not run: %s %r: the scoped run did not run %s, which no changed path touches; its full run follows"
     # Reds of steps the health fix does not touch, as a live release's known reds list them.
     ELSEWHERE = (("native-colors", "a reply keeps its colour"), ("native-rail", "the outline opens"),
                  ("native-header", "the header holds at 320px"), ("native-webkit-rail", "the outline opens in Safari"))
@@ -1366,15 +1374,29 @@ class DeployScopedKnownReds(KnownRedsFiles, DeployCase):
         taken = written["known_reds"]
         self.assertEqual([(red["step"], red["case"], red["taken_by"]) for red in taken["accepted"]],
                          [("native-health", self.HEALTH_CASE, "live")])
-        self.assertEqual(taken["not_run"], [{"step": step, "case": case} for step, case in self.ELSEWHERE])
+        not_run = [self.NOT_RUN % (step, case, step) for step, case in self.ELSEWHERE]
+        self.assertEqual(taken["not_run"], [{"step": step, "case": case, "said": said}
+                                            for (step, case), said in zip(self.ELSEWHERE, not_run)])
         self.assertEqual(taken["not_needed"], [], "a red of a step that did not run is not one that did not fail")
+        # The operator reads each red's recorded line, the one taken first, then those that did not run; none is said
+        # not needed.
+        self.assertEqual(self.known_lines(), [taken["accepted"][0]["said"]] + not_run)
+        self.assertTrue(taken["accepted"][0]["said"].startswith("known red: native-health %r failed, as it does on the live commit "
+                                                                % self.HEALTH_CASE))
 
     def test_a_scoped_summary_that_passed_says_which_reds_did_not_run(self):
         commit = self.scoped_fails(failed=())
         self.refused(GitHost(self.config, ff=False), sha=commit, known_reds=self.known)
         taken = self.written()["known_reds"]
-        self.assertEqual((taken["accepted"], taken["not_needed"]), ([], [{"step": "native-health", "case": self.HEALTH_CASE}]))
-        self.assertEqual(taken["not_run"], [{"step": step, "case": case} for step, case in self.ELSEWHERE])
+        not_needed = "known red not needed: native-health %r did not fail" % self.HEALTH_CASE
+        self.assertEqual((taken["accepted"], taken["not_needed"]),
+                         ([], [{"step": "native-health", "case": self.HEALTH_CASE, "said": not_needed}]))
+        not_run = [self.NOT_RUN % (step, case, step) for step, case in self.ELSEWHERE]
+        self.assertEqual(taken["not_run"], [{"step": step, "case": case, "said": said}
+                                            for (step, case), said in zip(self.ELSEWHERE, not_run)])
+        # A red of the step that ran and passed is said not needed, never not run; each other is said not run.
+        self.assertEqual(self.known_lines(), [not_needed] + not_run)
+        self.assertNotIn("known red not run: native-health", self.printed.getvalue())
 
     def test_a_unit_the_refusals_or_the_replay_it_did_not_run_stays_missing_with_known_reds(self):
         for name in ("python-units", "node-units", release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY):
@@ -1444,7 +1466,14 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
         taken = written["known_reds"]
         self.assertEqual([(red["step"], red["case"], red["live_summary"], red["live_commit"]) for red in taken["accepted"]],
                          [(RED_STEP, RED_CASE, str(live), HEAD), (RED_STEP, "a whisper keeps its colour", str(live), HEAD)])
-        self.assertEqual(taken["not_needed"], [{"step": "native-journal", "case": "a journal case"}])
+        not_needed = "known red not needed: native-journal 'a journal case' did not fail"
+        self.assertEqual(taken["not_needed"], [{"step": "native-journal", "case": "a journal case", "said": not_needed}])
+        self.assertEqual(taken["not_run"], [], "a whole run leaves no step unrun")
+        taken_lines = ["known red: %s %r failed, as it does on the live commit %s (%s): fails on the live release too"
+                       % (RED_STEP, case, HEAD[:12], live) for case in (RED_CASE, "a whisper keeps its colour")]
+        self.assertEqual([red["said"] for red in taken["accepted"]], taken_lines)
+        # The operator reads exactly the lines the record keeps, one per red, and none of a step that did not run.
+        self.assertEqual(self.known_lines(), taken_lines + [not_needed])
         record = self.evidence_of("02-release")["record"]
         self.assertEqual(record["measurements"]["known_reds"], [
             {"step": RED_STEP, "case": case, "live_summary": str(live), "live_commit": HEAD, "why": "fails on the live release too",
@@ -1818,8 +1847,10 @@ class DeployRefusesKnownReds(KnownRedsFiles, DeployCase):
         self.planned(host, known_reds=self.known)
         written = self.evidence_of("00-release-check")
         self.assertEqual((written["passed"], written["reasons"]), (True, []))
-        self.assertEqual(written["known_reds"]["not_needed"], [{"step": RED_STEP, "case": RED_CASE}])
+        not_needed = "known red not needed: %s %r did not fail" % (RED_STEP, RED_CASE)
+        self.assertEqual(written["known_reds"]["not_needed"], [{"step": RED_STEP, "case": RED_CASE, "said": not_needed}])
         self.assertEqual(written["known_reds"]["accepted"], [])
+        self.assertEqual(self.known_lines(), [not_needed])
         self.assertNotIn("known_reds", self.evidence_of("02-release")["record"]["measurements"])
 
     def test_main_takes_the_known_reds_file(self):
@@ -1987,6 +2018,8 @@ class DeployRefusesKnownRedsPolicy(PolicyRepository, KnownRedsFiles, DeployCase)
              "taken_by": "policy"}])
         self.assertIn("known red: %s %r failed; %s at %s admits it (review m-admitted)" % (RED_STEP, RED_CASE, POLICY, self.live[:12]),
                       out)
+        self.assertEqual([line for line in out.splitlines() if line.startswith("known red")], [taken.get("said")],
+                         "the line printed is the one recorded with the red")
         # Item 553: a candidate of the policy's own steps adds none beyond it, and the record says nothing of any.
         self.assertFalse({"steps_beyond_policy", "steps_beyond_policy_unread"}
                          & set(self.evidence_of("02-release")["record"]["measurements"]))
@@ -2534,6 +2567,9 @@ class DeployRefusesKnownRedsOwnerAcceptance(KnownRedsFiles, DeployCase):
              "why": "fails on the live release too", "taken_by": "owner_acceptance"}])
         self.assertIn("known red: %s %r failed; an owner's acceptance took it (%s, by warp in m-accepted)"
                       % (RED_STEP, RED_CASE, self.acceptance), out.getvalue())
+        [taken] = json.loads((self.evidence / "00-release-check.json").read_text())["known_reds"]["accepted"]
+        self.assertEqual([line for line in out.getvalue().splitlines() if line.startswith("known red")], [taken.get("said")],
+                         "the line printed is the one recorded with the red")
 
     def test_an_owners_acceptance_takes_only_what_it_names_exactly_with_a_by_and_a_message(self):
         for change, words in (({"cases": [{"step": RED_STEP, "case": RED_CASE.upper()}]}, "but not of %s %r" % (RED_STEP, RED_CASE)),

@@ -16297,9 +16297,9 @@
    "act": "The deploy's line says an owner's acceptance took the red, by whom and in which message",
    "break": [
     [
-     "tools/deploy.py",
-     "        elif red[\"taken_by\"] == \"owner_acceptance\":",
-     "        elif False:"
+     "tools/known_reds.py",
+     "an owner's acceptance took it ({live_summary}, by {by} in \"",
+     "an owner's acceptance took it ({live_summary}, in \""
     ]
    ],
    "check": {
@@ -24767,6 +24767,62 @@
      "tools/deploy.py",
      "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if head.returncode != 0:",
      "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy prints the line each known red is recorded with: taken, not needed or not run",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    for line in known_reds_check.said(known or {}):",
+     "    for line in []:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A known red of a step a scoped run did not run is recorded and printed as not run, never as not needed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "\"not_run\": [_red(\"not_run\",",
+     "\"not_run\": [_red(\"not_needed\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The not-run line says the scoped run did not run the step and that its full run follows",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "which no changed path touches; \"\n                   \"its full run follows\"",
+     "which no changed path touches\""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A known red's printed line is the one recorded with it, whichever list keeps it",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "for value in taken.values() if isinstance(value, list) for red in value]",
+     "for value in list(taken.values())[:3] if isinstance(value, list) for red in value]"
     ]
    ],
    "check": {

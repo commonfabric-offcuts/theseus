@@ -683,22 +683,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if known is not None and "refused" in known:
         raise Refused("known reds: %s; nothing was stopped" % known["refused"])
     accepted = known["accepted"] if known is not None else []
-    for red in accepted:
-        if red["taken_by"] == "policy":
-            print("known red: %s %r failed; %s at %s admits it (review %s): %s"
-                  % (red["step"], red["case"], known_reds_check.POLICY, known["live_commit"][:12], red["review"], red["why"]))
-        elif red["taken_by"] == "owner_acceptance":
-            acceptance = known["acceptances"][red["live_summary"]]
-            print("known red: %s %r failed; an owner's acceptance took it (%s, by %s in %s): %s"
-                  % (red["step"], red["case"], red["live_summary"], acceptance["by"], acceptance["message"], red["why"]))
-        else:
-            print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
-                  % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
-    for red in (known or {}).get("not_needed") or []:
-        print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
-    for red in (known or {}).get("not_run") or []:
-        print("known red not run: %s %r: the scoped run did not run %s, which no changed path touches; its full run follows"
-              % (red["step"], red["case"], red["step"]))
+    # Each red is recorded with the line the operator reads (known_reds.SAID), and that line is what is printed.
+    for line in known_reds_check.said(known or {}):
+        print(line)
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})

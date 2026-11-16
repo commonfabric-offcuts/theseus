@@ -49,6 +49,15 @@ POLICY = ".github/check-baseline.json"
 # Item 482: an owner's acceptance of named cases, which a red's live_summary may name in place of a live summary.
 OWNER_KEYS = ("owner_acceptance", "cases", "by", "message", "why")
 WHY_LENGTH = 300
+# The line the deploy prints for each red judge() keeps, by what it is: how an accepted red was taken, not needed, or
+# not run. Each red is recorded with its line (said), so the operator reads the words the record keeps.
+SAID = {"policy": "known red: {step} {case!r} failed; " + POLICY + " at {short} admits it (review {review}): {why}",
+        "owner_acceptance": "known red: {step} {case!r} failed; an owner's acceptance took it ({live_summary}, by {by} in "
+                            "{review}): {why}",
+        "live": "known red: {step} {case!r} failed, as it does on the live commit {short} ({live_summary}): {why}",
+        "not_needed": "known red not needed: {step} {case!r} did not fail",
+        "not_run": "known red not run: {step} {case!r}: the scoped run did not run {step}, which no changed path touches; "
+                   "its full run follows"}
 
 
 class Refused(Exception):
@@ -342,6 +351,17 @@ class Admissions:
         return (red["review"], None) if same else (None, "different assertion, values or source chain")
 
 
+def _red(kind, red, **words):
+    """RED as judge() records it, with the line the deploy prints for it: SAID[kind] filled from RED and WORDS."""
+    return dict(red, said=SAID[kind].format(**dict(red, **words)))
+
+
+def said(taken):
+    """The lines the deploy prints for what judge() took: the said of every red in every list it keeps, in order. A red
+    is never kept without its line (_red), so no kind of red the record keeps goes unsaid or is said otherwise."""
+    return [red["said"] for value in taken.values() if isinstance(value, list) for red in value]
+
+
 def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     """What the known reds accept of a summary that judge_summary found describes the commit, or Refused naming the
     first condition that fails.
@@ -350,17 +370,18 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
     live checkout's HEAD, as the deploy reads it. policy(base): the Admissions of POLICY at base, the live HEAD the
     known reds were read beside (the event base, never the candidate), None when that commit keeps none, or Refused when
     it cannot be read or is not a policy GitHub's classifier takes. Returns {file, live_commit, accepted: [{step, case, live_summary, live_commit, why, taken_by,
-    review}], not_needed: [{step, case}], not_run: [{step, case}]}; accepted is empty only for a summary that passed.
-    not_run: the listed reds of a browser step a scoped summary did not run (item 608), which are neither failed nor
-    passed there; not_needed: the other listed reds the candidate did not fail."""
+    review, said}], not_needed: [{step, case, said}], not_run: [{step, case, said}]}; accepted is empty only for a summary
+    that passed. not_run: the listed reds of a browser step a scoped summary did not run (item 608), which are neither
+    failed nor passed there; not_needed: the other listed reds the candidate did not fail. said: the line the deploy
+    prints for that red (SAID, said())."""
     known = load(path)
     listed = {(red["step"], red["case"]): red for red in known["reds"]}
     summary = json.loads(Path(summary_path).read_text())
     unrun = set(not_run(summary))
-    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [], "acceptances": {},
-             "not_run": [{"step": step, "case": case} for step, case in listed if step in unrun]}
+    taken = {"file": str(path), "live_commit": known["live_commit"], "accepted": [], "not_needed": [],
+             "not_run": [_red("not_run", {"step": step, "case": case}) for step, case in listed if step in unrun]}
     if not unpassed:
-        taken["not_needed"] = [{"step": step, "case": case} for step, case in listed if step not in unrun]
+        taken["not_needed"] = [_red("not_needed", {"step": step, "case": case}) for step, case in listed if step not in unrun]
         return taken
     head = live_head()
     if known["live_commit"] != head:
@@ -377,6 +398,7 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
         for case, row in failures[step].items():
             red = listed[(step, case)]
             review, differs = admits.match(step, row, checkout) if admits is not None else (None, None)
+            acceptance = None
             if review is not None:
                 taken_by = "policy"
             elif differs is not None and red["live_summary"] is None:
@@ -388,14 +410,13 @@ def judge(path, summary_path, unpassed, live_head, policy=lambda base: None):
             else:
                 failed, acceptance = live_cases(red, known["live_commit"])
                 taken_by, review = ("live", None) if acceptance is None else ("owner_acceptance", acceptance["message"])
-                if acceptance is not None:
-                    taken["acceptances"][red["live_summary"]] = {"by": acceptance["by"], "message": acceptance["message"]}
                 if case not in failed:
                     raise Refused("%s %r is not admitted by %s at the live commit, nor among the cases that failed in %s "
                                   "on the live commit%s" % (step, case, POLICY, red["live_summary"], unreviewed))
-            taken["accepted"].append({"step": step, "case": case, "live_summary": red["live_summary"],
-                                      "live_commit": known["live_commit"], "why": red["why"], "taken_by": taken_by,
-                                      "review": review})
-    taken["not_needed"] = [{"step": step, "case": case} for step, case in listed
+            taken["accepted"].append(_red(taken_by, {"step": step, "case": case, "live_summary": red["live_summary"],
+                                                     "live_commit": known["live_commit"], "why": red["why"],
+                                                     "taken_by": taken_by, "review": review},
+                                          short=known["live_commit"][:12], by=(acceptance or {}).get("by")))
+    taken["not_needed"] = [_red("not_needed", {"step": step, "case": case}) for step, case in listed
                            if step not in unrun and case not in failures.get(step, ())]
     return taken
