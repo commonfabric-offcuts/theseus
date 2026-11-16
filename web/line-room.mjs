@@ -2,13 +2,16 @@
 // however little of the page follows it. Since item 465 the topic's Team is in the header, not after the messages,
 // and on a short window the page ended with the oldest unread message still showing above the line. The room is
 // the page's own: main's ::after (aim.css) is as tall as --line-room, which is what the window lacks below the
-// line's top, and nothing at all while no line shows. It sits after everything in main, so nothing in the feed
-// moves, and in the page's flow, so the rails reach the page's end as they do without it.
+// line's top, and nothing at all while no line shows: none in the feed, or one faded once nothing holds it
+// (.new-line-read), which keeps its place but is not seen, so a person who has read everything is left no blank
+// window after the Notebook. It sits after everything in main, so nothing in the feed moves, and in the page's
+// flow, so the rails reach the page's end as they do without it.
 //
-// It is measured again as soon as the line comes, goes or moves (the list's children change, heard before the
-// next frame is drawn), and when the window or anything in main changes size. A change of size asks for one measure
-// at the next frame, so the room it sets, which changes main's size, is heard as a change of its own rather than
-// inside the observer that heard the first. A document with no such observers (a unit test's) gets no room.
+// It is measured again as soon as the line comes, goes, moves, fades or shows again (the list's children change,
+// or a line's class does, heard before the next frame is drawn), and when the window or anything in main changes
+// size. A change of size asks for one measure at the next frame, so the room it sets, which changes main's size, is
+// heard as a change of its own rather than inside the observer that heard the first. A document with no such
+// observers (a unit test's) gets no room.
 export function keepLineRoom(main, list) {
   const doc = main?.ownerDocument, win = doc?.defaultView;
   if (!win?.requestAnimationFrame || !win.MutationObserver || !win.ResizeObserver) return;
@@ -17,11 +20,13 @@ export function keepLineRoom(main, list) {
     if (frame) win.cancelAnimationFrame(frame);
     frame = 0;
     const line = list.querySelector(':scope > .new-line');
-    const room = line?.getClientRects().length ? Math.max(0, Math.ceil(line.getBoundingClientRect().top + win.innerHeight - contentEnd(main, win))) : 0;
+    const shows = line?.getClientRects().length && !line.classList.contains('new-line-read') && win.getComputedStyle(line).visibility !== 'hidden';
+    const room = shows ? Math.max(0, Math.ceil(line.getBoundingClientRect().top + win.innerHeight - contentEnd(main, win))) : 0;
     if (room !== (parseFloat(main.style.getPropertyValue('--line-room')) || 0)) main.style.setProperty('--line-room', `${room}px`);
   };
   const measure = () => { if (!frame) frame = win.requestAnimationFrame(fit); };
-  new win.MutationObserver(fit).observe(list, { childList: true });
+  new win.MutationObserver(records => { if (records.some(record => record.type === 'childList' ? record.target === list : record.target.classList?.contains('new-line'))) fit(); })
+    .observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   new win.ResizeObserver(measure).observe(main);
   win.addEventListener('resize', fit);
   fit();

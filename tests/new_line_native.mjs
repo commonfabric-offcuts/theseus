@@ -70,6 +70,12 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
   const line = p => p.evaluate(`(()=>{const lines=[...document.querySelectorAll('#messages .new-line')],l=lines[0],c=l&&getComputedStyle(l);
     return {count:lines.length,kind:l?.dataset.line??null,read:l?.classList.contains('new-line-read')??null,opacity:c?.opacity??null,inert:l?.inert??null,
       after:l?.previousElementSibling?.dataset?.id??null}})()`);
+  // How far the page scrolls past what it holds: its end beyond the window and beyond main's last box with main's
+  // padding. While a New line shows, the page keeps room to scroll it to the top (docs/attention.md); once it has
+  // faded, or is gone, none.
+  const blankBelow = p => p.evaluate(`(()=>{const m=document.querySelector('main'),last=[...m.children].filter(e=>e.getClientRects().length&&!['absolute','fixed'].includes(getComputedStyle(e).position)).at(-1);
+    const end=last.getBoundingClientRect().bottom+parseFloat(getComputedStyle(last).marginBottom)+parseFloat(getComputedStyle(m).paddingBottom)+scrollY;
+    return Math.max(0,Math.round(Math.max(innerHeight,document.scrollingElement.scrollHeight)-Math.max(innerHeight,end)))})()`);
   // Reads until nothing is unread, bringing the oldest unread card into view,
   // and waits until the page has had the answer that says so and has drawn it.
   const readOnScreen = async (p, topic, label) => {
@@ -96,6 +102,8 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
         const held = await line(p);
         assert.deepEqual(held, { count: 1, kind: 'new', read: false, opacity: '1', inert: false, after: ids[0] },
           label + ': read on screen, the line stays under the oldest unread message, showing');
+        const room = await blankBelow(p);
+        assert.ok(room > 0, label + ': the line showing, the page keeps room to scroll it to the top: ' + room);
         await shot(p, `new-line-stays-${engine}-${route}-${size}`);
         await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[1]))}).scrollIntoView({block:'center'})`);
         await p.point(card(ids[1]));
@@ -106,7 +114,8 @@ export async function newLineStaysChecks({ check, open, until, view, control, sh
         await until(() => p.evaluate("!document.querySelector('#reader').open"), label + ': the Reader closed');
         await still(p, label + ': closed');
         assert.deepEqual(await line(p), faded, label + ': closing the Reader leaves the line faded');
-        observations.push({ name: 'new line stays while read on screen', engine, route, size, held, faded });
+        assert.equal(await blankBelow(p), 0, label + ': faded, the line keeps no room: the page ends where what it holds ends');
+        observations.push({ name: 'new line stays while read on screen', engine, route, size, held, faded, room });
         assert.deepEqual(p.errors, [], label + ': no page errors');
         await p.close();
       }

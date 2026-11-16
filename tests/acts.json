@@ -15327,6 +15327,21 @@
    }
   },
   {
+   "item": 465,
+   "act": "A faded New line keeps no room after the Notebook: the page ends where what it holds ends",
+   "break": [
+    [
+     "web/line-room.mjs",
+     "const shows = line?.getClientRects().length && !line.classList.contains('new-line-read') && win.getComputedStyle(line).visibility !== 'hidden';",
+     "const shows = line?.getClientRects().length;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "colors chrome: a short topic read on the first screen"
+   }
+  },
+  {
    "item": 378,
    "act": "The Reader's archive button is a quiet button in the star's type, its count small, not a pill with no fill that blends into the header",
    "break": [

@@ -440,7 +440,9 @@ However little of the page follows it, the line can be scrolled to the top
 of the window with every message it is under wholly above: while a line is
 in the feed, the page ends with as much room after its last part (the
 Notebook) as the window lacks below the line's top, and none when nothing
-is lacking or no line shows. The room comes after everything else on the
+is lacking or no line shows: none in the feed, or one faded once nothing
+holds it, so a reader who has read everything is left no blank window after
+the Notebook. The room comes after everything else on the
 page, so nothing in the feed moves (`web/line-room.mjs`). Since item 465 the
 topic's Team is in the header rather than after the messages, and without
 the room a short window ended with the oldest unread message still showing
