@@ -2336,18 +2336,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // page): a press that leaves the focus where it was while one lies there is a dead end. Not from where the
   // arrow is the control's own: in words (← and → in a line with words in it, any arrow in a box with words, a
   // number or a date), ↑ and ↓ in a select, which choose among its options, and in a radio group or a slider.
-  // Not a control a box that does not hold the focus has clipped wholly out of sight (a link scrolled up out of
-  // the Reader's message box lies above nothing in the header): it is reached from inside its box. One out of
-  // sight only by the page, or by a box the focus is in, does lie that way, and the arrows scroll toward it. The
-  // focus scrolled out of its own box is judged where it went out, on the box's edge.
+  // Not a control a box that takes the focus and does not hold it has clipped wholly out of sight (a link scrolled
+  // up out of the Reader's message box lies above nothing in the header): it is reached from the box. One out of
+  // sight only by the page, by a box the focus is in, or by a box that takes no focus (the versions in a reply's
+  // review), does lie that way, and the arrows scroll toward it. The focus scrolled out of its own box is judged
+  // where it went out, on the box's edge.
   const LIES = key => `(e=>{if(!e||e===document.body||e===document.documentElement)return [];const key=${JSON.stringify(key)},vertical=key==='ArrowUp'||key==='ArrowDown';
     const line=e.tagName==='INPUT'&&['text','search','email','url','tel','password'].includes(e.type),typed=e.matches('textarea,[contenteditable]:not([contenteditable=false])')||(e.tagName==='INPUT'&&!['checkbox','radio','button','submit','reset','file','color','image','range'].includes(e.type));
     const suggests=e.matches('[role=combobox],[aria-autocomplete]')||Boolean(e.list);
     if(typed&&(suggests||!((e.value===''&&(line||e.tagName==='TEXTAREA'))||(line&&vertical))))return [];
     if((e.tagName==='SELECT'&&vertical)||e.matches('input[type=radio],input[type=range],[role=slider],[role=radio]'))return [];
     const modal=[...document.querySelectorAll('dialog[open]')].filter(d=>d.matches(':modal')).at(-1),layer=modal??e.closest('dialog[open],[role=dialog]:not([hidden]),[role=menu]:not([hidden])')??document.body;
-    const area=(x,holding)=>{let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!(holding&&at.contains(holding));at=at.parentElement){const s=getComputedStyle(at);if(s.overflowX==='visible'&&s.overflowY==='visible')continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return a};
-    const clipped=x=>{const c=x.getBoundingClientRect(),a=area(x,e);return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
+    const area=(x,holding,only)=>{let a={top:-Infinity,left:-Infinity,bottom:Infinity,right:Infinity};for(let at=x.parentElement;at&&at!==document.body&&at!==document.documentElement&&!(holding&&at.contains(holding));at=at.parentElement){const s=getComputedStyle(at);if((s.overflowX==='visible'&&s.overflowY==='visible')||(only&&!only(at)))continue;const k=at.getBoundingClientRect();a={top:Math.max(a.top,k.top),left:Math.max(a.left,k.left),bottom:Math.min(a.bottom,k.bottom),right:Math.min(a.right,k.right)}}return a};
+    const focusable=at=>at.matches('a[href],button,summary,input,select,textarea,[tabindex],[contenteditable]:not([contenteditable=false])')&&at.tabIndex>=0&&!at.disabled&&at.checkVisibility({visibilityProperty:true});
+    const clipped=x=>{const c=x.getBoundingClientRect(),a=area(x,e,focusable);return !(c.bottom>a.top&&c.top<a.bottom&&c.right>a.left&&c.left<a.right)};
     const r=e.getBoundingClientRect(),o=area(e,null),cl=(v,lo,hi)=>Math.min(Math.max(v,lo),hi),b={top:cl(r.top,o.top,o.bottom),bottom:cl(r.bottom,o.top,o.bottom),left:cl(r.left,o.left,o.right),right:cl(r.right,o.left,o.right)};
     const shown=x=>x.checkVisibility({visibilityProperty:true})&&!x.disabled&&!x.closest('[inert],[aria-hidden=true]')&&x.getBoundingClientRect().width>0;
     return [...layer.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(x=>x!==e&&!x.contains(e)&&!e.contains(x)&&(x.tabIndex>=0||x.getAttribute('role')==='treeitem')&&shown(x)&&!clipped(x)).filter(x=>{const c=x.getBoundingClientRect();

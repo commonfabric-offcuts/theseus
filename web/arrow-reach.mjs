@@ -22,9 +22,10 @@
 // focused box that can still scroll that way (a message's text in the Reader)
 // scrolls a third of what it shows, and once at its end the arrows go on. A
 // control that way but out of sight is scrolled toward a step at a time, so
-// the words between are read; but what a box the focus is not in has scrolled
-// out of sight lies no way of it, and the focus scrolled out of its own box is
-// where it went out (clippedAway, seenFrom).
+// the words between are read; but what a box that takes the focus, and does
+// not hold it, has scrolled out of sight lies no way of it (it is reached from
+// the box), and the focus scrolled out of its own box is where it went out
+// (clippedAway, seenFrom).
 // While a pop-up is open the arrows move only through it. With nothing
 // focused, ↓ goes to the first control in view from the top, ↑ to the last,
 // → to the first from the left and ← from the right.
@@ -102,13 +103,14 @@ function room(el, way) {
   return way === 'right' ? el.scrollLeft + el.clientWidth < el.scrollWidth - 1 : el.scrollLeft > 0;
 }
 // What the boxes that clip el (overflow other than visible) leave to show,
-// out to the first that holds `holding` (none: every one up to the page).
-function clipArea(el, doc, holding = null) {
+// out to the first that holds `holding` (none: every one up to the page);
+// with `only`, of those boxes only the ones it keeps.
+function clipArea(el, doc, holding = null, only = null) {
   const view = doc.defaultView;
   let area = { top: -Infinity, left: -Infinity, bottom: Infinity, right: Infinity };
   for (let at = el.parentElement; at && at !== doc.body && at !== doc.documentElement && !(holding && at.contains(holding)); at = at.parentElement) {
     const style = view.getComputedStyle(at);
-    if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
+    if ((style.overflowY === 'visible' && style.overflowX === 'visible') || (only && !only(at))) continue;
     const clip = at.getBoundingClientRect();
     area = { top: Math.max(area.top, clip.top), left: Math.max(area.left, clip.left), bottom: Math.min(area.bottom, clip.bottom), right: Math.min(area.right, clip.right) };
   }
@@ -122,13 +124,17 @@ function inSight(el, doc) {
 }
 
 // What a box has scrolled out of sight is judged where the eye sees it, not
-// where it is drawn. A control a box that does not hold `from` (null: nothing
-// focused) hides wholly lies no way of from: a link scrolled up out of a
-// message's box in the Reader is not above the header, though it is drawn
+// where it is drawn, when the arrows can reach it from inside the box: a
+// control a box that takes the focus itself and does not hold `from` (null:
+// nothing focused) hides wholly lies no way of from. A link scrolled up out of
+// a message's box in the Reader is not above the header, though it is drawn
 // there, and ↑ from the header never scrolls the message back toward it; the
-// arrows reach it from inside its box. Out of sight only by the page, or by a
-// box from is in, a control still lies that way, and is scrolled toward.
-const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from));
+// arrows reach the box, which scrolls, and the link from it. A box that takes
+// no focus (the versions in a reply's review) is no such way in: what it hides
+// still lies where it is drawn, and is scrolled toward, as is what is out of
+// sight only by the page or by a box from is in.
+const takesFocus = at => at.matches(CONTROL) && usable(at);
+const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from, takesFocus));
 // And the focus scrolled out of its own box (stepping toward a control further
 // in it) is where it went out, on the box's edge, never over what lies past it.
 function seenFrom(from, doc) {

@@ -14137,13 +14137,28 @@
    "break": [
     [
      "web/arrow-reach.mjs",
-     "const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from));",
+     "const clippedAway = (el, from, doc) => !meets(el.getBoundingClientRect(), clipArea(el, doc, from, takesFocus));",
      "const clippedAway = () => false;"
     ]
    ],
    "check": {
     "native": "rail",
     "case": "rail arrows in Topic settings and the Reader"
+   }
+  },
+  {
+   "item": 301,
+   "act": "A box that takes no focus is no way in to what it has scrolled out of sight: in a reply's review whose versions are taller than its box, the arrows from its header and footer reach the acknowledgement and Prepare this reply again below, the box scrolling toward them, at 1440, 390, 375 and 320",
+   "break": [
+    [
+     "web/arrow-reach.mjs",
+     "const takesFocus = at => at.matches(CONTROL) && usable(at);",
+     "const takesFocus = () => true;"
+    ]
+   ],
+   "check": {
+    "native": "navigation",
+    "case": "navigation correction retry chain"
    }
   },
   {
