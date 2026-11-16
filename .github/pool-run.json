@@ -1,0 +1,8 @@
+{
+ "step": "webkit-notebook",
+ "cases": [
+  "review close during wait"
+ ],
+ "label": "rv418-ctlclose-a24a9a33-1",
+ "snapshot": "7fb2d1d7bc55e1a430b174a469f129ac7e754535"
+}
