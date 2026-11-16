@@ -648,10 +648,12 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
         # The live release's code measured with this commit's release check, harnesses and replay file (D32).
         summary["base"] = {"commit": base_commit, "tools": tools, "steps": base_steps}
     if held_by is not None:
-        # The raw verdict above stays as the steps ran; green is the run's verdict with the quarantine at the event base.
+        # The raw verdict above stays as the steps ran; green is the run's verdict with the quarantine at the event base:
+        # it was read, the checkout did not change, and each step passed or is green. Every name has its step by now:
+        # the loop above appends one result named for each, or raises.
         held_by["held"] = quarantined(steps)
-        held_by["green"] = (entries is not None and unchanged and [s["name"] for s in steps] == names
-                            and all(s["passed"] or (s.get("quarantine") or {}).get("green") is True for s in steps))
+        held_by["green"] = (entries is not None and unchanged and all(s["passed"] or (s.get("quarantine") or {}).get("green") is True
+                                                                      for s in steps))
         summary["quarantine"] = held_by
     write_summary(out, summary)
     return summary

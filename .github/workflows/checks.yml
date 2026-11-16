@@ -280,9 +280,10 @@ jobs:
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
           if not docs or not timed:
               sys.exit("no shard wrote a summary with a run in it")
-          commits = {d.get("commit") for d in docs}
+          # Such a refusal names no commit; every other summary must name the one commit.
+          commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
           if len(commits) != 1:
-              sys.exit("the shards checked different commits: %s" % sorted(commits))
+              sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
           steps = [step for d in docs for step in d.get("steps", [])]
           names = [step["name"] for step in steps]
           if len(names) != len(set(names)):
@@ -305,7 +306,9 @@ jobs:
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
           # The quarantine (item 549): raw verdicts above stay as the shards ran them. A step that failed is green only when
-          # its quarantine record holds exactly its failed cases and no other, and every shard read one event base.
+          # its quarantine record is green, not refused, holds exactly its failed cases (at least one) and names no case it
+          # does not hold; and the run is green only when every required step is present (a shard cancelled at its limit or
+          # refused before running leaves its steps missing), every shard's checkout was unchanged and all read one event base.
           def held(step):
               record = step.get("quarantine") or {}
               failed = (step.get("counts") or {}).get("failed") or []

@@ -16325,6 +16325,202 @@
    "check": {
     "python": "test_tools_train.py"
    }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case whose failure names no test source line, or carries no error at all, is not held",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "            record[\"unheld\"].append({\"case\": case, \"why\": \"its stage cannot be read: %s\" % refusal})\n            continue",
+     "            record[\"held\"].append(case)\n            continue"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "A quarantined case is held only by its exact identity: one quarantined under another phase or engine is not",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "entry = mine.get(ci_known_reds.key(row))",
+     "entry = next((e for e in mine.values() if e[\"case\"][\"name\"] == row.get(\"name\")), None)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The release check is never green when a step changed the checkout, though its only failures are held",
+   "break": [
+    [
+     "tools/release_check.py",
+     "held_by[\"green\"] = (entries is not None and unchanged and ",
+     "held_by[\"green\"] = (entries is not None and "
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The release check never claims green for a quarantine it could not read, though every step passed",
+   "break": [
+    [
+     "tools/release_check.py",
+     "held_by[\"green\"] = (entries is not None and unchanged",
+     "held_by[\"green\"] = (unchanged"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job is never green when a required step is missing: a shard refused before running, or one that left no summary",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"green\": (not missing and combined[\"tree_unchanged\"]",
+     "\"green\": (combined[\"tree_unchanged\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job is never green when a shard's checkout changed, though its only failures are held",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases)",
+     "\"green\": (not missing and len(bases)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record is not green",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "return (record.get(\"green\") is True and not record.get(\"unheld\")",
+     "return (not record.get(\"unheld\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record names a case it does not hold",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "is True and not record.get(\"unheld\") and not record.get(\"refused\")",
+     "is True and not record.get(\"refused\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step whose quarantine record was refused",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "not record.get(\"unheld\") and not record.get(\"refused\")\n",
+     "not record.get(\"unheld\")\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job does not hold a failed step that names no failed case",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "and bool(failed) and sorted(record",
+     "and sorted(record"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job folds a shard refused before running as its missing steps, not as a crash",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "commits = {d.get(\"commit\") for d in docs if d.get(\"steps\") or not d.get(\"refused\")}",
+     "commits = {d.get(\"commit\") for d in docs}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job exempts from the one commit only a refusal that ran nothing",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "if d.get(\"steps\") or not d.get(\"refused\")}",
+     "if not d.get(\"refused\")}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The combine job refuses a shard that names no commit, and says the shards checked different commits",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "sorted(map(str, commits))",
+     "sorted(commits)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
+  },
+  {
+   "item": 549,
+   "act": "The quarantine's passes count a run only when the case ran in it",
+   "break": [
+    [
+     "tools/quarantine.py",
+     "if counts is not None and case.get(\"passed\") is not None:",
+     "if counts is not None:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_quarantine.py"
+   }
   }
  ]
 }

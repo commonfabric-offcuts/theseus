@@ -24,8 +24,10 @@ HARNESS_TEXT = "// stand-in\nassert.ok(lines >= 7, 'shows lines');\nassert.ok(ot
 STAGE = [{"path": HARNESS, "text": "assert.ok(lines >= 7, 'shows lines');", "count": 1, "index": 0}]
 
 # A stand-in for node. --test prints a passing TAP summary. A persistence harness writes cases "a" and "b" and their
-# case lines; STUB_CASES names the failed ones as case:line, the line of HARNESS its stack names. A run with a failure
-# exits 1 and ends with known_reds.END_LINE, as the harness does, unless STUB_UNENDED says it stopped before its end.
+# case lines; STUB_CASES names the failed ones as case:line, the line of HARNESS its stack names, or case:timeout for a
+# failure whose stack names no test source line, or case:none for one with no error at all. A run with a failure exits 1
+# and ends with known_reds.END_LINE, as the harness does, unless STUB_UNENDED says it stopped before its end. STUB_WRITES
+# names a file the harness writes into the checkout, as a step that changes it would.
 STUB_NODE = r'''#!%s
 import json, os, sys
 args = sys.argv[1:]
@@ -40,7 +42,9 @@ failed = dict(item.split(":") for item in os.environ.get("STUB_CASES", "").split
 results = []
 for name in ("a", "b"):
     row = {"name": name, "passed": name not in failed}
-    if name in failed:
+    if name in failed and failed[name] == "timeout":
+        row["error"] = "TimeoutError: page.waitForSelector: Timeout 30000ms exceeded"
+    elif name in failed and failed[name] != "none":
         row["error"] = ("AssertionError [ERR_ASSERTION]: shows 6 lines\n    at check (%%s/tests/reader_persistence_native.mjs:%%s:5)"
                         %% (os.getcwd(), failed[name]))
     results.append(row)
@@ -48,6 +52,8 @@ for name in ("a", "b"):
     print(json.dumps(dict(row, started="2026-11-15T01:00:00.000Z", finished="2026-11-15T01:00:01.000Z")))
 report = {"browserClosed": True, "fixtureExitCode": 0, "fixtureExitSignal": None, "results": results}
 open(os.path.join(evidence, "native.json"), "w").write(json.dumps(report))
+if os.environ.get("STUB_WRITES"):
+    open(os.path.join(os.getcwd(), os.environ["STUB_WRITES"]), "w").write("written by the step\n")
 if failed and not os.environ.get("STUB_UNENDED"):
     print("AssertionError [ERR_ASSERTION]: see native.json for exact failing assertions")
 sys.exit(1 if failed else 0)
@@ -108,16 +114,16 @@ class Fixture(unittest.TestCase):
         self.runs += 1
         return Path(self.tmp.name) / ("out-%d" % self.runs)
 
-    def check(self, cases="", at=None, unended=False):
-        env = {"STUB_CASES": cases, "STUB_UNENDED": "1" if unended else ""}
+    def check(self, cases="", at=None, unended=False, writes=""):
+        env = {"STUB_CASES": cases, "STUB_UNENDED": "1" if unended else "", "STUB_WRITES": writes}
         with mock.patch.dict(os.environ, env), redirect_stdout(io.StringIO()) as printed:
             summary = release_check.check(self.root, self.out(), "/x" + release_check.CHROME_SUFFIX, sys.executable,
                                           str(self.node), only=["native-colors"], quarantine_at=self.base if at is None else at)
         self.printed = printed.getvalue()
         return summary, summary["steps"][0]
 
-    def main(self, cases, at=None):
-        env = {"STUB_CASES": cases, "STUB_UNENDED": ""}
+    def main(self, cases, at=None, writes=""):
+        env = {"STUB_CASES": cases, "STUB_UNENDED": "", "STUB_WRITES": writes}
         with mock.patch.object(release_check, "REPO", self.root), mock.patch.dict(os.environ, env), \
                 mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), \
                 mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"), \
@@ -167,6 +173,53 @@ class AStepWithAQuarantinedRed(Fixture):
                          [{"case": "a", "why": "it failed at another stage than the one it was quarantined at"}])
         self.assertFalse(summary["quarantine"]["green"])
         self.assertEqual(self.main("a:3")[0], 1)
+
+    def test_a_quarantined_case_whose_failure_names_no_test_line_or_has_no_error_is_not_held(self):
+        # Missing evidence refuses: a stage that cannot be read is never taken as the stage it was quarantined at.
+        for cases, words in (("a:timeout", "no verified test source frames"), ("a:none", "missing assertion evidence")):
+            with self.subTest(cases=cases):
+                summary, step = self.check(cases)
+                self.assertEqual((step["passed"], step["counts"]["failed"]), (False, ["a"]))
+                self.assertNotIn("refused", step["quarantine"])
+                self.assertEqual(step["quarantine"]["held"], [])
+                self.assertEqual(step["quarantine"]["unheld"], [{"case": "a", "why": "its stage cannot be read: " + words}])
+                self.assertFalse(step["quarantine"]["green"])
+                self.assertEqual(summary["quarantine"]["held"], [])
+                self.assertFalse(summary["quarantine"]["green"])
+                self.assertEqual(self.main(cases)[0], 1)
+
+    def test_a_case_quarantined_under_another_phase_or_engine_is_not_held(self):
+        # The run's case "a" has no phase and no engine; an entry for "a" under either is another case.
+        for field, value in (("phase", "stacked"), ("engine", "webkit")):
+            with self.subTest(field=field):
+                other = entry()
+                other["case"][field] = value
+                self.git("checkout", "-q", "--detach", self.sources)
+                self.base = self.commit_policy({"version": 1, "quarantine": [other]}, "a under another " + field)
+                self.head = self.commit_file("application.txt", "the candidate %s\n" % field, "candidate")
+                summary, step = self.check("a:2")
+                self.assertEqual(summary["quarantine"]["entries"], 1)
+                self.assertEqual(step["quarantine"]["held"], [])
+                self.assertEqual(step["quarantine"]["unheld"], [{"case": "a", "why": "not quarantined"}])
+                self.assertFalse(summary["quarantine"]["green"])
+                self.assertEqual(self.main("a:2")[0], 1)
+
+    def test_a_step_that_changed_the_checkout_is_never_green_though_its_only_failure_is_held(self):
+        summary, step = self.check("a:2", writes="written-by-the-step.txt")
+        self.assertFalse(summary["tree_unchanged"])
+        self.assertIn("written-by-the-step.txt", summary["tree_after"]["changes"])
+        # The step's own record holds its case; the run is still not green.
+        self.assertEqual((step["quarantine"]["held"], step["quarantine"]["green"]), (["a"], True))
+        self.assertEqual(summary["quarantine"]["held"], [{"step": "native-colors", "case": "a"}])
+        self.assertFalse(summary["quarantine"]["green"])
+        (self.root / "written-by-the-step.txt").unlink()
+        code, printed = self.main("a:2", writes="written-by-the-step.txt")
+        self.assertEqual(code, 1)
+        self.assertFalse(json.loads(printed.strip().splitlines()[-1])["green"])
+        (self.root / "written-by-the-step.txt").unlink()
+        # The same run with the checkout left alone is green.
+        summary, _ = self.check("a:2")
+        self.assertTrue(summary["tree_unchanged"] and summary["quarantine"]["green"])
 
     def test_a_run_that_did_not_reach_its_end_holds_nothing(self):
         summary, step = self.check("a:2", unended=True)
@@ -220,6 +273,16 @@ class PolicyFromTheBase(Fixture):
         self.assertIn("cannot be read", summary["quarantine"].get("refused", ""))
         self.assertFalse(summary["quarantine"]["green"])
         self.assertFalse(step["passed"])
+
+    def test_a_quarantine_that_cannot_be_read_never_claims_green_though_every_step_passed(self):
+        # The raw verdict passes the run on its own; green speaks only for a quarantine that was read.
+        summary, step = self.check("", at="f" * 40)
+        self.assertTrue(step["passed"] and summary["passed"])
+        self.assertIn("cannot be read", summary["quarantine"].get("refused", ""))
+        self.assertFalse(summary["quarantine"]["green"])
+        self.assertEqual(self.main("", at="f" * 40)[0], 0)
+        summary, _ = self.check("")
+        self.assertTrue(summary["quarantine"]["green"])
 
     def test_a_malformed_quarantine_at_the_base_quarantines_nothing(self):
         self.git("checkout", "-q", "--detach", self.base)
@@ -327,9 +390,11 @@ class Count(Fixture):
 
     def test_passes_reads_each_runs_recorded_pass_for_the_rule_to_leave(self):
         summaries = []
-        for number, passed in enumerate((True, True, False, None)):
+        # The last two runs had no case "a": one step lists no such case, the other records it as not run (null).
+        for number, passed in enumerate((True, True, False, None, "not run")):
             path = Path(self.tmp.name) / ("summary-%d.json" % number)
-            cases = [] if passed is None else [{"case": "a", "passed": passed}]
+            cases = ([] if passed is None else [{"case": "a", "passed": None}] if passed == "not run"
+                     else [{"case": "a", "passed": passed}])
             path.write_text(json.dumps({"steps": [{"name": "native-colors", "quarantine": {"cases": cases}},
                                                   {"name": "native-journal", "quarantine": {"cases": [{"case": "a", "passed": True}]}}]}))
             summaries.append(str(path))
@@ -369,18 +434,26 @@ class Combine(unittest.TestCase):
                         GITHUB_WORKFLOW_REF="workflow", BASE_REF="", BASE_SHA="", HEAD_REF="", HEAD_SHA="",
                         PLAN_SHARDS=json.dumps([{"steps": "native-colors"}, {"steps": "python-units"}]))
 
-    def combine(self, colors, at=("b" * 40, "b" * 40)):
+    def combine(self, colors, at=("b" * 40, "b" * 40), units="ran", unchanged=(True, True), edit=lambda summary: summary):
+        """units: "ran" (python-units passed in the second shard), "refused" (that shard's release check refused before
+        running, writing the summary release_check.main writes then) or "absent" (it left no summary, as a job cancelled
+        at its limit does). unchanged: each shard's tree_unchanged. edit: changes the second shard's summary."""
         shards = self.root / "shards"
         steps = (colors, {"name": "python-units", "passed": True, "exit": 0, "counts": {"tests": 1}})
-        for number, step in enumerate(steps):
+        for number, step in enumerate(steps[:1] if units == "absent" else steps):
             folder = shards / ("check-%d" % number)
             folder.mkdir(parents=True)
             summary = {"tool": release_check.TOOL, "commit": self.sha, "checkout": str(self.repo), "tools": {},
                        "required": ["native-colors", "python-units"], "steps": [step], "started_at": "2026-11-15T00:00:00Z",
-                       "finished_at": "2026-11-15T00:01:00Z", "tree_unchanged": True, "tree_after": {"head": self.sha, "changes": ""},
+                       "finished_at": "2026-11-15T00:01:00Z", "tree_unchanged": unchanged[number],
+                       "tree_after": {"head": self.sha, "changes": "" if unchanged[number] else "?? written-by-the-step.txt\n"},
                        "passed": step["passed"], "only": [step["name"]]}
             if at[number] is not None:
                 summary["quarantine"] = {"at": at[number], "entries": 1, "held": [], "green": True}
+            if number == 1 and units == "refused":
+                summary = {"tool": release_check.TOOL, "refused": "no Chrome for Testing", "passed": False, "at": "2026-11-15T00:00:00Z"}
+            if number == 1:
+                summary = edit(summary)
             (folder / "summary.json").write_text(json.dumps(summary))
             subprocess.run([sys.executable, "-I", "-S", "-c", workflow_script("Write this shard's receipt"), str(folder / "run.json")],
                            cwd=self.repo, env=dict(self.env, SHARD_NAME=step["name"], SHARD_STEPS=step["name"]),
@@ -389,12 +462,65 @@ class Combine(unittest.TestCase):
         out.mkdir()
         result = subprocess.run([sys.executable, "-I", "-S", "-c", workflow_script("Fold the shards' summaries into one"),
                                  str(shards), str(out / "summary.json")], cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertTrue((out / "summary.json").exists(), "the combine wrote no summary: %s" % result.stderr)
         return result, json.loads((out / "summary.json").read_text())
 
-    def colors(self, failed, held, unheld=()):
-        return {"name": "native-colors", "passed": False, "exit": 1, "counts": {"tests": 2, "fail": len(failed), "failed": list(failed)},
+    def colors(self, failed, held, unheld=(), **record):
+        step = {"name": "native-colors", "passed": False, "exit": 1, "counts": {"tests": 2, "fail": len(failed), "failed": list(failed)},
                 "quarantine": {"cases": [], "held": list(held), "unheld": [{"case": c, "why": "not quarantined"} for c in unheld],
                                "green": not unheld}}
+        step["quarantine"].update(record)
+        return step
+
+    def test_a_missing_required_step_is_never_green(self):
+        # The second shard's python-units is missing: its job refused before running, or left no summary at all.
+        for units in ("refused", "absent"):
+            with self.subTest(units=units):
+                self.reset()
+                result, combined = self.combine(self.colors(["a"], ["a"]), units=units)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(combined["failed"], ["native-colors", "python-units"])
+                self.assertEqual(combined["quarantine"]["held"], [{"step": "native-colors", "case": "a"}])
+                self.assertFalse(combined["quarantine"]["green"])
+                self.assertIn('"missing": ["python-units"]', result.stdout)
+
+    def test_only_a_refusal_that_ran_nothing_may_name_no_commit(self):
+        # A shard that ran on another commit, or names none, is refused; so is a refusal that still carries steps.
+        for said, edit in (("another commit", lambda summary: dict(summary, commit="c" * 40)),
+                           ("no commit", lambda summary: {key: value for key, value in summary.items() if key != "commit"}),
+                           ("a refusal with steps", lambda summary: dict(summary, commit="c" * 40, refused="late"))):
+            with self.subTest(said=said):
+                self.reset()
+                shards = self.root / "shards"
+                result = None
+                try:
+                    result, _ = self.combine(self.colors(["a"], ["a"]), edit=edit)
+                except AssertionError as error:
+                    self.assertIn("checked different commits", str(error))
+                self.assertIsNone(result)
+                self.assertTrue(shards.exists())
+
+    def test_a_shard_whose_checkout_changed_is_never_green(self):
+        # Either shard: the one with the held case, or the one whose step passed.
+        for unchanged in ((False, True), (True, False)):
+            with self.subTest(unchanged=unchanged):
+                self.reset()
+                result, combined = self.combine(self.colors(["a"], ["a"]), unchanged=unchanged)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse(combined["tree_unchanged"])
+                self.assertFalse(combined["quarantine"]["green"])
+
+    def test_a_record_that_disagrees_with_its_step_holds_nothing(self):
+        # Each record breaks one condition and keeps the rest; the step's raw failure then stands.
+        for said, step in (("not green", self.colors(["a"], ["a"], green=False)),
+                           ("names a case it does not hold", self.colors(["a"], ["a"], unheld=[{"case": "b", "why": "not quarantined"}])),
+                           ("refused", self.colors(["a"], ["a"], refused="the harness did not reach its end")),
+                           ("no failed case", self.colors([], []))):
+            with self.subTest(said=said):
+                self.reset()
+                result, combined = self.combine(step)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertFalse(combined["quarantine"]["green"])
 
     def test_a_run_whose_only_failures_are_held_exits_green_with_its_raw_verdict_kept(self):
         result, combined = self.combine(self.colors(["a"], ["a"]))
@@ -425,7 +551,8 @@ class Combine(unittest.TestCase):
 
     def reset(self):
         for name in ("shards", "release-check"):
-            shutil.rmtree(str(self.root / name))
+            if (self.root / name).exists():
+                shutil.rmtree(str(self.root / name))
 
 
 if __name__ == "__main__":
