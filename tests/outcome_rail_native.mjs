@@ -2555,6 +2555,15 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       shown:['app-status','wakes-status','updates-status','topic-navigation-status'].map(id=>document.getElementById(id)).filter(n=>!n.hidden&&n.getClientRects().length).map(n=>{
         const b=n.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+Math.min(b.height/2,12);
         return {id:n.id,box:[b.left,b.top,b.right,b.bottom].map(Math.round),inRail:b.top>=rb.top-1&&b.bottom<=rb.bottom+1,ownMiddle:n.contains(document.elementFromPoint(x,y))}})}})()`);
+  // The phone's drawer, opened by a tap on "☰ Outcomes" at the top of the page, the writing put down first
+  // and the control at rest, so the tap lands on it.
+  const openDrawer547 = async (p, at) => {
+    await p.evaluate('(document.activeElement?.blur(),scrollTo(0,0))');
+    await until(() => p.evaluate(`new Promise(done=>{const box=()=>JSON.stringify(document.getElementById('rail-open').getBoundingClientRect());const first=box();
+      requestAnimationFrame(()=>requestAnimationFrame(()=>done(first===box()&&scrollY===0)))})`), at + ': "☰ Outcomes" is at rest at the top');
+    await tap(p, '#rail-open');
+    await until(async () => (await drawer(p)).open, at + ': the drawer opens');
+  };
   const apart547 = (seen, at) => {
     const boxes = seen.shown.map(item => item.box);
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
@@ -2598,12 +2607,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
       await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way');
       const row = `#outline a[data-topic-id="${topic}-23"]`;
-      if (!laptop) { await p.evaluate('scrollTo(0,0)'); await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens'); }
+      if (!laptop) await openDrawer547(p, at);
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       if (laptop) await p.point(row); else await tap(p, row);
       await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
       // The phone's drawer closes as a row is tapped; the notices are read in it, opened again.
-      if (!laptop && !(await drawer(p)).open) { await p.evaluate('scrollTo(0,0)'); await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens again'); }
+      if (!laptop && !(await drawer(p)).open) await openDrawer547(p, at + ' again');
       const both = await until(async () => { const seen = await notices547(p); return seen.shown.length === 2 ? seen : null; }, at + ': both notices show').catch(async error => {
         throw Error(`${error.message}: ${JSON.stringify(await notices547(p))} ${await p.evaluate("JSON.stringify({status:document.getElementById('app-status').outerHTML.slice(0,300),drawer:document.getElementById('rail').className})")}`); });
       assert.ok(both);
