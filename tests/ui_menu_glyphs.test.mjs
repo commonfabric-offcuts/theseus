@@ -4,8 +4,8 @@
 // words and keys, and refuses an item with no glyph or one nobody draws; a
 // pipeline item's ⋯ gives each of its items the glyph the design page names
 // (tests/menu_glyphs.mjs); and every glyph draws the approved design page's
-// drawing, a borrowed one cloned from the control the design names, as the
-// page's own index.html draws it. The menus as a person sees them, at every width,
+// drawing, a borrowed one cloned from the control the design names and no
+// other (the page's own controls are read in the browser cases). The menus as a person sees them, at every width,
 // light and dark, in both engines, are tests/stack_native.mjs,
 // tests/reader_compose_native.mjs, tests/pipeline_native.mjs and
 // tests/notebook_pages_native.mjs.
@@ -13,7 +13,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openMessageMenu } from '../web/message-menu.mjs';
 import { PipelinePage } from '../web/pipeline.mjs';
-import { readFileSync } from 'node:fs';
 import { GLYPH_NAMES, glyph } from '../web/glyphs.mjs';
 import { Element, miniDocument } from './fixtures/mini_dom.mjs';
 import { dom } from './fixtures/ui_dom.mjs';
@@ -78,28 +77,25 @@ test('a pipeline item\'s ⋯ gives every item the glyph the design names, in Nex
 const shapes = node => node.children.filter(child => typeof child === 'object').flatMap(child => [child, ...shapes(child)]);
 const drawingOf = node => (node.getAttribute('data-text') !== null ? 'text:' + node.getAttribute('data-text')
   : signature(node.getAttribute('viewBox'), shapes(node).map(shape => [shape.tag, Object.entries(shape.attributes)])));
-// The page's own controls, as web/index.html writes them: the control with an id, and the drawing inside it, read
-// afresh for each clone; a control with no drawing, or no such control, as the page would answer.
-const INDEX = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+// A page whose every control draws a drawing of its own: New message the approved pencil and the Reader's archive
+// button the approved tray, as the page draws them (the browser cases read the page's own), and any other control
+// a drawing that names it, so a glyph cloned from any control but the one named draws something else. Each clone
+// is read afresh, as cloneNode makes a new element.
 function controlDrawing(doc, id) {
-  const at = INDEX.indexOf(`id="${id}"`);
-  if (at < 0) return null;
-  const inside = INDEX.slice(at, INDEX.indexOf('</button>', at)), svg = /<svg\b[\s\S]*?<\/svg>/.exec(inside)?.[0];
-  if (!svg) return null;
+  const ns = 'http://www.w3.org/2000/svg', own = { 'new-message': APPROVED.pencil, 'reader-aside': APPROVED.archive }[id];
   const read = () => {
-    const [root, ...tags] = [...svg.matchAll(/<(\w+)((?:\s+[\w:-]+="[^"]*")*)\s*\/?>/g)].map(([, tag, attributes]) => {
-      const node = doc.createElementNS('http://www.w3.org/2000/svg', tag);
-      for (const [, name, value] of attributes.matchAll(/([\w:-]+)="([^"]*)"/g)) node.setAttribute(name, value);
-      return node;
-    });
-    root.append(...tags);
-    return Object.assign(root, { cloneNode: read });
+    const svg = doc.createElementNS(ns, 'svg'), path = doc.createElementNS(ns, 'path');
+    svg.setAttribute('viewBox', own?.vb ?? '0 0 24 24');
+    for (const [name, value] of Object.entries({ d: own?.d ?? 'M2 2h20', fill: 'none', stroke: 'currentColor', 'stroke-width': own?.sw ?? '1.8',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...(own ? {} : { 'data-control': id }) })) path.setAttribute(name, value);
+    svg.append(path);
+    return Object.assign(svg, { cloneNode: read });
   };
   return read();
 }
 function drawingPage() {
   const doc = miniDocument();
-  doc.getElementById = id => (INDEX.includes(`id="${id}"`) ? { querySelector: selector => (selector === 'svg' ? controlDrawing(doc, id) : null) } : null);
+  doc.getElementById = id => ({ querySelector: selector => (selector === 'svg' ? controlDrawing(doc, id) : null) });
   return doc;
 }
 
@@ -113,18 +109,16 @@ test('every glyph draws the approved design page\'s drawing, and only the approv
   assert.notEqual(drawingOf(glyph('up', doc)), approved('down'), 'Move its stack up does not draw the arrow down');
 });
 
-test('a borrowed glyph is the drawing of the control the design names, cloned, which the control still draws', () => {
+test('a borrowed glyph is the drawing of the control the design names, cloned, and no other control\'s', () => {
   const doc = drawingPage();
   for (const [name, at] of Object.entries(FROM)) {
     const own = controlDrawing(doc, at.slice(1));
-    assert.ok(own, `${at} draws something on the page`);
-    assert.equal(drawingOf(own), approved(name), `${at} draws the approved ${name}`);
     const drawn = glyph(name, doc);
     assert.equal(drawingOf(drawn), drawingOf(own), `the ${name} glyph is ${at}'s drawing`);
     assert.equal(drawn.getAttribute('data-glyph'), name);
   }
-  // The negative: another control's drawing, as the topic settings gear, is not the pencil.
-  assert.notEqual(drawingOf(controlDrawing(doc, 'settings-open')), approved('pencil'));
+  // The negative: another control's drawing, as the topic settings button's, is not the pencil.
+  assert.notEqual(drawingOf(controlDrawing(doc, 'settings-open')), drawingOf(controlDrawing(doc, 'new-message')));
   // A page without the control draws no borrowed glyph: it is refused, not drawn from elsewhere.
   const bare = miniDocument();
   bare.getElementById = () => null;
