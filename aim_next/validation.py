@@ -8,6 +8,7 @@ COMMANDS = {
     "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
     "workspace.member_set": "_command_workspace_member_set",
+    "workspace.agent_invite": "_command_workspace_agent_invite",
     "workspace.owner_set": "_command_workspace_owner_set",
     "workspace.update": "_command_workspace_update",
     "draft.save": "_command_draft_save",
@@ -65,6 +66,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "memory.create": {"item_revision"}, "memory.revise": {"item_revision"}, "memory.read": set(),
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "workspace.owner_set": {"workspace_revision"},
+            "workspace.agent_invite": {"workspace_revision"},
             "workspace.update": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
@@ -98,6 +100,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "workspace.owner_set": "workspace_revision",
+                     "workspace.agent_invite": "workspace_revision",
                      "workspace.update": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
                      "message.mark": "mark_revision", "color.set": "color_revision", "message.edit": "message_revision",
@@ -113,7 +116,7 @@ VIEWS = {
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit", "reached"},
     "outcome_light": {"workspace_id"},
-    "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
+    "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids"}, "source": {"source_ref", "kind", "id", "revision"},
     "topic_images": {"topic_id", "limit"},
     "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"},
@@ -139,7 +142,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
-    "stack_positions": {"topic_id", "message_ids"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
+    "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
 }
 
 

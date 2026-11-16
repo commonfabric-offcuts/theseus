@@ -50,11 +50,11 @@ class WorkspacesCase(fixtures.StoreCase):
         # Each outcome says where it stands for the reader (item 86): neither has a topic yet.
         # Each is to keep until its owner says otherwise on its page, and neither is reached.
         light = {"light": "quiet", "label": "Quiet", "short": {"kind": "no_topics"}, "unreadable": False}
-        # Each names its Conversation, so the Outcomes home can open that (item 384).
+        # Each names its Conversation, so the Outcomes home can open that (item 384); neither has a Build topic (item 297).
         conversation = {w: self.store.view("owner", "conversation", {"workspace_id": w})["conversation"]["topic_id"] for w in ("w-b", "w-d")}
         expected = [
-            {"id": "w-b", "owner_id": "owner", "title": "Same title", "conversation_id": conversation["w-b"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "kind": "keep", "reached_ms": None, "light": light},
-            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "conversation_id": conversation["w-d"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "kind": "keep", "reached_ms": None, "light": light},
+            {"id": "w-b", "owner_id": "owner", "title": "Same title", "conversation_id": conversation["w-b"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "light": light},
+            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "conversation_id": conversation["w-d"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "light": light},
         ]
         self.assertEqual(self.listing()["items"], expected)
         self.assertEqual(self.listing("agent-a")["items"], expected)

@@ -292,7 +292,9 @@ an upgrade is activated by the code of its own version and then migrated.
 - Outcome pages list the person's unfinished openings in that outcome from
   the `openings` view. Any device can resume one.
 - New topic and New outcome are one title line under their heading in the
-  rail, and "Start a topic from this" is one title line in the Reader,
+  rail (in the outline of a topic or a Conversation, under the outcome's row
+  or the Outcomes heading, from its pencil; docs/rails.md), and "Start a
+  topic from this" is one title line in the Reader,
   filled from the message's first sentence: Return creates. A topic is one
   `opening.save` (title, and for a message its source, with its author as a
   participant) and one `opening.publish`; an outcome is one

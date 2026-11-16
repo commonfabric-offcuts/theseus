@@ -64,9 +64,11 @@ export class ComposeBar {
   // phone's taller-field toggle; naming: the who panel's naming sheet and
   // its name field ({ opener, sheet, field, back, add, names }, below);
   // notice: the line the surface says what last happened in. changed(state,
-  // panel) is told after each change.
-  constructor({ root, field, panels, openers, taller = null, naming = null, notice = null, win = globalThis.window, changed = () => {} }) {
-    Object.assign(this, { root, field, panels, openers, taller, naming, notice, win, changed });
+  // panel) is told after each change. holds(): takes where what the field
+  // shares its room with is scrolled, and gives back what puts it there again
+  // (fit).
+  constructor({ root, field, panels, openers, taller = null, naming = null, notice = null, win = globalThis.window, changed = () => {}, holds = () => () => {} }) {
+    Object.assign(this, { root, field, panels, openers, taller, naming, notice, win, changed, holds });
     this.doc = root.ownerDocument;
     this.phone = win.matchMedia(PHONE);
     this.state = 'line'; this.panel = null;
@@ -324,14 +326,18 @@ export class ComposeBar {
   // when made taller), then
   // scrolls. Where the field's height is the layout's (the one quiet line,
   // the wide column), aim.css says --fit: none and the height is left alone.
+  // The field is measured at no height, which for that moment gives its room
+  // to what shares it (the Reader's message): a message scrolled to its end
+  // would be pulled down by it at each key, so it is put back as it was.
   fit() {
     const field = this.field, style = this.win.getComputedStyle(field);
     if (style.getPropertyValue('--fit').trim() === 'none') { field.style.height = ''; return; }
-    const keep = field.scrollTop;
+    const keep = field.scrollTop, back = this.holds();
     field.style.height = '0px';
     const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
     const max = parseFloat(style.maxHeight), wanted = field.scrollHeight + borders;
     field.style.height = `${Number.isFinite(max) ? Math.min(wanted, max) : wanted}px`;
     field.scrollTop = keep;
+    back();
   }
 }

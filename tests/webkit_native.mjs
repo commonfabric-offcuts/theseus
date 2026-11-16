@@ -45,6 +45,7 @@ const { webkit } = createRequire(import.meta.url)(playwrightPath);
 const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
 const SKIPPED = {
   '--rail': {
+    'rail the Reader gives its opener back ringed only as this opening found it: opened by the keys, Escape rings the message; the focus gone elsewhere, opened then by the mouse from the same message and closed with the mouse, nothing is ringed': 'WebKit rings the focus the Reader gives back after a mouse close however the opener was found, with the Reader as it was before item 462 too; Chrome holds the rule',
     'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
     'rail the outline names an outcome by its light and name, which opens its Conversation; one with no conversation opens its page, and nothing moves when that read lands': HELD,
     'rail a send under way keeps the page where it is, in place; unsent writing is saved as the page moves and is there on coming back': HELD,
@@ -86,7 +87,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
-  'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
+  'web/message-menu.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
@@ -139,12 +140,17 @@ try {
     // The CDP calls the listed checks make, each done with WebKit's own input.
     const send = async (method, params = {}) => {
       if (method === 'Input.dispatchMouseEvent') {
-        const { type, x, y, button = 'left', clickCount = 1 } = params;
+        const { type, x, y, button = 'left', clickCount = 1, modifiers = 0 } = params;
         if (type === 'mouseWheel') { await pw.mouse.move(x, y); await pw.mouse.wheel(params.deltaX ?? 0, params.deltaY ?? 0); return {}; }
-        await pw.mouse.move(x, y);
-        if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
-        else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
-        else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        // Shift held through the act, as CDP's modifiers hold it (8); no other modifier is asked of a pointer here.
+        assert.equal(modifiers & ~8, 0, 'only Shift is held with a pointer');
+        if (modifiers & 8) await pw.keyboard.down('Shift');
+        try {
+          await pw.mouse.move(x, y);
+          if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
+          else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
+          else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        } finally { if (modifiers & 8) await pw.keyboard.up('Shift'); }
         return {};
       }
       if (method === 'Input.dispatchTouchEvent') {
@@ -371,7 +377,11 @@ try {
     };
     await newLineStaysChecks({ check, open, until, view, control, shot, observations, engine: 'webkit' });
   } else if (mode === '--reading') {
-    await readingChecks({ check, page, until, control, view, facts, shot, observations, engine: 'webkit' });
+    // The browser's windows, each page known by an id of its own for as long as it is open.
+    const ids = new WeakMap(); let next = 0;
+    const known = () => browser.contexts().flatMap(context => context.pages()).filter(opened => !opened.isClosed()).map(opened => { if (!ids.has(opened)) ids.set(opened, String(++next)); return [ids.get(opened), opened]; });
+    const windows = { list: async () => new Map(known().map(([id, opened]) => [id, opened.url()])), close: async id => { for (const [at, opened] of known()) if (at === id) await opened.close(); } };
+    await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else {
     await deviceChecks({ check, page, until, control, view, facts, shot, observations });
   }

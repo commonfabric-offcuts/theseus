@@ -150,6 +150,10 @@ export async function formChecks({ check, page, until, control, view, facts, sho
     await press(p, '#team-people .add-chip');
     await until(() => quiet(p, `!document.querySelector('#team-people .people-add').hidden`), 'the people to add to the team are shown');
     await audit(p, 'Team, adding');
+    // "+ Invite agent" opens one name line and two chips (item 324).
+    await press(p, '#invite-agent');
+    await until(() => quiet(p, `document.activeElement?.id === 'invite-agent-name'`), 'the invite line opens, focused');
+    await audit(p, 'Team, inviting');
     await p.close();
   });
 

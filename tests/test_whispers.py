@@ -440,19 +440,20 @@ class ReadPathCase(WhisperCase):
         self.assertEqual(self.sql("SELECT * FROM topic_waiting ORDER BY rowid"), waiting, "and answers no ask on the agent")
 
     def test_a_persons_whisper_answers_only_the_asks_of_the_agent_it_goes_to(self):
-        self.committed(self.post("Can you confirm?", "agent-b", addressees=["owner"], intent="ask"))
+        ask = self.committed(self.post("Can you confirm?", "agent-b", addressees=["owner"], intent="ask"))["message_id"]
         waits = lambda: {actor: {key: self.store.view(actor, "topic", {"topic_id": "t1"})["topic"][key] for key in ("waiting_on", "asks")}
                          for actor in ("owner", "agent-b")}
         told = lambda: self.sql("SELECT count(*) FROM changes WHERE scope_kind='actor' AND scope_id='owner' AND resource_kind='waiting'")[0][0]
         waiting, asked_of, changes = self.store.view("owner", "attention", {}), waits(), told()
         self.assertEqual(waiting["waiting_on_me"], 1)
-        # A whisper to another agent, who cannot read the answer, leaves agent-b's ask waiting.
+        # A whisper to another agent, who cannot read the answer, leaves agent-b's ask waiting, even replying to it.
         self.whisper("Which date did agent-b mean?")
+        self.whisper("Which date did agent-b mean here?", reply_to=ask)
         after = self.store.view("owner", "attention", {})
         self.assertEqual((after["waiting_on_me"], after["latest_waiting"]), (waiting["waiting_on_me"], waiting["latest_waiting"]))
         self.assertEqual((waits(), told()), (asked_of, changes))
-        # A whisper to whoever asked answers it, as a Tell would, and the person is told the wait moved.
-        self.whisper("Which date did you mean?", to="agent-b")
+        # A whisper replying to the ask, to whoever asked, answers it, as a Tell would, and the person is told the wait moved.
+        self.whisper("Which date did you mean?", to="agent-b", reply_to=ask)
         self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 0)
         self.assertEqual(self.sql("SELECT actor_id FROM topic_waiting WHERE topic_id='t1'"), [])
         self.assertEqual(waits()["agent-b"]["asks"], [], "agent-b sees the ask end, and nothing of why")
@@ -464,23 +465,25 @@ class ReadPathCase(WhisperCase):
         self.assertEqual([(item["message_id"], item["message"]["whisper"]) for item in latest if item["message_id"] == answer], [(answer, True)])
         self.assertFalse({asked, answer} & {item["message_id"] for item in self.store.view("agent-b", "attention", {})["latest_addressed"]})
 
-    def test_when_the_wait_is_from_the_agent_whispered_to_it_moves_to_the_next_ask_nobody_has_answered(self):
+    def test_when_the_wait_is_from_the_ask_a_whisper_replies_to_it_moves_to_the_next_ask_nobody_has_answered(self):
         first = self.committed(self.post("Can you confirm?", "agent-a", addressees=["owner"], intent="ask"))["message_id"]
         whispered = self.committed(self.post("And the room?", "agent-b", addressees=["owner"], intent="ask"))["message_id"]
         later = self.committed(self.post("And the time?", "agent-b", addressees=["owner"], intent="ask"))["message_id"]
         ask_of = lambda: self.sql("SELECT ask_message_id FROM topic_waiting WHERE topic_id='t1' AND actor_id='owner'")
         self.assertEqual(ask_of(), [(first,)])
-        # agent-b's asks are answered by a whisper to agent-b; the wait stays on agent-a's, the oldest.
-        self.whisper("The blue room, at noon.", to="agent-b")
+        # agent-b's room ask is answered by a whispered reply to it; the wait stays on agent-a's, the oldest.
+        self.whisper("The blue room.", to="agent-b", reply_to=whispered)
         self.assertEqual(ask_of(), [(first,)])
-        # Answering agent-a by whisper finds no ask left open: agent-b's were answered by the earlier whisper.
-        self.whisper("Confirmed.")
-        self.assertEqual(ask_of(), [], (whispered, later))
+        # Answering agent-a's by a whispered reply moves the wait past the room ask, answered, to agent-b's time ask.
+        self.whisper("Confirmed.", reply_to=first)
+        self.assertEqual(ask_of(), [(later,)], whispered)
+        self.whisper("At noon.", to="agent-b", reply_to=later)
+        self.assertEqual(ask_of(), [])
         # And with an ask from agent-b still open after agent-a's, answering agent-a moves the wait to it.
         again = self.committed(self.post("Confirm once more?", "agent-a", addressees=["owner"], intent="ask"))["message_id"]
         open_b = self.committed(self.post("And the date?", "agent-b", addressees=["owner"], intent="ask"))["message_id"]
         self.assertEqual(ask_of(), [(again,)])
-        self.whisper("Confirmed again.")
+        self.whisper("Confirmed again.", reply_to=again)
         self.assertEqual(ask_of(), [(open_b,)])
 
     def test_an_agents_whisper_never_answers_an_ask_on_the_agent(self):
@@ -551,6 +554,97 @@ class ReadPathCase(WhisperCase):
         self.committed(mark("owner", answer))
         self.assertIn(answer, [item["message_id"] for item in self.store.view("owner", "marks", {"topic_id": "t1"})["items"]])
         self.assertNotIn(asked, json.dumps(self.store.view("agent-b", "marks", {"topic_id": "t1"})))
+
+
+class WhisperAnswersAskCase(WhisperCase):
+    """Item 307: a person's whisper that replies to a question asked of them, sent to whoever asked it, answers that
+    question, as their reply in the topic or their 👍 would: the ask stops waiting on them and "Waiting on you" goes
+    out. The whisper stays between its two; only the wait clears. A whisper that replies to no ask of theirs, or goes
+    to someone other than the asker, answers nothing."""
+
+    def ask(self, body="Can you confirm the date?", actor="agent-a", to=("owner",)):
+        return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+
+    def asks_on(self, actor="owner"):
+        return self.sql("SELECT ask_message_id FROM topic_waiting WHERE topic_id='t1' AND actor_id=?", (actor,))
+
+    def told(self, actor="owner"):
+        return self.sql("SELECT count(*) FROM changes WHERE scope_kind='actor' AND scope_id=? AND resource_kind='waiting'", (actor,))[0][0]
+
+    def waiting_on_me(self, actor="owner"):
+        attention = self.store.view(actor, "attention", {})
+        return attention["waiting_on_me"], [item["id"] for item in attention["latest_waiting"]]
+
+    def test_a_whisper_replying_to_an_ask_answers_it_and_waiting_on_you_goes_out_while_its_words_stay_private(self):
+        ask = self.ask()
+        self.assertEqual(self.waiting_on_me(), (1, ["t1"]))
+        told = self.told()
+        answer = self.whisper("The fourth, at noon.", reply_to=ask)
+        self.assertEqual(self.waiting_on_me(), (0, []), "Waiting on you goes out")
+        self.assertEqual(self.asks_on(), [], "the ask stops waiting on them")
+        self.assertEqual(self.told(), told + 1, "the person's pages are told the wait went")
+        for actor in ("owner", "agent-a", "agent-b"):
+            self.assertEqual(self.store.view(actor, "topic", {"topic_id": "t1"})["topic"]["asks"], [], actor + " sees the ask end")
+        # Only the wait clears: everyone outside the whisper reads the ask ended, never the whisper or its words.
+        for actor in ("agent-b", "other-reader"):
+            seen = json.dumps([self.store.view(actor, "topic_messages", {"topic_id": "t1", "limit": 50}),
+                               self.store.view(actor, "topic", {"topic_id": "t1"}), self.store.view(actor, "attention", {})])
+            self.assertNotIn(answer, seen, actor)
+            self.assertNotIn("The fourth, at noon.", seen, actor)
+        self.assertEqual(self.store.view("agent-b", "source", {"source_ref": {"kind": "message", "id": answer}})["error"],
+                         self.store.view("agent-b", "source", {"source_ref": {"kind": "message", "id": UNKNOWN}})["error"])
+        self.assertIn(answer, self.ids(self.messages("agent-a")), "the agent it answers reads it")
+
+    def test_a_whisper_that_replies_to_no_ask_of_theirs_answers_nothing(self):
+        ask = self.ask()
+        tell = self.committed(self.post("The venue is booked.", "agent-a", addressees=["owner"], intent="tell"))["message_id"]
+        mine = self.whisper("Is the copy final?")
+        theirs = self.whisper("Not yet.", actor="agent-a", to="owner", reply_to=mine)
+        before, told = (self.asks_on(), self.waiting_on_me(), self.store.view("agent-a", "topic", {"topic_id": "t1"})["topic"]["asks"]), self.told()
+        self.assertEqual(before[0], [(ask,)])
+        # A whisper to the agent that asked, replying to nothing, to its Tell, or to its whispered answer, answers no ask.
+        self.whisper("One more thing.")
+        self.whisper("Thanks.", reply_to=tell)
+        self.whisper("Then tomorrow.", reply_to=theirs)
+        self.assertEqual((self.asks_on(), self.waiting_on_me(), self.store.view("agent-a", "topic", {"topic_id": "t1"})["topic"]["asks"]), before)
+        self.assertEqual(self.told(), told, "and nobody is told a wait moved")
+
+    def test_a_whisper_to_someone_elses_ask_answers_nothing_for_the_asker_or_the_one_asked(self):
+        mine = self.ask()
+        theirs = self.ask("Can you check the copy?", to=("agent-b",))
+        before = {actor: self.asks_on(actor) for actor in ("owner", "agent-b")}
+        self.assertEqual(before, {"owner": [(mine,)], "agent-b": [(theirs,)]})
+        told = self.told()
+        # Replying to an ask of agent-b's, by whisper to the agent that asked it, answers neither that ask nor the person's own.
+        self.whisper("I can check it instead.", reply_to=theirs)
+        # Replying to the person's own ask by whisper to another agent, who did not ask and cannot show the asker, answers nothing.
+        self.whisper("Which date did agent-a mean?", to="agent-b", reply_to=mine)
+        self.assertEqual({actor: self.asks_on(actor) for actor in ("owner", "agent-b")}, before)
+        self.assertEqual((self.waiting_on_me(), self.told()), ((1, ["t1"]), told))
+
+    def test_a_whisper_answers_the_one_ask_it_replies_to_and_the_wait_moves_to_the_next_open_one(self):
+        first = self.ask("Can you confirm the date?")
+        second = self.ask("And the room?")
+        third = self.ask("And the time?")
+        self.assertEqual(self.asks_on(), [(first,)])
+        # The reply to the second answers it alone: the wait stays on the first, the oldest still open.
+        self.whisper("The blue room.", reply_to=second)
+        self.assertEqual(self.asks_on(), [(first,)])
+        # The reply to the first moves the wait past the second, which its whisper answered, to the third.
+        self.whisper("The fourth.", reply_to=first)
+        self.assertEqual(self.asks_on(), [(third,)])
+        self.assertEqual(self.waiting_on_me(), (1, ["t1"]))
+        self.whisper("At noon.", reply_to=third)
+        self.assertEqual((self.asks_on(), self.waiting_on_me()), ([], (0, [])))
+
+    def test_a_reply_in_the_topic_and_a_thumbs_up_still_answer_an_ask(self):
+        ask = self.ask()
+        self.committed(self.post("The fourth works.", "owner", addressees=["agent-a"], intent="tell"))
+        self.assertEqual((self.asks_on(), self.waiting_on_me()), ([], (0, [])), "writing in the topic answers it")
+        again = self.ask("And the room?")
+        self.assertEqual(self.asks_on(), [(again,)])
+        self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": again}, expected={"thumb_revision": 0}, actor="owner"))
+        self.assertEqual((self.asks_on(), self.waiting_on_me()), ([], (0, [])), "a 👍 answers it")
 
 
 class AttachmentCase(WhisperCase):
@@ -812,6 +906,9 @@ VIEW_PATHS = {
     "message_acts": "only acts on messages the reader may see: the whisper rule on each row's message in the query, and in its version",
     "stack_positions": "each message named through _acted_message, which applies visible(); its dossier's root, members, newest message and the "
                        "topic's newest act under the whisper rule, so a whisper never moves a position anyone outside it reads",
+    "stack_namer": "the message named through _acted_message, which applies visible(); its root walked up through parents each "
+                   "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
+                   "so a whisper never names one",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
     "wakes": "on_record_wake_health for every reader but the agent",
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
@@ -847,14 +944,15 @@ MESSAGE_READS = {
                                           "shown through visible()", 10),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "
-                              "for a thumb that answers an ask (item 239): the asked person's replies and writing, on the record or whispered to "
-                              "whoever asked, their next ask and the whispers that answered one, never shown, and the asks topic_waiting and "
-                              "held_ask name, which a whisper never is", 9),
+                              "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
+                              "whoever asked, and their writing on the record, their next ask and the whispered replies that answered one "
+                              "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE", 1),
-    "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes or whispers, "
+    "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
+                                "person's whisper replies to (its author and place, never shown), "
                                 "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
@@ -870,7 +968,11 @@ MESSAGE_READS = {
                            "folds for them, checked by visible() before the fold is recorded; the acts and stars views, under the whisper rule; "
                            "a dossier's root, walked up from a message the reader sees through parents each checked by visible(); its "
                            "members, its newest message and the topic's newest message and act, each under VISIBLE, so a whisper "
-                           "someone is outside never moves a position or a sequence they read", 16),
+                           "someone is outside never moves a position or a sequence they read; whether a message of the reader's own still waits for a "
+                           "reply (item 475): replies to it under VISIBLE, the newest message on the record by anyone else from the "
+                           "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
+                           "its root's outcome and the replies among its members on the record only, walked as no one, so a "
+                           "whisper never makes its author a namer", 22),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

@@ -46,7 +46,7 @@ const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live'
 const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
 
 // What the fixture is seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
-let facts, agent, first, second, log;
+let facts, agent, first, second, log, wrap;
 // Two long messages from an agent, newest last, so a reply to either is
 // offered to that agent; and the outcome's pipeline on, so the ⋯ offers it.
 const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, body })).result.message_id;
@@ -55,6 +55,11 @@ const TEAM = ['aim-core', 'aim-lead', 'aim-spec', 'aim-ux', 'fable', 'warp'];
 // A log as agents send them, in a topic of its own: one code block, one
 // passage in the Reader, taller than any screen.
 const LOG = ['The build log, whole:', '', '```', ...Array.from({ length: 70 }, (_, i) => `step ${i + 1}: compiled module ${i + 1} of 70 in ${100 + i} ms`), '```', '', 'That is all of it.'].join('\n');
+// A list item long enough to wrap to many lines, in a topic of its own: one
+// passage in the Reader, whose lines wrap anew as the Reader's width changes.
+const WRAP = ['A plan in one item:', ...Array.from({ length: 16 }, (_, i) => `Paragraph ${i + 1} before the item, to scroll by.`), '- ' + Array.from({ length: 60 }, (_, i) => `part ${i + 1} of the plan`).join(', ') + ', and the item ends here.', '',
+  Array.from({ length: 60 }, (_, i) => `Sentence ${i + 1} of a long paragraph.`).join(' '),
+  ...Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1} after the item, to scroll by.`)].join('\n\n');
 async function seed() {
   facts = await control({ method: 'ready' });
   agent = facts.agent;
@@ -64,6 +69,8 @@ async function seed() {
   await control({ method: 'topic_state', operation_id: 'compose-team', topic_id: 't1', participants: TEAM, args: { state: 'active', note: '' } });
   await control({ method: 'navigation_topics', topics: [{ id: 'compose-log', title: 'Build log' }] });
   log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
+  await control({ method: 'navigation_topics', topics: [{ id: 'compose-wrap', title: 'Long item' }] });
+  wrap = (await control({ method: 'agent_message', operation_id: 'compose-wrap', topic_id: 'compose-wrap', join: true, source: 'topic', body: WRAP })).result.message_id;
 }
 
 const SHAPES = {
@@ -1131,6 +1138,252 @@ async function run() {
     await quoted(`step ${longer}: compiled`, higher);
     const highAfter = await where(2, longer);
     assert.ok(Math.abs(highAfter.line.bottom - highAfter.room.bottom) <= 2, `words taller than the room quoted from above it come into sight with their end at its bottom (their end ${Math.round(highAfter.line.bottom)}px, the room's ${Math.round(highAfter.room.bottom)}px)`);
+    await close(p);
+  });
+
+  // The words a quote keeps in sight (docs/reader.md, item 434), on a laptop,
+  // stacked. Where things are: the message's room above the reply, its scroll,
+  // and passage n's words (its characters 2 to 20).
+  const quoteAt = async (p, n) => {
+    await p.evaluate(n => { const body = document.querySelector('#source-body'), text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20); getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true }); }, n);
+    const before = await p.evaluate(() => document.querySelector('#writing-body').value);
+    await p.keyboard.press('Enter');
+    await until(p, v => document.querySelector('#writing-body').value !== v && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted', before);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  const wordsAt = (p, n) => p.evaluate(n => {
+    const body = document.querySelector('#source-body'), style = getComputedStyle(body), box = body.getBoundingClientRect();
+    const room = { top: box.top + parseFloat(style.paddingTop), bottom: Math.min(box.bottom - parseFloat(style.paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) };
+    const text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20);
+    const words = range.getBoundingClientRect(), field = document.querySelector('#writing-body');
+    return { room, top: words.top, bottom: words.bottom, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight, lineHeight: parseFloat(style.lineHeight), field: field.getBoundingClientRect().height, lines: field.value.split('\n').length,
+      body: Math.round(box.bottom - parseFloat(style.paddingBottom)), composer: Math.round(document.querySelector('#reader-composer').getBoundingClientRect().top) };
+  }, n);
+  // Words of a passage from below what shows, placed to end just above where
+  // the reply opens, the message scrolled well down to them; its index.
+  const nearReply = async p => {
+    const n = await p.evaluate(() => [...document.querySelector('#source-body').children].findIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.getBoundingClientRect().top > document.querySelector('#reader-composer').getBoundingClientRect().top + 300));
+    // Wholly inside the message's room, 8px above its end: a line the room's
+    // edge cuts off when it is quoted stays cut off as it was (docs/reader.md).
+    await p.evaluate(n => { const body = document.querySelector('#source-body'), text = body.children[n].firstChild, range = document.createRange(); range.setStart(text, 2); range.setEnd(text, 20);
+      const end = Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
+      body.scrollTop += range.getBoundingClientRect().bottom - (end - 8); }, n);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return n;
+  };
+  // A line typed into the reply at its end, which grows it a line.
+  const growLine = async (p, words) => {
+    await p.evaluate(() => { const f = document.querySelector('#writing-body'); f.focus({ preventScroll: true }); f.setSelectionRange(f.value.length, f.value.length); });
+    const was = await p.evaluate(() => document.querySelector('#writing-body').getBoundingClientRect().height);
+    await p.keyboard.insertText('\n' + words);
+    await until(p, h => document.querySelector('#writing-body').getBoundingClientRect().height > h, 'the reply a line taller', was);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+  // The reply's last line deleted, which shrinks it a line.
+  const dropLine = async p => {
+    const was = await p.evaluate(() => { const f = document.querySelector('#writing-body'); f.focus({ preventScroll: true }); f.setSelectionRange(f.value.lastIndexOf('\n'), f.value.length); return f.getBoundingClientRect().height; });
+    await p.keyboard.press('Backspace');
+    await until(p, h => document.querySelector('#writing-body').getBoundingClientRect().height < h, 'the reply a line shorter', was);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  };
+
+  // One who has not scrolled keeps the words quoted in sight as the reply
+  // grows; a scroll the person makes, however made, lets them go, so the
+  // reply's next change of size leaves the message where they put it.
+  await check('stacked: quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar\'s drag among them, lets them go', async () => {
+    // Headless Chrome hides scrollbars unless told not to; this case's Chrome
+    // shows them, so the message's own scrollbar is there to drag.
+    const barred = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true, ignoreDefaultArgs: ['--hide-scrollbars'] }) : null;
+    const usual = browser;
+    if (barred) browser = barred;
+    try { await scrollLetsGo(); }
+    finally { browser = usual; if (barred) { for (const context of barred.contexts()) contexts.delete(context); await barred.close(); } }
+  });
+  async function scrollLetsGo() {
+    const p = await page('stacked', 'light', '/?topic=compose-wrap');
+    await open(p, wrap, 'A plan in one item');
+    const n = await nearReply(p);
+    await quoteAt(p, n);
+    const quoted = await wordsAt(p, n);
+    assert.ok(quoted.bottom <= quoted.room.bottom + 2 && quoted.top >= quoted.room.top - 2, `quoted, the words show above the reply (${JSON.stringify(quoted)})`);
+    await growLine(p, 'A second thought.');
+    const held = await wordsAt(p, n);
+    assert.ok(held.bottom <= held.room.bottom + 2 && held.top >= held.room.top - 2, `not scrolled, the quoted words stay in sight above the reply as it grows (words ${Math.round(held.top)}–${Math.round(held.bottom)}px, the room ${Math.round(held.room.top)}–${Math.round(held.room.bottom)}px; quoted ${JSON.stringify(quoted)}, then ${JSON.stringify(held)})`);
+    await shot(p, 'quote-held-while-typing');
+    // The message scrolled by dy (down when positive) by a drag of its
+    // scrollbar where it has one. Safari's engine draws an overlay scrollbar
+    // a headless pointer cannot hold; there the message is scrolled from
+    // outside the page's code, as a scrollbar's drag scrolls it. Where the
+    // message was, and whether its scrollbar was dragged.
+    const drag = async dy => {
+      const bar = await p.evaluate(() => { const body = document.querySelector('#source-body'), box = body.getBoundingClientRect(), style = getComputedStyle(body);
+        return { width: body.offsetWidth - body.clientWidth - parseFloat(style.borderRightWidth) - parseFloat(style.borderLeftWidth), right: box.right - parseFloat(style.borderRightWidth), top: box.top, height: body.clientHeight, ratio: body.clientHeight / body.scrollHeight, scroll: body.scrollTop, end: body.scrollHeight - body.clientHeight }; });
+      // Scrolled on, the message keeps room below for the reply to give back,
+      // so the browser has no end of it to pull the message to.
+      assert.ok(dy < 0 ? bar.scroll > -dy : bar.end - bar.scroll > dy + 120, `the message has room to scroll ${dy < 0 ? 'back' : 'on'} (at ${bar.scroll}px of ${bar.end}px, ${Math.round(Math.abs(dy))}px wanted)`);
+      if (bar.width >= 6) {
+        const thumb = bar.top + (bar.scroll + bar.height / 2) * bar.ratio, x = bar.right - bar.width / 2;
+        await p.mouse.move(x, thumb); await p.mouse.down(); await p.mouse.move(x, thumb + dy * bar.ratio, { steps: 6 }); await p.mouse.up();
+      } else await p.evaluate(dy => { document.querySelector('#source-body').scrollTop += dy; }, dy);
+      await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      return { from: bar.scroll, how: bar.width >= 6 ? 'the scrollbar\'s drag' : 'the scroll' };
+    };
+    // Reading on down past the words quoted, the person's scroll down lets
+    // them go: the reply changing size again leaves the message where they
+    // put it, with the words above what shows.
+    const on = held.bottom - held.room.top + 2 * held.lineHeight;
+    const down = await drag(on);
+    const read = await wordsAt(p, n);
+    assert.ok(read.scroll > down.from + on / 2 && read.bottom < read.room.top, `${down.how} moved the message down, the words above what shows (${down.from} to ${read.scroll}; the words end at ${Math.round(read.bottom)}px, the room starts at ${Math.round(read.room.top)}px)`);
+    await dropLine(p);
+    const readOn = await wordsAt(p, n);
+    assert.ok(Math.abs(readOn.scroll - read.scroll) <= 1, `after the person's scroll down, the reply changing size leaves the message where they put it, the words not pulled back (${read.scroll}, then ${readOn.scroll})`);
+    // Quoted again, into a reply emptied (so it has lines to give back), the
+    // words are kept in sight again until the person scrolls back up past
+    // them, which lets them go as well.
+    await p.evaluate(() => { const f = document.querySelector('#writing-body'); f.focus({ preventScroll: true }); f.select(); });
+    await p.keyboard.press('Backspace');
+    await until(p, () => document.querySelector('#writing-body').value === '', 'the reply emptied');
+    await quoteAt(p, n);
+    const again = await wordsAt(p, n);
+    assert.ok(again.bottom <= again.room.bottom + 2 && again.top >= again.room.top - 2, `quoted again, the words show (${JSON.stringify(again)})`);
+    const lift = again.room.bottom - again.top + 2 * again.lineHeight;
+    const up = await drag(-lift);
+    const scrolled = await wordsAt(p, n);
+    assert.ok(scrolled.scroll < up.from - lift / 2 && scrolled.top > scrolled.room.bottom, `${up.how} moved the message back, the words below what shows (${up.from} to ${scrolled.scroll}; the words start at ${Math.round(scrolled.top)}px, the room ends at ${Math.round(scrolled.room.bottom)}px)`);
+    await dropLine(p);
+    const after = await wordsAt(p, n);
+    assert.ok(Math.abs(after.scroll - scrolled.scroll) <= 1, `after the person's scroll back, the reply changing size leaves the message where they put it (${scrolled.scroll}, then ${after.scroll})`);
+    await close(p);
+  }
+
+  // The browser's own pull of a message scrolled to its end, as its room
+  // grows there (a phone's keyboard going down), is no scroll of the
+  // person's: the words quoted are still kept in sight when the keyboard
+  // comes up again.
+  await check('phone: quoting at the end of a message: the keyboard going down and coming up again keeps the quoted words in sight', async () => {
+    const p = await page('phone', 'light', '/?topic=compose-wrap');
+    await open(p, wrap, 'A plan in one item');
+    await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // The last passage whose words show, just above the reply's line.
+    const n = await p.evaluate(() => { const parts = [...document.querySelector('#source-body').children], top = document.querySelector('#reader-composer').getBoundingClientRect().top;
+      return parts.findLastIndex(part => part.firstChild?.nodeType === Node.TEXT_NODE && part.getBoundingClientRect().bottom < top - 4); });
+    await quoteAt(p, n);
+    await keyboardUp(p);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const up = await wordsAt(p, n);
+    assert.ok(up.bottom <= up.room.bottom + 2 && up.top >= up.room.top - 2, `with the keyboard up, the quoted words show above the reply (${JSON.stringify(up)})`);
+    await keyboardDown(p);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await keyboardUp(p);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const again = await wordsAt(p, n);
+    assert.ok(again.bottom <= again.room.bottom + 2 && again.top >= again.room.top - 2, `the keyboard down and up again, the quoted words still show above the reply (words ${Math.round(again.top)}–${Math.round(again.bottom)}px, the room ${Math.round(again.room.top)}–${Math.round(again.room.bottom)}px)`);
+    await shot(p, 'quote-kept-keyboard-again');
+    await p.emulateMedia({ colorScheme: 'dark' }); p.scheme = 'dark';
+    await shot(p, 'quote-kept-keyboard-again');
+    await close(p);
+  });
+
+  // Typing in a reply never pulls down a message scrolled to its end: the
+  // reply measures itself at no height at each key, which for that moment
+  // gives the message its room.
+  await check('stacked: typing in the reply leaves a message scrolled to its end at its end', async () => {
+    const p = await page('stacked');
+    await open(p, second);
+    await type(p, 'Some words');
+    await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const atEnd = await wordsAt(p, 3);
+    assert.ok(atEnd.end > 0 && Math.abs(atEnd.scroll - atEnd.end) <= 1, `the message scrolled to its end (${atEnd.scroll} of ${atEnd.end})`);
+    await p.evaluate(() => { const f = document.querySelector('#writing-body'); f.focus({ preventScroll: true }); f.setSelectionRange(f.value.length, f.value.length); });
+    for (const word of [' and', ' a', ' few', ' more']) await p.keyboard.insertText(word);
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const typed = await wordsAt(p, 3);
+    assert.ok(Math.abs(typed.scroll - typed.end) <= 1 && Math.abs(typed.top - atEnd.top) <= 1, `typing leaves the message at its end, its words where they were (${atEnd.scroll} of ${atEnd.end}, then ${typed.scroll} of ${typed.end})`);
+    await close(p);
+  });
+
+  // Words chosen up to the very start of the next sentence, which begins a
+  // line of its own, the reply then opening over them: what is kept in sight
+  // above the reply is the words chosen, in the passage that holds them, not
+  // the line the next sentence starts on.
+  await check('stacked: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence\'s line', async () => {
+    const q = await page('stacked', 'light', '/?topic=compose-wrap');
+    await open(q, wrap, 'A plan in one item');
+    const set = await q.evaluate(() => {
+      const body = document.querySelector('#source-body'), parts = [...body.children];
+      const lines = part => [...part.getClientRects()].filter(box => box.width > 0);
+      // A sentence of the long paragraph after which the next one starts a new line.
+      const at = parts.findIndex((part, i) => part.textContent.startsWith('Sentence ') && parts[i + 1]?.textContent.startsWith('Sentence ')
+        && lines(parts[i + 1])[0].top > lines(part).at(-1).top + 1);
+      if (at < 0) return { at };
+      const words = parts[at].firstChild, next = parts[at + 1].firstChild, range = document.createRange();
+      range.setStart(words, 2); range.setEnd(next, 0);
+      const end = () => Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top) - 4;
+      const chosen = document.createRange(); chosen.setStart(words, 2); chosen.setEnd(words, words.data.trimEnd().length);
+      body.scrollTop += chosen.getBoundingClientRect().bottom - end();
+      getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true });
+      return { at, scrolled: body.scrollTop, selected: getSelection().toString(), next: parts[at + 1].textContent, line: lines(parts[at + 1])[0].top - chosen.getBoundingClientRect().bottom };
+    });
+    assert.ok(set.at > 0 && set.selected.startsWith('ntence ') && !set.selected.includes(set.next.trim()) && set.line >= 0, `words chosen to the start of the next sentence, which starts the line below: ${JSON.stringify(set)}`);
+    await q.keyboard.press('Enter');
+    await until(q, () => document.querySelector('#writing-body').value.startsWith('> ') && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted');
+    await q.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const shown = await q.evaluate(at => {
+      const body = document.querySelector('#source-body'), words = body.children[at].firstChild, chosen = document.createRange();
+      chosen.setStart(words, 2); chosen.setEnd(words, words.data.trimEnd().length);
+      const bottom = Math.min(body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom), document.querySelector('#reader-composer').getBoundingClientRect().top);
+      return { gap: Math.round(bottom - chosen.getBoundingClientRect().bottom), lineHeight: parseFloat(getComputedStyle(body).lineHeight), scrolled: body.scrollTop, quoted: document.querySelector('#writing-body').value };
+    }, set.at);
+    assert.ok(shown.quoted.includes(set.selected.trim()), `the words chosen are quoted: ${JSON.stringify(shown.quoted)}`);
+    assert.ok(shown.scrolled > set.scrolled, `the reply came to cover the words, and the message moved (${set.scrolled} to ${shown.scrolled})`);
+    assert.ok(shown.gap >= -2 && shown.gap <= shown.lineHeight / 2, `the words chosen end just above the reply, not a line further on (${shown.gap}px above it, a line is ${shown.lineHeight}px)`);
+    await shot(q, 'quote-to-next-sentence');
+    await close(q);
+  });
+
+  // Lines that wrap anew (a phone turned, the window or the layout changed)
+  // put quoted words elsewhere in their passage: the message shows the words
+  // quoted, measured again, not where they once were. Side by side, the end
+  // of a long list item quoted near the bottom of what shows, the window
+  // then made narrower.
+  await check('wide: quoting: once the lines wrap anew, the message shows the words quoted, not where they were before', async () => {
+    const p = await page('wide', 'light', '/?topic=compose-wrap');
+    await open(p, wrap, 'A plan in one item');
+    const settled = () => p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const where = () => p.evaluate(() => {
+      const body = document.querySelector('#source-body'), style = getComputedStyle(body), box = body.getBoundingClientRect();
+      const item = [...body.children].find(part => part.textContent.includes('part 1 of the plan')), walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+      let node; while ((node = walker.nextNode()) && !node.data.includes('the item ends here'));
+      const range = document.createRange(), from = node.data.indexOf('the item ends here'); range.setStart(node, from); range.setEnd(node, from + 'the item ends here'.length);
+      const words = range.getBoundingClientRect();
+      return { room: { top: box.top + parseFloat(style.paddingTop), bottom: box.bottom - parseFloat(style.paddingBottom) }, top: words.top, bottom: words.bottom, width: body.clientWidth };
+    });
+    await p.evaluate(() => {
+      const body = document.querySelector('#source-body'), item = [...body.children].find(part => part.textContent.includes('part 1 of the plan')), walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+      let node; while ((node = walker.nextNode()) && !node.data.includes('the item ends here'));
+      const range = document.createRange(), from = node.data.indexOf('the item ends here'); range.setStart(node, from); range.setEnd(node, from + 'the item ends here'.length);
+      body.scrollTop += range.getBoundingClientRect().bottom - (body.getBoundingClientRect().bottom - parseFloat(getComputedStyle(body).paddingBottom) - 12);
+      getSelection().removeAllRanges(); getSelection().addRange(range); body.focus({ preventScroll: true });
+    });
+    await settled();
+    const before = await where();
+    assert.ok(before.bottom < before.room.bottom && before.bottom > before.room.bottom - 40, `the words near the bottom of what shows (${JSON.stringify(before)})`);
+    await p.keyboard.press('Enter');
+    await until(p, () => document.querySelector('#writing-body').value.includes('the item ends here') && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted');
+    await settled();
+    const quoted = await where();
+    assert.ok(Math.abs(quoted.top - before.top) <= 2, `quoting side by side moves nothing (${Math.round(before.top)}px, then ${Math.round(quoted.top)}px)`);
+    await p.setViewportSize({ width: 1000, height: 800 });
+    await until(p, w => document.querySelector('#source-body').clientWidth < w, 'the message narrower', quoted.width);
+    await settled();
+    const wrapped = await where();
+    assert.ok(wrapped.top >= wrapped.room.top - 2 && wrapped.bottom <= wrapped.room.bottom + 2, `once the lines wrap anew, the words quoted show (words ${Math.round(wrapped.top)}–${Math.round(wrapped.bottom)}px, the room ${Math.round(wrapped.room.top)}–${Math.round(wrapped.room.bottom)}px)`);
+    await shot(p, 'quote-after-rewrap');
+    await p.emulateMedia({ colorScheme: 'dark' }); p.scheme = 'dark';
+    await shot(p, 'quote-after-rewrap');
     await close(p);
   });
 

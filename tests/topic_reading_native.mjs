@@ -21,6 +21,8 @@ import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
+// The narrower phones a look is checked at, beside DEVICES' phone (390): a page opened at one of these only looks.
+const NARROW = { 'phone-320': { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, 'phone-375': { width: 375, height: 812, deviceScaleFactor: 1, mobile: true } };
 const entry = id => `#messages [data-id="${id}"]`;
 // A message's card: the entry itself, or the card a folded line holds; either carries its id.
 const card = id => `#messages .message-card[data-id="${id}"]`;
@@ -51,7 +53,8 @@ const HEARD = `(()=>{window.sent=[];window.taps=0;window.fetchesOut=0;window.wai
 
 // grant(names): Chrome's own grant of permissions (clipboard-read, ...) to the page's
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
-export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, engine = 'chrome' }) {
+// windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
+export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = async (topic, said) => {
@@ -68,7 +71,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // The page at a device's size; on the phone, with touch from its start. init: more to run before the page's own code.
   // query: the page's address after the origin, the topic's page unless given.
   const open = async (name, device, topic, first, init = '', query = '/?topic=' + topic) => {
-    const metrics = DEVICES[device];
+    const metrics = DEVICES[device] ?? NARROW[device];
     const p = await page(name, null, true, { url: facts.origin + query, beforeNavigate: async q => {
       await q.send('Page.addScriptToEvaluateOnNewDocument', { source: HEARD });
       if (init) await q.send('Page.addScriptToEvaluateOnNewDocument', { source: init });
@@ -153,9 +156,11 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   };
   // Lights a card as the person does: the pointer rests on it, or a finger taps it; on its words,
   // or, for a stack's head shown as one row, on that row, which lights with no bar (docs/reply-stacks.md).
+  // offWords: the pointer rests on its author's line instead, so no passage of its words lights with it
+  // (item 478), and Return answers the message with nothing quoted.
   // A message the person folded (a thumbs-up or a reply of theirs folds it, docs/reply-stacks.md) lights on its one-line row,
   // with its bar, under the pointer; on a phone a tap on that row unfolds it, so it is unfolded first (unfoldRow).
-  const light = async (p, device, id) => {
+  const light = async (p, device, id, offWords = false) => {
     await centre(p, card(id));
     if (await foldedRow(p, id)) {
       if (device === 'phone') await unfoldRow(p, device, id);
@@ -168,7 +173,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     const row = !await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
     // The left edge now belongs to the separate reply chevron. Light the
     // head on its author text, which still opens the head's own message.
-    const target = row ? card(id) + ' > .stack-head > .stack-who' : words(id);
+    const target = row ? card(id) + ' > .stack-head > .stack-who' : offWords && device === 'laptop' ? card(id) + ' > .message-author' : words(id);
     if (device === 'phone') await tap(p, target); else await p.point(target, 'move');
     await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === row, `${device}: ${id} lights, ${row ? 'with no bar on a head shown as one row' : 'with its bar'}`);
   };
@@ -193,7 +198,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // tap: it opens the Reader at once, and a further tap would land on the Reader opening over the message.
   const openReader = async (p, device, id, starts) => {
     await p.evaluate('document.activeElement?.blur()');
-    if (device === 'laptop') { await light(p, device, id); await p.key('Enter'); }
+    if (device === 'laptop') { await light(p, device, id, true); await p.key('Enter'); }
     else {
       // A first tap lights it, unless it is lit already (a tap on its folded row that showed it whole lights it too); the next opens it.
       await centre(p, card(id));
@@ -891,7 +896,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         assert.equal(await p.evaluate(`document.activeElement?.id`), 'inline-writing-body', 'laptop: the cursor stays in the composer');
         await p.evaluate('document.activeElement?.blur()');
         // In the reply too.
-        await light(p, device, ids.m);
+        await light(p, device, ids.m, true);
         await p.key('Enter');
         await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), 'laptop: the cursor is in the reply');
         await p.key('?');
@@ -1025,6 +1030,170 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
   });
 
+  // Item 475: after the person posts, the Conversation's three dots show on their message until the first reply from
+  // anyone else (aim_next/stacks.py, awaiting_fields; web/card-reading.mjs). How a message's dots stand on the page:
+  // null when it draws none; else how many, their name, whether they show inside the card, how many pulse, and whether
+  // each dot is in the card's own ink, read in one look.
+  const WAITING = 'Waiting for a reply';
+  const dots = (p, id) => p.evaluate(`(c=>{const w=c&&c.querySelector(':scope > .reply-wait .item-waiting');if(!w)return null;
+    const b=w.getBoundingClientRect(),k=c.getBoundingClientRect(),ink=getComputedStyle(c).color;
+    return {count:w.children.length,role:w.getAttribute('role'),label:w.getAttribute('aria-label'),title:w.title,
+      shown:b.width>0&&b.height>0&&w.getClientRects().length>0,inside:b.left>=k.left&&b.right<=k.right&&b.top>=k.top&&b.bottom<=k.bottom,
+      running:[...w.children].filter(d=>getComputedStyle(d).animationName==='item-waiting').length,
+      ink:[...w.children].every(d=>getComputedStyle(d).backgroundColor===ink)}})(document.querySelector(${JSON.stringify(card(id))}))`);
+  const showing = d => d !== null && d.count === 3 && d.role === 'img' && d.label === WAITING && d.title === WAITING && d.shown && d.inside && d.ink;
+  // What Core says of each of the person's messages in a topic: whether it waits for a reply, by its words.
+  const waits = async topic => Object.fromEntries((await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+    .filter(item => item.author_id === facts.actor).map(item => [item.body, item.awaiting_reply]));
+  // The person writes in the topic's composer and sends, as they do; the id Core gives the message, once its card is drawn.
+  const post = async (p, device, topic, text) => {
+    await into(p, device, '#inline-writing-body');
+    await p.send('Input.insertText', { text });
+    await until(async () => await valueOf(p, '#inline-writing-body') === text, `${device} composer: "${text}" is written`);
+    await centre(p, '#inline-send');
+    await press(p, device, '#inline-send');
+    const id = await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+      .find(item => item.author_id === facts.actor && item.body === text)?.id, `${device}: Core holds "${text}"`);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})) && window.fetchesOut === 0`), `${device}: "${text}" is drawn and the page has no read out`);
+    return id;
+  };
+  // A reload, waited on as a new document holding every card named.
+  const reload = async (p, ids) => {
+    await front(p);
+    const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && window.fetchesOut === 0 &&
+      ${JSON.stringify(ids)}.every(id => document.querySelector('#messages .message-card[data-id="' + id + '"]'))`).catch(() => false), 'the page loads again, a new document with every card');
+  };
+
+  await check('reading dots after the person posts to an agent show on their message until anyone else replies: their own next message and a whisper draw none and clear none, a reply in another dossier clears nothing, and a reload keeps each', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-' + device;
+      const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }]]);
+      const p = await open('reading-dots-' + device, device, topic, ids.a);
+      // Posted to aim-core, which takes part: three dots, in the card's ink, named for a screen reader and the pointer.
+      // That they pulse is the Conversation's own element and its check (conversation_native.mjs, item 389); a hosted
+      // runner's Chrome may run no CSS animation (the 459 runner-only conversation dots red), so here it is recorded only.
+      const first = await post(p, device, topic, '@aim-core can you check the build?');
+      await until(async () => showing(await dots(p, first)), `${device}: the dots show on the person's message`);
+      observations.push({ name: 'reading dots pulse', engine, device, running: (await dots(p, first)).running });
+      assert.equal(await dots(p, ids.a), null, device + ': none on aim-core\'s message');
+      await shot(p, 'reading-dots-' + device);
+      // The person's own second message waits too, and ends nothing.
+      const second = await post(p, device, topic, 'And the release notes, when you can.');
+      await until(async () => showing(await dots(p, second)), `${device}: the second message waits too`);
+      assert.ok(showing(await dots(p, first)), device + ': the person\'s own second message leaves the first one\'s dots');
+      // A whisper of theirs draws none, and clears none.
+      const whisper = (await control({ method: 'agent_message', operation_id: topic + '-whisper', topic_id: topic, source: 'topic', sender: 'person',
+        whisper: true, addressees: ['aim-core'], body: 'Just between us.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(whisper))})) && window.fetchesOut === 0`), device + ': the whisper is drawn');
+      assert.equal(await dots(p, whisper), null, device + ': never on a whisper');
+      assert.ok(showing(await dots(p, first)) && showing(await dots(p, second)), device + ': a whisper clears nothing');
+      // The topic's first message was the person's, before aim-core took part: nobody else received it.
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the build?': true, 'And the release notes, when you can.': true, 'Just between us.': false },
+        device + ': Core says the same');
+      // A reload keeps it: the page reads it from the topic, not from what it drew.
+      await reload(p, [first, second, whisper]);
+      await until(async () => showing(await dots(p, first)) && showing(await dots(p, second)), `${device}: loaded again, both still wait`);
+      assert.equal(await dots(p, whisper), null, device + ': loaded again, the whisper draws none');
+      // aim-core answers the first: its dots go while the page is open; the second, in a dossier of its own, still waits.
+      const answer = (await control({ method: 'agent_message', operation_id: topic + '-answer', topic_id: topic, sender: 'aim-core', reply_to: first,
+        body: 'Looking at the build now.' })).result.message_id;
+      await until(async () => await dots(p, first) === null && Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(answer))})`)), `${device}: aim-core's reply ends the first one's dots`);
+      assert.ok(showing(await dots(p, second)), device + ': a reply in another dossier ends nothing');
+      assert.equal(await dots(p, answer), null, device + ': none on aim-core\'s reply');
+      // Another person answers the second: a person's reply ends it as an agent's does.
+      await control({ method: 'agent_message', operation_id: topic + '-person', topic_id: topic, sender: 'fixture-other-person', join: true, reply_to: second,
+        body: 'I have the release notes.' });
+      await until(async () => await dots(p, second) === null, `${device}: another person's reply ends the second one's dots`);
+      await reload(p, [first, second, answer]);
+      assert.deepEqual([await dots(p, first), await dots(p, second)], [null, null], device + ': loaded again, neither waits');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the build?': false, 'And the release notes, when you can.': false, 'Just between us.': false },
+        device + ': and Core says so');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  // Item 475's words, "until the first reply from anyone else" (warp's ruling, codex #5267): a reply that answers the
+  // message from another stack, an agent's thumbs-up on it, and a message naming the person each end the dots.
+  await check('reading dots end on a reply joined to another stack, an agent\'s thumbs-up and a message naming the person in a subject of its own, and a reload keeps each ended; a person\'s thumbs-up and a message to nobody end none', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-outside-' + device;
+      const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }],
+        ['p', { sender: 'fixture-other-person', join: true, body: 'Another person is here too.' }]]);
+      const p = await open('reading-dots-outside-' + device, device, topic, ids.a);
+      const drawn = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))})) && window.fetchesOut === 0`);
+      // aim-core answers the first message, and someone joins the answer to another stack: it still answers it.
+      const joined = await post(p, device, topic, '@aim-core can you check the notes?');
+      await until(async () => showing(await dots(p, joined)), `${device}: the first message waits`);
+      const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, sender: 'aim-core', reply_to: joined,
+        body: 'Checked the notes.' })).result.message_id;
+      await until(async () => await dots(p, joined) === null && await drawn(reply), `${device}: aim-core's reply ends the first one's dots`);
+      await control({ method: 'stack_act', sender: 'fixture-other-person', kind: 'stack.join', message_id: reply, operation_id: topic + '-join', args: { into: ids.p } });
+      await until(async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items
+        .find(item => item.id === reply)?.stack_position.root_id === ids.p, `${device}: Core holds the reply in the other person's stack`);
+      // A person's thumbs-up is no reply; aim-core's is.
+      const thumbed = await post(p, device, topic, '@aim-core and the release, when you can?');
+      await until(async () => showing(await dots(p, thumbed)), `${device}: the second message waits`);
+      const thumbs = () => p.evaluate(`document.querySelector(${JSON.stringify(card(thumbed) + ' > .message-reactions .reaction-number')})?.textContent ?? null`);
+      await control({ method: 'agent_thumb', operation_id: topic + '-person-thumb', sender: 'fixture-other-person', message_id: thumbed });
+      await until(async () => await thumbs() === '1', `${device}: the other person's thumbs-up shows on the card`);
+      assert.ok(showing(await dots(p, thumbed)), device + ': a person\'s thumbs-up leaves the dots');
+      await control({ method: 'agent_thumb', operation_id: topic + '-thumb', sender: 'aim-core', message_id: thumbed });
+      await until(async () => await thumbs() === '2' && await dots(p, thumbed) === null, `${device}: aim-core's thumbs-up ends the second one's dots, with no reload`);
+      // A message to nobody is no reply; one naming the person, in a subject of its own, is.
+      const told = await post(p, device, topic, '@aim-core and the screenshots?');
+      await until(async () => showing(await dots(p, told)), `${device}: the third message waits`);
+      const everyone = (await control({ method: 'agent_message', operation_id: topic + '-everyone', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        body: 'A note for everyone here.' })).result.message_id;
+      await until(() => drawn(everyone), `${device}: aim-core's note to everyone is drawn`);
+      assert.ok(showing(await dots(p, told)), device + ': a message naming nobody leaves the dots');
+      const tell = (await control({ method: 'agent_message', operation_id: topic + '-tell', topic_id: topic, sender: 'aim-core', whole_topic: true,
+        post_args: { addressees: [facts.actor], intent: 'tell' }, body: 'The screenshots are up.' })).result.message_id;
+      await until(async () => await dots(p, told) === null && await drawn(tell), `${device}: aim-core telling the person ends the third one's dots, with no reload`);
+      await reload(p, [joined, thumbed, told]);
+      assert.deepEqual([await dots(p, joined), await dots(p, thumbed), await dots(p, told)], [null, null, null],
+        device + ': loaded again, none waits: the reply joined to another stack, the thumbs-up and the tell each still answer theirs');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, '@aim-core can you check the notes?': false,
+        '@aim-core and the release, when you can?': false, '@aim-core and the screenshots?': false }, device + ': and Core says so');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading dots never show where no agent receives the message: a topic of people only, with nobody named', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'reading-dots-people-' + device;
+      const ids = await seed(topic, [['p', { sender: 'fixture-other-person', join: true, body: 'Only people take part here.' }]]);
+      const p = await open('reading-dots-people-' + device, device, topic, ids.p);
+      const own = await post(p, device, topic, 'Notes for the two of us.');
+      assert.equal(await dots(p, own), null, device + ': no agent received it, so no dots');
+      assert.deepEqual(await waits(topic), { ['Fixture conversation ' + topic]: false, 'Notes for the two of us.': false }, device + ': Core says none waits');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
+  await check('reading dots on a waiting message sit inside its card in its ink at 320, 375 and 390 wide and on a laptop, light and dark, with nothing scrolling sideways', async () => {
+    const topic = 'reading-dots-look';
+    const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'aim-core is here to help.' }],
+      ['own', { sender: 'person', reply_to: 'a', addressees: ['aim-core'], body: 'Could you look at the failing check on the phone layout before the release goes out this evening?' }]]);
+    for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) {
+      const p = await open('reading-dots-look-' + size, size, topic, ids.own);
+      for (const theme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: ${theme})').matches`), `${size}: the page reads ${theme}`);
+        await centre(p, card(ids.own));
+        await until(async () => showing(await dots(p, ids.own)), `${size} ${theme}: the dots show inside the card, in its ink`);
+        assert.ok(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), `${size} ${theme}: nothing scrolls sideways`);
+        await shot(p, `reading-dots-look-${size}-${theme}`);
+      }
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
+
   await check('reading the save status says when the writing was saved, "Saved to Theseus · 4:40 AM", in the topic\'s composer and in the Reader', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-saved-' + device;
@@ -1061,7 +1230,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await shot(p, 'reading-saved-composer-' + device);
       // The Reader, opened on the message. The cursor leaves the composer first, or Return is the composer's.
       await p.evaluate('document.activeElement?.blur()');
-      if (device === 'laptop') { await light(p, device, ids.m); await p.key('Enter'); }
+      if (device === 'laptop') { await light(p, device, ids.m, true); await p.key('Enter'); }
       else { await centre(p, card(ids.m)); await tap(p, words(ids.m)); await until(async () => (await lit(p)).includes(ids.m), 'phone: the message lights'); await tap(p, words(ids.m)); }
       await until(async () => (await readerOn(p))?.startsWith('A message to answer.'), device + ': the Reader opens on the message');
       assert.equal((await beside('#save-state')).time, null, device + ' Reader: no time before its reply is saved');
@@ -1655,8 +1824,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(await lit(p), [], 'nothing is lit');
       assert.equal(await copy(), false, 'with nothing lit the page leaves ⌘C alone');
       assert.deepEqual(await copied(), [], 'and copies nothing');
-      // The pointer rests on a message: ⌘C copies its words as written.
-      await light(p, 'laptop', ids.short);
+      // The pointer rests on a message, off its words: ⌘C copies its words as written.
+      await light(p, 'laptop', ids.short, true);
       assert.equal(await copy(), true, 'the page takes ⌘C on the lit message');
       const short = await written(ids.short);
       await becomes(copied, [short], 'the lit message\'s words, as written, are on the clipboard');
@@ -1674,7 +1843,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await becomes(copied, [short, whole, whole], 'the Reader copies the same words');
       await closeReader(p, 'laptop');
       // Words selected on the page: ⌘C copies them as the browser does, not the lit message.
-      await light(p, 'laptop', ids.short);
+      await light(p, 'laptop', ids.short, true);
       await p.evaluate(`(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector(${JSON.stringify(words(ids.short))}));getSelection().removeAllRanges();getSelection().addRange(r);return true})()`);
       assert.equal(await copy(), false, 'with words selected the page leaves ⌘C to the browser');
       assert.deepEqual(await copied(), [short, whole, whole], 'and puts nothing of its own on the clipboard');
@@ -1691,6 +1860,383 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.deepEqual(p.errors, []);
       await p.close();
     } finally { await control({ method: 'read_fault_clear' }); }
+  });
+
+  // A card's words, pressed and read as the cases below press and read them (item 478): where some of its words are
+  // on screen, the middle of their first box; the pointer moved there, Shift held when modifiers is 8; those words
+  // selected, as a drag over them selects them; the words of the lit passage, or null; and the Reader's reply.
+  const wordsAt = (p, id, text) => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+    while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return null;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+    const b=r.getClientRects()[0];return {x:b.left+b.width/2,y:b.top+b.height/2}})()`);
+  const moveTo = async (p, id, text, modifiers = 0) => { const at = await wordsAt(p, id, text); assert.ok(at, `${text} is drawn on ${id}`); await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, modifiers }); };
+  const selectOn = (p, id, text) => p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(id))}),t=${JSON.stringify(text)},walker=document.createTreeWalker(w,4);let n;
+    while((n=walker.nextNode())&&!n.data.includes(t));if(!n)return false;const r=document.createRange();r.setStart(n,n.data.indexOf(t));r.setEnd(n,n.data.indexOf(t)+t.length);
+    getSelection().removeAllRanges();getSelection().addRange(r);return getSelection().toString()===t})()`);
+  const shiningOn = p => p.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`);
+  const replyOf = p => p.evaluate(`document.querySelector('#writing-body').value`);
+
+  // What ⌘C put on the clipboard, read back through the browser's own clipboard: in Chrome by its clipboard API,
+  // granted; Safari's engine lets a page read the clipboard only inside a press, so there it is read by the
+  // browser's own paste (⌘V) into the Reader's reply, once the Reader is open, and the pasted words taken out again.
+  // copyOn presses ⌘C and gives what it copied in Chrome, null in Safari's engine; sureOn holds what it gave, or
+  // there what is pasted, to words.
+  const clipboardOf = p => p.evaluate('navigator.clipboard.readText()');
+  const copyOn = async p => {
+    await p.evaluate(`navigator.clipboard.writeText('nothing copied yet')`); await p.key('c', 4);
+    if (!grant) return null;
+    await until(async () => await clipboardOf(p) !== 'nothing copied yet', 'the page copies on ⌘C'); return clipboardOf(p);
+  };
+  const pastedOn = async p => {
+    const before = await p.evaluate(`(()=>{const f=document.querySelector('#writing-body');f.focus();f.setSelectionRange(f.value.length,f.value.length);return f.value})()`);
+    await p.key('v', 4);
+    await until(async () => await replyOf(p) !== before, 'the browser pastes what is on the clipboard');
+    const after = await replyOf(p);
+    assert.ok(after.startsWith(before), 'the paste lands at the end of the reply');
+    await p.evaluate(`(()=>{const f=document.querySelector('#writing-body');f.setSelectionRange(${JSON.stringify(before.length)},f.value.length)})()`);
+    await p.key('Backspace');
+    await until(async () => await replyOf(p) === before, 'the pasted words taken out again');
+    return after.slice(before.length);
+  };
+  const sureOn = async (p, got, words, what) => { if (grant) assert.equal(got, words, what); else assert.equal(await pastedOn(p), words, what + ' (pasted in Safari\'s engine)'); };
+
+  // A card's passages light under the pointer as the Reader's do (item 478, docs/interaction.md "The light"), on a
+  // topic's card and a dossier's alike: ⌘C copies exactly the lit words, read back through the browser's own
+  // clipboard, Return opens the Reader with those same words quoted, and Shift grows the light as in the Reader.
+  // The words before and after the passage are neither copied nor quoted. The keys lighting a message light no
+  // passage, and Return there replies with nothing quoted.
+  await check('reading a passage the pointer rests on lights on a topic\'s card and a dossier\'s; ⌘C copies exactly its words and Return quotes them in the Reader; Shift grows the light', async () => {
+    const topic = 'reading-passage';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const body = said.join(' ');
+    const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'The message a dossier grows from.' }],
+      ['reply', { sender: 'aim-ux', join: true, addressees: [facts.actor], reply_to: 'root', body }],
+      ['alone', { sender: 'aim-core', addressees: [facts.actor], body }]]);
+    if (grant) await grant(['clipboard-read', 'clipboard-write']);
+    const p = await open('reading-passage', 'laptop', topic, ids.alone);
+    // The pointer on words of a card's message, what lights, ⌘C and the reply, as the helpers above press and read them.
+    const move = (id, text, modifiers = 0) => moveTo(p, id, text, modifiers), shining = () => shiningOn(p), copy = () => copyOn(p), reply = () => replyOf(p);
+    const sure = (got, words, what) => sureOn(p, got, words, what);
+    for (const [id, where] of [[ids.alone, 'a topic\'s card'], [ids.reply, 'a dossier\'s card']]) {
+      await centre(p, card(id));
+      // On the card but off its words, the message lights and no passage does.
+      await p.point(card(id) + ' > .message-author', 'move');
+      await until(async () => (await lit(p)).includes(id), `${where}: lit from its author's line`);
+      assert.equal(await shining(), null, `${where}: no passage lights off the words`);
+      await move(id, 'lit passage');
+      await becomes(shining, said[1] + ' ', `${where}: the passage under the pointer lights, and only it`);
+      const copied = await copy();
+      if (grant) assert.equal(copied, said[1], `${where}: ⌘C copies exactly the lit words, not the words before or after them`);
+      await p.key('Enter');
+      await until(async () => (await readerOn(p))?.startsWith(said[0]), `${where}: Return opens the Reader on the message`);
+      await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${where}: the cursor is in the reply`);
+      assert.equal(await reply(), `> ${said[1]} \n\n`, `${where}: the reply quotes those same words, and nothing before or after them`);
+      if (!grant) await sure(null, said[1], `${where}: ⌘C copied exactly the lit words, not the words before or after them`);
+      await shot(p, 'reading-passage-quoted-' + (id === ids.alone ? 'card' : 'dossier'));
+      // In the Reader too, ⌘C on a passage lit by a press copies exactly its words.
+      await p.point('#source-body [data-start="0"]');
+      await until(() => p.evaluate(`document.querySelectorAll('#source-body .hover-quote').length === 1 && getSelection().isCollapsed`), `${where}: a press lights the Reader's first passage`);
+      await sure(await copy(), said[0], `${where}: ⌘C in the Reader copies exactly the lit passage's words`);
+      await closeReader(p, 'laptop');
+    }
+    // Shift grows the light from the passage lit first to the one under the pointer, and both copy and quote it.
+    await centre(p, card(ids.reply));
+    await move(ids.reply, 'Words before');
+    await becomes(shining, said[0] + ' ', 'the first passage lights');
+    await move(ids.reply, 'Words after', 8);
+    await becomes(shining, body, 'moved with Shift held, the light grows to the passage under the pointer');
+    const grown = await copy();
+    if (grant) assert.equal(grown, body, '⌘C copies the passages lit');
+    await shot(p, 'reading-passage-shift');
+    // The same light in the dark scheme.
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    assert.equal(await shining(), body, 'the light stays as the scheme changes');
+    await shot(p, 'reading-passage-shift-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
+    await p.key('Enter');
+    await until(async () => (await reply()).endsWith(`> ${body}\n\n`), 'Return quotes the passages lit, after the reply kept');
+    if (!grant) await sure(null, body, '⌘C copied the passages lit');
+    await closeReader(p, 'laptop');
+    // The keys light a message and no passage: Return replies with nothing quoted.
+    await centre(p, card(ids.alone));
+    await move(ids.alone, 'lit passage');
+    await becomes(shining, said[1] + ' ', 'a passage lights on the topic\'s card again');
+    await p.key('ArrowDown');
+    await until(async () => (await lit(p)).length === 1 && !(await lit(p)).includes(ids.alone), 'the keys light the message below');
+    await p.key('ArrowUp');
+    await until(async () => (await lit(p)).join() === ids.alone && await shining() === null, 'the keys light the message again, and no passage');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await reply(), `> ${said[1]} \n\n`, 'Return with no passage lit quotes nothing more');
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // A finger lights a message and no passage of it: on a phone a tap is not a pointer resting on words.
+    const phone = await open('reading-passage-phone', 'phone', topic, ids.alone);
+    await light(phone, 'phone', ids.alone);
+    assert.equal(await phone.evaluate(`(()=>{const h=CSS.highlights.get('lit-passage');return h&&h.size?[...h][0].toString():null})()`), null, 'a tap lights the message and no passage of it');
+    await shot(phone, 'reading-passage-phone');
+    assert.deepEqual(phone.errors, []);
+    await phone.close();
+  });
+
+  // A lit passage promises the quote Return would make (docs/experience-guidelines.md, "Keys mean one thing in each
+  // place"): the focus moving where Return does something else, a control of the lit message (its ☆, the bar's 👍,
+  // Reply and ⋯) or writing, puts the light out, as it goes out in the Reader. Back on the card, where Return quotes,
+  // the pointer resting on the words lights a passage again, and Return quotes it.
+  await check('reading a card\'s lit passage goes out as the focus moves to a control of the message or to writing, where Return does something else', async () => {
+    const topic = 'reading-passage-focus';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const on = card(ids.alone);
+    // Where the focus is: the card itself, or a control of the message (in its card or its bar) by its name.
+    const focus = () => p.evaluate(`(c=>{const e=document.activeElement,b=document.querySelector('${BAR}');return e===c?'card':c.contains(e)||b.contains(e)?(e.getAttribute('aria-label')||e.title||e.textContent):e&&e.matches('input,textarea,[contenteditable="true"]')?'writing':e?e.tagName.toLowerCase():null})(document.querySelector(${JSON.stringify(on)}))`);
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    // The pointer moving onto the message gave it the keys' place: the focus is on the card, where Return quotes.
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    // Tab goes through the message's controls; at each, Return presses the control, and no passage is lit.
+    const stops = [];
+    for (let i = 1; i <= 4; i++) {
+      const was = await focus();
+      await p.key('Tab');
+      await until(async () => await focus() !== was, `Tab ${i} moves the focus`);
+      stops.push(await focus());
+      assert.ok(!['card', 'body', null].includes(stops.at(-1)), `Tab ${i} reaches a control of the message (${stops.join(', ')})`);
+      assert.equal(await shiningOn(p), null, `at ${stops.at(-1)} (Tab ${i}), where Return presses the control and quotes nothing, no passage is lit`);
+    }
+    await shot(p, 'reading-passage-focus-control');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    await shot(p, 'reading-passage-focus-control-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
+    // Shift-Tab comes back to the card: the pointer resting on the words lights a passage there again, and Return quotes it.
+    for (let i = 0; i < 4 && await focus() !== 'card'; i++) {
+      const was = await focus();
+      await p.key('Tab', 8);
+      await until(async () => await focus() !== was, 'Shift-Tab moves the focus back');
+    }
+    assert.equal(await focus(), 'card', 'Shift-Tab comes back to the card');
+    await moveTo(p, ids.alone, 'Words after');
+    await becomes(() => shiningOn(p), said[2], 'with the focus on the card, the passage under the pointer lights');
+    assert.equal(await focus(), 'card', 'and the focus stays on the card');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${said[2]}\n\n`, 'Return on the card quotes the passage lit');
+    await closeReader(p, 'laptop');
+    // The focus moving into writing by the keys (⌘Return, a new message in this page's place) puts the light out too.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'a passage lights again');
+    assert.equal(await focus(), 'card', 'the focus is on the card');
+    await p.key('Enter', 4);
+    await until(async () => await focus() === 'writing', '⌘Return puts the cursor in writing');
+    assert.equal(await shiningOn(p), null, 'with the cursor in writing, where Return makes a new line, no passage is lit');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Shift-click on a card lights from the passage lit first to the one under the pointer, as in the Reader, and opens
+  // nothing; the browser grows no selection of its own beside the light. Words selected on a card (dragged over) are
+  // what Shift grows the light from, giving way to it, and what Return quotes when they are there.
+  await check('reading Shift-click on a card grows the light and opens nothing; words selected on a card anchor Shift\'s light, and Return quotes exactly them', async () => {
+    const topic = 'reading-passage-shift';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const body = said.join(' ');
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const on = card(ids.alone);
+    const collapsed = () => p.evaluate('getSelection().isCollapsed');
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', 'the first passage lights');
+    // Off the words, on the author's line, the light stays; the Shift-click is then pressed where the last passage is.
+    await p.point(on + ' > .message-author', 'move');
+    assert.equal(await shiningOn(p), said[0] + ' ', 'off the words the passage lit stays lit');
+    const at = await wordsAt(p, ids.alone, 'Words after');
+    const taps = await p.evaluate('window.taps');
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 8 });
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 8 });
+    await until(() => p.evaluate(`window.taps > ${taps}`), 'the Shift-click is heard');
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    assert.equal(await shiningOn(p), body, 'Shift-click lights from the passage lit first to the one under the pointer');
+    assert.equal(await readerOn(p), null, 'Shift-click opens nothing');
+    assert.equal(await collapsed(), true, 'and the browser grows no selection of its own beside the light');
+    await shot(p, 'reading-passage-shift-click');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await until(() => p.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the dark scheme');
+    assert.equal(await shiningOn(p), body, 'the light stays as the scheme changes');
+    await shot(p, 'reading-passage-shift-click-dark');
+    await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: '' }] });
+    await until(() => p.evaluate(`!matchMedia('(prefers-color-scheme: dark)').matches`), 'the page in the light scheme again');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.equal(await replyOf(p), `> ${body}\n\n`, 'Return quotes the passages the Shift-click lit');
+    await closeReader(p, 'laptop');
+    // Words dragged over in the middle passage, another passage lit: Shift grows the light from the passages the
+    // words touch, not from the passage lit, and the selection gives way to the light.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', 'the first passage lights again');
+    assert.equal(await selectOn(p, ids.alone, 'passage is these'), true, 'words in the middle passage selected');
+    await moveTo(p, ids.alone, 'Words after', 8);
+    await becomes(() => shiningOn(p), `${said[1]} ${said[2]}`, 'moved with Shift held, the light grows from the passage the selected words are in, not from the one lit');
+    assert.equal(await collapsed(), true, 'the selection gives way to the light');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.ok((await replyOf(p)).endsWith(`> ${said[1]} ${said[2]}\n\n`), `Return quotes the passages lit from the selection: ${JSON.stringify(await replyOf(p))}`);
+    await closeReader(p, 'laptop');
+    // Words selected on a card with a passage lit: Return quotes exactly the words selected, not the passage.
+    await centre(p, on);
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', 'the first passage lights again');
+    assert.equal(await selectOn(p, ids.alone, 'passage is these'), true, 'words in the middle passage selected');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(said[0]) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader');
+    assert.ok((await replyOf(p)).endsWith(`\n\n> passage is these\n\n`), `Return quotes exactly the words selected, not the passage lit: ${JSON.stringify(await replyOf(p))}`);
+    await closeReader(p, 'laptop');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // A card drawn again under its lit passage puts the light out (item 478), as an edit drawn into the Reader puts out
+  // the passage lit there (docs/reader.md): once the words change, the place lit holds other words, and Return and ⌘C
+  // would act on words no one lit. With no passage lit, Return quotes nothing and ⌘C copies the whole message as
+  // written; the pointer moving on the new words lights a passage of them, which ⌘C copies and Return quotes exactly.
+  // Each is pressed as the person presses it, ⌘C read back through the browser's own clipboard (copyOn, sureOn).
+  // redrawn(p, id, words, lit, copied): the checks once the card is drawn again with words; lit is text of a passage
+  // the pointer then rests on, copied that passage's words as ⌘C copies them.
+  const redrawn = async (p, id, words, lit, copied) => {
+    assert.equal(await shiningOn(p), null, 'the card drawn again with other words, no words are lit, not the place lit on the old ones');
+    const got = await copyOn(p);
+    if (grant) assert.equal(got, words, '⌘C with no passage lit copies the whole message as written, not words of the place lit before');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(words.slice(0, 20)) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader on the message');
+    assert.equal(await replyOf(p), '', 'Return with no passage lit quotes nothing, not words of the place lit before');
+    if (!grant) await sureOn(p, null, words, '⌘C copied the whole message as written, not words of the place lit before');
+    await closeReader(p, 'laptop');
+    // On the new words the pointer lights a passage of them; ⌘C and Return act on exactly it.
+    await centre(p, card(id));
+    await moveTo(p, id, lit);
+    await becomes(() => shiningOn(p), copied + ' ', 'on the new words the pointer lights a passage of them');
+    const again = await copyOn(p);
+    if (grant) assert.equal(again, copied, '⌘C copies exactly the passage lit on the new words');
+    await p.key('Enter');
+    await until(async () => (await readerOn(p))?.startsWith(words.slice(0, 20)) && await p.evaluate(`document.activeElement?.id === 'writing-body'`), 'Return opens the Reader again');
+    assert.ok((await replyOf(p)).endsWith(`> ${copied} \n\n`), `Return quotes exactly the passage lit on the new words: ${JSON.stringify(await replyOf(p))}`);
+    if (!grant) await sureOn(p, null, copied, '⌘C copied exactly the passage lit on the new words');
+    await closeReader(p, 'laptop');
+  };
+
+  // The whole of a cut-off message arriving in place of its excerpt is one such redraw. The whole is read ahead as the
+  // card lights, and is held here in the server until the excerpt's last sentence, cut mid-word, is lit.
+  await check('reading a cut-off card\'s lit passage goes out as its whole message arrives in place of the excerpt; ⌘C and Return then act on no words of the excerpt', async () => {
+    const topic = 'reading-passage-whole';
+    // Over the 1,024 bytes of a long message's excerpt, which cuts its last sentence mid-word.
+    const filler = Array.from({ length: 21 }, (_, i) => `Sentence ${i + 1} fills the card with words to read.`).join(' ') + ' And one more sentence pads it out.';
+    const last = 'The cut sentence goes on past where the excerpt ends, and ends here.', body = `${filler} ${last}`, cut = body.slice(filler.length + 1, 1024);
+    assert.equal(cut, 'The cut sen', 'the excerpt cuts the last sentence mid-word');
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body }]]);
+    if (grant) await grant(['clipboard-read', 'clipboard-write']);
+    const p = await open(topic, 'laptop', topic, ids.long, 'window.holdReads = true;');
+    const on = card(ids.long), shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.long))}).textContent`);
+    assert.ok((await shown()).endsWith(cut), 'the card shows the excerpt, its last sentence cut mid-word');
+    await centre(p, on); await away(p);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page has its answers');
+    const since = (await control({ method: 'admission_events', after: Number.MAX_SAFE_INTEGER })).next;
+    const hold = topic + '-hold';
+    await control({ method: 'read_hold', hold_id: hold, name: 'source', phase: 'callback', read_class: 'background', count: 1 });
+    try {
+      await moveTo(p, ids.long, 'cut sen');
+      await until(async () => (await control({ method: 'admission_events', after: since })).events.some(e => e.event === 'hold-enter' && e.hold_id === hold), 'the card lights, and the read ahead of its whole message is held in the server');
+      await becomes(() => shiningOn(p), cut, 'the excerpt\'s last sentence, cut mid-word, lights under the pointer');
+    } finally { await control({ method: 'read_release', hold_id: hold }); }
+    await until(() => p.evaluate(`(c=>c.dataset.whole==='shown'&&c.querySelector(':scope > .message-preview').textContent.endsWith(${JSON.stringify(last)}))(document.querySelector(${JSON.stringify(on)}))`), 'the whole message arrives in place of the excerpt');
+    await shot(p, 'reading-passage-whole');
+    await redrawn(p, ids.long, body, 'Sentence 2 fills', 'Sentence 2 fills the card with words to read.');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // An edit arriving is the other: the person's message, edited on another device while a passage of it is lit here.
+  await check('reading an edit arriving under a card\'s lit passage puts the light out; ⌘C and Return then act on no words of the place lit before', async () => {
+    const topic = 'reading-passage-edited';
+    const said = ['Words before the passage.', 'The lit passage is these words.', 'Words after the passage.'];
+    const edited = 'New words come first in this edit, longer. Then a second sentence. The end.';
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['mine', { sender: 'person', body: said.join(' ') }]]);
+    if (grant) await grant(['clipboard-read', 'clipboard-write']);
+    const p = await open(topic, 'laptop', topic, ids.mine);
+    await centre(p, card(ids.mine));
+    await moveTo(p, ids.mine, 'lit passage');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage under the pointer lights');
+    // The person's Save on another device, through Core (docs/message-edit.md), by the revision it was edited from.
+    const headers = { Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' };
+    const b = await (await fetch(facts.origin + '/api/bootstrap', { headers })).json();
+    const receipt = await (await fetch(facts.origin + '/api/command', { method: 'POST', headers, body: JSON.stringify({ v: 1, instance_id: b.instance_id,
+      operation_id: topic + '-elsewhere', kind: 'message.edit', target: { message_id: ids.mine },
+      expected: { authority: { authority_id: b.authority.authority_id, authority_epoch: b.authority.authority_epoch }, message_revision: 1 }, args: { body: edited } }) })).json();
+    assert.equal(receipt.status, 'committed', 'the edit elsewhere commits: ' + JSON.stringify(receipt.error ?? null));
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(words(ids.mine))}).textContent === ${JSON.stringify(edited)}`), 'the card draws the edited words');
+    await shot(p, 'reading-passage-edited');
+    await redrawn(p, ids.mine, edited, 'second sentence', 'Then a second sentence.');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Shift-click on a link in a card's words opens the link as the browser does, in a new window, as it did before a
+  // card's passages lit (item 478); the page leaves it alone, as the Reader leaves a press on a link, and it grows no
+  // light. Shift-click on the card's other words still grows the light, and opens nothing. The link goes to a file of
+  // this server, outside the app's own places, so the new window has an address to show in Safari's engine too.
+  await check('reading Shift-click on a link in a card\'s words opens it in a new window as the browser does; Shift-click on its other words grows the light', async () => {
+    const topic = 'reading-passage-link', ELSEWHERE = facts.origin + '/aim.css?shift-click';
+    const said = ['Words before the link.', `The style is at ${ELSEWHERE} now.`, 'Words after the link.'];
+    const ids = await seed(topic, [['earlier', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'An earlier message.' }],
+      ['alone', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: said.join(' ') }]]);
+    const p = await open(topic, 'laptop', topic, ids.alone);
+    const on = card(ids.alone);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(on + ' a.words-link[target="_blank"]')})?.getAttribute('href') === ${JSON.stringify(ELSEWHERE)}`), 'the card shows the link, to open in a new window');
+    // Each click as the window first hears it, kept to read once it is over: whether the page took it from the browser;
+    // and whether the focus has been on the card's link.
+    await p.evaluate(`(addEventListener('click',e=>{window.lastClick=e},true),addEventListener('focusin',e=>{if(e.target.matches?.('a.words-link'))window.linkFocused=true},true),true)`);
+    const shiftClick = async text => {
+      const at = await wordsAt(p, ids.alone, text), taps = await p.evaluate('window.taps');
+      assert.ok(at, `${text} is drawn on the card`);
+      for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 8 });
+      await until(() => p.evaluate(`window.taps > ${taps}`), `the Shift-click on ${text} is heard`);
+    };
+    await centre(p, on);
+    // Shift-click on the card's words grows the light from the passage lit to the one under the pointer, and opens nothing.
+    await moveTo(p, ids.alone, 'Words before');
+    await becomes(() => shiningOn(p), said[0] + ' ', 'the first passage lights');
+    await shiftClick('Words after');
+    await becomes(() => shiningOn(p), said.join(' '), 'Shift-click on the card\'s words grows the light from the passage lit to the one under the pointer');
+    assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), true, 'the page takes a Shift-click on words from the browser');
+    assert.equal(await readerOn(p), null, 'Shift-click on words opens nothing');
+    // The pointer comes to rest on the link, which lights the passage it is in, as passing over words does.
+    await moveTo(p, ids.alone, 'aim.css');
+    await becomes(() => shiningOn(p), said[1] + ' ', 'the passage the link is in lights');
+    const before = await windows.list();
+    await shiftClick('aim.css');
+    assert.equal(await p.evaluate('window.lastClick.defaultPrevented'), false, 'the page leaves a Shift-click on a link to the browser');
+    const added = await until(async () => { const now = [...(await windows.list())].filter(([id]) => !before.has(id)); return now.some(([, url]) => url === ELSEWHERE) ? now : null; }, 'Shift-click on the link opens a new window at its address');
+    assert.deepEqual(added.map(([, url]) => url), [ELSEWHERE], 'one new window, at the link\'s address');
+    for (const [id] of added) await windows.close(id);
+    await p.send('Page.bringToFront');
+    // The link grows no light. Where the click put the focus on the link (Chrome's does), Return there follows the
+    // link, and the light went out as it does wherever Return quotes nothing; otherwise it stays as it was.
+    const onLink = await p.evaluate('window.linkFocused === true');
+    assert.equal(await shiningOn(p), onLink ? null : said[1] + ' ', `the link grows no light (the focus ${onLink ? 'went to the link' : 'never on the link'})`);
+    assert.equal(await readerOn(p), null, 'and the card did not open');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 
   // Lighting a cut-off card reads its whole message ahead in the background lane, one read at a time with a short

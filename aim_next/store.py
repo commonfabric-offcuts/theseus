@@ -34,7 +34,7 @@ from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
 from .health import Health, HEALTH_SCHEMA, LIGHT_KEY
 from . import delivery as _delivery
-from .releases import Releases, RELEASE_SCHEMA, write_release
+from .releases import Releases, JUDGMENT_SCHEMA, RELEASE_SCHEMA, write_judgment, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA, redact_topic
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
@@ -47,10 +47,11 @@ from .outline_order import OutlineOrder, ORDER_SCHEMA
 from .stacks import Stacks, ACT_FRESH
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
+from .invite import Invites
 from . import message_edit
 
 
-SCHEMA_VERSION = "41"
+SCHEMA_VERSION = "42"
 
 
 def commit_identity_intact(metadata):
@@ -126,7 +127,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_FRESH + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -161,8 +162,13 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
+# A topic list's row: the topic with its message count and the sequence of its newest message, read through its one-row
+# summary (a topic names no message here, so no whisper is read; tests/test_whispers.py).
+_TOPIC_SUMMARY = "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
+
+
 class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind,
-            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit):
+            OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Blocking, MessageEdit, Invites):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None):
         self.path = Path(db_path).resolve()
         # What reads the Mac's load for the Health view (health.machine_load when None).
@@ -234,6 +240,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}
+
+    def attach_judgment(self, number, judgment):
+        """Operator attachment of a release's hosted judgment (docs/releases.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["release"], written = write_judgment(db, number, judgment, _now_ms())
+            return written
+        attached = self._operator_write(write, "attached", "release judgment")
+        return {"instance_id": self.instance_id, "release": found["release"], "attached": attached}
 
     def import_pipeline(self, seed, actor):
         """Operator import of the hand-written pipeline (docs/pipeline.md); never a command or an HTTP route."""
@@ -620,7 +636,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                                    "WHERE m.actor_id=?", (actor,)).fetchone()[0]
 
         totals = {}
-        for unread, addressed, workspace_id in self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]]).values():
+        counts = self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]])
+        for unread, addressed, workspace_id in counts.values():
             total = totals.setdefault(workspace_id, [0, 0])
             total[0] += unread
             total[1] += addressed
@@ -628,13 +645,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         def item(row):
             title, truncated = _prefix(row["title_prefix"])
             unread, addressed = totals.get(row["id"], (0, 0))
+            # The part of them in its open Build topics (item 297), which the outline shows on the outcome's row, since
+            # the right rail, not the outline, lists those topics.
+            build = self._build_counts(counts, self._open_build_topics(db, row["id"]))
             # Where the outcome stands for this reader (item 86, docs/outcome-light.md).
             facts = self._kind_facts(db, row)
             # Its conversation, so a press on it can open that (null for one made before version 28 and not yet started).
             conversation = self._conversation_of(db, row["id"])
             return {"id": row["id"], "owner_id": row["owner_id"], "title": title, "conversation_id": conversation["id"] if conversation else None,
                     "title_truncated": truncated, "version": row["version"],
-                    "unread": unread, "addressed": addressed, "kind": facts["kind"],
+                    "unread": unread, "addressed": addressed, "build": build, "kind": facts["kind"],
                     "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "light": self._outcome_stands(db, actor, row)["light"]}
         # The person's own order of their outcomes, on every page (outline_order.py).
@@ -768,11 +788,16 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         limit = args.get("limit", LIMITS["page_default"])
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= LIMITS["page_max"]:
             raise Refusal("INVALID_ARGUMENT", "Invalid page size")
-        archived, done = args.get("archived", False), args.get("done", False)
-        if not isinstance(archived, bool) or not isinstance(done, bool):
-            raise Refusal("INVALID_ARGUMENT", "Archived and done are true or false")
+        archived, done, build = args.get("archived", False), args.get("done", False), args.get("build")
+        if not isinstance(archived, bool) or not isinstance(done, bool) or not isinstance(build, (bool, type(None))):
+            raise Refusal("INVALID_ARGUMENT", "Archived, done and build are true or false")
         if archived and done:
             raise Refusal("INVALID_ARGUMENT", "Archived topics are listed together, done or not; ask for archived alone")
+        if build is not None and (archived or done):
+            raise Refusal("INVALID_ARGUMENT", "Build topics are listed apart only among the open topics; a done or archived one is in its own list")
+        # The outcome's Build topics (item 297): build true lists only them among the open topics, build false the rest.
+        builds = self._build_topics(db, workspace["id"])
+        apart = "" if build is None else " AND t.id %sIN (SELECT value FROM json_each(?))" % ("" if build else "NOT ")
         # An empty cursor, as for the other lists, is the start.
         after = order_position(args["cursor"]) if args.get("cursor", "") != "" else None
         rows = []
@@ -781,18 +806,45 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
                 continue
             keyset = after is not None and flag == after[0]
             # latest_seq is the sequence of the topic's newest message, read through its one-row summary.
-            rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order "
-                               "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
+            rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order " + _TOPIC_SUMMARY +
                                "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (
                                    # The open list leaves out the conversation, which has its own row; it is
                                    # never Done or archived unless its outcome is reached, and then it is listed there.
-                                   " AND t.kind='topic'" if not archived and not flag else "") + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
+                                   " AND t.kind='topic'" if not archived and not flag else "") + apart + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
                                " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?",
-                               (workspace["id"], int(archived), flag) + (after[1:] if keyset else ()) + (limit + 1 - len(rows),)).fetchall()
+                               (workspace["id"], int(archived), flag) + ((json.dumps(sorted(builds)),) if apart else ()) + (after[1:] if keyset else ())
+                               + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
                 break
+        items = self._topic_items(db, actor, rows[:limit], builds)
+        last = items[-1] if items else None
+        # How many topics the folded lists hold, each counted in its own stretch of the index.
+        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",
+                                     (workspace["id"],)).fetchone()[0],
+                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
+                                         (workspace["id"],)).fetchone()[0]}
+        answer = {"instance_id": self.instance_id, "items": items, "groups": groups,
+                  "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,
+                  # The person's own order of this outcome's topics, on every page (outline_order.py).
+                  "order": self._outline_order(db, actor, workspace["id"]),
+                  "relevant_versions": {"workspace": workspace["version"]}}
+        if build:
+            # What all the open Build topics hold for the reader, not only this page's, for the count the right rail's Pipeline shows.
+            open_builds = self._open_build_topics(db, workspace["id"])
+            answer["builds"] = self._build_counts(self._unread(db, actor, topics=sorted(open_builds)), open_builds)
+            # The ones holding a piece under way, whatever page they fall on, so each row of the right rail's Now carries its marks.
+            building = sorted(self._building_topics(db, workspace["id"]))
+            answer["building"] = self._topic_items(db, actor, db.execute(
+                "SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t " + _TOPIC_SUMMARY +
+                "WHERE t.id IN (SELECT value FROM json_each(?)) ORDER BY t.activity_ms DESC,t.id DESC",
+                (json.dumps(building),)).fetchall(), builds) if building else []
+        return answer
+
+    def _topic_items(self, db, actor, rows, builds):
+        """A topic list's items as every list gives them: each with the reader's unread count, where it stands, its work
+        and whether it is a Build topic (builds, item 297)."""
         # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
-        items = [redact_topic(db, actor, row) for row in rows[:limit]]
+        items = [redact_topic(db, actor, row) for row in rows]
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
         waits = self._waits_by_topic(db, [item["id"] for item in items])
         work = work_by_topic(db, waits, actor)
@@ -801,14 +853,5 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
             item["archived"] = bool(item["archived"])
             item["waiting_on"], item["asks"] = waits[item["id"]]
             item["work"] = work[item["id"]]
-        last = items[-1] if items else None
-        # How many topics the folded lists hold, each counted in its own stretch of the index.
-        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",
-                                     (workspace["id"],)).fetchone()[0],
-                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
-                                         (workspace["id"],)).fetchone()[0]}
-        return {"instance_id": self.instance_id, "items": items, "groups": groups,
-                "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,
-                # The person's own order of this outcome's topics, on every page (outline_order.py).
-                "order": self._outline_order(db, actor, workspace["id"]),
-                "relevant_versions": {"workspace": workspace["version"]}}
+            item["build"] = item["id"] in builds
+        return items

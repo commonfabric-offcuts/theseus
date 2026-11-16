@@ -319,7 +319,7 @@ returns:
 | `runner` | the `wakes` view's runner light (`live`, `state`, `reason`, `since_ms`), plus `why` (an ended runner's verb, "was killed", or a pause's cause, "an operator paused it"), `started_ms` (when the current or last run took the role), `resumed_because` (`cleanup_confirmed` when the supervisor resumed a cleanup pause), and `prior`: `{state, reason, ended_ms, why}`, how the run before it ended (`stopped`, `exited`, `paused` or `unrenewed`), from `runner_prior`. A pause records `ended_ms`, so `since_ms` says since when it has been paused |
 | `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why, ask_app_open}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
 | `failing_after` | the number of attempts in a row that did not get through before an agent is said to be failing (3) |
-| `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
+| `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts; `null` when the record keeps no release check's counts, as a release from a merged train does), and `train` (for a release deployed from a merged train, docs/tools.md "A merged train": its `kind`, `ordinary` or `judged-first`, and `judgment`, `pending` until its hosted judgment is attached or `judged`, with `succeeded` and `total` counting its runs and checks whose conclusion is success; `null` for any other release), or `null` |
 | `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` and `os.cpu_count()` when the view is read; never on a timer. Either that could not be read is `null`, never left out, and the page and the command line say it could not be read |
 | `schema_version`, `read_ms`, `commit_seq` | the database version, when the view was read, and the commit it was read at |
 
@@ -355,7 +355,10 @@ above its core count (never when either could not be read). With nothing
 wrong it says so in one line.
 
 Below, one line each, opening in place: the agent runner, the server, every
-agent, the Mac, and the latest release. The page reads the view again on every
+agent, the Mac, and the latest release. The latest release says its release
+check's counts passed only when its record keeps them; a release from a merged
+train says no release check ran here, and says its hosted judgment: still
+pending, or how many of its runs and checks succeeded. The page reads the view again on every
 commit the live feed announces (a wake's settlement is a commit), and repaints
 at once when the feed drops or comes back. When the feed comes back with a
 newer commit than its answer, it says at the top that it is reading again,

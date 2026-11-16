@@ -28,16 +28,64 @@ triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
 while something in them is unread, and Done (N) and Archived (N) below.
-Each outcome ends with + New topic.
+
+- **Pencils.** A pencil means "new", the same glyph as New message and a new
+  Notebook page (item 305). A quiet pencil beside an outcome's name starts a
+  new topic there: a press opens the New topic title line under the row,
+  folded or open, and Return starts the topic and opens it (docs/openings.md,
+  "Client behavior"). The press opens and folds nothing, and the page stays.
+  The pencil beside the Outcomes heading is New outcome: a press opens its
+  title line under the heading. On a laptop a pencil shows while the pointer
+  is on its row (or the heading) or the keys are on that row or on the pencil,
+  and while its title line is open; on a phone's width, or wherever nothing
+  hovers, every pencil shows. Each is 44px to press, named ("New topic in …",
+  "New outcome"), with its tooltip. There is no + New topic row: the page's
+  own New topic, pulled into the outline under the outcome being read, stays
+  out of sight there, and stays on the outcome page and the pages with the
+  side rail. Each title line has four states, at a phone's width as on a
+  laptop: open and empty; refused, when Return finds no title ("Type the
+  topic's title, then press Return."); busy, "Starting…" while its command is
+  on its way, when a second Return sends nothing more; and refused by the
+  server, in the server's words with the title kept as typed for Return
+  again. In every one the line sits under its row or heading, clear of it
+  and of its pencil, inside the rail or the open drawer, and Escape closes
+  it and gives the pencil the keys.
+
+An outcome's Build topics show once, in the right rail (item 297). On an
+outcome whose pipeline is on, a topic some piece is built in (a release's
+among them) is a Build topic, and the outline lists it not: it is a row of the
+right rail's Pipeline section instead, from when the piece starts until the
+topic is Done, when it folds into the outline's Done (N) as any topic does. An
+archived one is under Archived (N). Reopened, it is the right rail's again.
+Core says which topics they are (`workspace_topics`, `build`;
+docs/topic-list.md), so the outline asks for its topics without them and the
+right rail for them alone. While the pipeline is off, or on an outcome with
+none, no topic is a Build topic and the outline lists every topic as before.
+The topic being read is a Build topic when Core says so, and is then marked in
+the right rail, not the outline. Turning the pipeline on or off, or a topic's
+first piece, moves that topic's version (docs/topic-list.md), so the page
+reading it reads it again and it moves between the outline and the right rail
+at once, never in neither and never in both. Done decides: a topic marked Done
+while its piece is still under way is in the outline's Done (N), and not in the
+right rail's Now. Pages that keep the side rail they had (the
+outcome's own page, its pipeline) list every topic, since they have no right
+rail.
 
 - **Counts.** A folded outcome counts everything new inside it, and what was
-  sent to the reader by name. An open outcome counts only its Conversation,
-  because each topic under it shows its own count. Both counts come from the
-  `workspaces` and `conversation` views and change as the live feed
-  announces each commit.
+  sent to the reader by name. An open outcome counts what has no row under
+  it: its Conversation, and its Build topics, which the right rail lists in
+  place of the outline. Each topic under it shows its own count. A screen
+  reader hears where the count is ("in its Conversation and its Build
+  topics"). The counts come from the `workspaces` view (its `build` part
+  counts the open Build topics apart, docs/workspaces-query.md) and the
+  `conversation` view, and change as the live feed announces each commit. A
+  press on the outcome's row opens its Conversation, beside the right rail
+  that lists those Build topics with their counts; on a phone and at middle
+  widths "Pipeline & pages" carries their count to it.
 - **Chips.** "N new" and "N waiting on you" at the top add up every outcome
   listed. Pressing one shows only the outcomes, and in them only the topics,
-  that hold what it counts. Pressing it again shows everything.
+  that hold what it counts; what is new in an outcome's Build topics is on
+  its row, as above. Pressing it again shows everything.
 - **Open and folded.** The outline tidies itself. Outcomes are folded, with
   their counts and Waiting on you rolled up into their rows, but for the one
   being read, whose topics show. Arriving anywhere, by a press on a row,
@@ -56,9 +104,14 @@ Each outcome ends with + New topic.
   order. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
-  the messages (→ on an open outcome goes straight there, as on a topic), and
+  the messages: → on a folded outcome opens it and shows its topics, the next
+  lands on its pencil (ringed), and the next goes on into the messages; Return
+  on the pencil opens the New topic line. ↑ from the first outcome lands on
+  the Outcomes heading's pencil, where Return opens the New outcome line.
   ⌘Return starts a new message in the row's topic or the outcome's
-  Conversation. A "Keys" line under the outline lists them in plain words.
+  Conversation. A click or a tap on a row opens it as Return does and leaves
+  the keys on it, wearing their ring (item 462). A "Keys" line under the
+  outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys
   select (docs/interaction.md, "What the keys select comes into view"), in the
   rail's own scrolling, never the page's under it.
@@ -70,12 +123,28 @@ Each outcome ends with + New topic.
   pressed, and its guard, its paging and its live updates are the page's own.
 
 The outline lists no Notebook (item 464): under the outcome being read come
-its topics and New topic, and then the next outcome, for the pointer and the
+its pencil and its topics, and then the next outcome, for the pointer and the
 keys alike. The outcome's Notebook pages are in the right rail's Notebook
 section, which has its own pencil, and on the outcome's own page.
 
 On a phone the outline is a drawer behind "☰ Outcomes", which carries the
-total count and the light. A line under the header says what is new in other
+total count and the light. It opens on the row the keys or a tap chose last
+there, ringed, while that is the person's last choice; after a move begun
+elsewhere (back, forward, a link in the page, the right rail), or before any
+choice, it opens on the place being read, with no ring.
+In the header's row the outcome's name gives up
+its room first, down to none, and its place then costs nothing beyond the one
+gap between the pills, so "☰ Outcomes" and "Pipeline & pages" share the first
+line whenever the two pills and one gap fit the row: at 375 and 390 in every
+state, and at 320 with nothing new, with the light alone, with a count, or
+with a count of two digits and nothing waiting. The name sits between them,
+its words a gap from each pill. It is clipped only when its words are longer
+than the room left there (about 37 to 102px at 375 and 390, less at 320); a
+short name shows whole. Where the two pills and one gap do not fit, at 320
+with the light and a count of one digit or two, "Pipeline & pages" goes
+under, on the row's second line, whole and inside the screen. Nothing scrolls
+sideways: at every width and in every state, no part of the page ends past
+the screen's right edge. A line under the header says what is new in other
 outcomes and what waits there, and tapping it opens the drawer.
 
 ## The right rail
@@ -91,7 +160,28 @@ says so in one quiet line.
   A press lands on the message, opening its stack; Unstar beside each takes
   the star off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
-  from the `pipeline` view.
+  from the `pipeline` view, and the outcome's Build topics, each once: under
+  Now each topic a piece is being built in, one row for it however many
+  pieces it holds, its row its topic's (Core names these topics on every page,
+  `building`, so however many Build topics there are, each carries its marks);
+  then Ready for review, the Build topics that are, until someone marks them
+  Done; then Other Build topics (a piece set aside, finished or held, a topic
+  reopened). Each group is in the reader's own order of the outcome's topics
+  where they have placed them with ⌘↑ and ⌘↓, as the outline is
+  (docs/outline-order.md), and Core's otherwise. Each row
+  carries what the outline's row would: the unread count, marked when part of
+  it was sent to the reader by name, where it stands (Waiting on you, Ready
+  for review…), the work ring, and the mark of the topic being read; one that
+  waits on the reader opens at the question, as in the outline. The Build
+  topics show on a topic as on its Conversation, since they stand in for the
+  outline's rows; Live and Next are the outcome's alone. Its heading says
+  how many messages in all the Build topics are new to the reader ("1 in Now
+  · 3 new", from `workspace_topics`' `builds`), so a folded section still
+  shows it. It lists 20 Build topics, and More topics brings 20 more; Return
+  on More topics hands the keys to the first topic it brought. The keys reach
+  each row like any other in the rail, and Return on one opens its topic in
+  place with the keys staying on its row. Below 1181px, "Pipeline & pages"
+  carries the same count.
 - **Waiting for…** is the Now and Next items the reader raised, at their
   stage, and the reader's Conversation posts nobody has taken up yet.
 - **Notebook pages** come from `memory_items`: the topic's own pages on a
@@ -118,7 +208,12 @@ page can no longer read is not read here either, and what the rail showed and
 kept of it goes as the page hides the topic's messages. It shows beside the page at 1181px and wider, as a panel from the
 right between 761px and 1180px, and as a sheet from the bottom on a phone.
 Below 1181px it opens from "Pipeline & pages" in the header, and Escape or a
-tap on the dimmed page closes it. While it is open the page and the outline
+tap on the dimmed page closes it. Beside it the outcome's name gives way
+first; on a phone too narrow for both header buttons with their counts (320px,
+with new messages in Build topics), "Pipeline & pages" goes to a line of its
+own, inside the screen. At 320, 375 and 390px, with a count of one or two
+digits on either, nothing in the header runs past the page's edge, in Chrome's
+engine and Safari's. While it is open the page and the outline
 under it take no keys, focus or presses, as under the outline's drawer. Its
 arrows open and fold as the outline's do, without ⌘: → opens a folded
 section or goes to its first row, ← folds an open one or goes from a row to
@@ -143,24 +238,43 @@ between two feed pages (topics and Conversations) goes like this:
 4. The body's parts go back to how `index.html` drew them. The outline, the
    right rail and the drawer's backdrop stay as the same elements. The rail
    that holds the outline is never taken out of the page, so it keeps its
-   scroll and its focus. The retired run keeps finding its own elements by
-   id, so work it still had under way lands there and never on the new page.
+   scroll and its focus. The logo block above the outline is put back as it
+   reads, the guide's ? included until the new run puts its own in its place,
+   so the rail never grows shorter during the move: scrolled near its end, it
+   would otherwise be pulled up to that end and carried past where it was.
+   The retired run keeps finding its own elements by id, so work it still had
+   under way lands there and never on the new page.
 5. A fresh run of `app.mjs` (`app.mjs?place=N`) reads and draws the new place
    as a full load would: its live feed, its read tracking and its New line are
    a new page's.
 
 Where the focus goes follows how the move began. Return on a row of the
 outline or the right rail keeps the keys in that rail, on the row drawn for
-the place reached. Any other move (a press or a tap on a row, a link in the
-page, back or forward) lands as a load does: as the move begins, the rail
-lets go of the focus, and once the run is up it is on the page's heading
-(`#main h1`, focused with no ring), unless the page has put it somewhere
-itself, such as the Reader on a message's link. Otherwise the row pressed
-would keep the focus, and the next key, even one that scrolls, would ring
-it. The shell tells the two apart by the last thing the person did, a press
-or a key, and by whether the focus was in a rail. A press on a row whose
-move goes nowhere, the place already being read or a move the guard refuses,
-lands on the heading too (`shell.stayed`). ⌘Return on another place's row
+the place reached. A click or a tap on a row of the outline does the same
+(item 462): before the row's own act runs, the outline's tree selects the row
+as the keys would (`web/key-tree.mjs`, `selectOnPress`), so the page opens
+with the keys on the row, which wears their ring, and ↑ and ↓ go on from it
+and → into the messages. A press on a control inside a row keeps that
+control's own way, and what a row opens itself, such as a pencil's title
+line or the Reader on a waiting question, has the focus as after Return on
+the row. On a phone the drawer closes as the page moves and shows none of its
+rows then, so a tap there lands as a load does; the drawer opens again on the
+row tapped, ringed, until a move begun elsewhere (back, forward, a link in the
+page) opens it on the place being read instead, with no ring (the shell tells
+what it keeps where each move began, `leaving`). A row the outline or the
+right rail draws again takes the focus back wearing the ring the row that
+went wore: a press in the right rail rings nothing, nor once its section draws
+again (an Unstar, say). Any other move (a press or a tap on a row of the right
+rail, a link in the page, back or forward) lands as a load does: as the move
+begins, the rail lets go of the focus, and once the run is up it is on the
+page's heading (`#main h1`, focused with no ring), unless the page has put it
+somewhere itself, such as the Reader on a message's link. Otherwise the row
+pressed would keep the focus, and the next key, even one that scrolls, would
+ring it. The shell tells these apart by the last thing the person did, a
+press or a key, by where a press was, and by whether the focus was in a
+rail. A press on a row whose move goes nowhere, the place already being read
+or a move the guard refuses, keeps the keys on the row in the outline, and
+lands on the heading from the right rail (`shell.stayed`). ⌘Return on another place's row
 moves to it as Return does, and once its run is up opens its New message box
 (`shell.write`).
 

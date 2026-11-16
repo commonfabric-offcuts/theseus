@@ -77,7 +77,10 @@ the instance-wide message sequence that `topic_messages` pages by, which
 increases within each topic but is not contiguous there, so a gap is not a
 missed message) and the topic's title prefix (as
 `topic: {id, title, title_truncated}`, at most 1024 UTF-8 bytes), so an inbox
-line or a wake notice can name the place without another read. The `delivery`
+line or a wake notice can name the place without another read. A pending
+delivery of a reply to the agent that names its dossier, which nobody has
+named, also carries `name_it: {root_id, name_revision}`, the mint it is to
+send ([reply-stacks.md](reply-stacks.md#minted-names-479)). The `delivery`
 view (`args: {delivery_id}`) returns one of the actor's own deliveries as
 `{item}` in the same shape, pending or not; it is how `watch` names a
 delivery it learns of from a change. It is readable only while the message
@@ -248,11 +251,71 @@ verb ends with `ATTACHMENT_NOT_SENT`, naming nothing to retry.
 
 ## Team setup
 
-`bin/aim-next-admin add-actor` registers a person or agent. Its profile comes
-from `profile.write_profile`. An outcome's owner or coordinator adds members with
+An outcome's owner or coordinator invites a new agent from the outcome's page
+(below). `bin/aim-next-admin add-actor` still registers a person or agent by
+hand, and its profile then comes from `profile.write_profile`. An outcome's owner or coordinator adds members with
 `workspace.member_set`; the coordinator organises the outcome as the owner
 does, and only the owner hands it to a member with
 `workspace.owner_set` (`aim-next owner OUTCOME ACTOR`). A Codex agent gets a route in the runner's map, which
 wakes it through the Codex broker. An agent without a broker, such as a
 Claude Code seat, runs `watch` under its own monitor, or `watch --once` as
 its loop; [agent-guide.md](agent-guide.md) is the guide for working as one.
+
+### Inviting an agent
+
+The Team panel on an outcome's page offers "+ Invite agent" to whoever
+organises the outcome (its owner or coordinator). It opens one name line and
+two chips, Claude Code (to start with) and Codex; Return invites. Core takes
+the invitation as one act, `workspace.agent_invite`:
+
+- `target`: `{workspace_id}`. `expected`: `{workspace_revision}` (required).
+  `args`: `{name, harness}`, where `harness` is `codex` or `claude-code`.
+- Only the outcome's owner or its coordinator may take it, whatever a page
+  shows: anyone else, a member too, is refused `FORBIDDEN` ("Only the
+  outcome's owner or its coordinator can invite an agent to it.").
+- The agent's ID comes from its name: its ASCII letters and digits, lower
+  case, in words joined by hyphens ("Release scribe" is `release-scribe`).
+  The name is kept with its spaces collapsed. A name that has no letter or
+  digit for an ID is refused `NAME_UNUSABLE`, an empty one `NAME_REQUIRED`,
+  and one longer than 60 characters `NAME_TOO_LONG`.
+- A name or ID someone already has (any actor, ignoring case) is refused
+  `NAME_TAKEN`, saying a free name to choose instead ("There is already
+  someone called Release scribe here. Choose another name, such as Release
+  scribe 2."). The page keeps the name, selected, to be changed in place.
+- It registers the agent (kind `agent`, enabled) and adds it to the team in
+  the same transaction, as `workspace.member_set` would: the outcome's
+  version advances and its change keys are written, and the agent is not one
+  of the conversation's people unless it is made coordinator. The result is
+  `{workspace_id, title, version, harness, agent: {id, name, kind}}`, so the
+  recorded receipt keeps which program it runs in.
+
+The server, once Core has recorded the act, writes the agent's sign-in file
+(its v2 profile, `profile.write_profile`) as `ID.profile.json` in the folder
+of the server's own profile, created with mode 0600 and never overwriting
+anything (`aim_next/invite.py`). It adds `sign_in` to the committed receipt:
+`{written: true, path, prompt}`, or `{written: false, path, message}` when the
+file could not be written. The page shows neither the file nor anything in
+it, only its path, in the prompt to paste into the agent: who it is (its name,
+ID and outcome), the program it runs in, where its sign-in file is and the
+command that uses it, what that program must allow (a Codex sandbox must let
+the CLI write in the instance's folder and the agent's outbox), and to read
+the agent guide ([agent-guide.md](agent-guide.md)) before waiting for work
+with `watch --once`. A copy glyph puts the prompt on the clipboard; where the
+browser refuses, the page says so and selects the prompt.
+
+- A refused invitation writes no file.
+- A file already in the new agent's place that binds anyone else is never
+  overwritten or adopted: the server refuses before asking Core,
+  unrecorded, `SIGN_IN_TAKEN`. A server started without a sign-in folder
+  refuses every invitation, `NO_SIGN_IN_FOLDER`.
+- An answer that never came keeps the exact request, and the next Return
+  sends it again; so does Try again after a file that could not be written.
+  Core answers the same operation with its recorded receipt, so nothing is
+  registered twice, and the server writes the file that receipt names (a
+  file already there for that agent is kept as it is).
+- The page asks again at the revision Core names, as a new request, when
+  someone else changed the team at the same moment.
+
+The agent still needs a way to be woken: a Claude Code agent runs
+`watch --once` as its loop, and a Codex agent can be given a route by the
+operator ([codex-hosting.md](codex-hosting.md)).

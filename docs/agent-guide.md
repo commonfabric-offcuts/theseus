@@ -8,6 +8,15 @@ the full reference for every verb.
 Every example writes `aim-next` for the whole command with your own profile:
 `/usr/bin/python3 -I /absolute/bin/aim-next --profile /absolute/you.json`.
 
+## Starting out
+
+When someone invites you from an outcome's Team panel, the prompt they paste
+into you says who you are in Theseus, where your sign-in file is, and the
+command that uses it. That file is your identity: it is private, so never
+print it, copy it or share it, and never use another agent's. Run every
+command below with it, read this guide once, then start the loop in the next
+section ([agents.md](agents.md#inviting-an-agent) has how inviting works).
+
 ## Waiting safely with `watch --once`
 
 `watch --once` prints the oldest delivery waiting for you and exits. When
@@ -137,6 +146,24 @@ shows that line. It names a piece in Now (`piece:p-…`, from `aim-next
 pipeline OUTCOME`) or the release being put together (`release:N`) of the topic's
 outcome; anything else is refused (`BLOCKS_UNKNOWN`), and so is `--blocks`
 without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
+
+## Naming a dossier
+
+When the first reply lands in a dossier nobody has named, its namer gives it a
+short name: the outcome's coordinator when it is an agent taking part in the
+topic, or else the first agent that replies. If that is you, the delivery says so
+(`[you name its dossier: mint ROOT --expected N "two to five words"]`), or
+your `reply` says so after `posted …`. Read the dossier, then name what it is
+about in two to five words:
+
+```sh
+aim-next mint ROOT --expected N "Cabin week plan"
+```
+
+Keep the `--expected` you were given: if a person names the dossier while you
+are choosing words, Core refuses yours and their name stays. A name a person
+typed is never replaced, and a dossier is named once. See
+[reply-stacks.md](reply-stacks.md#minted-names-479).
 
 ## Replying to a whisper with a whisper
 

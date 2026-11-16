@@ -89,9 +89,9 @@ The thumb's row then holds `value: "yes"` rather than `"up"`, readers see
 `answered: true` on that thumb, and the result of `message.thumb` carries
 `answered`, also when it changes nothing (a 👍 sent again reports whether
 the one already there answered). Taking that 👍 back makes the ask wait on
-them again, unless the person answered the ask meanwhile (in a conversation
-a reply to that ask, in a topic any writing there; a whisper of theirs counts
-when it goes to whoever asked) or
+them again, unless the person answered the ask meanwhile (a reply to that
+ask, on the record or by whisper to whoever asked, and in a topic any writing
+there on the record; a whisper replying to anything else answers nothing) or
 the wait could no longer stand (they no longer read the topic, its outcome
 was reached, or a conversation replaced it). A wait put back is as it would
 be had the 👍 never been given: archived when its topic is, ordered on the
@@ -113,6 +113,12 @@ Nothing else a thumb is on changes a wait:
   keeps waiting, with its ✅ and 🚫 in view, until one of them is pressed;
 - a 👍 on an ask a record answers: a target wording's or an owner-gated
   stage's (`outcome_asks.record_ask`), which its decision settles.
+
+A wait here is what a topic waits on someone for. An agent's 👍 on a
+person's message is still a reply to it for the three dots that show on it
+until the first reply from anyone else (item 475,
+[topic-reading.md](topic-reading.md#waiting-for-a-reply-475)); a person's 👍
+is not.
 
 A 👍 given before this rule (value `up`) answered nothing then, and taking it
 back puts nothing back; a 👍 given again answers. No schema step: a thumb's
