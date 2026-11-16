@@ -121,7 +121,10 @@ class WebBuildTests(unittest.TestCase):
         # web/index.html names its entry exactly as the build rewrites it, once: were it written otherwise, its
         # modules would be served outside the build and a move in place refused on every page.
         self.assertEqual((REPO_WEB / "index.html").read_bytes().count(web_build.ENTRY), 1)
-        build = web_build.load(REPO_WEB)
+        try:
+            build = web_build.load(REPO_WEB)
+        except ValueError as refusal:
+            self.fail("the real page is refused: %s" % refusal)
         self.assertIn(("/b/%s/app.mjs" % build.stamp).encode(), build.index)
         boot = b"<script>" + (REPO_WEB / "boot.js").read_bytes() + b"</script>"
         self.assertIn(boot, build.index, "the real boot, inline")
