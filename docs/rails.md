@@ -83,6 +83,18 @@ elsewhere (back, forward, a link in the page, the right rail), or before any
 choice, it opens on the place being read, with no ring. A line under the header says what is new in other
 outcomes and what waits there, and tapping it opens the drawer.
 
+The page's notices sit under the logo block at the top of the outline, as one
+group (`index.html` `#page-notices`): the status line (a start that failed, an
+act on a card not settled), the wakes', the updates' and why a move stayed.
+At a laptop's width the rail keeps its scroll from page to page, so the group
+is pinned at the top of the rail while any of them shows, on the page's own
+paper; the notices stack one under the other there, and nothing scrolled under
+them draws through. In the phone's drawer they stack at its top the same way
+(`outcome_rail_native.mjs`, "rail the page's notices stack and never draw over
+each other …", item 547). A reply whose send is not confirmed holds no move
+(`docs/replies-in-doubt.md`; "rail a reply whose send is not confirmed holds no
+move …").
+
 ## The right rail
 
 The right rail has folding sections: Starred, Pipeline, Waiting for…,

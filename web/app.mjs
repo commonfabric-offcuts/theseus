@@ -347,8 +347,7 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 // title; the topic's own goes in the composer while the composer shows, and
 // under the title until then; the Reader shows its writing's as well. Whatever
 // told the page of a change, all are drawn again from what the registry holds
-// now, so no editor an event hands in draws or erases one. Returns what it
-// drew, which is what the departure guard names.
+// now, so no editor an event hands in draws or erases one.
 function paintReview() {
   const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
   const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
@@ -360,7 +359,6 @@ function paintReview() {
   reviewControl($('inline-pending'), entries.find(inComposer));
   const reading = registry?.current?.editors.reply?.key;
   reviewControl($('pending-submissions'), entries.find(entry => entry.editor.key === reading));
-  return entries;
 }
 function reviewControl(host, entry) {
   if (!entry) { host.replaceChildren(); return; }
@@ -875,7 +873,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
-    hold: paint => keepListAnchor(paint), press: pressHold, status, reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
+    hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => freshness?.invalidate('acts', 0), reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => paintReaderStar() });
   return stackFeed;
 }
@@ -2073,7 +2071,7 @@ async function initialize() {
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
-  topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
+  topicNavigation = new TopicNavigation({ registry, current: route,
     navigateTarget: target => { marks.leave(); if (!shell.go(target)) shell.leave(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.
@@ -2899,7 +2897,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stopDays(); });
+window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).

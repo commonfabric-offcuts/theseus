@@ -2528,4 +2528,122 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await walk('name:rail-nb-o', 'on the Conversation');
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  // Item 547: requests the check picks, held at the network to drop, let through or answer: in Chrome with the
+  // harness's interception, in Safari's engine with Playwright's routing. before: held before Core sees them.
+  const network547 = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    if (!p.pw) {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); } };
+    }
+    const held = []; let test = null;
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, held: () => held,
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); } };
+  };
+  // The rail's notices as drawn: each one shown, its box, and whether it is what shows at its own middle.
+  const notices547 = p => p.evaluate(`(()=>{const r=document.getElementById('rail'),rb=r.getBoundingClientRect();
+    return {scroll:r.scrollTop,room:r.scrollHeight-r.clientHeight,overflow:document.documentElement.scrollWidth>innerWidth,
+      shown:['app-status','wakes-status','updates-status','topic-navigation-status'].map(id=>document.getElementById(id)).filter(n=>!n.hidden&&n.getClientRects().length).map(n=>{
+        const b=n.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+Math.min(b.height/2,12);
+        return {id:n.id,box:[b.left,b.top,b.right,b.bottom].map(Math.round),inRail:b.top>=rb.top-1&&b.bottom<=rb.bottom+1,ownMiddle:n.contains(document.elementFromPoint(x,y))}})}})()`);
+  const apart547 = (seen, at) => {
+    const boxes = seen.shown.map(item => item.box);
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const [a, b] = [boxes[i], boxes[j]];
+      assert.ok(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0], `${at}: ${seen.shown[i].id} and ${seen.shown[j].id} never draw over each other: ${JSON.stringify(seen)}`);
+    }
+    for (const item of seen.shown) assert.ok(item.ownMiddle, `${at}: nothing draws over ${item.id}: ${JSON.stringify(seen)}`);
+  };
+
+  await check('rail the page\'s notices stack and never draw over each other: an act not settled and why a move stayed, in the rail scrolled at a laptop\'s width and in the drawer at 320 375 and 390, light and dark', async () => {
+    const topic = 'rail-notices-t';
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Notices topic' }, ...Array.from({ length: 24 }, (_, k) => ({ id: `${topic}-${k}`, title: `Notices neighbour ${k + 1}` }))] });
+    const message = (await control({ method: 'agent_message', operation_id: topic + '-m', topic_id: topic, source: 'topic', sender: 'aim-core', addressees: [facts.actor], body: 'A card whose star is not settled.' })).result.message_id;
+    for (const [size, theme] of [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark'], ['w375', 'dark'], ['w320', 'light']]) {
+      const at = `${size} ${theme}`, laptop = size === 'laptop';
+      const p = await page('rail-notices-' + size + theme, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async q => {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await q.send('Emulation.setDeviceMetricsOverride', laptop ? { ...SIZES.laptop, height: 560 } : SIZES[size]);
+        if (SIZES[size].mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      } });
+      const card = `#messages .message-card[data-id="${message}"]`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)})) && Boolean(document.getElementById('inline-writing-body'))`), at + ': the card and the writing box are up');
+      const net = await network547(p), stars = payload => payload?.kind === 'message.star', sends = payload => payload?.kind === 'message.send';
+      net.hold(payload => stars(payload) || sends(payload));
+      // A star whose answer is lost, its next ask held: the status line says it is not settled.
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      const words = card + ' > .message-preview', star = card + ' > .message-author > .card-star';
+      if (laptop) await p.point(words, 'move'); else await tap(p, words);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(star)})?.getClientRects().length > 0`), at + ': the card is lit, with its star');
+      if (laptop) await p.point(star); else await tap(p, star);
+      await net.drop(await until(() => net.held().find(entry => stars(entry.payload)), at + ': the star reached Core; its answer is held'));
+      await until(() => net.held().find(entry => stars(entry.payload)), at + ': the page asks Core about the star again');
+      // A send held on its way: a move now waits, and the rail says why.
+      await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-writing-body'); else await tap(p, '#inline-writing-body');
+      await p.send('Input.insertText', { text: 'Sent while the page is asked to move' });
+      await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})");
+      if (laptop) await p.point('#inline-send'); else await tap(p, '#inline-send');
+      await until(() => net.held().find(entry => sends(entry.payload)), at + ': the send is on its way');
+      const row = `#outline a[data-topic-id="${topic}-23"]`;
+      if (!laptop) { await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, at + ': the drawer opens'); }
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+      if (laptop) await p.point(row); else await tap(p, row);
+      await until(() => p.evaluate("document.getElementById('topic-navigation-status').textContent.includes('Wait for the send to finish')"), at + ': the rail says why the page stays');
+      await until(async () => (await notices547(p)).shown.length === 2, at + ': both notices show');
+      // Scrolled down the rail (where a laptop pins its notices), and at its top.
+      for (const where of ['scrolled', 'top']) {
+        await p.evaluate(`(()=>{const r=document.getElementById('rail');r.scrollTop=${where === 'top' ? 0 : 'r.scrollHeight'}})()`);
+        await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+        const seen = await notices547(p);
+        if (where === 'scrolled') assert.ok(seen.room > 0 && seen.scroll > 0, `${at}: the rail is scrolled: ${JSON.stringify(seen)}`);
+        assert.deepEqual(seen.shown.map(item => item.id), ['app-status', 'topic-navigation-status'], `${at} ${where}: the status line, then why the move stayed`);
+        if (laptop || where === 'top') for (const item of seen.shown) assert.ok(item.inRail, `${at} ${where}: ${item.id} is in sight in the rail: ${JSON.stringify(seen)}`);
+        apart547(seen, `${at} ${where}`);
+        assert.equal(seen.overflow, false, `${at}: nothing scrolls sideways`);
+        await shot(p, `rail-notices-${size}-${theme}-${where}`);
+      }
+      net.hold(null);
+      for (const entry of [...net.held()]) await net.pass(entry);
+      await until(() => p.evaluate("document.getElementById('app-status').hidden"), at + ': once Core answers the star, the status line goes');
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('rail a reply whose send is not confirmed holds no move: it is kept through a reload, the page moves at the first press with nothing said, and its Review button is there on coming back', async () => {
+    const [topic, other] = ['rail-doubt-t', 'rail-doubt-u'];
+    await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Doubt topic' }, { id: other, title: 'Elsewhere topic' }] });
+    const p = await open('rail-doubt', '/?topic=' + topic);
+    await until(() => p.evaluate(`Boolean(document.querySelector('#outline a[data-topic-id="${other}"]')) && Boolean(document.getElementById('inline-writing-body'))`), 'the outline and the writing box are ready');
+    const net = await network547(p, true), sends = payload => payload?.kind === 'message.send';
+    net.hold(sends);
+    await p.evaluate("document.getElementById('inline-writing-body').scrollIntoView({block:'center'})"); await p.point('#inline-writing-body');
+    await p.send('Input.insertText', { text: 'A reply whose send is lost' });
+    await p.evaluate("document.getElementById('inline-send').scrollIntoView({block:'center'})"); await p.point('#inline-send');
+    // The send never reaches Core: nobody can say it went.
+    await net.drop(await until(() => net.held().find(entry => sends(entry.payload)), 'the send is on its way'));
+    const review = () => p.evaluate("[...document.querySelectorAll('#inline-pending button, #topic-pending button')].map(b=>b.textContent)");
+    await until(async () => (await review()).includes('Review 1 reply'), 'the reply is in doubt: its Review button shows');
+    net.hold(null);
+    await p.send('Page.reload');
+    await until(async () => (await placeOf(p)).ready && (await review()).includes('Review 1 reply'), 'after a reload the reply is still in doubt, and its Review button shows');
+    await p.point(`#outline a[data-topic-id="${other}"]`);
+    await arrived(p, '?topic=' + other, 'Elsewhere topic', 'the first press moves the page');
+    assert.equal(await p.evaluate("document.getElementById('topic-navigation-status').hidden"), true, 'nothing is said about leaving');
+    await p.evaluate('history.back()');
+    await arrived(p, '?topic=' + topic, 'Doubt topic', 'back');
+    await until(async () => (await review()).includes('Review 1 reply'), 'the reply is kept: its Review button is there on coming back');
+    const posted = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.some(item => item.body === 'A reply whose send is lost');
+    assert.equal(posted, false, 'and it was not sent');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 }

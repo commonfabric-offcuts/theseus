@@ -10,9 +10,11 @@
 /* The page's own topic list moves into the outline, under the outcome being read
    (outline-rail.mjs); until it does it waits out of sight. */
 [data-rails] #rail>#topic-navigation{display:none}
-/* The rail keeps its scroll from page to page, so the page's own notice (a start that failed, with
-   Reload this page) stays pinned at the top of it rather than scrolled out of sight. */
-@media(min-width:761px){[data-rails] #rail>#app-status:not([hidden]){position:sticky;top:0;z-index:3}}
+/* The rail keeps its scroll from page to page, so the page's notices (a start that failed, with
+   Reload this page; an act not settled; why a move stayed) stay pinned at the top of it rather than
+   scrolled out of sight: all of them as one group, stacked one under the other, on the page's own
+   paper, so no notice and no row scrolled under them draws through (item 547). */
+@media(min-width:761px){[data-rails] #rail>#page-notices:has(>:not([hidden])){display:flow-root;position:sticky;top:0;z-index:3;background:var(--paper)}}
 #outline[hidden],#things[hidden],.things-backdrop[hidden],#things-open,#outline-elsewhere{display:none}
 
 /* ---- The outline ---- */

@@ -34,25 +34,26 @@ test('registry unload protection follows active sends, not settled or historical
 });
 
 // Item 118: while a reply is on its way there is no Review button, so the
-// wait names none; once its send ends unanswered the button shows, and
-// leaving names it by its words.
-test('while a reply is on its way leaving waits and points at no Review button; once its send ends unanswered leaving names the button it shows', async () => {
+// wait names none. Item 547: once its send ends unanswered the button shows,
+// and leaving goes at once: nothing is sent or discarded, and the reply stays
+// in doubt for its button when the reader comes back.
+test('while a reply is on its way leaving waits and points at no Review button; once its send ends unanswered leaving goes at once and the reply stays in doubt', async () => {
   const f = guarded();
   f.editor.edit({ body: 'Exact send' });
   const item = f.editor.beginPrepare({ prepareOperationId: 'p', sendOperationId: 's', submissionId: 'sub' });
   f.session.sends.set(item.id, new Promise(() => {}));
   assert.equal(f.label(), null, 'no Review button while it goes');
   assert.equal(await f.leave(), 'Wait for the send to finish before changing topics.', 'leaving waits, and names no button');
+  assert.deepEqual(f.visits, [], 'and stays');
   f.session.sends.clear();
   assert.equal(f.label(), 'Review 1 reply', 'its send ended unanswered: it is in doubt');
-  const refusal = await f.leave();
-  assert.ok(refusal?.includes('Use “Review 1 reply” to check'), 'leaving names the button the page shows: ' + refusal);
-  assert.equal(await f.leave(), null, 'a second choice of the same topic leaves'); assert.deepEqual(f.visits, ['b']);
+  assert.equal(await f.leave(), null, 'the first choice leaves'); assert.deepEqual(f.visits, ['b']);
+  assert.deepEqual([f.label(), f.editor.submissions.map(each => [each.id, each.status])], ['Review 1 reply', [[item.id, item.status]]], 'nothing sent or discarded: still in doubt');
 });
 
-// Item 118: the button and the departure guard are one answer, so in every
-// state leaving asks exactly when a Review button shows, and names it.
-test('leaving asks for a second choice exactly when a Review button shows, and names it', async () => {
+// Item 547: in every state of the Review button, a reply in doubt or none,
+// leaving goes at the first choice; the button answers as before.
+test('leaving goes at once whatever the Review button shows, and the button keeps its answer', async () => {
   const held = { id: 'a', status: 'prepared', preparationConfirmed: true, prepareReceipt: { result: { seq: 7 } } };
   const states = [
     ['a reply confirmed here', [{ id: 'a', status: 'confirmed' }], complete, null],
@@ -73,8 +74,25 @@ test('leaving asks for a second choice exactly when a Review button shows, and n
   for (const [name, submissions, page, label] of states) {
     const f = guarded(page); f.editor.submissions = submissions;
     assert.equal(f.label(), label, name + ': the button');
-    const refusal = await f.leave();
-    if (label === null) { assert.equal(refusal, null, name + ': leaving goes at once'); assert.deepEqual(f.visits, ['b'], name); }
-    else { assert.ok(refusal?.includes(`Use “${label}” to check`), name + ': leaving names the button: ' + refusal); assert.deepEqual(f.visits, [], name); }
+    assert.equal(await f.leave(), null, name + ': leaving goes at once'); assert.deepEqual(f.visits, ['b'], name);
+    assert.equal(f.label(), label, name + ': and the button keeps its answer');
   }
+});
+
+// Item 547: a reply is settled by its own send, by id and receipt, never by
+// its words or its pictures. Two replies with the same words and the same
+// picture: the one the server lists as sent is settled, and the other stays
+// in doubt; a message in the topic with the same words settles neither.
+test('a reply in doubt is settled by its own id and receipt, never by matching words or attachments', () => {
+  const words = 'Same words twice', picture = [{ upload_id: 'u1', name: 'p.png' }];
+  const snapshot = { body: words, attachments: picture };
+  const f = guarded({ ...complete, items: [{ id: 'a', send_status: 'committed', body: words, attachments: picture }, { id: 'b', send_status: 'unknown', body: words, attachments: picture }], through: 9 });
+  f.editor.submissions = [{ id: 'a', status: 'prepared', preparationConfirmed: true, snapshot }, { id: 'b', status: 'prepared', preparationConfirmed: true, snapshot }];
+  assert.deepEqual([...f.registry.doubt(f.editor).ids], ['b'], 'the one listed as sent is settled; the other, word for word the same, is not');
+  const g = guarded({ ...complete, items: [{ id: 'c', send_status: 'committed', body: words, attachments: picture }], through: 9 });
+  g.editor.submissions = [{ id: 'b', status: 'prepared', preparationConfirmed: true, snapshot }];
+  assert.deepEqual([...g.registry.doubt(g.editor).ids], ['b'], 'another sent reply with the same words and picture settles nothing');
+  const h = guarded({ ...complete, items: [{ id: 'b', send_status: 'committed', body: 'other words' }], through: 9 });
+  h.editor.submissions = [{ id: 'b', status: 'prepared', preparationConfirmed: true, snapshot }];
+  assert.deepEqual([...h.registry.doubt(h.editor).ids], [], 'its own receipt settles it, whatever the words');
 });

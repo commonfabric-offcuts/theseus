@@ -31,9 +31,10 @@ function page() {
   rail.setAttribute('aria-label', 'Outcomes and topics');
   const brand = el('div', '', 'brand', rail), wordmark = el('a', '', 'wordmark', brand);
   el('span', 'instance-label', '', brand); el('button', 'notify', '', brand);
-  for (const id of ['app-status', 'wakes-status', 'updates-status']) el('div', id, 'notice', rail);
+  // The page's notices, one group (index.html #page-notices), then "← Outcomes".
+  const notices = el('div', 'page-notices', 'page-notices', rail);
+  for (const id of ['app-status', 'wakes-status', 'updates-status', 'topic-navigation-status']) el('div', id, 'notice', notices);
   const home = el('a', 'outcomes-home', '', rail); home.textContent = '← Outcomes';
-  el('div', 'topic-navigation-status', 'notice', rail);
   const outcomes = el('section', 'outcome-navigation', '', rail); el('h2', 'outcomes-heading', '', outcomes); el('button', 'new-outcome', '', outcomes);
   const topics = el('section', 'topic-navigation', '', rail); el('button', 'new-topic', '', topics); el('div', 'topics', '', topics);
   // Sections the conversation, pipeline and skills pieces add, as nodes in the rail.
@@ -56,7 +57,7 @@ test('inside an outcome the rail hides the outcomes list, says "This outcome", a
   // The outcome's Notebook is no section of the side rail (item 464): the right rail and the outcome's own page list it.
   assert.deepEqual(RAIL_ORDER, ['conversation', 'pipeline', 'topics', 'skills']);
   assert.deepEqual(ids(p.rail).filter(id => id !== 'outcome-navigation'),
-    ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home', 'topic-navigation-status', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation']);
+    ['brand', 'page-notices', 'outcomes-home', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation']);
   for (const control of [p.home, p.wordmark]) {
     assert.equal(typeof control.onclick, 'function', 'each opens the Outcomes home');
     let prevented = false;
@@ -72,7 +73,7 @@ test('the rail places only the sections it is given, and loads each one', async 
   const scope = new OutcomeScope({ workspaceId: 'w1', kind: 'opening', rail: p.rail, home: p.home, open() {},
     sections: [{ name: 'skills', node: p.skills, load: () => { loads.push('skills'); return true; } }, { name: 'topics', node: p.topics, load: () => { loads.push('topics'); return false; } }] });
   const at = id => ids(p.rail).indexOf(id);
-  assert.ok(at('topic-navigation-status') < at('topic-navigation') && at('topic-navigation') < at('skills-navigation'), 'topics, then skills, under "← Outcomes"');
+  assert.ok(at('outcomes-home') < at('topic-navigation') && at('topic-navigation') < at('skills-navigation'), 'topics, then skills, under "← Outcomes"');
   assert.equal(await scope.load(), false, 'a section that could not be read makes the load false');
   assert.deepEqual(loads.sort(), ['skills', 'topics']);
 });
@@ -238,10 +239,11 @@ test('the one logo block, then the page\'s notices, move to the top of the rail 
   let pressed = 0; notify.onclick = () => pressed++;
   p.rail.prepend(p.home);
   placeBrand(p.rail);
-  assert.deepEqual(ids(p.rail).slice(0, 5), ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home']);
+  assert.deepEqual(ids(p.rail).slice(0, 3), ['brand', 'page-notices', 'outcomes-home']);
+  assert.deepEqual(ids(p.byId.get('page-notices')), ['app-status', 'wakes-status', 'updates-status', 'topic-navigation-status'], 'the notices go as one group, in order');
   // The outcome's own page: "← Outcomes" heads main, then the block goes above it.
   p.main.prepend(p.home); placeBrand(p.main);
-  assert.deepEqual(ids(p.main).slice(0, 5), ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home']);
+  assert.deepEqual(ids(p.main).slice(0, 3), ['brand', 'page-notices', 'outcomes-home']);
   assert.equal(p.rail.querySelectorAll('.brand').length + p.main.querySelectorAll('.brand').length, 1, 'one block, moved, never copied');
   assert.equal(p.main.querySelector('#notify'), notify); assert.equal(p.main.querySelector('#app-status'), status);
   p.main.querySelector('#notify').onclick(); assert.equal(pressed, 1, 'its handlers still fire');

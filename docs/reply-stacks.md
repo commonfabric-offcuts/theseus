@@ -407,6 +407,38 @@ the next act is fenced on the revision the answer gave. When an answer changes
 what a stack shows, the page draws it again. A refusal reads the acts back and draws what Core holds. A screen reader hears each act said ("Moved up",
 "Joined to the stack above").
 
+### When an answer is lost
+
+An act whose answer does not say whether Core recorded it is not settled, and
+the page says so on its status line, by the act and the card it was made on,
+until Core answers that same request (`web/stack-feed.mjs`, item 547):
+
+- The connection dropped, or the answer could not be read: "Not known yet
+  whether folding “The card's first line” was saved: the connection was
+  interrupted. The page asks Theseus again." Theseus answered that it could not
+  confirm it (`REQUEST_UNCONFIRMED`): "… Theseus could not confirm it."
+- Theseus answered that it took nothing yet (its request lane busy, a busy
+  database or authority, a receipt to try again): "Folding “…” is not saved
+  yet: Theseus was busy. The page sends it again." A session the server
+  refused, as a restarted server does: "… Theseus restarted." None of these is
+  called a lost connection.
+
+The acts are read again the first time, so the card shows what Core holds
+meanwhile. The act is kept with its exact request, and once Theseus has
+answered anything since (a read, another command, a commit on the live feed;
+never a timer) it goes again under the same operation. Core answers an
+operation it recorded with what it recorded, and records one it never saw, so
+the act is made once. That answer settles it, and its words go; an ask that
+fails, or a read that fails, settles nothing and waits for the next answer.
+Each act not settled is said, in the order made, so settling one leaves the
+others said. The page's own acts (a stack dealt with as the reader's reply
+arrives) are settled the same way without a word.
+
+A refusal is said in words of its act: "Folding “…” was not saved: it changed
+on another tab or device. The card shows what Theseus holds." It goes at the
+reader's next act Core takes. The status line is left alone when something
+else has written on it since.
+
 ## The look
 
 `web/stack-look.css` is the only place where stacks get their look. It reads
@@ -526,6 +558,9 @@ dossier and out) and of a fold outside a dossier (in the feed and placed).
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |
 | the older stack case | `tests/topic_reading_native.mjs`, "reading replies gather into a stack …" |
+| an act whose answer is lost: said with its card until Core answers the same request again, then gone; made once; the page's own deal says nothing | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act whose answer is lost …" |
+| an act Theseus was too busy to take: said as busy, never as a lost connection, after the acts are read again; sent again under its operation | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks an act Theseus was too busy to take …" |
+| two acts not settled: each said; a failed read or ask clears neither; one answered leaves the other | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks two acts not settled …" |
 
 `tests/acts.json` names the break each act must catch.
 

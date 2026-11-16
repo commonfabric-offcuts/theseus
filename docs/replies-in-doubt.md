@@ -2,8 +2,10 @@
 
 A reply the person sent is in doubt while nobody can say it went: its send was
 not confirmed, or it was refused. The page shows a "Review N replies" button
-only then, and leaving a topic asks for a second choice only then. Both use one
-answer, `EditorRegistry.doubt(editor)` in `web/app-session.mjs`.
+only then, from one answer, `EditorRegistry.doubt(editor)` in
+`web/app-session.mjs`. A reply in doubt never holds the reader on the page: it
+is kept, in Core and on this device, through a reload and a move, and its
+button is there when the reader comes back.
 
 ## What Core answers
 
@@ -39,6 +41,11 @@ A reply prepared here but never seen by the server's read (its prepare answered
 no `seq`, or one above `through`) stays in doubt until Check confirmation
 answers for it.
 
+A reply is settled by its own ids alone: its submission id, the operation that
+sent it, and the receipt for that operation. Another reply with the same words
+or the same pictures settles nothing, and a reply's own receipt settles it
+whatever its words.
+
 ## Who uses it
 
 `EditorRegistry.inDoubt` is the one answer for a page: one entry for each
@@ -61,12 +68,12 @@ list cannot be read or changed through it.
 - The Review list lists the replies in doubt of the writing registered under
   the button's key, read again from the registry at every draw and every act
   (and keeps those it showed, so a reply checked as sent says so in place).
-- The departure guard asks the page for the buttons it draws now and words its
-  question with them: while a send is under way it waits; otherwise, while any
-  entry is there, it names each button by its words and leaves on a second
-  choice of the same topic with the same replies in doubt. Its rule and its
-  words are that same answer, so they name a button exactly when the page
-  shows one.
+- The departure guard (`web/topic-navigation.mjs`) waits while a send is under
+  way, and while writing or chosen pictures are not yet safe on this device or
+  in Theseus. A reply in doubt holds nothing: the first choice of a topic or an
+  outcome leaves, sending nothing and discarding nothing, and says nothing.
+  Asking every time made a loop of warnings the reader could only click
+  through, and its notice stayed over the rail (item 547).
 
 An open of a message's Reader dropped after its read (Escape, or another
 message chosen while the step keeps the writing in front) still keeps that

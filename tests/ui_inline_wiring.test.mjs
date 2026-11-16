@@ -3595,7 +3595,7 @@ test('on an outcome\'s own page the logo block heads the main column, then "← 
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   f.api.view = async name => name === 'workspace' ? { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: '' } } : { instance_id: 'fixture', items: [], next_cursor: null };
   await f.initialize(); await drain();
-  assert.deepEqual(f.get('main').children.slice(0, 5).map(child => child.id), ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home']);
+  assert.deepEqual(f.get('main').children.slice(0, 3).map(child => child.id), ['brand', 'page-notices', 'outcomes-home']);
   assert.equal(f.get('rail').hidden, true);
   let opened = false; await f.get('outcomes-home').onclick({ button: 0, preventDefault() { opened = true; } });
   assert.equal(opened, true, '"← Outcomes" opens the Outcomes home');
@@ -3681,7 +3681,7 @@ test('the version review closes on a press outside it, as Keep both for now does
 // The Review buttons are drawn from the registry alone: one for each
 // registered writing with a reply in doubt. The topic's own writing has its
 // button in the composer while the composer shows, loaded or failed, and under
-// the title until then; leaving names exactly the buttons drawn.
+// the title until then. Leaving goes at once, and the buttons stay (item 547).
 function doubtful(f, { composer = 'shown' } = {}) {
   f.registry.inline = null;
   f.registry.pending = () => ({ items: [{ id: 'from-phone', send_status: 'unknown' }], next_cursor: null, through: 1 });
@@ -3691,19 +3691,19 @@ function doubtful(f, { composer = 'shown' } = {}) {
 }
 const reviewLabels = el => el.children.flatMap(c => [c.textContent, ...reviewLabels(c)]).filter(t => /^Review/.test(t ?? ''));
 const leaving = f => f.owners().topicNavigation.openTarget({ kind: 'topic', id: 't2' }, 'Second').then(() => null, error => error.message);
-const named = words => [...(words ?? '').matchAll(/“(Review [^”]+)”/g)].map(m => m[1]);
 
-test('a topic composer that failed after registering shows its reply\'s Review button in the composer, and leaving names that button', async () => {
+test('a topic composer that failed after registering shows its reply\'s Review button in the composer, and leaving goes at once', async () => {
   const f = fixture(); doubtful(f);
   f.registry.initializeInline = async () => { throw Error('This device could not read its saved versions'); };
   await f.initialize();
   assert.match(f.get('inline-notice').textContent, /New message is unavailable/);
   assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the button is beside the failed composer');
   assert.deepEqual(reviewLabels(f.get('topic-pending')), [], 'and only there');
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names the button that is there');
+  assert.equal(await leaving(f), null, 'leaving goes at once, the reply in doubt kept');
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'and its button stays');
 });
 
-test('while the topic composer is still loading, its reply in doubt has its Review button under the title, then in the composer, and leaving names it', async () => {
+test('while the topic composer is still loading, its reply in doubt has its Review button under the title, then in the composer, and leaving goes at once', async () => {
   const f = fixture(); doubtful(f, { composer: 'loading' });
   const held = defer(), asked = defer();
   f.registry.initializeInline = () => { asked.resolve(); return held.promise; };
@@ -3711,12 +3711,13 @@ test('while the topic composer is still loading, its reply in doubt has its Revi
   f.changed(f.editor); // registered, so the page is told; the composer is not there yet
   assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply'], 'under the title while the composer loads');
   assert.deepEqual(reviewLabels(f.get('inline-pending')), []);
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+  assert.equal(await leaving(f), null, 'leaving goes at once');
   // A message's writing in doubt has its button under the title too, after the topic's.
   const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
   registered(f, message); f.changed(message);
   assert.deepEqual(f.get('topic-pending').children.map(host => host.dataset.key), ['inline', 'm1']);
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply', 'Review 1 reply'], 'both buttons, as drawn');
+  assert.equal(await leaving(f), null, 'leaving goes at once with both in doubt');
+  assert.deepEqual(f.get('topic-pending').children.map(host => host.dataset.key), ['inline', 'm1'], 'and both buttons stay');
   // The composer shows: the topic's button moves into it, and is in one place only.
   f.registry.inline = f.p; f.owners().inline.show(f.p);
   assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
@@ -3724,7 +3725,7 @@ test('while the topic composer is still loading, its reply in doubt has its Revi
   held.resolve(f.p); await started;
 });
 
-test('a loaded topic composer and a message\'s writing each show their Review button, and leaving names both', async () => {
+test('a loaded topic composer and a message\'s writing each show their Review button, and leaving goes at once', async () => {
   const f = fixture(); doubtful(f);
   const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
   registered(f, message);
@@ -3732,17 +3733,20 @@ test('a loaded topic composer and a message\'s writing each show their Review bu
   await f.initialize(); f.changed(message);
   assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
   assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply']);
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply', 'Review 1 reply']);
+  assert.equal(await leaving(f), null);
 });
 
-test('leaving draws the Review buttons again from the registry and names them as drawn, even when the page was not told of the change', async () => {
+test('leaving with replies in doubt goes at once, sends nothing and discards nothing (item 547)', async () => {
   const f = fixture(); doubtful(f);
   f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
   await f.initialize();
-  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
   f.registry.pending = () => ({ items: [{ id: 'a', send_status: 'unknown' }, { id: 'b', send_status: 'unknown' }], next_cursor: null, through: 2 });
-  assert.deepEqual(named(await leaving(f)), ['Review 2 replies'], 'the registry says two, so leaving names “Review 2 replies”');
-  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 2 replies'], 'and that is the button the page now shows');
+  const sent = f.registry.send, discarded = [];
+  f.registry.send = () => assert.fail('leaving sends nothing');
+  f.registry.discard = (...args) => { discarded.push(args); };
+  assert.equal(await leaving(f), null, 'leaving goes at once');
+  assert.deepEqual([discarded, f.registry.inDoubt.map(entry => entry.label)], [[], ['Review 2 replies']], 'nothing discarded; both replies still in doubt');
+  f.registry.send = sent;
 });
 
 // The registry holds one writing per key. A notice about any other editor
@@ -3763,7 +3767,7 @@ test('a notice about an editor that is not the registered writing draws the regi
     assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the recovered writing\'s refused reply keeps its button');
     assert.deepEqual(reviewLabels(f.get('topic-pending')), [], 'and an editor never registered draws none');
   }
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply']);
+  assert.equal(await leaving(f), null);
 });
 
 
@@ -3812,7 +3816,7 @@ function recovering(f, old) {
   return restored;
 }
 
-test('Recover this version in the topic composer keeps the Review button of the refused reply it brings back, and leaving names it', async () => {
+test('Recover this version in the topic composer keeps the Review button of the refused reply it brings back, and leaving goes at once', async () => {
   const f = fixture(); doubtful(f);
   f.registry.pending = () => ({ items: [], next_cursor: null, through: 0 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
@@ -3823,7 +3827,7 @@ test('Recover this version in the topic composer keeps the Review button of the 
   assert.equal(await EditorRegistry.prototype.adoptCandidate.call(f.registry, f.editor, { id: 'c1', stamp: 's1' }, f.p), restored);
   await new Promise(setImmediate);
   assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the refused reply in the recovered writing shows its Review button');
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+  assert.equal(await leaving(f), null, 'leaving goes at once');
 });
 
 test('Recover this version in a message\'s Reader keeps the refused reply\'s Review button under the title once the Reader closes', async () => {
@@ -3839,13 +3843,14 @@ test('Recover this version in a message\'s Reader keeps the refused reply\'s Rev
   await EditorRegistry.prototype.adoptCandidate.call(f.registry, old, { id: 'c1', stamp: 's1' }, reading);
   f.registry.current = null; // the Reader closes
   assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply'], 'the refused reply in the recovered writing shows its Review button under the title');
-  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+  assert.equal(await leaving(f), null, 'leaving goes at once');
 });
 
 // The property behind item 118's Review buttons (docs/replies-in-doubt.md):
-// after every step of a random run, the buttons the page draws, and the
-// departure guard's rule and words, are EditorRegistry.inDoubt over what the
-// registry holds at that moment. It runs the page's own app.mjs, its composer
+// after every step of a random run, the buttons the page draws are
+// EditorRegistry.inDoubt over what the registry holds at that moment, and
+// leaving waits only for a send under way or writing not yet safe, never for a
+// reply in doubt (item 547). It runs the page's own app.mjs, its composer
 // and its guard, over a real EditorRegistry and EditorSession, an in-memory
 // recovery journal, and the small Core below; only the Reader is a stand-in
 // that draws its writing's button as the real one does.
@@ -3994,17 +3999,15 @@ async function reviewRun(seed, tally, steps = 30) {
     // The open Reader shows its writing's button too.
     const reading = registry.current?.editors.reply?.key;
     if (reading) assert.equal(button(f.get('pending-submissions')), entries.find(entry => entry.editor.key === reading)?.label ?? null, `in the Reader: ${why}`);
-    // The guard, to a topic it was not asked about before, so a refusal never leaves on a second choice.
+    // The guard, to a topic not chosen before.
     const going = registry.hasInFlightSend, title = `Topic ${++leaves}`;
     const words = await f.owners().topicNavigation.openTarget({ kind: 'topic', id: `t-${leaves}` }, title).then(() => null, error => error.message);
     await settle();
     const now = registry.inDoubt;
-    const question = `Not every reply here is confirmed sent; each is kept. Use ${now.map(entry => `“${entry.label}”`).join(' or ')} to check, or choose “${title}” again to leave without resolving it.`;
     if (going) assert.equal(words, 'Wait for the send to finish before changing topics.', `leaving waits: ${why}`);
-    else if (words === null || /^Not every reply/.test(words)) {
-      // Free to leave, it asks exactly when a reply is in doubt, naming every button drawn.
-      assert.equal(words, now.length ? question : null, `leaving: ${why}`);
-      tally[now.length ? 'asked' : 'left']++;
+    else if (words === null) {
+      // Free to leave, it goes at once, replies in doubt or none (item 547).
+      tally[now.length ? 'leftInDoubt' : 'left']++;
     } else {
       // Writing not yet safe on this device or in Theseus holds the move first, and names no button.
       assert.doesNotMatch(words, /Review/, `leaving held for the writing: ${why}`);
@@ -4093,18 +4096,18 @@ async function reviewRun(seed, tally, steps = 30) {
   return trail;
 }
 
-test('after every step of a random run, the Review buttons and the departure guard\'s rule and words are the registry\'s one answer', async () => {
-  const seen = [], tally = { asked: 0, left: 0, held: 0 };
+test('after every step of a random run, the Review buttons are the registry\'s one answer, and a reply in doubt never holds the reader', async () => {
+  const seen = [], tally = { leftInDoubt: 0, left: 0, held: 0 };
   // A writing whose registration failed cannot be kept by a step or a close: the page says so, and the registry's console warning is quiet here.
   const warn = console.warn; console.warn = () => {};
   try { for (let seed = 1; seed <= 60; seed++) seen.push(...await reviewRun(seed, tally)); } finally { console.warn = warn; }
-  // The runs reach every kind of step, the refusals and failures among them, and leaving both asks and goes.
+  // The runs reach every kind of step, the refusals and failures among them, and leaving goes with replies in doubt and with none.
   console.log('# leaving:', JSON.stringify(tally));
   for (const kind of ['open m1', 'close', 'send from', 'submission.prepare commit', 'submission.prepare refuse', 'submission.prepare lost', 'message.send commit',
     'message.send refuse', 'message.send lost', 'a reply from the phone', 'check confirmation', 'more replies', 'replace m1', 'replace t1', 'a notice',
     'the composer loads', 'the composer fails']) assert.ok(seen.some(step => step.startsWith(kind)), `no run reached ${kind}`);
   for (const part of ['(its read fails)', '(and its registration fails)', '(refused: Return to this writing before sending.)']) assert.ok(seen.some(step => step.includes(part)), `no run reached ${part}`);
-  assert.ok(tally.asked > 100 && tally.left > 100, 'leaving asks, and goes, many times');
+  assert.ok(tally.leftInDoubt > 100 && tally.left > 100, 'leaving goes, with replies in doubt and without, many times');
 });
 
 test('cards inside a reply stack count as read on screen, and a range breaks at a message the stack moved away', async () => {

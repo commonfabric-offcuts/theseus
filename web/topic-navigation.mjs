@@ -178,18 +178,18 @@ export async function reread(pages, read, pageMax = PAGE) {
   Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, order: fresh.order ?? pages.order, started: true });
 }
 
+// The departure guard. A move waits for a send under way and for writing and
+// images not yet safe on this device or in Theseus. A reply in doubt holds
+// nothing (docs/replies-in-doubt.md, item 547): it is kept, in Core and on this
+// device, and its Review button is there when the reader comes back.
 export class TopicNavigation {
-  // review(): the Review buttons, as registry.inDoubt answers them now
-  // (docs/replies-in-doubt.md). A page that shows them passes the function
-  // that draws them, so what the guard names is what the page shows.
-  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave, review = () => registry.inDoubt }) {
-    Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave, review }); this.serial = 0;
+  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave }) {
+    Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave }); this.serial = 0;
   }
   open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
   async openTarget(destination, title = destination.kind) {
     const destinationKey=routeKey(destination);
     const request = ++this.serial;
-    const previousChoice = this.departureChoice; this.departureChoice = null;
     if (destinationKey === routeKey(this.current)) return false;
     if(this.beforeLeave){await this.beforeLeave(destinationKey,title);if(request!==this.serial)return false;}
     const navigate = () => this.navigateTarget ? this.navigateTarget(structuredClone(destination)) :
@@ -209,17 +209,9 @@ export class TopicNavigation {
     const sendGuard = () => {
       if (registry.hasInFlightSend) throw Error('Wait for the send to finish before changing topics.');
     };
-    // The replies in doubt, each writing's named by its Review button's words.
-    const pendingSnapshot = () => this.review().map(({ session, editor, items, unread, label }) => ({
-      session, editor, label, identity: JSON.stringify([unread, ...items.map(item => [item.id, item.status ?? item.send_status, item.detached,
-        item.prepareOperationId ?? item.prepare_operation_id, item.sendOperationId ?? item.send_operation_id, item.authority])]),
-    }));
-    const samePending = (a, b) => a.length === b.length && a.every((entry, index) =>
-      entry.session === b[index].session && entry.editor === b[index].editor && entry.identity === b[index].identity);
     const imagesAttached = () => editors.every(editor => currentImages(editor).every(image =>
       image.ready_descriptor && image.association?.cycle_id === editor.clientCycleId &&
       editor.draft.attachments.some(ref => ref.id === image.association.media_id)));
-    let nextChoice = null;
     try {
       sendGuard();
       if (!imagesAttached()) throw Error('Stayed here: finish, retry, or remove the selected image before changing topics.');
@@ -238,11 +230,6 @@ export class TopicNavigation {
       if (request !== this.serial) return false;
       sendGuard();
       if (!same() || !imagesAttached() || registry.hasUnprotectedWriting) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
-      const pending = pendingSnapshot();
-      if (pending.length && !(previousChoice?.destinationKey === destinationKey && previousChoice.same() && samePending(previousChoice.pending, pending))) {
-        nextChoice = { destinationKey, same, pending };
-        throw Error(`Not every reply here is confirmed sent; each is kept. Use ${pending.map(entry => `“${entry.label}”`).join(' or ')} to check, or choose “${title}” again to leave without resolving it.`);
-      }
       navigate(); return true;
     } catch (error) {
       // Preserve through the same registry even after a refused or offline save.
@@ -250,10 +237,7 @@ export class TopicNavigation {
       if (request !== this.serial) return false;
       // What failed is keeping them on this device, which reaching Theseus does not mend.
       const unkept = kept.find(r => r.status === 'rejected');
-      if (unkept) { this.departureChoice = null; throw Error('Keep this page open: some writing or image bytes could not be saved on this device.', { cause: unkept.reason }); }
-      // Arm only as the rejection reaches the app's visible notice. A second
-      // click while preservation is pending has not seen an informed choice.
-      this.departureChoice = nextChoice;
+      if (unkept) throw Error('Keep this page open: some writing or image bytes could not be saved on this device.', { cause: unkept.reason });
       throw error;
     }
   }
