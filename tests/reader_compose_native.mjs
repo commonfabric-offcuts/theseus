@@ -46,7 +46,7 @@ const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live'
 const { control, exit: fixtureExit, errors: fixtureErrors } = fixtureControl(fixture);
 
 // What the fixture is seeded with, set by seed() inside the run below, so a seeding failure still leaves native.json.
-let facts, agent, first, second, log, wrap;
+let facts, agent, first, second, log, wrap, short;
 // Two long messages from an agent, newest last, so a reply to either is
 // offered to that agent; and the outcome's pipeline on, so the ⋯ offers it.
 const agentMessage = async (n, body) => (await control({ method: 'agent_message', operation_id: `compose-agent-${n}`, body })).result.message_id;
@@ -60,6 +60,8 @@ const LOG = ['The build log, whole:', '', '```', ...Array.from({ length: 70 }, (
 const WRAP = ['A plan in one item:', ...Array.from({ length: 16 }, (_, i) => `Paragraph ${i + 1} before the item, to scroll by.`), '- ' + Array.from({ length: 60 }, (_, i) => `part ${i + 1} of the plan`).join(', ') + ', and the item ends here.', '',
   Array.from({ length: 60 }, (_, i) => `Sentence ${i + 1} of a long paragraph.`).join(' '),
   ...Array.from({ length: 30 }, (_, i) => `Paragraph ${i + 1} after the item, to scroll by.`)].join('\n\n');
+// The short dossier's name, and the words its reply starts with.
+const SHORT_NAME = 'Cabin week', SHORT_REPLY = 'The lake cabin is free that week.';
 async function seed() {
   facts = await control({ method: 'ready' });
   agent = facts.agent;
@@ -71,6 +73,11 @@ async function seed() {
   log = (await control({ method: 'agent_message', operation_id: 'compose-log', topic_id: 'compose-log', join: true, source: 'topic', body: LOG })).result.message_id;
   await control({ method: 'navigation_topics', topics: [{ id: 'compose-wrap', title: 'Long item' }] });
   wrap = (await control({ method: 'agent_message', operation_id: 'compose-wrap', topic_id: 'compose-wrap', join: true, source: 'topic', body: WRAP })).result.message_id;
+  // A dossier with a short name, in a topic of its own: an agent's question, its reply, and the name it was given.
+  await control({ method: 'navigation_topics', topics: [{ id: 'compose-short', title: 'Short name' }] });
+  const asked = (await control({ method: 'agent_message', operation_id: 'compose-short', topic_id: 'compose-short', join: true, source: 'topic', body: 'Where shall we stay for the cabin week?' })).result.message_id;
+  short = (await control({ method: 'agent_message', operation_id: 'compose-short-reply', topic_id: 'compose-short', reply_to: asked, body: SHORT_REPLY })).result.message_id;
+  await control({ method: 'stack_act', sender: agent, kind: 'stack.name', message_id: asked, operation_id: 'compose-short-name', args: { name: SHORT_NAME } });
 }
 
 const SHAPES = {
@@ -344,47 +351,63 @@ async function run() {
       await close(p);
     });
     // Item 593: the phone's two-row header (item 378) costs the message no more
-    // than its rows of 44px targets, and keeps the whole title; the message's
-    // end keeps its own room, so ↑ Previous · ↓ Next stays clear of the
+    // than its rows of 44px targets, and keeps the title on its second row; the
+    // message's end keeps its own room, so ↑ Previous · ↓ Next stays clear of the
     // composer; a laptop's header and the message's room under it are as they were.
+    // The title names the dossier a reply goes into, as its tab does (item 561):
+    // a name that fits is whole, and a longer one is cut with an ellipsis on one
+    // line, never wrapping into the controls. The phone opens both: a reply in a
+    // dossier with a short name, and the fixture's, named by its long first line.
     await check(`header ${scheme}: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room`, async () => {
-      for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) {
-        const p = await page(shape, scheme);
-        await open(p, second);
+      for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) for (const dossier of shape.startsWith('phone') ? ['long', 'short'] : ['long']) {
+        const p = await page(shape, scheme, dossier === 'short' ? '/?topic=compose-short' : '/?topic=t1');
+        if (dossier === 'short') await open(p, short, SHORT_REPLY); else await open(p, second);
         const at = await p.evaluate(id => {
           const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), row = rect('.reader-title-row'), close = rect('#reader-close');
           const title = document.querySelector('#reader-title'), article = document.querySelector('#source-body');
           const controls = [...document.querySelectorAll('#reader .reader-header button')].filter(e => e.getClientRects().length && e.getBoundingClientRect().width >= 1 && !e.closest('h2'));
+          const apart = (x, y) => x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5;
           const over = [];
-          for (const [i, e] of controls.entries()) for (const f of controls.slice(i + 1)) {
-            const x = e.getBoundingClientRect(), y = f.getBoundingClientRect();
-            if (!(x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5)) over.push(`${e.id}/${f.id}`);
-          }
+          for (const [i, e] of controls.entries()) for (const f of controls.slice(i + 1)) if (!apart(e.getBoundingClientRect(), f.getBoundingClientRect())) over.push(`${e.id}/${f.id}`);
           const top = Math.min(...controls.map(e => e.getBoundingClientRect().top)), border = parseFloat(getComputedStyle(document.querySelector('.reader-header')).borderBottomWidth);
           // The name of the dossier the message is in, as its tab in the topic's feed shows it (item 561).
           const tab = document.querySelector(`#messages [data-id="${id}"]`)?.closest('[data-stack]')?.querySelector(':scope .stack-head > .stack-name')?.textContent ?? null;
-          return { title: title.textContent, tab, whole: title.scrollWidth <= title.clientWidth + 1, twoRows: row.top >= close.bottom - 0.5, over,
+          // The title's own button, which clips it (aim.css): whether the name fits, whether an ellipsis cuts what does not,
+          // how many line boxes its words take, its height against one of them, and any control it runs into.
+          const button = title.querySelector('.reader-topic'), style = button && getComputedStyle(button), words = document.createRange();
+          if (button) words.selectNodeContents(button);
+          const boxes = [...words.getClientRects()].filter(r => r.width > 0), box = button?.getBoundingClientRect();
+          const name = button && { text: button.textContent, fits: button.scrollWidth <= button.clientWidth + 1, ellipsis: style.textOverflow === 'ellipsis' && style.overflowX === 'hidden',
+            lines: new Set(boxes.map(r => Math.round(r.top))).size, height: Math.round(box.height * 10) / 10, line: boxes.length ? Math.round(Math.max(...boxes.map(r => r.height)) * 10) / 10 : null,
+            into: controls.filter(e => !apart(box, e.getBoundingClientRect())).map(e => e.id) };
+          return { title: title.textContent, tab, name, twoRows: row.top >= close.bottom - 0.5, over,
             small: controls.map(e => [e.id, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]).filter(([, w, h]) => w < 44 || h < 44),
             above: Math.round((top - header.top) * 10) / 10, below: Math.round((header.bottom - border - row.bottom) * 10) / 10, gap: Math.round((article.getBoundingClientRect().top - header.bottom) * 10) / 10,
             room: ['.reader-header', '.reading-pane', '#source-body'].map(s => getComputedStyle(document.querySelector(s))).map((c, i) => i === 2 ? c.paddingBottom : `${c.paddingTop} ${c.paddingBottom}`),
             sideways: document.documentElement.scrollWidth > innerWidth };
-        }, second);
-        measured.push({ engine, shape, scheme, state: 'header', ...at });
-        await shot(p, 'header');
+        }, dossier === 'short' ? short : second);
+        measured.push({ engine, shape, scheme, state: `header, ${dossier} dossier name`, ...at });
+        await shot(p, dossier === 'short' ? 'header-short' : 'header');
         if (shape.startsWith('phone')) {
-          // The title names the dossier a reply goes into (item 561), as its tab does.
-          assert.ok(at.tab, `${shape}: the message's dossier has a tab in the feed: ${JSON.stringify(at)}`);
-          assert.deepEqual([at.title, at.whole, at.twoRows], [at.tab, true, true], `${shape}: the whole title, the dossier's name, on the header's second row: ${JSON.stringify(at)}`);
-          assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);
-          assert.deepEqual([at.above, at.below, at.gap], [0, 0, 0], `${shape}: the two rows are no taller than their targets, and the message starts right under them: ${JSON.stringify(at)}`);
-          // The message read to its end: ↑ Previous · ↓ Next keeps the room the message's end has had, its own .5rem (8px), clear of the composer under it.
-          await p.evaluate(() => { const article = document.querySelector('#source-body'); article.scrollTop = article.scrollHeight; });
-          await until(p, () => { const a = document.querySelector('#source-body'); return a.scrollHeight - a.clientHeight - a.scrollTop <= 1; }, 'the message read to its end');
-          const end = await p.evaluate(() => { const article = document.querySelector('#source-body').getBoundingClientRect(), steps = [...document.querySelectorAll('#source-body .reader-end .end-step')].map(e => e.getBoundingClientRect().bottom);
-            return { steps: steps.length, room: Math.round((article.bottom - Math.max(...steps)) * 10) / 10 }; });
-          measured.push({ engine, shape, scheme, state: 'header, the message read to its end', ...end });
-          await shot(p, 'header-end');
-          assert.ok(end.steps === 2 && end.room >= 8, `${shape}: the message's end keeps its own room after ↑ Previous · ↓ Next: ${JSON.stringify(end)}`);
+          assert.ok(at.tab && at.name, `${shape}, ${dossier}: the message's dossier has a tab in the feed, and the title its button: ${JSON.stringify(at)}`);
+          if (dossier === 'short') assert.equal(at.tab, SHORT_NAME, `${shape}: the short dossier's tab shows the name it was given: ${JSON.stringify(at)}`);
+          // A short name fits whole; a long one is cut, with the ellipsis in effect. Either takes one line, its button one line
+          // high, and runs into no control, on the header's second row.
+          assert.deepEqual([at.title, at.name.text, at.name.fits, at.name.ellipsis, at.name.lines, at.name.height < 2 * at.name.line, at.name.into, at.twoRows],
+            [at.tab, at.tab, dossier === 'short', true, 1, true, [], true],
+            `${shape}: the title is the dossier's name, ${dossier === 'short' ? 'whole' : 'cut with an ellipsis'}, on one line of the header's second row, clear of the controls: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}, ${dossier}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.above, at.below, at.gap], [0, 0, 0], `${shape}, ${dossier}: the two rows are no taller than their targets, and the message starts right under them: ${JSON.stringify(at)}`);
+          if (dossier === 'long') {
+            // The message read to its end: ↑ Previous · ↓ Next keeps the room the message's end has had, its own .5rem (8px), clear of the composer under it.
+            await p.evaluate(() => { const article = document.querySelector('#source-body'); article.scrollTop = article.scrollHeight; });
+            await until(p, () => { const a = document.querySelector('#source-body'); return a.scrollHeight - a.clientHeight - a.scrollTop <= 1; }, 'the message read to its end');
+            const end = await p.evaluate(() => { const article = document.querySelector('#source-body').getBoundingClientRect(), steps = [...document.querySelectorAll('#source-body .reader-end .end-step')].map(e => e.getBoundingClientRect().bottom);
+              return { steps: steps.length, room: Math.round((article.bottom - Math.max(...steps)) * 10) / 10 }; });
+            measured.push({ engine, shape, scheme, state: 'header, the message read to its end', ...end });
+            await shot(p, 'header-end');
+            assert.ok(end.steps === 2 && end.room >= 8, `${shape}: the message's end keeps its own room after ↑ Previous · ↓ Next: ${JSON.stringify(end)}`);
+          }
         } else {
           // A laptop's room, as before item 593: the header's .4rem, the pane's .9rem above the message and the message's own .9rem after its end.
           assert.deepEqual([at.twoRows, at.room], [false, ['6.4px 6.4px', '14.4px 0px', '14.4px']], `${shape}: the laptop's header keeps one row and its room: ${JSON.stringify(at)}`);
