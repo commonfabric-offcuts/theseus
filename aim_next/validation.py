@@ -57,6 +57,7 @@ COMMANDS = {
     "outline.order_set": "_command_outline_order_set",
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
+    "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
 EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -94,7 +95,8 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "outcome.reach": {"workspace_revision"},
             "outline.order_set": {"order_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "stack.aside": {"aside_revision"}, "stack.place": {"place_revision"},
-            "stack.name": {"name_revision"}, "stack.join": {"join_revision"}}
+            "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
+            "tool.use": set(), "tool.link": set(), "tool.record": set()}
 REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -143,6 +145,7 @@ VIEWS = {
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
     "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
+    "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
 
 

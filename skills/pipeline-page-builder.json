@@ -1,0 +1,14 @@
+{
+  "id": "pipeline-page-builder",
+  "kind": "tool",
+  "name": "Pipeline page builder",
+  "summary": "Builds the pipeline page from the items and the release records",
+  "home": "building-theseus",
+  "files": [
+    "tools/pipeline/build_pipeline.py",
+    "tests/test_tools_pipeline.py"
+  ],
+  "check": {
+    "python": "tests/test_tools_pipeline.py"
+  }
+}

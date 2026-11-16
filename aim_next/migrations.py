@@ -42,6 +42,7 @@ from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
+from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -182,6 +183,10 @@ STEPS = (
     # agents were already invited from the page: their invitations are filled from the committed receipts on the
     # record. Stepping back is refused once anyone has been invited, since 42 cannot say by whom.
     ("42", "43", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
+    # Version 44 keeps what is said about skills and tools (item 17, docs/skills-and-tools.md): which outcomes say they
+    # use each tool, which topics are about each, and what each tool's own check found in a release. Each is
+    # append-only. Stepping back is refused once any of them holds a row, since 43 cannot keep them.
+    ("43", "44", TOOLS_SCHEMA, TOOLS_DOWN, TOOLS_OCCUPIED),
 )
 
 
