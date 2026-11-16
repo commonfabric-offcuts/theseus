@@ -62,10 +62,43 @@ const SKIPPED = {
 }[mode] ?? {};
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// A read out when its page navigates has no page left to answer it: Playwright ends it with "Execution context was
+// destroyed". Each page's documents are counted as each one's DOMContentLoaded arrives (attach()), so such a read is
+// thrown carrying the arrival of the next document after the one it was sent to (item 418). until() takes that as
+// "not yet": it waits on that arrival, within its own bound, and reads again. Any other error ends the wait at once.
+const DESTROYED = /Execution context was destroyed/;
+const documents = new WeakMap();
+const nextDocument = (opened, seen) => new Promise(resolve => {
+  const known = documents.get(opened);
+  if (!known || known.count > seen || opened.isClosed()) resolve(); else known.waiting.push(resolve);
+});
+const read = async (opened, expression) => {
+  const seen = documents.get(opened)?.count ?? 0;
+  try { return await opened.evaluate(expression); }
+  catch (error) { throw DESTROYED.test(error.message) ? Object.assign(error, { navigation: nextDocument(opened, seen) }) : error; }
+};
+// True when the promise settles within ms; false at once when no time is left.
+const within = async (promise, ms) => {
+  if (ms <= 0) return false;
+  let timer;
+  try { return await Promise.race([promise.then(() => true), new Promise(resolve => { timer = setTimeout(resolve, ms, false); })]); }
+  finally { clearTimeout(timer); }
+};
 async function until(probe, description, timeout = 8000) {
   const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
-  throw Error(`Timed out: ${description}`);
+  let left = '';
+  while (Date.now() < deadline) {
+    let value;
+    try { value = await probe(); }
+    catch (error) {
+      if (!error.navigation) throw error;
+      if (!await within(error.navigation, deadline - Date.now())) { left = ' (its page left during a read, and the page it went to never had its document)'; break; }
+      continue;
+    }
+    if (value) return value;
+    await sleep(25);
+  }
+  throw Error(`Timed out: ${description}${left}`);
 }
 
 // The harness's own wait, held on a real page in the Notebook mode, whose checks open Notebook pages (item 418): a page
@@ -182,6 +215,11 @@ try {
       // page, not an error. Any other error, and any error at another time,
       // stays an error.
       let leaving = false;
+      const known = { count: 0, waiting: [] }, arrived = () => { known.count += 1; for (const resolve of known.waiting.splice(0)) resolve(); };
+      documents.set(opened, known);
+      // A new document of the main frame has parsed (Playwright tells this of the main frame only); a closed page will have none.
+      opened.on('domcontentloaded', arrived);
+      opened.on('close', () => { for (const resolve of known.waiting.splice(0)) resolve(); });
       opened.on('request', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = true; });
       opened.on('framenavigated', frame => { if (frame === opened.mainFrame()) leaving = false; });
       opened.on('requestfailed', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = false; });
@@ -207,7 +245,7 @@ try {
       const response = await route.fetch();
       held.push({ payload, route, response });
     });
-    const evaluate = expression => pw.evaluate(`(async()=>(${expression}))()`);
+    const evaluate = expression => read(pw, `(async()=>(${expression}))()`);
     let touchAt = null;
     // The CDP calls the listed checks make, each done with WebKit's own input.
     const send = async (method, params = {}) => {
@@ -267,7 +305,7 @@ try {
         // Before its first navigation the page is blank and simply opens in the touch context.
         if (at !== 'about:blank') {
           await moved.goto(at);
-          await until(() => moved.evaluate('document.body?.dataset.ready === "true"'), 'the page started again with touch');
+          await until(() => read(moved, 'document.body?.dataset.ready === "true"'), 'the page started again with touch');
         }
         await pw.close(); pw = moved; p.pw = moved; touch = true;
         qualifications.add('turning touch on loads the page again in a touch context (WebKit cannot turn touch on for a page already open)');
