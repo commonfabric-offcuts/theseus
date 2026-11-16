@@ -1427,24 +1427,45 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  // Item 550: before a dossier was placed on its first message, a stack headed by a reply was placed on that reply, and
-  // such places are in the store. The first message carrying none, that reply's place still places the stack, with its
-  // place line; Let new replies move it takes the place away for good.
-  await check('reading stacks a dossier placed on the reply heading its stack, as places were set before item 550, keeps its place and place line until Let new replies move it, which takes that place away (item 550)', async () => {
-    const topic = 'stack-dossier-place-on-reply', ids = await shipyardSeed(topic);
-    const placed = await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.a1, operation_id: `${topic}-place`, args: { key: 1000000 } });
-    assert.equal(placed.status, 'committed', 'the place is set on a1, the reply heading the stack as loaded');
+  // Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a reply
+  // or a stack later joined into the dossier, and such places are in the store. The first message carrying none, the
+  // place set last on any message of the dossier places it, whichever message heads its stack as Earlier messages loads
+  // more of it; Let new replies move it takes every such place away, and ⌘Z puts each back.
+  await check('reading stacks a dossier placed on messages that do not head its stack, as places were set before item 550, keeps its place and place line through Earlier messages; Let new replies move it takes every such place away and ⌘Z puts each back (item 550)', async () => {
+    const topic = 'stack-dossier-place-on-replies', ids = await shipyardSeed(topic);
+    const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+    // b1 and a2 answer under the first message, above the page; a1, older than both, heads the stack as loaded.
+    assert.deepEqual([(await place(ids.b1, 1000000, 1)).status, (await place(ids.a2, 2000000, 2)).status], ['committed', 'committed'], 'places on b1, then a2');
     const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
-    let p = await open(topic, 'laptop', topic, ids.near1);
+    const p = await open(topic, 'laptop', topic, ids.near1);
     await becomes(async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await top(p)]; }, ['a1', 'Placed here by you', true],
-      'the dossier is on top, above newer stacks, with its place line, by the place on a1');
-    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+      'the dossier is on top, above newer stacks, with its place line, by the places on b1 and a2, which do not head its stack');
+    await earlierPage(p, 'laptop');
+    await becomes(async () => { const look = await shipyardLook(p, ids); return [look.head, look.loaded, look.placed, await top(p)]; }, ['old', ['old'], 'Placed here by you', true],
+      'Earlier messages loads an older reply, which heads the stack now: the place holds');
+    const unplace = `#messages .reply-stack[data-stack="${ids.old}"] .stack-unplace`;
     await centre(p, unplace); await p.point(unplace);
-    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids)).placed], [['near', 's1', 'a1'], null], 'Let new replies move it: it goes where its newest reply puts it, its place line gone');
-    await until(async () => (await actsOf(topic, ids.a1))?.placed === null && ((await actsOf(topic, ids.root))?.placed ?? null) === null, 'Core holds no place on a1 or on the first message');
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids)).placed], [['near', 's1', 'old'], null], 'Let new replies move it: it goes where its newest reply puts it, its place line gone');
+    const held = async () => Promise.all([ids.b1, ids.a2, ids.root].map(async mid => (await actsOf(topic, mid))?.placed ?? null));
+    await until(async () => JSON.stringify(await held()) === JSON.stringify([null, null, null]), 'Core holds no place on b1, a2 or the first message');
+    await keyTo(p, ids.near); await p.key('z', 4);
+    await until(async () => JSON.stringify(await held()) === JSON.stringify([1000000, 2000000, null]), '⌘Z: Core holds b1 and a2 placed again, each as it was');
+    await becomes(async () => [(await shipyardLook(p, ids)).placed, await top(p)], ['Placed here by you', true], 'and the page shows it on top with its place line');
     assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 550: the negatives. A place on the dossier's first message wins over one set on another of its messages, and a
+  // place in another dossier places that dossier alone.
+  await check('reading stacks a place on a dossier\'s first message wins over one set on another of its messages before item 550, and a place in another dossier places that dossier alone (item 550)', async () => {
+    const topic = 'stack-dossier-place-first-wins', ids = await shipyardSeed(topic);
+    const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+    assert.equal((await place(ids.s1, 3000000, 1)).status, 'committed', 'a place on s1, in the buoy-lights dossier');
+    let p = await open(topic, 'laptop', topic, ids.near1);
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids))?.placed], [['s1', 'near', 'a1'], null], 's1\'s place puts its own dossier on top, and places the shipyard dossier nowhere');
+    await p.close();
+    assert.deepEqual([(await place(ids.b1, 1000000, 2)).status, (await place(ids.root, -1000000, 3)).status], ['committed', 'committed'], 'b1 placed on top, then the first message at the bottom');
     p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
-    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids))?.placed], [['near', 's1', 'a1'], null], 'after a reload it stays where its newest reply puts it');
+    await becomes(async () => [(await stacks(p, ids))[0], (await stacks(p, ids)).at(-1), (await shipyardLook(p, ids))?.placed], ['s1', 'a1', 'Placed here by you'], 'the first message\'s place puts the dossier at the bottom, b1\'s set before it or not');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

@@ -11,10 +11,12 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
 // message, through, below and the revision of the act that set them, and the
 // revision of the dossier's name, which every part of it shows (item 470), and
-// of the reader's place for it, which sorts its stack (item 550). A
-// position's snapshot (at) says only when it was read.
+// of the reader's place for it, which sorts its stack, and their places on
+// its other messages (item 550). A position's snapshot (at) says only when it
+// was read.
 const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision'];
-const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
+const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
+const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
 // A reply's line reads how the message it answers begins: its first 120

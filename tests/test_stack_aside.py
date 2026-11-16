@@ -106,6 +106,40 @@ class AsideCase(StackCase):
         self.committed(place(None, 1))
         self.assertEqual((self.position(answer).get('placed'), self.position(answer).get('place_revision')), (None, 2), 'let new replies move it')
 
+    def test_a_position_carries_the_readers_own_places_on_the_dossiers_other_messages_the_most_recently_set_first(self):
+        # Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a
+        # reply or a stack later joined into the dossier. The position lists each such place of the reader's own on a
+        # message of the dossier, the most recently set first, whichever message is newer, so a page sorts the dossier
+        # by it while the first message carries none, and Let new replies move it can take each away.
+        sailcloth, ferry = self.post('Sailcloth dossier'), self.post('Ferry dossier')
+        older = self.post('An answer under the sailcloth dossier', reply_to=sailcloth)
+        newer = self.post('A later answer to that answer', reply_to=older)
+        side = self.post('A stack of its own, joined into the dossier later')
+        other = self.post('An answer under the ferry dossier', reply_to=ferry)
+        place = lambda mid, key, revision=0, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': mid},
+                                                                         expected={'place_revision': revision}, actor=actor)
+        places = lambda mid=newer, actor='owner': [(each['message_id'], each['placed'], each['place_revision']) for each in self.position(mid, actor)['places']]
+        self.assertEqual(places(), [], 'none placed: none listed')
+        self.committed(place(newer, 7))
+        self.committed(place(older, 3))
+        self.assertEqual(places(), [(older, 3, 1), (newer, 7, 1)], 'the most recently set first, though the other message is newer')
+        self.assertEqual(places(sailcloth), places(), 'every message of the dossier carries the same list')
+        self.assertTrue(all(isinstance(each['at_ms'], int) for each in self.position(newer)['places']), 'each says when it was set')
+        # A stack placed and then joined into the dossier brings its place into the list.
+        self.committed(place(side, 5))
+        self.committed(self.join(side, older))
+        self.assertEqual(places()[0], (side, 5, 1), 'the joined stack\'s place, the most recently set')
+        # The negatives: the first message's own place is the position's placed, not listed; a place taken away is not
+        # listed; another reader's places are theirs; another dossier lists only its own.
+        self.committed(place(sailcloth, 2.5))
+        self.assertEqual((self.position(newer)['placed'], [mid for mid, _, _ in places()]), (2.5, [side, older, newer]))
+        self.committed(place(newer, None, revision=1))
+        self.assertEqual(places(), [(side, 5, 1), (older, 3, 1)], 'a place taken away is not listed')
+        self.committed(place(older, 11, actor='agent-a'))
+        self.assertEqual((places(actor='agent-a'), places()), ([(older, 11, 1)], [(side, 5, 1), (older, 3, 1)]), 'each reader\'s own')
+        self.committed(place(other, 9))
+        self.assertEqual((places(ferry), places()), ([(other, 9, 1)], [(side, 5, 1), (older, 3, 1)]), 'another dossier lists its own alone')
+
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
         first = self.aside(root, self.latest(), op='put-aside-once')

@@ -458,25 +458,41 @@ test('a dossier whose first message is above the page keeps the reader\'s place 
   assert.deepEqual([...reheaded(stacksOf([...page, ...ferry]), stacksOf([old, ...page, ...ferry]))], [['m10', 'm5']], 'the ferry dossier keeps its own');
 });
 
-// Item 550: before a dossier was placed on its first message, a stack headed by a reply was placed on that reply, and
-// such places are in the store. Where the first message carries no place, the reply heading the stack still places it:
-// it shows Placed here by you and new replies do not move it.
-test('a place the reader set on a reply heading the stack, before places went on the first message, holds while the first message carries none', () => {
-  const at = (root, place = {}) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, join_revision: 0, placed: null, place_revision: 0, at: { acts: 3, messages: 0 }, ...place });
-  // m10 answers m1, above the page, and was placed at 1.5 on itself; m11 answers m10. m20 is a dossier beside it.
-  const page = [message(10, { reply_to: 'm1', acts: { placed: 1.5, place_revision: 1 }, stack_position: at('m1') }), message(11, { reply_to: 'm10', stack_position: at('m1') }),
-    message(20, { stack_position: at('m20') })];
-  const shown = stacks => stacks.map(stack => [stack.id, stack.dossier, stack.placed]);
-  assert.deepEqual(shown(stacksOf(page)), [['m20', 'm20', null], ['m10', 'm1', 1.5]], 'the stack keeps the place on its head, and with it Placed here by you (reply-stacks.mjs draws it for a placed stack)');
-  // New replies do not move it: one arriving leaves it below m20, where its place puts it.
-  assert.deepEqual(shown(stacksOf([...page, message(30, { reply_to: 'm11', stack_position: at('m1') })])), [['m20', 'm20', null], ['m10', 'm1', 1.5]], 'a new reply leaves it where it is placed');
-  // The negative: a place on the first message wins over the head's, whichever sorts higher.
-  const both = page.map(item => item.stack_position.root_id === 'm1' ? { ...item, stack_position: at('m1', { placed: 25, place_revision: 2 }) } : item);
-  assert.deepEqual(shown(stacksOf(both)), [['m10', 'm1', 25], ['m20', 'm20', null]], 'the first message\'s place, not the head\'s');
-  // A head with no place of its own, its first message none either, moves with new replies.
-  const free = page.map(item => item.id === 'm10' ? { ...item, acts: {} } : item);
-  assert.deepEqual(shown(stacksOf(free)), [['m20', 'm20', null], ['m10', 'm1', null]]);
-  assert.deepEqual(shown(stacksOf([...free, message(30, { reply_to: 'm11', stack_position: at('m1') })])), [['m10', 'm1', null], ['m20', 'm20', null]], 'unplaced, a new reply lifts it');
+// Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a reply
+// or a stack later joined into the dossier, and such places are in the store. Core's position lists the reader's own
+// places on the dossier's other messages (places, each with when it was set, at_ms). While the first message carries
+// no place, the most recently set of them places the dossier, whichever message heads its stack and whether or not
+// the page has loaded the message it is on: the stack shows Placed here by you and new replies do not move it.
+test('a place the reader set on any message of a dossier, before places went on the first message, places it while the first message carries none, the most recently set winning', () => {
+  const at = (root, place = {}) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, join_revision: 0, placed: null, place_revision: 0, places: [], at: { acts: 3, messages: 0 }, ...place });
+  // Dossier m1, never loaded: m1 <- m2 <- m4 <- m6 (placed at 100) <- m30, and the sibling branch m1 <- m3 <- m5.
+  // m20 is another dossier, with m25.
+  const held = at('m1', { places: [{ message_id: 'm6', placed: 100, place_revision: 1, at_ms: 200 }] });
+  const d = (seq, extra) => message(seq, { stack_position: held, ...extra });
+  const m4 = d(4, { reply_to: 'm2' }), m5 = d(5, { reply_to: 'm3' }), m6 = d(6, { reply_to: 'm4', acts: { placed: 100, place_revision: 1 } }), m30 = d(30, { reply_to: 'm6' });
+  const m20 = message(20, { stack_position: at('m20') }), m25 = message(25, { reply_to: 'm20', stack_position: at('m20') });
+  const shown = items => stacksOf(items).map(stack => [stack.id, stack.dossier, stack.placed]);
+  assert.deepEqual(shown([m6, m20, m25]), [['m6', 'm1', 100], ['m20', 'm20', null]], 'the placed reply heading the stack places it, with Placed here by you (reply-stacks.mjs draws it for a placed stack)');
+  assert.deepEqual(shown([m4, m5, m6, m20, m25]), [['m4', 'm1', 100], ['m20', 'm20', null]], 'Earlier messages loads m4 and m5: m4 heads the stack, and the place holds');
+  assert.deepEqual(shown([m5, m6, m20, m25]), [['m5', 'm1', 100], ['m20', 'm20', null]], 'only the sibling m5 loaded: it heads the stack, and the place holds');
+  assert.deepEqual(shown([m30, m20, m25]), [['m30', 'm1', 100], ['m20', 'm20', null]], 'the placed message not loaded at all: the place holds');
+  // New replies do not move it.
+  assert.deepEqual(shown([m6, m20, m25, d(40, { reply_to: 'm30' })]), [['m6', 'm1', 100], ['m20', 'm20', null]], 'a new reply leaves it where it is placed');
+  // The most recently set place wins, not the newest message's: m4, the older message, was placed after m6.
+  const both = at('m1', { places: [{ message_id: 'm6', placed: 100, place_revision: 1, at_ms: 200 }, { message_id: 'm4', placed: 5, place_revision: 2, at_ms: 300 }] });
+  const recent = [m4, m6].map(item => ({ ...item, stack_position: both, ...(item.id === 'm4' ? { acts: { placed: 5, place_revision: 2 } } : {}) }));
+  assert.deepEqual(shown([...recent, m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 5]], 'the place set last, on m4, the older message');
+  assert.deepEqual(shown([...recent.map(item => ({ ...item, stack_position: { ...both, places: [...both.places].reverse() } })), m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 5]], 'whatever order Core lists them in');
+  // The negatives. A place on the first message wins over every other, whichever sorts higher.
+  const first = at('m1', { placed: 2.5, place_revision: 1, places: both.places });
+  assert.deepEqual(shown([...recent.map(item => ({ ...item, stack_position: first })), m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 2.5]], 'the first message\'s place, not the others\'');
+  // A place in another dossier never counts: m25's places m20's dossier alone, and m1's own message without a listed
+  // place is placed by none.
+  const ferry = at('m20', { places: [{ message_id: 'm25', placed: 1000, place_revision: 1, at_ms: 400 }] });
+  const free = [m4, m5].map(item => ({ ...item, stack_position: at('m1') }));
+  assert.deepEqual(shown([...free, { ...m20, stack_position: ferry }, { ...m25, stack_position: ferry, acts: { placed: 1000, place_revision: 1 } }]), [['m20', 'm20', 1000], ['m4', 'm1', null]], 'm25\'s place is m20\'s dossier\'s alone');
+  // A place Core no longer lists (taken away) places nothing, even on the head.
+  assert.deepEqual(shown([{ ...m6, stack_position: at('m1') }, m20, m25]), [['m20', 'm20', null], ['m6', 'm1', null]], 'listed by none, it moves with new replies');
 });
 
 // Item 550: a stack someone joined into one branch of a dossier whose first message is above the page keeps its join

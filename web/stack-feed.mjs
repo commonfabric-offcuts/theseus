@@ -210,6 +210,14 @@ export class StackFeed {
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
         if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };
       }
+      // A place on another message of the dossier (positions' places) shows as the page holds it where it holds that
+      // message at that place's revision or later: an act on it not yet answered, or answered before the positions
+      // are read again.
+      const places = stack_position?.places?.map(each => {
+        const known = messages.get(each.message_id) ?? this.standIns.get(each.message_id), acts = known && this.actsOf(each.message_id, known);
+        return acts && (acts.place_revision ?? 0) >= each.place_revision && acts.placed !== each.placed ? { ...each, placed: acts.placed ?? null } : each;
+      });
+      if (places?.some((each, index) => each !== stack_position.places[index])) stack_position = { ...stack_position, places };
       // A join or split not yet answered: the positions Core sent name the dossier it left (stack-order.mjs, positionOf).
       const moving = (this.pending.get(id) ?? []).some(mark => 'joined' in mark);
       return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position, ...(moving ? { moving } : {}) } : item;
@@ -432,8 +440,9 @@ export class StackFeed {
     if (kind === 'message.star') this.starsChanged();
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
     // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
-    // the page has not loaded is shown by those positions (item 550).
-    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !this.messages().has(item.id)) await this.refreshPositions();
+    // the page has not loaded, or on any other message of a dossier, is shown by those positions (item 550).
+    const firstLoaded = this.messages().get(item.id)?.stack_position?.root_id === item.id;
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -543,12 +552,19 @@ export class StackFeed {
     const root = this.rootOf(stack);
     return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);
   }
-  // Let new replies move it takes away every place the stack sorts by
-  // (stack-order.mjs, gather): the dossier's, and one on the reply heading
-  // the stack, set before places went on the first message.
+  // Let new replies move it takes away every place the dossier sorts by
+  // (stack-order.mjs, gather): the one on its first message, and each one on
+  // another of its messages that its position lists (places), set before
+  // places went on the first message, loaded or not. ⌘Z puts each back.
   unplace(stack) {
-    const place = this.placeOn(stack), head = this.messages().get(stack.id);
-    const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];
+    const first = this.placeOn(stack), listed = (positionOf(stack)?.places ?? []).filter(each => each.message_id !== first.id);
+    const held = listed.map(each => {
+      if (!this.messages().has(each.message_id) && !this.standIns.has(each.message_id)) this.standIns.set(each.message_id, { id: each.message_id, acts: {} });
+      const item = this.messages().get(each.message_id) ?? this.standIns.get(each.message_id);
+      item.acts = laterActs(item.acts, { placed: each.placed, place_revision: each.place_revision });
+      return item;
+    });
+    const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];
     const before = items.map(item => this.actsOf(item.id, item).placed ?? null);
     items.forEach(item => this.act('stack.place', item, { key: null }));
     this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });

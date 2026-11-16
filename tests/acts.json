@@ -6900,7 +6900,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],
@@ -13787,8 +13787,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !this.messages().has(item.id)) await this.refreshPositions();",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !this.messages().has(item.id)) await this.refreshPositions();"
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();"
     ]
    ],
    "check": {
@@ -24002,8 +24002,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
-     "const place = actsOf(head).placed"
+     "const first = byRoot ? position.placed : actsOf(head).placed",
+     "const first = actsOf(head).placed"
     ]
    ],
    "check": {
@@ -24061,7 +24061,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     " || kind === 'stack.place' && !this.messages().has(item.id)) await this.refreshPositions();",
+     " || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
      ") await this.refreshPositions();"
     ]
    ],
@@ -24159,12 +24159,12 @@
   },
   {
    "item": 550,
-   "act": "A place the reader set on the reply heading a stack, before places went on the first message, still places it while the first message carries none; the first message's wins where both exist",
+   "act": "A place the reader set on another message of a dossier, before places went on the first message, places it while the first message carries none, whichever message heads its stack, loaded or not",
    "break": [
     [
      "web/stack-order.mjs",
-     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
-     "const place = byRoot ? position.placed : actsOf(head).placed"
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
     ]
    ],
    "check": {
@@ -24173,47 +24173,134 @@
   },
   {
    "item": 550,
-   "act": "A dossier placed on the reply heading its stack shows its place line on top, by that reply's place",
+   "act": "Of the places on a dossier's other messages, the one set last places it",
    "break": [
     [
      "web/stack-order.mjs",
-     "const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed",
-     "const place = byRoot ? position.placed : actsOf(head).placed"
+     "each.at_ms > latest.at_ms ? each : latest",
+     "each.at_ms < latest.at_ms ? each : latest"
     ]
    ],
    "check": {
-    "native": "reading",
-    "case": "a dossier placed on the reply heading its stack"
+    "node": "tests/ui_stack_order.test.mjs"
    }
   },
   {
    "item": 550,
-   "act": "Let new replies move it takes away a place on the reply heading the stack, set before places went on the first message",
+   "act": "A dossier placed on messages that do not head its stack is on top with its place line, through Earlier messages",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];",
-     "const items = [place];"
+     "web/stack-order.mjs",
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "a dossier placed on the reply heading its stack"
+    "case": "a dossier placed on messages that do not head its stack"
    }
   },
   {
    "item": 550,
-   "act": "Let new replies move it takes away a place on the reply heading the stack, set before places went on the first message, in Safari's engine",
+   "act": "A dossier placed on messages that do not head its stack is on top with its place line, through Earlier messages, in Safari's engine",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "const items = head && head !== place && typeof this.actsOf(head.id, head).placed === 'number' ? [place, head] : [place];",
-     "const items = [place];"
+     "web/stack-order.mjs",
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
     ]
    ],
    "check": {
     "native": "webkit-reading",
-    "case": "a dossier placed on the reply heading its stack"
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away every place on a dossier's other messages",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];",
+     "const items = [first];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away every place on a dossier's other messages, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];",
+     "const items = [first];"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back every place it took away",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });",
+     "this.remember(() => { items.slice(0, 1).forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back every place it took away, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });",
+     "this.remember(() => { items.slice(0, 1).forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A position lists the reader's own places on its dossier's other messages",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"places\": [each for each in places.get(root, []) if each[\"message_id\"] != root],",
+     "\"places\": [],"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A position lists those places the most recently set first",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ORDER BY a.at_ms DESC,a.id DESC",
+     "ORDER BY a.at_ms,a.id"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
    }
   }
  ]

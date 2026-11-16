@@ -55,9 +55,8 @@ function parentOf(item, has) {
 // A place is the dossier's, as its name is (item 550): where the stack's head
 // is not its first message, the place is the one Core's position carries for
 // that first message, so loading more of the dossier, which can give its stack
-// another head, keeps it. Where that first message carries no place, a place
-// on the stack's head still sorts it: before item 550 a stack headed by a
-// reply was placed on that reply.
+// another head, keeps it. Where that first message carries no place, the
+// place set last on another of its messages sorts it (heldPlace).
 export function gather(items, { has = null, viewer = null } = {}) {
   const byId = new Map(items.map(item => [item.id, item]));
   const on = has ?? (id => byId.has(id));
@@ -96,13 +95,23 @@ export function gather(items, { has = null, viewer = null } = {}) {
     // changes no message, so splitting it out puts both stacks back as they were.
     const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
     const position = positionOf({ head, replies }), byRoot = position && position.root_id !== head.id && 'place_revision' in position;
-    // A place on the head (one the reader set before places went on the first message) sorts it while the first
-    // message carries none.
-    const place = byRoot && typeof position.placed === 'number' ? position.placed : actsOf(head).placed, placed = typeof place === 'number' ? place : null;
+    const first = byRoot ? position.placed : actsOf(head).placed, place = typeof first === 'number' ? first : heldPlace(position);
+    const placed = typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
     return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: position?.root_id ?? head.id };
   });
+}
+
+// Item 550: before a dossier was placed on its first message, a stack was
+// placed on the message heading it, a reply or a stack later joined into the
+// dossier. Core's position lists the reader's own places on the dossier's
+// other messages (places, each with when it was set, at_ms); the one set last
+// is the dossier's, loaded or not, whichever message heads its stack. Null
+// where it lists none, and where Core sends no such list.
+function heldPlace(position) {
+  const held = (position?.places ?? []).filter(each => typeof each.placed === 'number');
+  return held.reduce((latest, each) => (latest === null || each.at_ms > latest.at_ms ? each : latest), null)?.placed ?? null;
 }
 
 // Item 550: the branches of one dossier are one stack. A branch is what the
