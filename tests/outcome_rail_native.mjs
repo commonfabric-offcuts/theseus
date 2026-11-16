@@ -2717,6 +2717,21 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.ok(scrolls.length >= 3, said + ': it is not reached in one press, the words between scrolled past first');
       assert.ok(scrolls.every(step => step.at === from && step.by > 0 && step.by <= h / 3 + 1), said + ': each press before it scrolls down a third of a window at most, the focus staying on ' + from);
       assert.equal(await inView(p), true, said + ': and it shows');
+      // So inside a box that scrolls, from a control in that box: what the box holds out of sight lies that way of
+      // the focus in it (what a box has scrolled away lies no way only of a control outside it).
+      await p.evaluate(`(()=>{const box=document.createElement('div'),near=document.createElement('button'),words=document.createElement('div'),far=document.createElement('button');
+        box.id='far-box';box.style.cssText='overflow:auto;height:'+Math.round(innerHeight/2)+'px';near.id='box-near';near.type='button';near.textContent='Near';
+        words.style.height=(innerHeight*2)+'px';words.textContent='Words in the box.';far.id='box-far';far.type='button';far.textContent='Far in the box';
+        box.append(near,words,far);document.getElementById('main').append(box);box.scrollIntoView({block:'center'});near.focus({preventScroll:true});return true})()`);
+      const inBox = [];
+      for (let n = 0; n < 30 && await focusAt(p) !== 'main:box-far'; n++) {
+        const y = await p.evaluate("document.getElementById('far-box').scrollTop");
+        const { at } = await arrowPress(p, 'ArrowDown');
+        inBox.push({ at, by: await p.evaluate("document.getElementById('far-box').scrollTop") - y });
+      }
+      const boxSaid = `${size}: in the box ${JSON.stringify(inBox)}`;
+      assert.equal(inBox.at(-1)?.at, 'main:box-far', boxSaid + ': ↓ from the control in the box reaches the one out of sight in it');
+      assert.ok(inBox.slice(0, -1).length >= 2 && inBox.slice(0, -1).every(step => step.at === 'main:box-near' && step.by > 0), boxSaid + ': the box scrolled toward it first, the focus staying in the box');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
