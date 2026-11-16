@@ -708,6 +708,12 @@ class JudgeScoped(unittest.TestCase):
             path.write_text(json.dumps(summary))
             return release_check.judge_summary(path, self.commit, None, scope)
 
+    def refused(self, summary, scope):
+        """The foreign reasons, one line; a summary taken fails the check here, by assertion."""
+        foreign, _ = self.judged(summary, scope)
+        self.assertTrue(foreign, "taken")
+        return "; ".join(foreign)
+
     def health(self, summary):
         [step] = [step for step in summary["steps"] if step["name"] == "native-health"]
         return step
@@ -728,12 +734,11 @@ class JudgeScoped(unittest.TestCase):
     def test_a_step_the_change_touches_that_it_did_not_run_is_refused_whatever_the_summary_says_it_chose(self):
         # The summary says it chose only native-health; the reader's own choice from what changed touches native-colors too.
         summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
-        foreign, _ = self.judged(summary, self.agreeing(chosen=("native-health", "native-colors")))
-        self.assertEqual(len(foreign), 1)
-        self.assertIn("but what changed since then touches native-colors, which it did not run", foreign[0])
+        said = self.refused(summary, self.agreeing(chosen=("native-health", "native-colors")))
+        self.assertIn("but what changed since then touches native-colors, which it did not run", said)
         # Even a summary that says it chose none of them.
         none = scoped_summary(self.commit, self.live, [], self.changed)
-        self.assertIn("touches native-health, which it did not run", self.judged(none, self.agreeing())[0][0])
+        self.assertIn("touches native-health, which it did not run", self.refused(none, self.agreeing()))
 
     def test_a_change_outside_the_small_fix_bound_is_refused(self):
         summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
@@ -741,21 +746,20 @@ class JudgeScoped(unittest.TestCase):
                                (self.changed + ["aim_next/migrations.py"], "aim_next/migrations.py changed"),
                                (["web/f%d.mjs" % n for n in range(release_check.SMALL_FIX_FILES + 1)], "more than a small fix's")):
             with self.subTest(words):
-                foreign, _ = self.judged(summary, self.agreeing(changed=changed))
-                self.assertIn(words, foreign[0])
+                self.assertIn(words, self.refused(summary, self.agreeing(changed=changed)))
         # The service's own code is inside the bound.
         self.assertEqual(self.judged(summary, self.agreeing(changed=["aim_next/health.py", "web/health.mjs"])), ([], []))
 
     def test_a_chosen_step_must_have_run_whole_and_once(self):
         filtered = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
         self.health(filtered)["argv"].append("health the release line")
-        self.assertIn("native-health did not run whole", self.judged(filtered, self.agreeing())[0][0])
+        self.assertIn("native-health did not run whole", self.refused(filtered, self.agreeing()))
         bare = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
         del self.health(bare)["argv"]
-        self.assertIn("native-health did not run whole", self.judged(bare, self.agreeing())[0][0])
+        self.assertIn("native-health did not run whole", self.refused(bare, self.agreeing()))
         twice = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
         twice["steps"].append(dict(self.health(twice)))
-        self.assertIn("lists native-health more than once", self.judged(twice, self.agreeing())[0][0])
+        self.assertIn("lists native-health more than once", self.refused(twice, self.agreeing()))
 
     def test_the_units_the_deploys_refusals_and_the_wake_replay_stay_required(self):
         for name in ("python-units", "node-units", release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY):
@@ -766,17 +770,17 @@ class JudgeScoped(unittest.TestCase):
 
     def test_without_the_readers_choice_another_live_commit_or_a_choice_that_cannot_be_made_nothing_is_taken(self):
         summary = scoped_summary(self.commit, self.live, ["native-health"], self.changed)
-        self.assertIn("only the deploy, choosing those steps again", self.judged(summary, None)[0][0])
-        self.assertIn("but %s is live; run the release check again" % ("a" * 40), self.judged(summary, self.agreeing(live="a" * 40))[0][0])
+        self.assertIn("only the deploy, choosing those steps again", self.refused(summary, None))
+        self.assertIn("but %s is live; run the release check again" % ("a" * 40), self.refused(summary, self.agreeing(live="a" * 40)))
 
         def unreadable():
             raise release_check.Refused("git is gone")
-        self.assertIn("and that cannot be taken: git is gone", self.judged(summary, unreadable)[0][0])
+        self.assertIn("and that cannot be taken: git is gone", self.refused(summary, unreadable))
         both = dict(summary, skipped={"steps": list(release_check.SKIPPABLE), "live": self.live})
-        self.assertIn("both skipped and scoped", self.judged(both, self.agreeing())[0][0])
-        self.assertIn("is not one it writes", self.judged(dict(summary, scoped=["native-health"]), self.agreeing())[0][0])
+        self.assertIn("both skipped and scoped", self.refused(both, self.agreeing()))
+        self.assertIn("is not one it writes", self.refused(dict(summary, scoped=["native-health"]), self.agreeing()))
         only = dict(summary, only=["native-health"])
-        self.assertIn("ran only native-health", self.judged(only, self.agreeing())[0][0])
+        self.assertIn("ran only native-health", self.refused(only, self.agreeing()))
 
     def test_the_release_record_keeps_the_steps_not_run_and_its_full_run_pending(self):
         from tools import releases
