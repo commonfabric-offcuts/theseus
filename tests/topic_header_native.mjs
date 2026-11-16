@@ -1221,11 +1221,12 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await p.evaluate('scrollTo(0, 0)');
       const at = await measure(p), said = `${width} ${theme}: ${JSON.stringify(at)}`;
       console.log(`header pill gap ${said}`);
-      assert.ok(at.gaps.length >= 2, `two pills and "+ Add" share a row: ${said}`);
+      // At 320 the second pill takes a line of its own; every two that share a line stand apart.
+      assert.ok(at.gaps.length >= 1, `at least two of them share a line: ${said}`);
       assert.ok(at.gaps.every(gap => gap >= 4), `each pill and "+ Add" stands at least 4px from the one before it: ${said}`);
       assert.ok(at.gaps.every(gap => gap <= 10), `a modest gap, not a wide one: ${said}`);
       assert.deepEqual([at.addLast, Math.abs(at.offset) <= 2, at.sideways], [true, true, false], `"+ Add" comes last, the label sits beside the first pill, nothing sideways: ${said}`);
-      if (device === 'laptop') assert.deepEqual([at.rows, Math.abs(at.right) <= 2], [1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
+      if (device === 'laptop') assert.deepEqual([at.rows, at.gaps.length, Math.abs(at.right) <= 2], [1, at.parts - 1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
       await shot(p, `header-pill-gap-${device}-${width}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();
     }

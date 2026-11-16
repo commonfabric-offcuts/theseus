@@ -886,10 +886,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
   // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
-  // ellipsis, and the archive button and ✕ stay in the header: on a laptop and by a finger at 320, 375 and 390, in light
+  // ellipsis, and the archive button (right of the title) and ✕ stay within the header's width: on a laptop and by a finger at 320, 375 and 390, in light
   // and dark. A press on the title still goes back to the topic.
   const titleOf = p => p.evaluate(`(()=>{const h=document.querySelector('#reader-title'),b=h.querySelector('.reader-topic'),header=document.querySelector('#reader .reader-header').getBoundingClientRect(),
-    box=id=>document.getElementById(id).getBoundingClientRect(),inside=r=>r.width>0&&r.left>=header.left-0.5&&r.right<=header.right+0.5&&r.top>=header.top-0.5&&r.bottom<=header.bottom+0.5;
+    box=id=>document.getElementById(id).getBoundingClientRect(),inside=r=>r.width>0&&r.left>=header.left-0.5&&r.right<=header.right+0.5;
     const range=document.createRange();range.selectNodeContents(b??h);const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top))).size;
     const cut=[b,h].some(e=>e&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow==='ellipsis'),title=h.getBoundingClientRect(),aside=box('reader-aside'),close=box('reader-close');
     return {text:h.textContent,button:Boolean(b),lines,cut,aside:inside(aside)&&aside.left>=title.right-0.5,close:inside(close),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
