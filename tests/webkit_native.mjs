@@ -61,6 +61,9 @@ const SKIPPED = {
     'rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts': 'reads the window\'s and the document\'s listeners through Chrome DevTools (DOMDebugger.getEventListeners) and picks a file through its chooser, which this harness does not offer',
     'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
   },
+  '--health': {
+    'health wakes that fail light the link on another page and the page says why, live, from the view': 'puts the Health page in a tab behind (document.visibilityState hidden); each page here is a window of its own, which stays visible',
+  },
 }[mode] ?? {};
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
