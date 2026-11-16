@@ -413,14 +413,18 @@ def classify(policy, observed, root, commit):
             if row['passed'] or (row.get('expectedFailure') and row.get('mutationCaught') is True):
                 if red:
                     # Passing a materially edited test is not proof the original
-                    # failed case healed. Its reviewed harness must still apply.
+                    # failed case healed. Its reviewed harness, helpers and
+                    # assertions must still apply: those of the policy's own
+                    # source, where its review carried the admission (still
+                    # failing with exactly its fingerprint), not of the
+                    # admission's earlier source_commit, which dates its evidence.
                     harness = NATIVE[step].harness
                     require(definition_bytes(source(root, commit, harness), harness) ==
                             definition_bytes(source(root, policy['source_commit'], harness), harness),
                             'healed case has changed harness; review inventory first')
                     for path in {frame['path'] for frame in red['fingerprint']['chain']}:
                         require(definition_bytes(source(root, commit, path), path) ==
-                                definition_bytes(source(root, red['source_commit'], path), path),
+                                definition_bytes(source(root, policy['source_commit'], path), path),
                                 'healed case has changed helper/assertion source; review first')
                     result['healed'].append(item)
                 continue

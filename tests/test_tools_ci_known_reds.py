@@ -420,6 +420,64 @@ class Evidence(unittest.TestCase):
         with self.assertRaisesRegex(ci.Refused, 'changed helper/assertion source'):
             ci.classify(self.policy, [('native-inline', [dict(self.row, passed=True)], self.profile, '/verified')], self.repo, changed)
 
+    def carry_admission_to_a_later_policy(self):
+        """Item 575: a policy generated after the admission's review, at a source whose helper changed since the
+        admission's source_commit (its failing line unchanged), carries the admission. Returns the helper's path."""
+        path = self.repo / 'tests/reader_inline_native.mjs'
+        path.write_text(path.read_text() + 'export const changedSinceTheAdmission = true;\n')
+        self.advance_candidate('helper changed after the admission was reviewed')
+        plan = self.candidate_plan()
+        self.assertNotEqual(plan['source_commit'], self.red['source_commit'])
+        self.install_trusted_policy(plan)
+        return path
+
+    def heal_inline(self):
+        path = self.out / 'native/inline/native.json'
+        report = ci.read_json(path)
+        report['results'][0]['passed'] = True
+        write(path, report)
+        counts, good = release_check.native_counts(ci.NATIVE['native-inline'], path.parent)
+        for steps in (self.steps, self.raw['steps']):
+            next(s for s in steps if s['name'] == 'native-inline').update(counts=counts, passed=good, exit=0)
+        self.summary['passed'] = self.raw['passed'] = True
+        self.summary['failed'] = []
+
+    def test_carried_admission_heals_against_the_policys_source(self):
+        self.carry_admission_to_a_later_policy()
+        (self.repo / 'web').mkdir()
+        (self.repo / 'web/app.mjs').write_text('export const productFix = true;\n')
+        self.advance_candidate('product-only fix')
+        self.heal_inline()
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertEqual([row['case']['name'] for row in result['healed']], ['case'])
+
+    def test_carried_admission_still_fails_as_expected_against_the_policys_source(self):
+        self.carry_admission_to_a_later_policy()
+        result = self.validate()
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['healed'], [])
+
+    def test_carried_admission_helper_changed_by_the_candidate_cannot_claim_healed(self):
+        path = self.carry_admission_to_a_later_policy()
+        plan = ci.read_json(self.base / '.github/check-baseline.json')
+        path.write_text(path.read_text() + 'export const candidateEdit = true;\n')
+        self.advance_candidate('candidate edits the helper after the policy source')
+        with self.assertRaisesRegex(ci.Refused, 'changed helper/assertion source; review first'):
+            ci.classify(plan, [('native-inline', [dict(self.row, passed=True)], self.profile, '/verified')], self.repo, self.sha)
+        # The whole validator refuses it sooner: the candidate's definitions match no reviewed plan.
+        self.heal_inline()
+        self.refused('no complete matching plan')
+
+    def test_carried_admission_candidate_policy_copy_never_counts(self):
+        path = self.carry_admission_to_a_later_policy()
+        path.write_text(path.read_text() + 'export const candidateEdit = true;\n')
+        self.advance_candidate('candidate edits the helper after the policy source')
+        write(self.repo / '.github/check-baseline.json', self.candidate_plan())
+        self.advance_candidate('candidate reviews its own helper edit')
+        self.heal_inline()
+        self.refused('no complete matching plan')
+
     def test_escaped_mutant_never_counts_as_expected_failure(self):
         path = self.out / 'native/reader-mutations/results.json'
         report = ci.read_json(path)

@@ -203,7 +203,12 @@ A different observed profile requires a
 runner_evidence_sha256 receipt reviewed for that exact target profile. A Mac
 seed is provenance, not permission for an unrelated runner failure.
 
-An admitted case passing is reported healed. A missing, duplicate, renamed or
+An admitted case passing is reported healed. Its harness and the files of its
+fingerprint's chain are compared with the plan's source_commit, where the policy's
+review carried the admission still failing with exactly its fingerprint, not with
+the admission's own earlier source_commit, which dates its evidence: a helper that
+changed between the two does not refuse the pass the policy was made to expect,
+and one the candidate changed still asks for review first. A missing, duplicate, renamed or
 materially changed case refuses validation. New failures, different assertion
 values or helper/call-site chains, setup/cleanup failures, escaped mutants and
 non-browser failures are unexpected. Units, deploy refusals and wake replay
