@@ -346,12 +346,14 @@ export async function departureChecks({check,page,until,facts,view,control,obser
         const trail=[start];await walk('ArrowDown',trail);await walk('ArrowUp',trail);
         assert.ok(trail.some(step=>step.includes(':the acknowledgement@')),`${width}: from ${start}, ↓ then ↑ reach the acknowledgement out of sight in the box: ${trail.join(' ')}`);
       }
-      // Where the arrows bring the focus to the acknowledgement: ↓ from the footer while the box scrolls, then ↑.
+      // Where the arrows bring the focus to the acknowledgement: ↓ from the footer while the box scrolls, then ↑ until
+      // it lands there (past Prepare this reply again, where that lies below the acknowledgement's words).
       const toAck=async()=>{
         await p.evaluate(`(document.getElementById('review-content').scrollTop=0,document.getElementById('review-keep').focus())`);
-        await walk('ArrowDown',[]);await p.key('ArrowUp');
-        const on=await where();
-        assert.equal(on.at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, lands on the acknowledgement: '+JSON.stringify(on));
+        await walk('ArrowDown',[]);
+        const trail=[];
+        for(let n=0;n<4&&(await where()).at!=='the acknowledgement';n++){await p.key('ArrowUp');const now=await where();trail.push(now.at+'@'+now.top);}
+        assert.equal((await where()).at,'the acknowledgement',width+': ↑ from the footer, once the box has scrolled, reaches the acknowledgement: '+trail.join(' → '));
       };
       await toAck();
       // The focus there, for the evidence, in light and dark.
