@@ -31,7 +31,13 @@ maximum, and on a phone never reach past the screen.
   of the message, writing with the keyboard up at least 7, …" and "laptop
   stacked …: … at least 17 lines while writing", each with a long reply and
   the To line under the who chip ([reader.md](reader.md), "Naming who a
-  message is to").
+  message is to"); "header …: on a phone at 320, 375 and 390 the Reader's
+  title is whole on the header's second row, … the two rows no taller than
+  their targets and the message right under them, its end keeping its room; a
+  laptop's header, stacked and wide, keeps one row and its room" and "access
+  notice …: on a phone at 320, 375 and 390 the notice keeps the room under the
+  Reader's two-row header, …", one case for each of the notice's states
+  ([reader.md](reader.md), the archive button's two-row phone header).
 - `tests/reader_native.mjs` (`native-reader-finished`): "finished the save
   status is one line whatever it says: …".
 - Gap: no check measures how much of a phone screen the message keeps while the

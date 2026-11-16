@@ -161,14 +161,17 @@ async function type(p, text) {
   await until(p, () => document.activeElement?.id === 'writing-body' && document.querySelector('#reader-composer').dataset.compose === 'writing', 'the field taking the writing');
   await p.keyboard.insertText(text);
 }
-// Lines of the message that show: the article's text box, below the header,
-// above the composer and the keyboard, over its line height.
+// Lines of the message that show: the article's box, below the header, above
+// the composer and the keyboard, over its line height. The article scrolls, so
+// its padding hides no text but where the scroll leaves it in sight: the top's
+// above the first line, the end's only after the last, once scrolled there.
 const messageLines = p => p.evaluate(() => {
   const article = document.querySelector('#source-body'), style = getComputedStyle(article), box = article.getBoundingClientRect();
   const header = document.querySelector('.reader-header').getBoundingClientRect(), composer = document.querySelector('#reader-composer').getBoundingClientRect();
   const wide = document.querySelector('#reader').dataset.layout === 'wide';
-  const top = Math.max(box.top + parseFloat(style.paddingTop), header.bottom);
-  const bottom = Math.min(box.bottom - parseFloat(style.paddingBottom), wide ? Infinity : composer.top, visualViewport.height + visualViewport.offsetTop);
+  const left = article.scrollHeight - article.clientHeight - article.scrollTop;
+  const top = Math.max(box.top + Math.max(0, parseFloat(style.paddingTop) - article.scrollTop), header.bottom);
+  const bottom = Math.min(box.bottom - Math.max(0, parseFloat(style.paddingBottom) - left), wide ? Infinity : composer.top, visualViewport.height + visualViewport.offsetTop);
   return { lines: Math.floor((bottom - top) / parseFloat(style.lineHeight)), lineHeight: parseFloat(style.lineHeight), visible: Math.round(bottom - top) };
 });
 async function picture(p, name) {
@@ -340,6 +343,51 @@ async function run() {
       await shot(p, 'plus-panel');
       await close(p);
     });
+    // Item 593: the phone's two-row header (item 378) costs the message no more
+    // than its rows of 44px targets, and keeps the whole title; the message's
+    // end keeps its own room, so ↑ Previous · ↓ Next stays clear of the
+    // composer; a laptop's header and the message's room under it are as they were.
+    await check(`header ${scheme}: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room`, async () => {
+      for (const shape of ['stacked', 'wide', 'phone-320', 'phone-375', 'phone-390']) {
+        const p = await page(shape, scheme);
+        await open(p, second);
+        const at = await p.evaluate(() => {
+          const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), row = rect('.reader-title-row'), close = rect('#reader-close');
+          const title = document.querySelector('#reader-title'), article = document.querySelector('#source-body');
+          const controls = [...document.querySelectorAll('#reader .reader-header button')].filter(e => e.getClientRects().length && e.getBoundingClientRect().width >= 1 && !e.closest('h2'));
+          const over = [];
+          for (const [i, e] of controls.entries()) for (const f of controls.slice(i + 1)) {
+            const x = e.getBoundingClientRect(), y = f.getBoundingClientRect();
+            if (!(x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5)) over.push(`${e.id}/${f.id}`);
+          }
+          const top = Math.min(...controls.map(e => e.getBoundingClientRect().top)), border = parseFloat(getComputedStyle(document.querySelector('.reader-header')).borderBottomWidth);
+          return { title: title.textContent, whole: title.scrollWidth <= title.clientWidth + 1, twoRows: row.top >= close.bottom - 0.5, over,
+            small: controls.map(e => [e.id, Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]).filter(([, w, h]) => w < 44 || h < 44),
+            above: Math.round((top - header.top) * 10) / 10, below: Math.round((header.bottom - border - row.bottom) * 10) / 10, gap: Math.round((article.getBoundingClientRect().top - header.bottom) * 10) / 10,
+            room: ['.reader-header', '.reading-pane', '#source-body'].map(s => getComputedStyle(document.querySelector(s))).map((c, i) => i === 2 ? c.paddingBottom : `${c.paddingTop} ${c.paddingBottom}`),
+            sideways: document.documentElement.scrollWidth > innerWidth };
+        });
+        measured.push({ engine, shape, scheme, state: 'header', ...at });
+        await shot(p, 'header');
+        if (shape.startsWith('phone')) {
+          assert.deepEqual([at.title, at.whole, at.twoRows], ['Read here', true, true], `${shape}: the whole title on the header's second row: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.above, at.below, at.gap], [0, 0, 0], `${shape}: the two rows are no taller than their targets, and the message starts right under them: ${JSON.stringify(at)}`);
+          // The message read to its end: ↑ Previous · ↓ Next keeps the room the message's end has had, its own .5rem (8px), clear of the composer under it.
+          await p.evaluate(() => { const article = document.querySelector('#source-body'); article.scrollTop = article.scrollHeight; });
+          await until(p, () => { const a = document.querySelector('#source-body'); return a.scrollHeight - a.clientHeight - a.scrollTop <= 1; }, 'the message read to its end');
+          const end = await p.evaluate(() => { const article = document.querySelector('#source-body').getBoundingClientRect(), steps = [...document.querySelectorAll('#source-body .reader-end .end-step')].map(e => e.getBoundingClientRect().bottom);
+            return { steps: steps.length, room: Math.round((article.bottom - Math.max(...steps)) * 10) / 10 }; });
+          measured.push({ engine, shape, scheme, state: 'header, the message read to its end', ...end });
+          await shot(p, 'header-end');
+          assert.ok(end.steps === 2 && end.room >= 8, `${shape}: the message's end keeps its own room after ↑ Previous · ↓ Next: ${JSON.stringify(end)}`);
+        } else {
+          // A laptop's room, as before item 593: the header's .4rem, the pane's .9rem above the message and the message's own .9rem after its end.
+          assert.deepEqual([at.twoRows, at.room], [false, ['6.4px 6.4px', '14.4px 0px', '14.4px']], `${shape}: the laptop's header keeps one row and its room: ${JSON.stringify(at)}`);
+        }
+        await close(p);
+      }
+    });
     for (const shape of ['stacked', 'wide']) await check(`laptop ${shape} ${scheme}: the message fills the Reader while reading and writing${shape === 'stacked' ? ', at least 17 lines while writing' : ''}`, async () => {
       const p = await page(shape, scheme);
       await open(p, second);
@@ -407,6 +455,55 @@ async function run() {
       await close(p);
     });
   }
+
+  // Item 593: the Reader's access notice sits at the top of the reading pane,
+  // above the message, and keeps the pane's room under the header in each of
+  // its states, as it had before the phone's two-row header gave the message
+  // that room. Each state is painted as reader.mjs's paintAccess paints it:
+  // its words, and Retry access, which shows while access is blocked and
+  // waits while access is being checked. The archive button stays as the
+  // open left it, so on a phone the header has its two rows and the rule under
+  // test is the two-row one. (A paused topic or an unavailable source also
+  // takes the archive button away, app.mjs's readerMessage, and then the
+  // notice sits under one row, whose room item 593 does not change.)
+  for (const [state, words, retry] of [
+    ['being checked', 'Source access is unconfirmed. Your private writing is kept.', 'waiting'],
+    ['unconfirmed after a retry', 'Could not confirm source access. Your private writing is kept. The view could not be read.', 'shown'],
+    ['unavailable', 'The source is unavailable. Your private writing is kept.', 'shown'],
+    ['available, topic updates paused', 'This source is available. Topic updates remain paused.', 'hidden'],
+    ['unavailable, topic updates paused', 'The source is unavailable. Your private writing is kept. Topic updates are paused. Retry access checks only this source.', 'shown'],
+  ]) await check(`access notice ${state}: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, ${retry === 'hidden' ? 'no Retry access' : `Retry access ${retry === 'waiting' ? 'waiting ' : ''}at 44px`}; on a laptop its room as before, light and dark`, async () => {
+    for (const scheme of ['light', 'dark']) for (const shape of ['stacked', 'phone-320', 'phone-375', 'phone-390']) {
+      const p = await page(shape, scheme);
+      await open(p, second);
+      // Painted and measured at once: the layout read is the one the state gives.
+      const at = await p.evaluate(([words, retry]) => {
+        const status = document.querySelector('#source-access-status'), button = document.querySelector('#retry-source');
+        status.textContent = words; status.hidden = false;
+        button.hidden = retry === 'hidden'; button.disabled = retry === 'waiting';
+        const rect = s => document.querySelector(s).getBoundingClientRect(), header = rect('.reader-header'), notice = rect('#source-access-status'), article = rect('#source-body');
+        const row = rect('.reader-title-row'), close = rect('#reader-close');
+        const shown = [...document.querySelectorAll('#reader .reader-header button, #retry-source')].filter(e => e.getClientRects().length && e.getBoundingClientRect().width >= 1 && !e.closest('h2'));
+        const over = [];
+        for (const [i, e] of shown.entries()) for (const f of shown.slice(i + 1)) {
+          const x = e.getBoundingClientRect(), y = f.getBoundingClientRect();
+          if (!(x.right <= y.left + 0.5 || y.right <= x.left + 0.5 || x.bottom <= y.top + 0.5 || y.bottom <= x.top + 0.5)) over.push(`${e.id}/${f.id}`);
+        }
+        return { twoRows: row.top >= close.bottom - 0.5, gap: Math.round((notice.top - header.bottom) * 10) / 10, overMessage: Math.round((notice.bottom - article.top) * 10) / 10,
+          retry: button.getClientRects().length ? [Math.round(button.getBoundingClientRect().width), Math.round(button.getBoundingClientRect().height)] : null, over,
+          sideways: document.documentElement.scrollWidth > innerWidth };
+      }, [words, retry]);
+      measured.push({ engine, shape, scheme, state: `access notice ${state}`, ...at });
+      await shot(p, `access-${state.replace(/[^a-z]+/g, '-')}`);
+      const phone = shape.startsWith('phone');
+      // The pane's own room above what it shows first, as before item 593: .5rem on a phone, .9rem on a laptop.
+      assert.deepEqual([at.twoRows, at.gap, at.overMessage <= 0, at.over, at.sideways], [phone, phone ? 8 : 14.4, true, [], false],
+        `${shape} ${scheme}: the notice keeps the pane's room under the header, and sits over nothing: ${JSON.stringify(at)}`);
+      if (retry === 'hidden') assert.equal(at.retry, null, `${shape}: no Retry access while access is not blocked`);
+      else assert.ok(at.retry && (!phone || Math.min(...at.retry) >= 44), `${shape}: Retry access shows${phone ? ', 44px' : ''}: ${JSON.stringify(at)}`);
+      await close(p);
+    }
+  });
 
   for (const shape of ['phone', 'stacked']) {
     await check(`${shape}: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper`, async () => {
