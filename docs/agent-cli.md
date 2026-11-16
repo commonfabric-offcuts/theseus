@@ -558,7 +558,9 @@ what Core keeps about them; the records themselves change only in a release.
   `--out/records`. Only an agent on the home records; the same run again is
   recorded once, and a version that went back opens its topic in the home.
 
-The same answer twice prints `(no change)` or `was already recorded`.
+The same answer twice prints `(no change)` or `was already recorded`. These
+verbs are checked in `tests/test_agent_verbs_tools.py`, run as a deployed CLI
+runs them, over invented records.
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

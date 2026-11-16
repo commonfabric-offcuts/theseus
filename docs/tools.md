@@ -181,7 +181,9 @@ on the tools' home outcomes; `--items` is the train's items,
 The step never runs a check for a tool that did not change, nor any other
 outcome's checks. Its checks are in `tests/test_tools_tool_check.py`, on real
 git repositories in a temporary directory with the live CLI as a typed
-stand-in.
+stand-in; its bridge to the real live CLI (`LiveCli`: the views it reads and
+`tool-record`) is checked in `tests/test_agent_verbs_tools.py`, against the
+real `bin/aim-next` of a copy of the code.
 
 ## Deploy: `tools/deploy.py`
 
