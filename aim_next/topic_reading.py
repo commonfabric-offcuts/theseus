@@ -83,9 +83,12 @@ def writing_fields(db, actor, items):
                 if payload.get("body", "").strip() or field == "reply" and payload.get("attachments"):
                     yours[field] = True
         # The replies prepared from each message, oldest first: every accepted send raises the version, and the newest
-        # one's send not accepted (under way, refused or never made) is a reply not sent.
+        # one's send not accepted (under way, refused or never made) is a reply not sent. The read goes by the page's
+        # messages (editor_submissions), never by the reader's whole send history (actor_submissions, which ORDER BY
+        # seq alone would choose), so a page costs the same however many replies they prepared elsewhere.
         newest = {}
-        for row in db.execute("SELECT s.source_key,%s AS sent FROM submissions s WHERE s.actor_id=? AND s.source_key IN (%s) ORDER BY s.seq" % (SENT, marks), [actor] + list(keys)):
+        for row in db.execute("SELECT s.source_key,%s AS sent FROM submissions s INDEXED BY editor_submissions "
+                              "WHERE s.actor_id=? AND s.source_key IN (%s) ORDER BY s.seq" % (SENT, marks), [actor] + list(keys)):
             found[keys[row["source_key"]]]["version"] += row["sent"]
             newest[row["source_key"]] = row["sent"]
         for key, sent in newest.items():
@@ -98,9 +101,10 @@ def writing_fields(db, actor, items):
 def writing_version(db, actor, message_id):
     """A version of the reader's private writing on a message that grows with every save to it, every preparation
     and every accepted send: the note's revision, every draft's from the message and the count of its replies sent,
-    added up. None is ever removed or lowered, and each of those acts raises one."""
+    added up. None is ever removed or lowered, and each of those acts raises one. Like a page's read, it goes by the
+    message (editor_submissions), so a save costs the same however many replies the writer prepared elsewhere."""
     key = message_key(message_id)
     return db.execute("SELECT COALESCE((SELECT revision FROM notes WHERE actor_id=? AND source_key=?),0)+"
                       "COALESCE((SELECT SUM(revision) FROM drafts WHERE actor_id=? AND source_key=?),0)+"
-                      "(SELECT COUNT(*) FROM submissions s WHERE s.actor_id=? AND s.source_key=? AND " + SENT + ")",
+                      "(SELECT COUNT(*) FROM submissions s INDEXED BY editor_submissions WHERE s.actor_id=? AND s.source_key=? AND " + SENT + ")",
                       (actor, key, actor, key, actor, key)).fetchone()[0]

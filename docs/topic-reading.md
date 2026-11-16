@@ -31,7 +31,11 @@ only (`aim_next/topic_reading.py`), through indexes keyed by message:
   draft's and the count of replies from the message that were sent, added up:
   each save, preparation and accepted send raises one of them and none is
   ever lowered, so it grows with each, and a page keeps the newer of two
-  reads.
+  reads. The prepared replies are read by the page's messages
+  (`editor_submissions`), never by the reader's whole send history, so a
+  page costs the same however many replies they prepared from other messages,
+  in this topic or another; so does a save's version
+  (`tests/test_reader_bounds.py`).
 
 A save of a private note or a draft about a message, a reply's preparation and
 its accepted send record a `yours` change in the writer's own scope, keyed by
