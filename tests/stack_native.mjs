@@ -129,6 +129,172 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 546: a message the reader folded is its one row on every screen (docs/reply-stacks.md, "Folded
+  // messages"). A cut-off message (an excerpt, with its cue) folded by the reader's own 👍 draws none of its
+  // words past that row: in a dossier, on its own, and in a dossier put below More once More shows it; by touch
+  // at 390, 375 and 320 wide and on a laptop, light and dark, as Core keeps it after a reload. No card's painted
+  // words fall outside its own box. Unfolded, it reads its excerpt, and nothing above it moves; the long cards
+  // beside it read as they always did. The words are invented, in the shape of the message that showed it.
+  await check('reading dossier look a folded excerpt draws only its row, by touch at 390, 375 and 320 and on a laptop, after a reload and below More; unfolded it reads its excerpt', async () => {
+    const fill = (start, phrases, size) => { let out = start; for (let i = 0; out.length < size; i++) out += ' ' + phrases[i % phrases.length]; return out; };
+    const GARDEN = ['The bean rows want another week of sun before they climb.', 'Two of the pepper trays went out at noon, one stays inside.',
+      'A bed takes about forty minutes to turn, then an hour for the compost to settle, then a watering.', 'So a full row is most of a morning.',
+      'The shed holds three rakes, two hoes and a spade with a split handle.', 'Mulch arrives on Thursday if the lane is dry.'];
+    const excerpt = (who, asked) => [`> ${asked}`, '', `@${who} ` + fill('Six garden beds are planted, all of them watered since dawn: the three herb rows, the tomato frame', GARDEN, 184),
+      '', '> how many beds would it take to feed the whole street through summer?', '', fill('Waiting to plant: 16 seedlings, four of them the rest of the pepper series.', GARDEN, 850), ''].join('\n');
+    const LONG = ['The shed list is sorted, and "waiting to be stacked" now lists only the rakes, the hoes and two spades.', '',
+      '- **The 9:35 time:** that is when the delivery was logged. Its unloading really began at 8:24.',
+      '- **Going forward:** each new delivery is logged the same way the moment it starts, beginning with the mulch once the soil comes.', '',
+      fill('The soil changed a piece of the yard that every bed reads, so all 44 beds have to be turned, and that is why it is taking long.', GARDEN, 380)].join('\n');
+    const PHONES = [{ width: 390, height: 844 }, { width: 375, height: 812 }, { width: 320, height: 568 }];
+    for (const device of ['phone', 'laptop']) {
+      const topic = `dossier-folded-excerpt-${device}`;
+      const ids = await seed(topic, [
+        ['long', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: LONG }],
+        ['cut', { sender: 'aim-ux', addressees: [facts.actor], body: excerpt(facts.actor, 'what is left in the shed?') }],
+        ['root', { sender: facts.actor, body: fill('How should the garden notes read, bed by bed?', GARDEN, 1100) }],
+        ['r1', { sender: other, join: true, reply_to: 'root', addressees: [facts.actor], body: fill('Notes read best as one line a bed.', GARDEN, 889) }],
+        ['r2', { sender: facts.actor, reply_to: 'r1', addressees: [other], body: '> one line a bed\n\n' + fill('Then say which beds wait on the weather.', GARDEN, 760) }],
+        ['r3', { sender: other, reply_to: 'r2', addressees: [facts.actor], body: '> which beds wait on the weather\n\n' + fill('The herb rows and the far trellis.', GARDEN, 470) }],
+        ['r4', { sender: facts.actor, reply_to: 'r3', addressees: [other], body: '> the far trellis\n\nHow many rows are we planting today?' }],
+        ['folded', { sender: other, reply_to: 'r4', addressees: [facts.actor], body: excerpt(facts.actor, 'how many rows are we planting today?') }],
+        ['alone', { sender: other, addressees: [facts.actor], body: excerpt(facts.actor, 'what does the far bed need?') }],
+        ['asideRoot', { sender: 'aim-ux', addressees: [facts.actor], body: 'A dossier the reader put below More.' }],
+        ['aside', { sender: other, reply_to: 'asideRoot', addressees: [facts.actor], body: excerpt(facts.actor, 'when does the mulch come?') }],
+      ]);
+      // The reader's own 👍 folds each excerpt in Core (docs/thumbs.md); they starred the dossier's first message
+      // and put the second dossier below More, through the commands their page sends.
+      for (const id of [ids.folded, ids.alone, ids.aside]) await control({ method: 'agent_thumb', sender: facts.actor, message_id: id, operation_id: `${topic}-${id}-thumb` });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.root, operation_id: `${topic}-star`, args: { starred: true } });
+      const items = async () => (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 30 })).items;
+      const seeded = await items(), item = id => seeded.find(each => each.id === id);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.asideRoot, operation_id: `${topic}-aside`, args: { through: item(ids.aside).seq } });
+      for (const id of [ids.cut, ids.root, ids.folded, ids.alone, ids.aside]) assert.equal(item(id).preview, true, `${device}: ${id} is a cut-off message, an excerpt`);
+      assert.equal(item(ids.long).preview, false, `${device}: the long card is whole`);
+      assert.deepEqual([ids.folded, ids.alone, ids.aside, ids.r1, ids.r3].map(id => item(id).acts.folded), [true, true, true, true, true], `${device}: the reader's 👍 and replies folded what they answered`);
+      const foldedInCore = async (id, on) => (await items()).find(each => each.id === id).acts.folded === on;
+
+      const p = await open(`${topic}-390`, device, topic, ids.long, 'window.holdReads=true;');
+      const LOOK = `(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+        box=e=>{const b=e.getBoundingClientRect();return {top:b.top,bottom:b.bottom,height:b.height}},spills=[];
+        // Each card's words where they paint: a text box, cut by every box between it and the card that clips, must lie
+        // inside the card. A stack's tab stands above its head's card by design, and hidden tips paint nothing.
+        for(const card of document.querySelectorAll('#messages .message-card')){
+          if(!card.getClientRects().length)continue;
+          const cb=card.getBoundingClientRect(),walk=document.createTreeWalker(card,NodeFilter.SHOW_TEXT);
+          for(let t;(t=walk.nextNode());){
+            if(!t.data.trim()||t.parentElement.closest('.stack-head,.stack-rename,.replied-words,.sr-only'))continue;
+            const range=document.createRange();range.selectNodeContents(t);
+            for(const r of range.getClientRects()){
+              let top=r.top,bottom=r.bottom,left=r.left,right=r.right,painted=r.width>0&&r.height>0;
+              for(let e=t.parentElement;e&&painted;e=e===card?null:e.parentElement){
+                const s=getComputedStyle(e);
+                if(s.opacity==='0'||s.visibility==='hidden')painted=false;
+                else if(s.overflowX!=='visible'||s.overflowY!=='visible'){const b=e.getBoundingClientRect();top=Math.max(top,b.top);bottom=Math.min(bottom,b.bottom);left=Math.max(left,b.left);right=Math.min(right,b.right)}
+              }
+              if(!painted||bottom-top<.5||right-left<.5)continue;
+              if(top<cb.top-1||bottom>cb.bottom+1||left<cb.left-1||right>cb.right+1)
+                spills.push({id:card.dataset.id,folded:card.dataset.folded==='true',words:t.data.trim().slice(0,20),painted:{top:Math.round(top),bottom:Math.round(bottom)},card:{top:Math.round(cb.top),bottom:Math.round(cb.bottom)}});
+            }
+          }
+        }
+        const fold=id=>{const e=c(id);return {shown:e.getClientRects().length>0,folded:e.dataset.folded==='true',height:Math.round(box(e).height),
+          row:Boolean(e.querySelector(':scope > .message-folded')?.getClientRects().length),
+          rest:[...e.children].filter(k=>!k.classList.contains('message-folded')&&k.getClientRects().length).map(k=>k.className)}};
+        const whole=id=>{const e=c(id),w=e.querySelector(':scope > .message-preview'),cue=e.querySelector(':scope > .message-preview-cue'),cb=box(e),wb=box(w);
+          return {folded:e.dataset.folded==='true',words:w.getClientRects().length>0,wordsHeight:Math.round(wb.height),inside:wb.top>=cb.top-1&&wb.bottom<=cb.bottom+1,
+            cue:Boolean(cue?.getClientRects().length),height:Math.round(cb.height),window:innerHeight}};
+        // The dossier's first message, itself an excerpt, shown as its tab alone: nothing of its card draws.
+        const head=c(ids.root),stack=head.closest('.reply-stack');
+        return {spills,folded:fold(ids.folded),alone:fold(ids.alone),aside:fold(ids.aside),long:whole(ids.long),cut:whole(ids.cut),
+          head:{open:stack.dataset.headOpen,rest:[...head.children].filter(k=>!k.classList.contains('stack-head')&&k.getClientRects().length).map(k=>k.className)}}})()`;
+      const look = () => p.evaluate(LOOK);
+      // Where each card above the folded one stands on the page, scrolling aside.
+      const above = () => p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(card(ids.folded))});
+        return [...document.querySelectorAll('#messages .message-card')].filter(e=>e.getClientRects().length&&(e.compareDocumentPosition(f)&Node.DOCUMENT_POSITION_FOLLOWING)).map(e=>[e.dataset.id,Math.round(e.getBoundingClientRect().top+scrollY)])})()`);
+      const drawn = () => p.evaluate(`(()=>{const c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),aside=document.querySelector('#messages .reply-stack[data-stack="${ids.asideRoot}"]');
+        return ${JSON.stringify([ids.folded, ids.alone])}.every(id=>c(id)?.dataset.folded==='true'&&c(id).querySelector(':scope > .message-folded'))&&Boolean(document.querySelector('#messages .stack-more'))&&Boolean(aside)&&!aside.getClientRects().length})()`);
+      const faults = [];
+      const expect = (ok, said, seen) => { if (!ok) faults.push(`${said}: ${JSON.stringify(seen)}`); };
+      // Every fault seen so far, before a press that a card's spilled words could cover.
+      const flush = where => assert.deepEqual(faults, [], `${where}: ${faults.length} faults`);
+      const coarse = device === 'phone', foldedMax = coarse ? 56 : 44;
+      const rowOnly = (where, f, inDossier) => {
+        expect(f.shown && f.folded && f.row, `${where}: shows as its folded row`, f);
+        expect(f.rest.length === 0, `${where}: draws nothing of its card but the row`, f.rest);
+        expect(inDossier ? Math.abs(f.height - foldedMax) <= 1 : f.height <= 60, `${where}: keeps the folded row's height`, f.height);
+      };
+      const reload = async () => {
+        // Which document is up: its timeOrigin as first read, kept on the window (WebKit's can move 1 ms with no load).
+        const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true'`).catch(() => false), `${device}: the page loads again`);
+      };
+      for (const size of device === 'phone' ? PHONES : [null]) {
+        const at = size ? `${device} ${size.width}` : device;
+        if (size) { await p.send('Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: 1, mobile: true }); await reload(); }
+        await until(drawn, `${at}: the folds and the move below More are drawn from Core`);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme); await centre(p, card(ids.folded)); await away(p);
+          await shot(p, `dossier-folded-excerpt-${at.replace(' ', '-')}-${theme}-folded`);
+          const seen = await look();
+          expect(seen.spills.length === 0, `${at} ${theme}: no card's words paint outside its box`, seen.spills);
+          rowOnly(`${at} ${theme}: the folded excerpt in a dossier`, seen.folded, true);
+          rowOnly(`${at} ${theme}: the folded excerpt on its own`, seen.alone, false);
+          expect(!seen.aside.shown, `${at} ${theme}: the dossier below More draws nothing`, seen.aside);
+          expect(seen.head.open === 'false' && seen.head.rest.length === 0, `${at} ${theme}: the dossier's first message, an excerpt, shows as its tab alone`, seen.head);
+          expect(seen.long.words && seen.long.inside && !seen.long.cue, `${at} ${theme}: the long unfolded card shows all its words inside its box`, seen.long);
+          expect(seen.cut.words && seen.cut.cue && seen.cut.inside && (!coarse || seen.cut.wordsHeight <= seen.cut.window * .6 + 1),
+            `${at} ${theme}: the unfolded excerpt reads with its cue${coarse ? ', no taller than 60% of the window' : ''}`, seen.cut);
+          observations.push({ name: 'folded excerpt', engine, at, theme, ...seen });
+        }
+        flush(at);
+        // More shows the dossier put below it: its folded excerpt is its row there too.
+        await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more');
+        await until(async () => (await look()).aside.shown, `${at}: More shows the dossier put below it`);
+        await centre(p, card(ids.aside)); await away(p);
+        await shot(p, `dossier-folded-excerpt-${at.replace(' ', '-')}-below-more`);
+        const shown = await look();
+        expect(shown.spills.length === 0, `${at}: below More, no card's words paint outside its box`, shown.spills);
+        rowOnly(`${at}: the folded excerpt shown below More`, shown.aside, true);
+        await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more');
+        await until(async () => !(await look()).aside.shown, `${at}: More puts it back`);
+        flush(at + ' below More');
+        // A press on the row unfolds it whole: its excerpt reads, inside its card, and nothing above it moves.
+        await centre(p, card(ids.folded));
+        const before = await above();
+        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-cue');
+        await until(async () => !(await look()).folded.folded, `${at}: a press on the row unfolds it`);
+        await until(() => foldedInCore(ids.folded, false), `${at}: Core keeps the unfold`);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme); await centre(p, card(ids.folded)); await away(p);
+          await shot(p, `dossier-folded-excerpt-${at.replace(' ', '-')}-${theme}-unfolded`);
+          const open = await look(), it = await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(ids.folded))}),w=e.querySelector(':scope > .message-preview'),cb=e.getBoundingClientRect(),
+            first=document.createRange();first.selectNodeContents(w);const r=first.getClientRects()[0];
+            return {words:w.getClientRects().length>0,cue:Boolean(e.querySelector(':scope > .message-preview-cue')?.getClientRects().length),firstInside:Boolean(r)&&r.top>=cb.top-1&&r.bottom<=cb.bottom+1,
+              height:Math.round(cb.height),window:innerHeight}})()`);
+          expect(open.spills.length === 0, `${at} ${theme}: unfolded, no card's words paint outside its box`, open.spills);
+          expect(it.words && it.cue && it.firstInside && it.height > foldedMax, `${at} ${theme}: unfolded, its excerpt reads in its card with its cue`, it);
+          expect(!coarse || it.height < it.window, `${at} ${theme}: unfolded by touch, the card stays shorter than the window`, it);
+        }
+        expect(JSON.stringify(await above()) === JSON.stringify(before), `${at}: unfolding moves nothing above it`, { before, after: await above() });
+        // Folded again (here, from another device), the row is all that draws, and the next size reloads it.
+        await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.folded, operation_id: `${topic}-refold-${at}`, args: { folded: true } });
+        await until(async () => (await look()).folded.folded, `${at}: the page hears it folded again`);
+        const again = await look();
+        expect(again.spills.length === 0, `${at}: folded again, no card's words paint outside its box`, again.spills);
+        rowOnly(`${at}: folded again`, again.folded, true);
+      }
+      await reload();
+      await until(drawn, `${device}: after a last reload the folds are drawn from Core`);
+      const last = await look();
+      expect(last.spills.length === 0, `${device}: after a reload, no card's words paint outside its box`, last.spills);
+      rowOnly(`${device}: after a reload, the folded excerpt in a dossier`, last.folded, true);
+      flush(device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('reading dossier look gives a saved fold the read material before its read marker catches up', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = `dossier-material-${device}`, ids = await dossierSeed(topic);

@@ -260,9 +260,11 @@
 @media(pointer:coarse){.card-star::after{content:'';position:absolute;left:50%;top:50%;width:2.75rem;height:2.75rem;transform:translate(-50%,-50%)}}
 
 /* A message the reader folded, wherever it shows: one quiet row, who wrote it, its first words and "Folded". A press
-   on it, or a swipe to the left, unfolds it. The rest of the card waits, hidden, until then. */
+   on it, or a swipe to the left, unfolds it. The rest of the card waits, hidden, until then, on every screen: no rule
+   that draws a part of a card (the excerpt a finger reads, aim.css) shows it here, as no rule shows what is [hidden].
+   A folded card in a dossier is a fixed 44px or 56px strip, so a part drawn would paint over the cards below (546). */
 .message-card[data-folded=true]{display:flex;align-items:baseline;gap:.5rem;min-height:2.75rem;padding:.3rem 1.15rem;cursor:pointer}
-.message-card[data-folded=true]>:not(.message-folded){display:none}
+.message-card[data-folded=true]>:not(.message-folded){display:none!important}
 .message-folded{display:flex;align-items:baseline;gap:.5rem;min-width:0;width:100%;color:var(--muted);font-size:.85rem;font-weight:400;white-space:nowrap}
 .folded-author{flex:none;color:var(--ink);font-weight:650}
 .folded-words{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}

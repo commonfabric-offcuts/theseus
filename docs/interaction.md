@@ -111,7 +111,7 @@ the pointer's way, the keys' and the phone's.
   in place. At either end, scrolling carries on with the page. Where a finger
   scrolls, the excerpt is never taller
   than 60% of the window, so a drag outside the lit message still scrolls the
-  page. In a topic or Conversation feed, its ⋯ also offers **Show full
+  page; a message the reader folded shows none of it, only its row. In a topic or Conversation feed, its ⋯ also offers **Show full
   message**: the one card grows to the whole message, without opening the
   Reader, and the words the reader had scrolled to inside the card stay where
   they were on the screen (the page takes up the card's own scroll). This choice lasts through incoming updates on this page; leaving
