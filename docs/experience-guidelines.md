@@ -232,6 +232,33 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
+## One meaning, one glyph
+
+Every menu item shows a glyph before its words, and an act keeps one glyph in
+every menu: the glyph of the button that does the same thing, where there is
+one ([links.md](links.md), "A message's menu"). The words, their order, keys
+and acts are what they were.
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading menus every item of a message's ⋯, a right-click, a dossier's menu
+  and the phone's sheets carries its glyph before its words, …", at 320, 375
+  and 390 points and a laptop, light and dark, in each state an item has.
+- `tests/reader_compose_native.mjs` (`native-compose`, Chrome and Safari's
+  engine): "menus phone-320: …" to "menus stacked: every item of the
+  Reader's ⋯ carries its glyph …".
+- `tests/notebook_pages_native.mjs` (`native-notebook`,
+  `native-webkit-notebook`): "notebook menus the Reader's ⋯ on a Notebook page
+  carries a glyph before each item's words, …".
+- `tests/pipeline_native.mjs` (`native-pipeline`, `native-webkit-pipeline`):
+  "pipeline menus every item of an item's ⋯ carries its glyph …".
+- Each browser case above also holds what every glyph draws: the approved
+  design page's drawing, ink that shows (Quote selection's ❝ included), and for
+  the pencil and the tray the New message and Reader's archive buttons' own
+  drawings as the page shows them (`misdrawn` in `tests/menu_glyphs.mjs`).
+- `tests/ui_menu_glyphs.test.mjs` (node): the glyph by name, silent and after
+  the words in the document; an item with no glyph opens no menu; every glyph
+  draws the approved drawing, and a borrowed one is its named control's.
+
 ## Getting something in is quick, never a form
 
 One line or one tap comes first: type, press Return, and it is in. Details are

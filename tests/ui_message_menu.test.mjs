@@ -35,7 +35,7 @@ const labels = menu => menu.root.children.map(button => button.textContent);
 
 test('a message\'s menu lists its items in order as a menu, takes the focus, and one tap does that item and closes it, giving the focus back', () => {
   const { doc, win, anchor } = page(), done = [];
-  const menu = openMessageMenu({ anchor, items: [{ label: 'Copy Link', act: () => done.push('copy') }, { label: 'Mark unread', act: () => done.push('mark') }], label: 'This message', doc, win });
+  const menu = openMessageMenu({ anchor, items: [{ label: 'Copy Link', glyph: 'link', act: () => done.push('copy') }, { label: 'Mark unread', glyph: 'unread', act: () => done.push('mark') }], label: 'This message', doc, win });
   assert.deepEqual(labels(menu), ['Copy Link', 'Mark unread']);
   assert.deepEqual([menu.root.getAttribute('role'), menu.root.getAttribute('aria-label'), menu.root.children.map(b => b.getAttribute('role'))], ['menu', 'This message', ['menuitem', 'menuitem']]);
   assert.equal(menu.root.parent, doc.body, 'outside a dialog it belongs to the page');
@@ -49,7 +49,7 @@ test('a message\'s menu lists its items in order as a menu, takes the focus, and
 test('Up and Down step through a menu and wrap, Home and End go to its ends, and Escape or Tab closes it and gives the focus back', () => {
   for (const closing of ['Escape', 'Tab']) {
     const { doc, win, anchor } = page();
-    const menu = openMessageMenu({ anchor, items: ['A', 'B', 'C'].map(label => ({ label, act: () => assert.fail('no item is chosen') })), doc, win });
+    const menu = openMessageMenu({ anchor, items: ['A', 'B', 'C'].map(label => ({ label, glyph: 'link', act: () => assert.fail('no item is chosen') })), doc, win });
     const at = () => menu.root.children.indexOf(doc.activeElement);
     const steps = [];
     for (const name of ['ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'ArrowUp']) { assert.equal(key(menu.root, name).prevented, true, name); steps.push(at()); }
@@ -61,7 +61,7 @@ test('Up and Down step through a menu and wrap, Home and End go to its ends, and
 });
 
 test('a press outside closes a menu and leaves the focus where it lands; the same ⋯ pressed again closes it; another opening closes the first', () => {
-  const { doc, win, anchor } = page(), outside = doc.createElement('p'), items = [{ label: 'Copy Link', act() {} }];
+  const { doc, win, anchor } = page(), outside = doc.createElement('p'), items = [{ label: 'Copy Link', glyph: 'link', act() {} }];
   doc.body.append(outside);
   let menu = openMessageMenu({ anchor, items, doc, win });
   doc.fire('pointerdown', { target: menu.root.children[0] });
@@ -88,7 +88,7 @@ test('a press outside closes a menu and leaves the focus where it lands; the sam
 test('a menu sits under its ⋯ with their right edges lined up, above it when there is no room below, at the pointer for a right-click, and always inside the window', () => {
   const place = (box, options = {}, size = {}) => {
     const { doc, win, anchor } = page(size); anchor.box = box;
-    const { root } = openMessageMenu({ anchor, items: [{ label: 'Copy Link', act() {} }], doc, win, ...options });
+    const { root } = openMessageMenu({ anchor, items: [{ label: 'Copy Link', glyph: 'link', act() {} }], doc, win, ...options });
     return [root.style.position, root.style.left, root.style.top];
   };
   assert.deepEqual(place({ top: 100, bottom: 136, left: 900, right: 936 }), ['fixed', '796px', '140px'], 'under it: 936 - 140 wide, 4 below');
@@ -102,7 +102,7 @@ test('a menu sits under its ⋯ with their right edges lined up, above it when t
 test('inside the Reader a menu belongs to the Reader\'s dialog, so it shows above the page', () => {
   const { doc, win, anchor } = page(), dialog = doc.createElement('dialog');
   dialog.attributes.open = ''; doc.body.append(dialog); dialog.append(anchor);
-  const { root } = openMessageMenu({ anchor, items: [{ label: 'Wide layout', act() {} }], doc, win });
+  const { root } = openMessageMenu({ anchor, items: [{ label: 'Wide layout', glyph: 'layout', act() {} }], doc, win });
   assert.equal(root.parent, dialog);
 });
 

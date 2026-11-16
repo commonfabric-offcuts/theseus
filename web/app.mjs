@@ -1381,14 +1381,14 @@ function openMessageMore(item, more) {
 function messageMenuItems(item, say, anchor = say) {
   const phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
   const stack = stackFeed && !topicUnavailable ? stackFeed.menuItems(item, { phone, more: moves => anchor && openMessageMenu({ anchor, items: moves, label: 'Move or join', sheet: true }) }) : { first: [], last: [] };
-  const items = [...stack.first, { label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+  const items = [...stack.first, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   const card = cardIn(messageEntries.get(item.id));
-  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', act: () => run(() => cardScroll.showFull(card, item)) });
+  if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
   // Edit, on the person's own message (docs/message-edit.md): the Reader opens on it to edit.
-  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
+  if (mayEdit(item, editRights()) && !messageEdit) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(item.id, editOpener(item, anchor))) });
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
-    items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
+    items.push({ label: marked ? 'Mark read' : 'Mark unread', glyph: marked ? 'read' : 'unread', act: () => run(() => markFromMenu(item.id, !marked)) });
   }
   return [...items, ...stack.last];
 }
@@ -1460,25 +1460,25 @@ async function copyPageLink(source, revision, say) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
+  if (message) items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   // Edit turns the Reader to its edit mode on the message it shows (docs/message-edit.md).
-  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', act: () => run(() => editMessage(ref.id, button)) });
+  if (message && !messageEdit && mayEdit({ author_id: p.source.author }, editRights())) items.push({ label: 'Edit', glyph: 'pencil', act: () => run(() => editMessage(ref.id, button)) });
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
-    items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
-      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
+    items.push({ label: 'Copy Link', glyph: 'link', act: () => run(() => copyPageLink(p.source, null, button)) },
+      { label: `Copy Link to Revision ${ref.revision}`, glyph: 'link', act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
     // Edit page only for someone Core lets write the page (its reader_may_write, docs/notebook-pages.md).
-    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
+    if (p.source.reader_may_write === true) items.push({ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } });
   }
   const state = message && p.mark ? marks.state(ref.id) : null;
-  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
+  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', glyph: state.marked ? 'read' : 'unread', act: () => run(toggleMark) });
   // Fold message: the reader's own fold, as Fold in the card's ⋯ (StackFeed.setFold); a starred message offers none.
   const item = message ? readerFeedItem() : null, acts = item ? stackFeed.actsOf(item.id, item) : {};
-  if (item && acts.folded) items.push({ label: 'Unfold message', act: () => stackFeed.setFold(item, false, { focus: false }) });
-  else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });
-  if (reader.quotable) items.push({ label: 'Quote selection', act: () => reader.quote() });
-  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', act: () => openStartLine() });
-  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
-  if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
+  if (item && acts.folded) items.push({ label: 'Unfold message', glyph: 'unfold', act: () => stackFeed.setFold(item, false, { focus: false }) });
+  else if (item && !acts.starred) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });
+  if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
+  if (!$('start-from-message').hidden) items.push({ label: 'Start a topic from this', glyph: 'topic', act: () => openStartLine() });
+  if (!$('add-to-pipeline').hidden) items.push({ label: 'Add to pipeline', glyph: 'pipeline', act: () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true)) });
+  if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
   openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message', sheet: true });
 }
 // Who may edit which message here (message-edit-writing.mjs, mayEdit).

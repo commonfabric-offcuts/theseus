@@ -429,9 +429,9 @@ a.pl-title:hover{text-decoration:underline}
 .pl-note{margin:.15rem 0 0 1.9rem;font-size:.78rem;color:var(--muted)}
 .pl-note button{min-height:1.8rem;padding:0 .45rem;font-size:.75rem;margin-left:.3rem}
 .pl-menu{position:absolute;right:.5rem;top:calc(100% - .3rem);z-index:20;min-width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 6px 24px rgb(0 0 0 / .18);display:flex;flex-direction:column}
-.pl-menu button{display:flex;justify-content:space-between;gap:1.2rem;min-height:2.4rem;border:0;text-align:left;font-size:.85rem;background:transparent}
+.pl-menu button{display:flex;align-items:center;justify-content:flex-start;min-height:2.4rem;border:0;text-align:left;font-size:.85rem;background:transparent}
 .pl-menu button:hover{background:var(--soft)}
-.pl-menu kbd{font:inherit;color:var(--muted);font-size:.78rem}
+.pl-menu kbd{font:inherit;color:var(--muted);font-size:.78rem;margin-left:auto;padding-left:1.2rem}
 .pl-menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
 .pl-group{margin:.8rem 0 .4rem}
 .pl-group>summary{cursor:pointer;font-size:.88rem;font-weight:600;width:max-content;max-width:100%}
@@ -661,8 +661,12 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
 /* The keys that do what an item does, at its end. */
-.message-menu-list button:has(.menu-keys){display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
+.message-menu-list button{display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+/* A menu item's glyph (glyphs.mjs, items 602 and 601): it follows the item's words in the document, so the row reads as
+   its words, and is drawn before them, 18px, in the words' own colour. The quote glyph is a character drawn here. */
+.message-menu-list .glyph,.pl-menu .glyph{order:-1;flex:none;align-self:center;width:18px;height:18px;margin-right:10px;opacity:.85}
+.glyph[data-text]{display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem;line-height:1}.glyph[data-text]::before{content:attr(data-text)}
 .message-bar [data-act=more][aria-expanded=true]{background:var(--soft)}
 /* Where a finger presses, each item of a message's menu is 44px tall, as the bar's buttons are. */
 @media(pointer:coarse){.message-menu-list button{min-height:2.75rem}}

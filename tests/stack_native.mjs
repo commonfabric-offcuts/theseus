@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -7018,5 +7019,105 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual([await below(), await revision()], [true, was], 'Core holds B below More, at the place it held');
     assert.equal(await drawn(), false, `after the swipe and Core's answer, B is below the closed More (More: ${JSON.stringify(await more())})`);
     assert.deepEqual(p.errors, []); await p.close();
+  });
+  // Items 602 and 601 (tests/menu_glyphs.mjs, docs/links.md "A message's menu"): every item of a message's ⋯, of a
+  // right-click on a cut-off message, of a dossier's menu and of the phone's two sheets shows its glyph before its
+  // words, in each state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each
+  // width and theme reads a topic of its own, its states made through Core as the person's other devices make them,
+  // so what this case's own presses change is no other's.
+  await check('reading menus every item of a message\'s ⋯, a right-click, a dossier\'s menu and the phone\'s sheets carries its glyph before its words, 18px and on their middle, in each state an item has, at 320, 375, 390 and a laptop, light and dark', async () => {
+    const seen = [], aligned = [], kept = [];
+    const WIDTHS = [['laptop', 'laptop', null], ['390', 'phone', 390], ['375', 'phone', 375], ['320', 'phone', 320]];
+    for (const [width, device, phoneWidth] of WIDTHS) for (const theme of ['light', 'dark']) {
+      const topic = `menu-glyphs-${engine}-${width}-${theme}`;
+      const ids = await seed(topic, [
+        ['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here for the fence.', read: true }],
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The plan for the garden fence.', read: true }],
+        ['r1', { sender: 'aim-ux', reply_to: 'root', addressees: [facts.actor], body: 'The posts come on Tuesday.' }],
+        ['mine', { sender: facts.actor, addressees: [other], body: 'Then we paint on Thursday.' }],
+        ['asideRoot', { sender: 'aim-ux', addressees: [facts.actor], body: 'The shed can wait.', read: true }],
+        ['asideReply', { sender: other, reply_to: 'asideRoot', addressees: [facts.actor], body: 'Agreed, after the fence.', read: true }],
+        ['host', { sender: other, addressees: [facts.actor], body: 'Gate hinges are ordered.', read: true }],
+        ['joined', { sender: 'aim-ux', addressees: [facts.actor], body: 'And the latch with them.', read: true }],
+        ['placed', { sender: other, addressees: [facts.actor], body: 'The paint is the green one.', read: true }],
+        ['marked', { sender: 'aim-ux', addressees: [facts.actor], body: 'Brushes are in the shed.', read: true }],
+        ['folded', { sender: other, addressees: [facts.actor], body: 'Rain is due on Friday.', read: true }],
+        ['starred', { sender: 'aim-ux', addressees: [facts.actor], body: 'Keep the receipt for the posts.', read: true }],
+        ['long', { sender: other, addressees: [facts.actor], body: Array.from({ length: 40 }, (_, i) => `Step ${i + 1} of the fence, written out in full.`).join('\n'), read: true }],
+        ['plain', { sender: 'aim-ux', addressees: [facts.actor], body: 'The neighbours said yes.', read: true }],
+      ]);
+      const act = (kind, id, args) => control({ method: 'stack_act', sender: facts.actor, kind, message_id: id, operation_id: `${topic}-${kind}-${id}`, args });
+      await act('message.star', ids.starred, { starred: true });
+      await act('message.fold', ids.folded, { folded: true });
+      await act('stack.place', ids.placed, { key: 1 });
+      await act('stack.join', ids.joined, { into: ids.host });
+      const seqs = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 30 })).items;
+      await act('stack.aside', ids.asideRoot, { through: seqs.find(each => each.id === ids.asideReply).seq });
+      await control({ method: 'mark', operation_id: `${topic}-mark`, message_ids: [ids.marked], marked: true });
+      const p = await open(`menu-glyphs-${width}-${theme}`, device, topic, ids.plain);
+      await dossierTheme(p, theme);
+      if (phoneWidth) await p.send('Emulation.setDeviceMetricsOverride', { width: phoneWidth, height: 844, deviceScaleFactor: 1, mobile: true });
+      // The open menu's rows read and pictured, then put away by Escape.
+      const rows = async name => {
+        await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${width} ${theme} ${name}: the menu is open`);
+        const read = await p.evaluate(ROWS);
+        await shot(p, `menus-${width}-${theme}-${name}`);
+        seen.push(...read.map(row => ({ ...row, at: `${width} ${theme} ${name}` })));
+        const lefts = read.map(row => row.words?.left ?? NaN);
+        aligned.push([`${width} ${theme} ${name}`, Math.max(...lefts) - Math.min(...lefts)]);
+        return read.map(row => row.label);
+      };
+      const away = async () => { await p.key('Escape'); await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu is put away'); };
+      const sheet = async name => { await choose(p, device, 'Move or join…'); await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list[aria-label="Move or join"]'))`), `${width}: the second sheet`); return rows(name); };
+      // A message's ⋯, and on a phone its stack's moves on the second sheet.
+      const of = async (id, name, more = false) => { await menuOf(p, device, id); const labels = await rows(name); if (device === 'phone' && more) return [...labels, ...await sheet(name + '-moves')]; return labels; };
+      // A dossier's own menu: a right-click on its title row, at the row's end clear of its words (Safari's engine selects a word a right-click lands on).
+      const headMenu = async name => {
+        const head = `${card(ids.root)} > .stack-head`;
+        await centre(p, head);
+        const b = await p.box(head), x = b.x + b.width - 10, y = b.y + b.height / 2;
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x, y, button: 'right', clickCount: 1 });
+        return rows(name);
+      };
+      const has = (labels, want, where) => { for (const label of want) assert.ok(labels.includes(label), `${width} ${theme} ${where}: ${label} in ${labels.join(', ')}`); };
+      has(await of(ids.plain, 'plain', true), ['Star for me', 'Fold', 'Copy Link', 'Mark unread', 'Move below More', 'Move its stack up', 'Move its stack down', 'Join the stack above', 'Join the stack below', ...(device === 'phone' ? ['Move or join…'] : [])], 'a message on its own');
+      await away();
+      if (device === 'laptop') { await rightClick(p, card(ids.long)); has(await rows('long'), ['Show full message'], 'a right-click on a cut-off message'); }
+      else has(await of(ids.long, 'long'), ['Show full message'], 'a cut-off message');
+      await away();
+      has(await of(ids.starred, 'starred'), ['Unstar'], 'a starred message'); await away();
+      has(await of(ids.marked, 'marked'), ['Mark read'], 'a message marked unread'); await away();
+      has(await of(ids.joined, 'joined'), ['Split back out'], 'a message joined to the stack above'); await away();
+      has(await of(ids.mine, 'mine'), ['Edit'], 'the person\'s own message'); await away();
+      has(await of(ids.placed, 'placed', true), ['Let new replies move it'], 'a stack placed by the person'); await away();
+      has(await of(ids.r1, 'reply', true), ['Open its stack'], 'a reply in a dossier at its latest and unread'); await away();
+      if (device === 'laptop') {
+        // A message the person folded: its row's menu is the right click's (menuOf); a phone's tap on its row unfolds it.
+        has(await of(ids.folded, 'folded'), ['Unfold'], 'a folded message'); await away();
+        has(await headMenu('dossier'), ['Rename', 'Show all messages'], 'a dossier\'s title row');
+        await choose(p, device, 'Show all messages');
+        await until(() => p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle')?.dataset.state === 'open'`), 'the dossier shows all its messages');
+        has(await of(ids.root, 'dossier-open'), ['Show latest and unread replies', 'Fold its stack'], 'a dossier showing all its messages'); await away();
+      }
+      // Undo, once the page has made a move; then Bring back above More, in More opened.
+      await of(ids.plain, 'move', device === 'phone');
+      await choose(p, device, 'Move its stack down');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the move chosen');
+      // Undo is in every message's ⋯ once a move is made; asked of a message not lit since, as a press lights it afresh.
+      has(await of(ids.marked, 'undo', true), ['Undo'], 'after a move'); await away();
+      await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more');
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.asideReply))})?.getClientRects().length)`), 'More shows the dossier below it');
+      has(await of(ids.asideReply, 'below-more', true), ['Bring back above More'], 'a dossier below More'); await away();
+      // The pencil and the tray the menus borrow stay on their own buttons; the feed and the bar carry no menu glyph.
+      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]').length]`)]);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
+    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
   });
 }

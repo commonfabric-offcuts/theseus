@@ -2717,7 +2717,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    return { first: items, last: phone ? [{ label: 'Move or join…', act: () => more(moves) }] : moves };",
+     "    return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };",
      "    return { first: items, last: moves };"
     ]
    ],
@@ -7786,8 +7786,8 @@
    "break": [
     [
      "web/app.mjs",
-     "{ label: 'Edit page', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } }",
-     "{ label: 'Edit page', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) }"
+     "{ label: 'Edit page', glyph: 'pencil', act: () => { const opener = p.opener; $('reader-close').click(); run(() => openNotebook(ref.id, { opener })); } }",
+     "{ label: 'Edit page', glyph: 'pencil', act: () => run(() => openDestination({ kind: 'cards', id: ref.id, view: 'text' }, p.source.title || 'Notebook')) }"
     ]
    ],
    "check": {
@@ -8418,8 +8418,8 @@
    "break": [
     [
      "web/app.mjs",
-     "else if (item && !acts.starred) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });",
-     "else if (false) items.push({ label: 'Fold message', act: () => stackFeed.setFold(item, true, { focus: false }) });"
+     "else if (item && !acts.starred) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });",
+     "else if (false) items.push({ label: 'Fold message', glyph: 'fold', act: () => stackFeed.setFold(item, true, { focus: false }) });"
     ]
    ],
    "check": {
@@ -25255,6 +25255,351 @@
    ],
    "check": {
     "python": "test_topic_reading.py"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Every item of a message's ⋯, a right-click, a dossier's menu and the phone's sheets shows its glyph: the menu draws each item's glyph in its row",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    button.append(glyphs[index]);\n",
+     "    if (index) button.append(glyphs[index]);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, every menu item shows its glyph",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    button.append(glyphs[index]);\n",
+     "    if (index) button.append(glyphs[index]);\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Each stack move shows its own glyph: Move its stack up an arrow up, Move its stack down an arrow down",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "keys: '⌘↑', glyph: 'up',",
+     "keys: '⌘↑', glyph: 'down',"
+    ],
+    [
+     "web/stack-feed.mjs",
+     "keys: '⌘↓', glyph: 'down',",
+     "keys: '⌘↓', glyph: 'up',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A menu item's glyph is drawn before its words, 18px, on their middle",
+   "break": [
+    [
+     "web/aim.css",
+     ".message-menu-list .glyph,.pl-menu .glyph{order:-1;",
+     ".message-menu-list .glyph,.pl-menu .glyph{"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ shows each item's glyph, in each state, on a phone and a laptop, in both engines",
+   "break": [
+    [
+     "web/app.mjs",
+     "glyph: 'topic', act: () => openStartLine()",
+     "glyph: 'pipeline', act: () => openStartLine()"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ on a Notebook page shows Edit page's pencil",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ label: 'Edit page', glyph: 'pencil',",
+     "{ label: 'Edit page', glyph: 'link',"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, the Reader's ⋯ on a Notebook page shows each item's glyph",
+   "break": [
+    [
+     "web/app.mjs",
+     "{ label: 'Edit page', glyph: 'pencil',",
+     "{ label: 'Edit page', glyph: 'link',"
+    ]
+   ],
+   "check": {
+    "native": "webkit-notebook",
+    "case": "notebook menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A pipeline item's ⋯ shows each item's glyph",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "el('span', { text: label }), menuGlyph(name), keys",
+     "el('span', { text: label }), keys"
+    ]
+   ],
+   "check": {
+    "native": "pipeline",
+    "case": "pipeline menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, a pipeline item's ⋯ shows each item's glyph",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "el('span', { text: label }), menuGlyph(name), keys",
+     "el('span', { text: label }), keys"
+    ]
+   ],
+   "check": {
+    "native": "webkit-pipeline",
+    "case": "pipeline menus"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A menu item that names no glyph, or one nobody draws, opens no menu",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  } else throw Error(`No glyph called ${name}.`);",
+     "  } else node = doc.createElement('span');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "A pipeline item's ⋯ names the glyph of each of its items",
+   "break": [
+    [
+     "web/pipeline.mjs",
+     "'Open its record', null, 'openpage',",
+     "'Open its record', null, 'moveto',"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 601,
+   "act": "Move below More shows the Reader's archive tray in every menu",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "glyph: positionOf(stack).below ? 'back' : 'archive',",
+     "glyph: positionOf(stack).below ? 'back' : 'drop',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 601,
+   "act": "The archive glyph is the Reader's archive button's own drawing, which the button keeps",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "    node = drawing.cloneNode(true);",
+     "    node = drawing;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Edit, Edit page and Rename show the topic's New message button's own pencil: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "The Reader's ⋯ shows Edit with the New message button's own pencil, on a phone and a laptop, in both engines",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
+   }
+  },
+  {
+   "item": 602,
+   "act": "Rename and Edit in a message's ⋯ and a dossier's menu show the New message button's own pencil",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'settings-open', archive: 'reader-aside' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 601,
+   "act": "Move below More shows the Reader's archive button's own tray: the glyph is cloned from that button, no other",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 601,
+   "act": "In every menu, Move below More shows the Reader's archive button's own tray",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };",
+     "const BORROWED = { pencil: 'new-message', archive: 'settings-open' };"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Each glyph draws the approved design page's drawing: Move its stack up an arrow up to a line, Move its stack down an arrow down to one",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_menu_glyphs.test.mjs"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In the menus a person opens, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "In Safari's engine too, each glyph draws the approved drawing, not only the right name",
+   "break": [
+    [
+     "web/glyphs.mjs",
+     "  up: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },",
+     "  up: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },"
+    ],
+    [
+     "web/glyphs.mjs",
+     "  down: { d: 'M5 20h14 M12 4v12 M7 11l5 5 5-5' },",
+     "  down: { d: 'M5 4h14 M12 20V8 M7 13l5-5 5 5' },"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading menus every item of a message"
+   }
+  },
+  {
+   "item": 602,
+   "act": "Quote selection's ❝ is drawn: the character the stylesheet puts before its words leaves ink, in Chrome and Safari's engine",
+   "break": [
+    [
+     "web/aim.css",
+     ".glyph[data-text]::before{content:attr(data-text)}",
+     ".glyph[data-text]::before{}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "menus "
    }
   }
  ]
