@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the New message composer popped up"
+ ],
+ "label": "mutant-csshold-listener-39b84fc7-1",
+ "snapshot": "36e7cc308dd1295a9017c312d7ce507c939b0ca2"
+}
