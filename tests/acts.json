@@ -13671,8 +13671,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"],\n",
-     ""
+     "\"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"], \"join_revision\"",
+     "\"join_revision\""
     ]
    ],
    "check": {
@@ -14984,8 +14984,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "count + 1 + each.replies.length",
-     "count + 1"
+     "count: 1 + stack.replies.length",
+     "count: 1"
     ]
    ],
    "check": {
@@ -15024,12 +15024,12 @@
   },
   {
    "item": 378,
-   "act": "The Reader's archive button counts every message the move takes, where the page draws the dossier as several stacks, its first message not loaded",
+   "act": "The Reader's archive button counts every message the move takes, its first message not loaded and its answers one stack",
    "break": [
     [
-     "web/stack-feed.mjs",
-     "const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);",
-     "const dossier = [stack];"
+     "web/stack-order.mjs",
+     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
+     "  return [...branches.values()].map(({ head, members, joins }) => {"
     ]
    ],
    "check": {
@@ -15103,8 +15103,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (!position) return null;\n    const dossier",
-     "    if (!position) return { stack, below: false, count: 1 };\n    const dossier"
+     "    if (!position) return null;\n    return { stack, below: position.below",
+     "    if (!position) return { stack, below: false, count: 1 };\n    return { stack, below: position.below"
     ]
    ],
    "check": {
@@ -23759,6 +23759,167 @@
    "check": {
     "native": "inline",
     "case": "inline find restore owner switch arrival and exact source-free send"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The branches of one dossier whose fork sits above the loaded page gather into one stack, its name once",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
+     "  return [...branches.values()].map(({ head, members, joins }) => {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier whose fork sits above the page shows its name once, with every loaded reply in its stack and its count right",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
+     "  return [...branches.values()].map(({ head, members, joins }) => {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "one dossier whose fork sits above the loaded page is one stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier whose fork sits above the page shows its name once, with every loaded reply in its stack and its count right, in Safari's engine",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
+     "  return [...branches.values()].map(({ head, members, joins }) => {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "one dossier whose fork sits above the loaded page is one stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier's first message, where the page holds it, heads the branches gathered under it, though one is older",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const first = found.find(branch => !into.has(branch.id)) ?? found.reduce(",
+     "    const first = found.reduce("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A head whose join or split is not yet answered takes no dossier by the positions read before it",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const hangs = !stack.head.moving && Boolean(",
+     "  const hangs = Boolean("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A branch split back out shows apart at once, under its own first line, while the split waits for its answer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "{ ...item, acts, stack_position, ...(moving ? { moving } : {}) }",
+     "{ ...item, acts, stack_position }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A branch split back out shows apart at once, under its own first line, while the split waits for its answer, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "{ ...item, acts, stack_position, ...(moving ? { moving } : {}) }",
+     "{ ...item, acts, stack_position }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page is Core's join of that first message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const item = root?.item ?? this.messages().get(shows.act.id)",
+     "const item = this.messages().get(shows.act.id)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page shows every loaded message of it in the stack it joins at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.act('stack.join', item, { into: shows.act.into }, into ? members.map(([id]) => [id, { stack_position: into }]) : []);",
+     "this.act('stack.join', item, { into: shows.act.into });"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier's position carries its first message's join revision",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     ", \"join_revision\": acts[\"join_revision\"],",
+     ","
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page is fenced on the join revision Core holds for it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {})",
+     "...({})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
    }
   }
  ]

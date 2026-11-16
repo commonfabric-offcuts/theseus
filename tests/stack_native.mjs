@@ -1219,12 +1219,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const said = [['root', say(other, 'Where should the rowing club keep its oars?', { join: true })]];
     for (let n = 0; n < 30; n++) said.push(['f' + n, say(other, `Boathouse note ${n}, a message of its own.`)]);
     said.push(['a1', say(other, 'The long rack by the slipway has room.', { reply_to: 'root' })],
-      ['b1', say('aim-ux', 'The loft stays dry in winter.', { reply_to: 'root' })],
+      ['b1', say('aim-ux', 'The loft stays dry in winter.', { join: true, reply_to: 'root' })],
       ['a2', say('aim-ux', 'The rack it is, then.', { reply_to: 'a1' })],
       ['top', say(other, 'Who mends the cox box before Saturday?')],
       ['top1', say('aim-ux', 'I can mend it on Friday.', { reply_to: 'top' })]);
     const ids = await seed(topic, said);
     await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.top, operation_id: `${topic}-top-name`, args: { name: 'Cox box repair' } });
+    // The oars dossier's first message was joined once and split back out, so Core holds its join at revision 2: the
+    // page's join of the dossier, which has not loaded that message, is fenced on the revision its position carries.
+    for (const into of [ids.top, null]) {
+      const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: `${topic}-root-${into}`, args: { into } });
+      assert.equal(answer.status, 'committed', `the first message joined into ${into}`);
+    }
     const p = await open(topic, 'laptop', topic, ids.top1, HOLD);
     const shown = async () => (await stacks(p, ids)).slice(0, 2);
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the first message is outside the loaded page');
