@@ -15982,6 +15982,34 @@
    "check": {
     "python": "test_migrations.py"
    }
+  },
+  {
+   "item": 525,
+   "act": "The step to 43 fills who invited each agent from the committed invite receipts on the record, so an agent invited while 324 is live is given back to its inviter",
+   "break": [
+    [
+     "aim_next/migrations.py",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL,",
+     "(\"42\", \"43\", INVITATIONS_SCHEMA,"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 525,
+   "act": "An invitation filled from a receipt names whoever the receipt says invited the agent, the coordinator too, not the outcome's owner",
+   "break": [
+    [
+     "aim_next/invite.py",
+     "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], inviter))",
+     "(receipt[\"result\"][\"agent\"][\"id\"], receipt[\"result\"][\"workspace_id\"], \"owner\"))"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
   }
  ]
 }
