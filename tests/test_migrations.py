@@ -129,6 +129,10 @@ SCHEMA_BEFORE_JUDGMENT = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" 
 # before it is version 42's, read from a fresh instance of release 81's code (e73e6e1e), where 324 went live.
 BEFORE_INVITES, INVITES_VERSION = JUDGMENT_VERSION, str(int(JUDGMENT_VERSION) + 1)
 SCHEMA_BEFORE_INVITES = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_INVITES)).read_text().splitlines()
+# The step that keeps each outcome's ends, archived, completed or brought back (item 404), follows the invitations', so
+# the layout before it is version 43's, read from a fresh instance of train 21's code on release 83 (756c298e).
+BEFORE_ENDS, ENDS_VERSION = INVITES_VERSION, str(int(INVITES_VERSION) + 1)
+SCHEMA_BEFORE_ENDS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_ENDS)).read_text().splitlines()
 DELIVERIES_BEFORE_EDIT = ("CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), "
                           "recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), "
                           "state TEXT NOT NULL DEFAULT 'pending', topic_id TEXT, UNIQUE(message_id,recipient_id))")
@@ -156,6 +160,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The ends' version keeps each outcome's ends: before it, every outcome is open.
+        db.execute("DROP TABLE outcome_ends")
+        if version == BEFORE_ENDS:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The invitations' version keeps who invited each agent into which outcome: before it, no one is known to have.
         db.execute("DROP TABLE agent_invitations")
         if version == BEFORE_INVITES:
@@ -1944,10 +1953,11 @@ def horizon_taken(upgraded, stored):
     """Takes the session step's horizon out of an upgraded store's rows: the one row a step up writes, the last
     message sequence the older version had (0 with none), so every agent reader of those messages counts as handed
     them (docs/message-edit.md, "What counts as handed"). The invitations' step after it adds a table, and no row for
-    records that hold no invitation."""
+    records that hold no invitation; the ends' step adds a table and no row, since every outcome is open."""
     sequences = [row[0] for row in stored.get("messages", [])]
     assert upgraded.pop("message_edit_horizon") == [(max(sequences, default=0),)], "the horizon is the last message"
     assert upgraded.pop("agent_invitations") == [], "no invitation is on these records, so none is filled in"
+    assert upgraded.pop("outcome_ends") == [], "no outcome had ended before version 44"
     return upgraded
 
 
@@ -1973,7 +1983,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_FOLD, SCHEMA_BEFORE_FOLD), ("37", SCHEMA_37),
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
-                     (BEFORE_INVITES, SCHEMA_BEFORE_INVITES))
+                     (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS))
 
 
 class Release19ChainCase(MigrationCase):
@@ -3575,7 +3585,7 @@ class EditStepCase(MigrationCase):
         after = everything(self.path)
         self.assertEqual(after.pop("deliveries"), sorted((row + (1,) for row in stored.pop("deliveries")), key=repr),
                          "every delivery keeps its seq and id, at revision 1")
-        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations"):
+        for table in ("message_revisions", "message_edit_sessions", "message_exposures", "message_edit_horizon", "agent_invitations", "outcome_ends"):
             after.pop(table)
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's step adds an empty table")
         self.assertEqual({k: v for k, v in after.items() if k != "metadata"}, {k: v for k, v in stored.items() if k != "metadata"},
@@ -3666,6 +3676,7 @@ class JudgmentStepCase(MigrationCase):
         after = everything(self.path)
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's table exists, empty")
         self.assertEqual(after.pop("agent_invitations"), [], "and the invitations' step after it fills none")
+        self.assertEqual(after.pop("outcome_ends"), [], "nor the ends' step after that")
         for table in ("message_edit_sessions", "message_exposures", "message_edit_horizon", "deliveries"):
             self.assertEqual(after[table], stored[table], "%s is kept as it was" % table)
         self.assertEqual(after, stored, "every row of every table is kept")
@@ -3688,7 +3699,7 @@ class JudgmentStepCase(MigrationCase):
                                           "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         after = everything(self.path)
-        self.assertEqual((after.pop("release_judgments"), after.pop("agent_invitations")), ([], []))
+        self.assertEqual((after.pop("release_judgments"), after.pop("agent_invitations"), after.pop("outcome_ends")), ([], [], []))
         self.assertEqual(after, stored, "every row is kept")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertTrue(self.attach()["attached"])
@@ -3750,7 +3761,8 @@ class SessionStepCase(MigrationCase):
         self.assertFalse([sql for sql in schema(self.path) if "marked_words" in sql], "no schema object names the SQL function")
         after = everything(self.path)
         self.assertEqual(after.pop("message_edit_horizon"), [(top,)], "the horizon is the last message at the upgrade")
-        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations")), ([], [], []))
+        self.assertEqual((after.pop("message_edit_sessions"), after.pop("message_exposures"), after.pop("agent_invitations"), after.pop("outcome_ends")),
+                         ([], [], [], []))
         self.assertEqual(after.pop("release_judgments"), [], "the judgment's step, run next, adds an empty table")
         self.assertEqual(after, stored, "every row of every table is kept")
         # A fresh instance has horizon 0.
@@ -3977,14 +3989,15 @@ class InviteStepCase(MigrationCase):
         self.assertEqual(self.upgrade()["migrated"], True)
         after = everything(self.path)
         self.assertEqual(after.pop("agent_invitations"), [], "a refusal registered no one, so it invited no one")
+        self.assertEqual(after.pop("outcome_ends"), [], "and the ends' step after it finds no outcome ended")
         self.assertEqual(after, stored, "every row of every table is kept")
 
-    def test_the_step_follows_the_judgments_and_the_head_is_its_version(self):
+    def test_the_step_follows_the_judgments_and_the_ends_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-2:], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION)])
+        self.assertEqual(steps[-3:-1], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
                          [(BEFORE_INVITES, INVITES_VERSION)], "one step leaves 42 and one reaches 43")
-        self.assertEqual((BEFORE_INVITES, INVITES_VERSION, SCHEMA_VERSION), ("42", "43", "43"))
+        self.assertEqual(steps[-1], (BEFORE_ENDS, ENDS_VERSION), "the ends' step follows it")
 
     def test_a_store_release_81_left_at_42_gains_the_invitations_once_upgraded(self):
         # Release 81 (324 live) stores version 42 without agent_invitations: the upgrade must still create it, so a
@@ -4001,10 +4014,11 @@ class InviteStepCase(MigrationCase):
     def test_upgrade_keeps_every_row_knows_no_invitation_and_matches_a_fresh_instance(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_INVITES,
-                                          "schema_version": INVITES_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
         after = everything(self.path)
         self.assertEqual(after.pop("agent_invitations"), [], "no agent is known to have been invited before the step")
+        self.assertEqual(after.pop("outcome_ends"), [], "and the ends' step after it finds no outcome ended")
         self.assertEqual(after, stored, "every row of every table is kept")
 
     def test_step_back_is_refused_once_an_agent_is_invited_and_restores_the_layout_while_none_is(self):
@@ -4022,7 +4036,64 @@ class InviteStepCase(MigrationCase):
             self.step_back()
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], INVITES_VERSION)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
+class EndsStepCase(MigrationCase):
+    """An instance at the invitations' version (43), as train 21 leaves it on release 83: the ends' step (43->44) keeps
+    every row, matches a fresh instance, reads every outcome as open, and steps back only while no outcome has been
+    archived or completed (item 404, docs/targets.md "Archived and completed")."""
+
+    VERSION, FIXTURE = BEFORE_ENDS, SCHEMA_BEFORE_ENDS
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_ENDS)
+
+    def end(self, state):
+        version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+        receipt = self.command("outcome.end_set", {"state": state}, {"workspace_id": "w1"}, {"workspace_revision": version})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_invitations_and_the_head_is_its_version(self):
+        steps = [step[:2] for step in migrations.STEPS]
+        self.assertEqual(steps[-2:], [(BEFORE_INVITES, INVITES_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
+        self.assertEqual([step for step in steps if step[0] == BEFORE_ENDS or step[1] == ENDS_VERSION],
+                         [(BEFORE_ENDS, ENDS_VERSION)], "one step leaves 43 and one reaches 44")
+        self.assertEqual((BEFORE_ENDS, ENDS_VERSION, SCHEMA_VERSION), ("43", "44", "44"))
+
+    def test_upgrade_keeps_every_row_reads_every_outcome_open_and_matches_a_fresh_instance(self):
+        self.assertEqual((self.metadata()["schema_version"], schema(self.path)), ("43", frozen(SCHEMA_BEFORE_ENDS)))
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_ENDS,
+                                          "schema_version": ENDS_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name), "tables, indexes and triggers match a fresh instance")
+        after = everything(self.path)
+        self.assertEqual(after.pop("outcome_ends"), [], "no outcome is archived or completed before the step")
+        self.assertEqual(after, stored, "every row of every table is kept")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        listing = self.store.view("owner", "workspaces", {})
+        self.assertEqual(([item["id"] for item in listing["items"]], [item["end"] for item in listing["items"]], listing["ended_count"]),
+                         (["w1"], [None], 0), "every outcome reads as open, and nothing is listed as ended")
+        self.assertIsNone(self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["end"])
+        self.assertEqual(self.end("archived")["changed"], True, "the act works on an upgraded store")
+
+    def test_step_back_is_refused_once_an_outcome_has_ended_even_brought_back_and_restores_the_layout_while_none_has(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"], "nothing ended yet")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_ENDS))
+        self.assertEqual(everything(self.path), stored)
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.end("archived")
+        self.end("open")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], ENDS_VERSION)
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.
@@ -4089,6 +4160,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(SessionStepCase, _name, None)
     if _name.startswith("test_") and _name not in InviteStepCase.__dict__:
         setattr(InviteStepCase, _name, None)
+    if _name.startswith("test_") and _name not in EndsStepCase.__dict__:
+        setattr(EndsStepCase, _name, None)
     if _name.startswith("test_") and _name not in JudgmentStepCase.__dict__:
         setattr(JudgmentStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:

@@ -26,6 +26,7 @@ from .contract import Refusal, _identifier, _json, _prefix
 from .delivery import _now_ms
 from . import check_reading, outcome_rules
 from .outcome_asks import release_held
+from .outcome_end import end_view
 from .whispers import private_source_refused
 from .message_edit import words, withheld
 from .work import work_by_topic
@@ -318,12 +319,16 @@ class Checks:
         workspace = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
         facts = self._kind_facts(db, workspace)
         if facts["reached"]:
-            return {"reached": facts["reached"], "kind": facts["kind"], "target_word": "reached", "checks": None}
+            return {"reached": facts["reached"], "kind": facts["kind"], "target_word": "reached", "checks": None, "end": None}
+        # Archived or completed by its owner (item 404): the light says so, whatever the checks say.
+        end = end_view(self._end(db, workspace_id))
+        if end is not None:
+            return {"reached": None, "kind": facts["kind"], "target_word": None, "checks": None, "end": end}
         context = self._checks_context(db, workspace["owner_id"], workspace)
         word, _ = self._target_word(db, workspace["owner_id"], workspace, context, facts)
         runs = [run for run in context["runs"] if run["base_for_commit"] is None and run["trial_of"] is None]
         checks = {"count": len(context["checks"]), "last_run_ms": runs[0]["finished_ms"] if runs else None} if context["checks"] else None
-        return {"reached": None, "kind": facts["kind"], "target_word": word, "checks": checks}
+        return {"reached": None, "kind": facts["kind"], "target_word": word, "checks": checks, "end": None}
 
     def _created(self, db, workspace):
         """D22: who started the outcome and when, from its start record; before release 21, the owner with no time."""
@@ -1014,7 +1019,9 @@ class Checks:
             view = next(view for view in views if view["check_id"] == failing["check_id"])
             failing_view = {"check_id": failing["check_id"], "name": failing["name"], "label": (view["latest"] or {}).get("label")}
         reach = None
-        if facts["kind"] == "reach" and not facts["reached"] and actor == workspace["owner_id"]:
+        # Archived or completed (item 404): kept to read, so its kind and Reached wait until it is brought back.
+        end = end_view(self._end(db, workspace["id"]))
+        if facts["kind"] == "reach" and not facts["reached"] and end is None and actor == workspace["owner_id"]:
             offered, unmet = outcome_rules.reach_offered(checks, statuses)
             reach = {"offered": offered, "unmet": unmet, "blocking_tools": []}
         problems = context["problems"]
@@ -1025,8 +1032,8 @@ class Checks:
                 "you_steer": actor in (workspace["owner_id"], workspace["coordinator_id"]),
                 "target": target,
                 "kind": {"kind": facts["kind"], "started_by": facts["start"]["by"] if facts["start"] else workspace["owner_id"],
-                         "started_ms": facts["start"]["ms"] if facts["start"] else None, "you_change": actor == workspace["owner_id"]},
-                "word": word, "failing_check": failing_view, "reached": facts["reached"], "reach": reach,
+                         "started_ms": facts["start"]["ms"] if facts["start"] else None, "you_change": actor == workspace["owner_id"] and end is None},
+                "word": word, "failing_check": failing_view, "reached": facts["reached"], "reach": reach, "end": end,
                 "rounds": outcome_rules.rounds_of(context["ships"]), "counts": counts, "groups": group_views,
                 "loop": self._loop(db, actor, workspace, context), "problems": problems,
                 "releases": [{"number": release["number"], "deployed_ms": release["deployed_ms"]} for release in context["releases"][-outcome_rules.CHART_RELEASES:]],

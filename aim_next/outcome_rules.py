@@ -68,7 +68,8 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
       last hour, each with its work for this reader (work.py).
     waits: the same, for its open topics that wait on anyone.
     done_facts: {"reached": {by, ms, words} | None, "kind": "keep" | "reach",
-      "target_word": "on_target" | ... | None, "checks": {count, last_run_ms} | None}.
+      "target_word": "on_target" | ... | None, "checks": {count, last_run_ms} | None,
+      "end": {state: archived | completed, by, ms} | None}.
     has_topics: whether the outcome has any topic.
     last: {by, how, topic_id, topic_title, title_truncated, ms} the newest activity by others in its
       open topics, or None (none seen, or the scan stopped on its cap).
@@ -84,6 +85,12 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created, b
         # Reached is final, and closed every topic and wait in it (D42).
         return {"light": _light("done", {"kind": "reached", "ms": reached["ms"]}),
                 "lead": dict(reached, kind="reached"), "facts": [], "also": []}
+    end = done_facts.get("end")
+    if end:
+        # Archived or completed by its owner (item 404): every topic of it is archived, so nothing else is said.
+        # Completed is Done; archived is Quiet since the act, which a page that knows neither kind says too.
+        return {"light": _light("done" if end["state"] == "completed" else "quiet", {"kind": end["state"], "ms": end["ms"]}),
+                "lead": {"kind": end["state"], "by": end["by"], "ms": end["ms"]}, "facts": [], "also": []}
 
     now = pipeline["now"] if pipeline else []
     now_worked = _by_newest([item for item in now if item["work"]["observed"]], lambda item: item["work"].get("seen_ms"))

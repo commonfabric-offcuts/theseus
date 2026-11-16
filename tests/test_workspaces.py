@@ -21,7 +21,7 @@ class WorkspacesCase(fixtures.StoreCase):
         answer = self.store.view(actor, "workspaces", args)
         self.assertNotIn("error", answer, answer)
         # order: the reader's own order of their outcomes (docs/outline-order.md).
-        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor", "reached_count", "order"})
+        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor", "reached_count", "ended_count", "order"})
         self.assertEqual(answer["instance_id"], "test-instance")
         return answer
 
@@ -53,8 +53,8 @@ class WorkspacesCase(fixtures.StoreCase):
         # Each names its Conversation, so the Outcomes home can open that (item 384); neither has a Build topic (item 297).
         conversation = {w: self.store.view("owner", "conversation", {"workspace_id": w})["conversation"]["topic_id"] for w in ("w-b", "w-d")}
         expected = [
-            {"id": "w-b", "owner_id": "owner", "title": "Same title", "conversation_id": conversation["w-b"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "light": light},
-            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "conversation_id": conversation["w-d"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "light": light},
+            {"id": "w-b", "owner_id": "owner", "title": "Same title", "conversation_id": conversation["w-b"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "end": None, "light": light},
+            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "conversation_id": conversation["w-d"], "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "build": {"unread": 0, "addressed": 0}, "kind": "keep", "reached_ms": None, "end": None, "light": light},
         ]
         self.assertEqual(self.listing()["items"], expected)
         self.assertEqual(self.listing("agent-a")["items"], expected)

@@ -178,7 +178,7 @@ LEGACY_VERBS = ("binding", "view", "command")
 # What a held message shows in place of its words (docs/message-edit.md): its author has it open in Edit.
 HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
-         "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
+         "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
@@ -200,7 +200,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-… | --ask-in TOPIC] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
          "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
          "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
-         "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|-}")
+         "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|- | outcome-end OUTCOME archived|completed|open}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -248,7 +248,9 @@ def _parser():
 
     for name in LEGACY_VERBS:
         verb(name).add_argument("request", nargs="?")
-    verb("outcomes").add_argument("--reached", action="store_true")
+    listing = verb("outcomes").add_mutually_exclusive_group()
+    listing.add_argument("--reached", action="store_true")
+    listing.add_argument("--ended", action="store_true")
     outcome = verb("new-outcome")
     outcome.add_argument("--title", required=True)
     outcome.add_argument("--kind", choices=("reach", "keep"))
@@ -725,16 +727,24 @@ class Agent(PipelineVerbs, TargetVerbs):
 
     def do_outcomes(self):
         reached = bool(getattr(self.options, "reached", False))
-        items = self.pages("workspaces", {"reached": True} if reached else {})
+        ended = bool(getattr(self.options, "ended", False))
+        items = self.pages("workspaces", {"reached": True} if reached else {"ended": True} if ended else {})
         for item in items:
-            words = _light_words(item.get("light"))
+            # An archived or completed outcome says when and by whom (item 404); any other, where it stands.
+            end = item.get("end")
+            words = ("%s %s by %s" % (end["state"], time.strftime("%b %-d", time.localtime(end["ms"] / 1000.0)), end["by"]) if end
+                     else _light_words(item.get("light")))
             self.out.plain("%s  %s  (owner %s, to %s)%s" % (item["id"], _one_line(item["title"]), item["owner_id"], item.get("kind", "keep"),
                                                             "  " + words if words else ""))
         if not items:
-            self.out.plain("no reached outcomes" if reached else "no outcomes")
-        count = (self.last_page or {}).get("reached_count") or 0
-        if count and not reached:
-            self.out.plain("reached (%d): outcomes --reached" % count)
+            self.out.plain("no reached outcomes" if reached else "no archived or completed outcomes" if ended else "no outcomes")
+        if not reached and not ended:
+            count = (self.last_page or {}).get("reached_count") or 0
+            if count:
+                self.out.plain("reached (%d): outcomes --reached" % count)
+            count = (self.last_page or {}).get("ended_count") or 0
+            if count:
+                self.out.plain("archived or completed (%d): outcomes --ended" % count)
 
     def do_new_outcome(self):
         options = self.options

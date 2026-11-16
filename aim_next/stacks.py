@@ -392,9 +392,12 @@ class Stacks:
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
         personal = kind in PERSONAL
         if not personal:
-            # A reached outcome's topics are kept to read: its stacks keep their names and joins.
-            if db.execute("SELECT 1 FROM outcome_reached WHERE workspace_id=?", (topic["workspace_id"],)).fetchone():
+            # A reached, archived or completed outcome's topics are kept to read: its stacks keep their names and joins.
+            closed = self._closed(db, topic["workspace_id"])
+            if closed is not None and closed["how"] == "reached":
                 raise Refusal("OUTCOME_REACHED", "This outcome was reached; its topics are kept to read.")
+            if closed is not None:
+                raise self._closed_refusal(db, actor, topic["workspace_id"], closed)
         if kind == "join" and value["into"] is not None:
             into = db.execute("SELECT id,topic_id,author_id,private_to FROM messages WHERE id=?", (value["into"],)).fetchone()
             if into is None or not visible(into, actor) or into["topic_id"] != message["topic_id"]:

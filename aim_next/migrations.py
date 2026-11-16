@@ -42,6 +42,7 @@ from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
+from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -182,6 +183,10 @@ STEPS = (
     # agents were already invited from the page: their invitations are filled from the committed receipts on the
     # record. Stepping back is refused once anyone has been invited, since 42 cannot say by whom.
     ("42", "43", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
+    # Version 44 keeps each outcome's ends (item 404, docs/targets.md "Archived and completed"): archived, completed or
+    # brought back, by its owner, and the topics each act archived. A store with no row reads as before: every outcome
+    # is open. Stepping back is refused once any outcome has been archived or completed, even one brought back since.
+    ("43", "44", ENDS_SCHEMA, ENDS_DOWN, ENDS_OCCUPIED),
 )
 
 
