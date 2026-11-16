@@ -16010,7 +16010,7 @@
    "break": [
     [
      "web/feed-passages.mjs",
-     "    if (!card || !height) return;",
+     "    if (!height) return;",
      "    return;"
     ]
    ],
@@ -16025,7 +16025,7 @@
    "break": [
     [
      "web/feed-passages.mjs",
-     "    if (!card || !height) return;",
+     "    if (!height) return;",
      "    return;"
     ]
    ],
@@ -16040,8 +16040,8 @@
    "break": [
     [
      "web/feed-passages.mjs",
-     "    this.fielded = card;\n",
-     "    this.fielded = card; card.style.paddingBottom = '3px';\n"
+     "      this.fielded.push(box);\n",
+     "      this.fielded.push(box); box.style.paddingBottom = '3px';\n"
     ]
    ],
    "check": {
@@ -16227,6 +16227,126 @@
    "check": {
     "native": "webkit-reading",
     "case": "Tab off a lit passage on a dossier"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit code block's or table's field on a topic's or a dossier's card shows only where its words show, inside the box that clips them, and moves with them as the box scrolls sideways, at a laptop's width and at 390, 375 and 320 pixels with a pointer, in light and dark",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') return box;",
+     "    if (false) return box;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "paints its field only where its words show"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit code block's or table's field on a topic's or a dossier's card shows only where its words show, inside the box that clips them, and moves with them as the box scrolls sideways, at a laptop's width and at 390, 375 and 320 pixels with a pointer, in light and dark",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') return box;",
+     "    if (false) return box;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "paints its field only where its words show"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field on a coarse pointer's cut-off excerpt stops where the excerpt is cut off",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') return box;",
+     "    if (false) return box;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "phone's cut-off excerpt"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field on a coarse pointer's cut-off excerpt stops where the excerpt is cut off",
+   "break": [
+    [
+     "web/lit-field.mjs",
+     "    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') return box;",
+     "    if (false) return box;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "phone's cut-off excerpt"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field on a card that scrolls in place moves with the words as the card scrolls",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',",
+     "backgroundRepeat: 'no-repeat', backgroundAttachment: 'scroll',"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "phone's cut-off excerpt"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field on a card that scrolls in place moves with the words as the card scrolls",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',",
+     "backgroundRepeat: 'no-repeat', backgroundAttachment: 'scroll',"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "phone's cut-off excerpt"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field follows its words as they wrap anew, the window narrowing from 1280 to 760 pixels and widening again",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "this.sized = new this.win.ResizeObserver(() => this.field());",
+     "this.sized = new this.win.ResizeObserver(() => {});"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "as the window narrows and widens"
+   }
+  },
+  {
+   "item": 527,
+   "act": "A lit passage's field follows its words as they wrap anew, the window narrowing from 1280 to 760 pixels and widening again",
+   "break": [
+    [
+     "web/feed-passages.mjs",
+     "this.sized = new this.win.ResizeObserver(() => this.field());",
+     "this.sized = new this.win.ResizeObserver(() => {});"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "as the window narrows and widens"
    }
   },
   {

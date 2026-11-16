@@ -34,27 +34,44 @@ export function readerField(doc) {
   return glyph > 0 && Number.isFinite(line) ? glyph + 2 * overhang(glyph, line) : null;
 }
 
+// The box a text node's words show in, below stop (the card, which holds
+// them): the nearest element holding them that clips what overflows it (a code
+// block or a table that scrolls sideways, an excerpt cut off at a height), else
+// stop. A field painted on that box's background is clipped where its words
+// are and scrolls with them (background-attachment: local), as the Reader's
+// inline field is clipped and scrolled with the words it lies behind.
+export function clipBox(node, stop) {
+  if (!stop.contains(node) || node === stop) throw Error('clipBox: the words are not inside the box they are painted on');
+  const win = stop.ownerDocument.defaultView;
+  for (let box = node.parentElement; box !== stop; box = box.parentElement) {
+    const style = win.getComputedStyle(box);
+    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') return box;
+  }
+  return stop;
+}
+
 // The lines a range's words are drawn on, each the box of its characters (left,
-// right, top and bottom on screen), the boxes on one line joined: what a field
-// is painted behind. Elements a range holds whole give boxes of their own (a
+// right, top and bottom on screen), the boxes on one line in one box joined,
+// and the box they show in (clipBox, below stop): what a field is painted
+// behind, and on. Elements a range holds whole give boxes of their own (a
 // paragraph's spans every line it has), so only characters are read.
-export function wordLines(range) {
+export function wordLines(range, stop) {
   const doc = range.startContainer.ownerDocument, common = range.commonAncestorContainer;
   const walk = doc.createTreeWalker(common.nodeType === 1 ? common : common.parentNode, 4), boxes = [];
   for (let node = walk.nextNode(); node; node = walk.nextNode()) {
     if (!range.intersectsNode(node) || !node.data.trim()) continue;
-    const part = doc.createRange();
+    const part = doc.createRange(), box = clipBox(node, stop);
     part.selectNodeContents(node);
     if (node === range.startContainer) part.setStart(node, range.startOffset);
     if (node === range.endContainer) part.setEnd(node, range.endOffset);
-    for (const box of part.getClientRects()) if (box.width > 0 && box.height > 0) boxes.push({ left: box.left, right: box.right, top: box.top, bottom: box.bottom });
+    for (const rect of part.getClientRects()) if (rect.width > 0 && rect.height > 0) boxes.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, box });
   }
   boxes.sort((a, b) => a.top - b.top);
   const lines = [];
-  for (const box of boxes) {
-    const line = lines.find(other => Math.min(other.bottom, box.bottom) - Math.max(other.top, box.top) > (box.bottom - box.top) / 2);
-    if (line) Object.assign(line, { left: Math.min(line.left, box.left), right: Math.max(line.right, box.right), top: Math.min(line.top, box.top), bottom: Math.max(line.bottom, box.bottom) });
-    else lines.push(box);
+  for (const rect of boxes) {
+    const line = lines.find(other => other.box === rect.box && Math.min(other.bottom, rect.bottom) - Math.max(other.top, rect.top) > (rect.bottom - rect.top) / 2);
+    if (line) Object.assign(line, { left: Math.min(line.left, rect.left), right: Math.max(line.right, rect.right), top: Math.min(line.top, rect.top), bottom: Math.max(line.bottom, rect.bottom) });
+    else lines.push(rect);
   }
   return lines;
 }

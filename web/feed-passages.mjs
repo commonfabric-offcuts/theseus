@@ -13,7 +13,9 @@
 // (CSS.highlights), so the card's nodes and what it stores stay as they are.
 // A highlight paints only its words' own height, so the rest of the dark field,
 // as tall line by line as the Reader's (lit-field.mjs), is painted behind the
-// words on the card's own background, which moves nothing on the card.
+// words on the background of the box they show in (the card, or a code block,
+// a table or an excerpt that clips them), which moves nothing on the card and
+// is clipped and scrolled with the words.
 import { drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
@@ -28,7 +30,7 @@ export class FeedPassages {
   constructor({ host, lights, entryOf, doc = globalThis.document }) {
     Object.assign(this, { host, lights, entryOf, doc });
     this.win = doc.defaultView;
-    this.lit = null; this.pointer = null; this.shifted = false;
+    this.lit = null; this.pointer = null; this.shifted = false; this.fielded = [];
     // A card drawn again under its light with other words (the whole of a
     // cut-off message arriving in place of its excerpt, an edit) puts the
     // light out, as an edit drawn into the Reader puts out the passage lit
@@ -143,26 +145,30 @@ export class FeedPassages {
       this.sizing = lit.words;
     }
   }
-  // The dark field behind the lit words, one layer a line, on the card's own
-  // background: as tall as the Reader's field for the same words (lit-field.mjs).
+  // The dark field behind the lit words, one layer a line: as tall as the
+  // Reader's field for the same words (lit-field.mjs), on the background of the
+  // box each line shows in (clipBox), so it shows only where its words do and
+  // scrolls with them.
   field(range = this.range()) {
     this.unfield();
-    const card = this.lit?.words.parentElement, lines = range ? wordLines(range) : [];
+    const card = this.lit?.words.parentElement, lines = range && card ? wordLines(range, card) : [];
     const height = lines.length && readerField(this.doc);
-    if (!card || !height) return;
-    const layers = fieldLayers(card, lines, height);
-    Object.assign(card.style, {
-      backgroundImage: layers.map(() => 'linear-gradient(var(--lit-field),var(--lit-field))').join(','),
-      backgroundPosition: layers.map(layer => `${layer.x}px ${layer.y}px`).join(','),
-      backgroundSize: layers.map(layer => `${layer.width}px ${layer.height}px`).join(','),
-      backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',
-    });
-    this.fielded = card;
+    if (!height) return;
+    const boxes = new Map();
+    for (const line of lines) boxes.set(line.box, [...(boxes.get(line.box) ?? []), line]);
+    for (const [box, its] of boxes) {
+      const layers = fieldLayers(box, its, height);
+      Object.assign(box.style, {
+        backgroundImage: layers.map(() => 'linear-gradient(var(--lit-field),var(--lit-field))').join(','),
+        backgroundPosition: layers.map(layer => `${layer.x}px ${layer.y}px`).join(','),
+        backgroundSize: layers.map(layer => `${layer.width}px ${layer.height}px`).join(','),
+        backgroundRepeat: 'no-repeat', backgroundAttachment: 'local',
+      });
+      this.fielded.push(box);
+    }
   }
   unfield() {
-    const card = this.fielded;
-    this.fielded = null;
-    if (card) for (const name of ['background-image', 'background-position', 'background-size', 'background-repeat', 'background-attachment']) card.style.removeProperty(name);
+    for (const box of this.fielded.splice(0)) for (const name of ['background-image', 'background-position', 'background-size', 'background-repeat', 'background-attachment']) box.style.removeProperty(name);
   }
   clear() {
     this.lit = null; this.pointer = null;
