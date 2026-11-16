@@ -741,8 +741,12 @@ A right swipe on its title bar (its head row, or the chevron) moves the
 dossier below More messages for you, on every device. Every message keeps
 its own fold gesture, the last one shown included, and so does a message
 placed on its own: it has no title bar, so a right swipe folds it where it
-was placed and moves nothing below More (item 472). The menu offers Move below More and Bring back above More;
-Command-Z undoes a move. Existing unread messages and your own replies leave
+was placed and moves nothing below More (item 472). The menu offers Move below More and Bring back above More,
+and so does the Reader's archive button beside the star, labelled with how
+many messages move with it, those of every stack drawn from the dossier
+(item 378, docs/reader.md);
+Command-Z undoes a move. The page's New message composer at rest sits just
+above More, under the last dossier shown above it (item 465). Existing unread messages and your own replies leave
 it there; a newer visible reply from someone else brings it back. Links can
 show its messages without clearing your choice. More is a boundary for the
 stack keys and their menu items: ⌘↑ ⌘↓ move a stack past, and ⇧⌘↑ ⇧⌘↓ join

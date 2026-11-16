@@ -157,12 +157,12 @@ export async function formChecks({ check, page, until, control, view, facts, sho
     await p.close();
   });
 
-  await check('forms a topic page, its People row and its composer keep to the rule', async () => {
+  await check('forms a topic page, its Team and its composer keep to the rule', async () => {
     const p = await page('forms-topic', null, true);
     await audit(p, 'Topic page');
     await press(p, '#participants .add-chip');
     await until(() => quiet(p, `!document.querySelector('#participants .people-add').hidden`), 'the people to add are shown');
-    await audit(p, 'Topic people, adding');
+    await audit(p, 'Topic Team, adding');
     // Topic settings is its own piece and ships as it is; it is not audited here.
     await p.close();
   });

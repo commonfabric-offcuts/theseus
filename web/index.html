@@ -57,7 +57,7 @@
     <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
+      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button><button id="new-message" type="button" class="new-message quiet" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 20h4L19 9a2.1 2.1 0 0 0-4-4L4 16z M13.5 6.5l4 4"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">Team</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="topic-target" class="topic-target" aria-label="This outcome's target" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
@@ -86,14 +86,11 @@
       <div id="conversation-show" class="conversation-show" role="group" aria-label="Show" hidden></div>
       <div id="agent-coordination-show" class="conversation-show" role="group" aria-label="Agent coordination" hidden></div></div>
       <div id="conversation-empty" class="conversation-empty" hidden></div>
-      <section id="messages" aria-label="Conversation"></section>
-      <button id="more-messages" type="button" hidden>More messages</button>
-      <section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">People</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section>
-      <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div><button id="more-memory" type="button" hidden>More Notebook items</button></section>
+      <section id="messages" aria-label="Conversation">
       <dialog id="new-message-sheet" class="composer-home" aria-labelledby="inline-writing-title">
       <section id="inline-composer" class="inline-composer composer" aria-labelledby="inline-writing-title" hidden>
         <h2 id="inline-writing-title">New message</h2>
-        <button id="new-message-close" type="button" class="sheet-close" aria-label="Put the new message back at the page's end" title="Close, keeping the writing">✕</button>
+        <button id="new-message-close" type="button" class="sheet-close" aria-label="Put the new message back in its place, above More" title="Close, keeping the writing">✕</button>
         <div id="inline-notice" class="notice" role="status" hidden></div>
         <button id="inline-retry" type="button" hidden>Retry composer</button>
         <div class="compose-head">
@@ -129,6 +126,9 @@
         <button id="inline-send" type="button" class="primary compose-send"><span class="send-word">Send</span> <span aria-hidden="true">⌘↵</span></button>
       </section>
       </dialog>
+      </section>
+      <button id="more-messages" type="button" hidden>More messages</button>
+      <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div><button id="more-memory" type="button" hidden>More Notebook items</button></section>
     </main>
   </div>
 
@@ -136,7 +136,7 @@
     <div class="reader-main">
     <header class="reader-header">
       <button id="reader-parent" type="button" class="quiet" aria-label="Back to the topic" title="Back to the topic">←</button>
-      <div class="reader-heading"><div class="reader-title-row"><h2 id="reader-title">Message</h2><button id="reader-star" type="button" aria-pressed="false" aria-label="Star for me" title="Star for me" hidden>☆</button></div><p id="reader-origin" class="muted"></p></div>
+      <div class="reader-heading"><div class="reader-title-row"><h2 id="reader-title">Message</h2><button id="reader-star" type="button" aria-pressed="false" aria-label="Star for me" title="Star for me" hidden>☆</button><button id="reader-aside" type="button" aria-pressed="false" aria-label="Move below More" title="Move below More" hidden><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" d="M2.5 3.5h15V7h-15zM3.75 7v9.5h12.5V7M8 10.5h4"/></svg><span class="aside-count" aria-hidden="true"></span></button></div><p id="reader-origin" class="muted"></p></div>
       <div id="reader-stepping"><button id="next-message" type="button" aria-label="Previous message (above)" title="Previous message (above)">↑</button><button id="previous-message" type="button" aria-label="Next message (below)" title="Next message (below)">↓</button></div>
       <button id="reader-menu" type="button" class="message-menu" aria-haspopup="menu" aria-label="More for this message" title="More">⋯</button>
       <button id="reader-close" type="button" aria-label="Close reader">✕</button>
