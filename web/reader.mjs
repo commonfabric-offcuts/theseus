@@ -16,6 +16,7 @@ import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './im
 import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
+import { overhang } from './lit-field.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -399,7 +400,7 @@ export class Reader {
     const glyphHeight = (this.sourceBody.querySelector(':scope > span:not(.md-block)') ?? this.sourceBody.firstElementChild)?.getClientRects()[0]?.height;
     const lineHeight = parseFloat(getComputedStyle(this.sourceBody).lineHeight);
     if (glyphHeight > 0 && Number.isFinite(lineHeight)) {
-      this.sourceBody.style.setProperty('--quote-overhang', `${Math.ceil(Math.max(0, lineHeight - glyphHeight) / 2)}px`);
+      this.sourceBody.style.setProperty('--quote-overhang', `${overhang(glyphHeight, lineHeight)}px`);
     }
   }
 

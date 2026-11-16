@@ -1916,6 +1916,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(async () => (await lit(p)).includes(ids.alone), `${tone}: the topic card lights`);
       await p.point(words(ids.alone));
       await until(async () => (await readerOn(p))?.startsWith('Words before'), `${tone}: a click opens the Reader on the message`);
+      // Measured once the Reader has come to rest: on a phone it rises into place.
+      await until(() => p.evaluate("document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), `${tone}: the Reader has come to rest`);
       const reader = {};
       for (const [name, text, said] of passages) {
         await readerTo(p, text);
