@@ -282,13 +282,20 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       }
       await until(() => p.evaluate(`document.body.dataset.ready==='true' && document.querySelector(${JSON.stringify(button)})?.checkVisibility()===true`), 'the Notebook pencil is available');
       // Beside the rail's Notebook heading, one pencil showing, and none in the page between the rails or in the side rail.
-      const placed = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}),r=b.getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
-        return {heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:r.top>=h.top-1&&r.bottom<=h.bottom+1&&r.right<=h.right+1,
+      // raw: the boxes the measure was taken from, in the same frame, printed only when it fails (item 606: a rare WebKit
+      // phone failure, beside false, whose geometry no probe has caught yet): the pencil's and its heading's boxes, the
+      // drawer's transform and scroll, the Notebook sections and pencils drawn, and whether the rail is still reading.
+      const { placed, raw } = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)}),r=b.getBoundingClientRect(),h=document.querySelector(${JSON.stringify(host + ' > summary')}).getBoundingClientRect();
+        const box=e=>{const x=e.getBoundingClientRect();return [x.left,x.top,x.width,x.height].map(v=>Math.round(v*10)/10)},things=document.querySelector('#things');
+        return {placed:{heading:document.querySelector(${JSON.stringify(host + ' > summary > span')}).textContent,beside:r.top>=h.top-1&&r.bottom<=h.bottom+1&&r.right<=h.right+1,
           inMain:document.querySelectorAll('#main .notebook-create').length,inRail:[...document.querySelectorAll('#things .notebook-create')].filter(e=>e.checkVisibility()).length,
           inSide:document.querySelectorAll('#rail .notebook-create, #rail #outcome-references').length,name:[b.getAttribute('aria-label'),b.title],
-          touch:Math.round(r.width)>=44&&Math.round(r.height)>=44}})()`);
+          touch:Math.round(r.width)>=44&&Math.round(r.height)>=44},
+          raw:{pencil:box(b),heading:box(document.querySelector(${JSON.stringify(host + ' > summary')})),drawer:things&&{transform:getComputedStyle(things).transform,scrollTop:things.scrollTop,box:box(things)},
+            sections:document.querySelectorAll('.things-sec[data-key="notebook"]').length,pencils:[...document.querySelectorAll('.notebook-create')].filter(e=>e.checkVisibility()).map(box),
+            busy:document.querySelector('.things-sections')?.getAttribute('aria-busy')??null,viewport:[innerWidth,innerHeight]}}})()`);
       assert.deepEqual(placed, {heading:'Notebook',beside:true,inMain:0,inRail:1,inSide:0,name:['New Notebook page','New Notebook page'],touch:true},
-        `the ${scope.kind === 'topic' ? 'topic' : 'outcome'} pencil is beside the right rail's Notebook heading, and the side rail has none`);
+        `the ${scope.kind === 'topic' ? 'topic' : 'outcome'} pencil is beside the right rail's Notebook heading, and the side rail has none ${JSON.stringify(raw)}`);
       if (empty.includes(scope.id)) assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(host + ' .things-body')}).textContent`), 'No pages yet.', 'an empty topic Notebook keeps its heading');
       await p.evaluate(`document.querySelector(${JSON.stringify(button)}).scrollIntoView({block:'center'})`);
       await press(button);

@@ -2468,14 +2468,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(() => statusLine(p), { shown: true, text: A + ' ' + B }, 'each act not settled is said, with its own card');
     // The acts read again fails: nothing is settled by it.
     await net.drop(await until(() => heldOf(acts), 'the acts are read again; that answer is lost too'));
+    // Only that one read is lost. The page's later reads are answered: one held would only meet the page's own read
+    // deadline, which gives it up, and the end could then let through a request the page no longer waits on.
+    net.hold(payload => fold(ids.a)(payload) || fold(ids.b)(payload));
     const againA = await until(() => heldOf(fold(ids.a)), 'once Theseus answers anything, the first fold is asked again');
     assert.deepEqual(await statusLine(p), { shown: true, text: A + ' ' + B }, 'a read that failed clears neither');
     await net.pass(againA);
     const againB = await until(() => heldOf(fold(ids.b)), 'then the second');
     await becomes(() => statusLine(p), { shown: true, text: B }, 'Core\'s answer to the first leaves the second said');
-    const out = await p.evaluate('window.fetchesOut');
     await net.drop(againB);
-    await until(() => p.evaluate(`window.fetchesOut < ${out}`), 'the second fold\'s ask fails at the page');
+    // The page takes the failed ask as not known, reads the acts again and, at that answer, asks once more: that ask is the
+    // sign the failure was handled. A count of fetches under way cannot say it, as the page's next requests start at once.
+    await until(() => heldOf(fold(ids.b)), 'the second fold\'s ask failed at the page, and it is asked again at the next answer');
     assert.deepEqual(await statusLine(p), { shown: true, text: B }, 'an ask that failed does not clear it');
     net.hold(null);
     for (const entry of [...net.held()]) await net.pass(entry);
@@ -3803,11 +3807,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       reply_to: ids.one, addressees: [other], body: 'Mine.' })).result.message_id;
     await becomes(rows, ['mine'], 'my reply replaces the read latest');
     await until(async () => (await actsOf(topic, ids.mine))?.dealt === true, 'my reply is dealt with');
-    ids.x = (await control({ method: 'agent_message', operation_id: topic + '-x', topic_id: topic, source: 'topic', sender: other,
-      reply_to: ids.root, addressees: [facts.actor], body: 'X, read on arrival.', read: true })).result.message_id;
+    // Another reader's reply that the person reads on arrival. The fixture writes it and then the person's read of it, two
+    // commands; a page that read the messages between them would see it unread, and an unread reply is rightly kept in
+    // view for the reader. So the page's reads of the messages wait while both are written, and it learns of the reply
+    // already read, in one answer, as a reader who read it on arrival does.
+    const readOnArrival = async (name, body) => {
+      await p.evaluate("window.waitView = 'topic_messages'");
+      await until(() => p.evaluate('window.fetchesOut === 0'), name + ': no read the page sent before is still out');
+      ids[name] = (await control({ method: 'agent_message', operation_id: topic + '-' + name, topic_id: topic, source: 'topic', sender: other,
+        reply_to: ids.root, addressees: [facts.actor], body, read: true })).result.message_id;
+      await p.evaluate('window.letViews()');
+    };
+    await readOnArrival('x', 'X, read on arrival.');
     await becomes(rows, ['mine', 'x'], 'my reply stays beside the newer reply');
-    ids.y = (await control({ method: 'agent_message', operation_id: topic + '-y', topic_id: topic, source: 'topic', sender: other,
-      reply_to: ids.root, addressees: [facts.actor], body: 'Y, read on arrival.', read: true })).result.message_id;
+    await readOnArrival('y', 'Y, read on arrival.');
     await becomes(rows, ['mine', 'y'], 'another reader\'s read reply is replaced by a newer one, not held as mine is');
     // The reader scrolls to the end of the page, where the stack is off screen, and comes back to the tab.
     const offScreen = () => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').getBoundingClientRect();return b.bottom<=0||b.top>=innerHeight})()`);
