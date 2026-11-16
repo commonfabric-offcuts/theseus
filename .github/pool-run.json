@@ -1,0 +1,9 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks the New message composer popped up",
+  "reading stacks the Reader's archive button shows for no"
+ ],
+ "label": "green-cases-39b84fc7-1",
+ "snapshot": "39b84fc76b79707f107c7dfe5e26e5fa5e974094"
+}
