@@ -14207,8 +14207,8 @@
    "break": [
     [
      "web/aim.css",
-     ".card-image:not(:has(>img))>.card-image-name{display:block;",
-     ".card-image:not(:has(>img))>.card-image-name{display:none;"
+     ".card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:block;",
+     ".card-image:not([data-coming]):not(:has(>img))>.card-image-name{display:none;"
     ]
    ],
    "check": {
@@ -14237,8 +14237,8 @@
    "break": [
     [
      "web/card-images.mjs",
-     "      whenNear(host, () => paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }));",
-     "      paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true });"
+     "      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });",
+     "      delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true });"
     ]
    ],
    "check": {
@@ -14254,6 +14254,21 @@
      "web/card-images.mjs",
      "const go = waiting.get(each.target); forget(each.target); go(); }",
      "forget(each.target); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading card thumbnails are read only"
+   }
+  },
+  {
+   "item": 474,
+   "act": "A card's thumbnail square on its way, not yet near the window, draws no name (the look of a refused image): no square in view shows its name in any frame at load or after a jump to the card furthest from the window",
+   "break": [
+    [
+     "web/card-images.mjs",
+     "      host.append(words); host.dataset.coming = '';",
+     "      host.append(words);"
     ]
    ],
    "check": {

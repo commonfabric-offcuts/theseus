@@ -12,8 +12,11 @@
 // once its square is drawn near the window (whenNear): a card shown as one
 // row (folded, between others, behind an earlier-messages row) or far from
 // the window reads nothing until it is drawn as a card and comes near.
-// A thumbnail holds its place while it loads; one whose read brings nothing
-// (refused, or the message no longer readable) shows the image's name.
+// A thumbnail holds its place, blank, from the moment its square is made: one
+// not yet near is marked as coming (data-coming), so the square never draws
+// the image's name before its picture is asked for. Once asked for, the hidden
+// picture holds it while it loads; one whose read brings nothing (refused, or
+// the message no longer readable) shows the image's name.
 import { paintThumb } from './image-pick.mjs';
 
 // How near the window a square is read: half a window above and below, so a
@@ -59,8 +62,8 @@ export function paintCardImages(card, item, read) {
     if (!host) {
       host = doc.createElement('span'); host.className = 'card-image'; host.dataset.key = key; host.setAttribute('role', 'img');
       const words = doc.createElement('span'); words.className = 'card-image-name'; words.setAttribute('aria-hidden', 'true');
-      host.append(words);
-      whenNear(host, () => paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }));
+      host.append(words); host.dataset.coming = '';
+      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });
     }
     if (strip.children[index] !== host) strip.insertBefore(host, strip.children[index] ?? null);
     host.setAttribute('aria-label', `Image: ${name}`); host.title = name;

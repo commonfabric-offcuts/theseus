@@ -102,8 +102,10 @@ verified inline image (PNG, JPEG, GIF, WebP) is a square the right rail's
 thumbnail size (4.2rem, `.things-thumbs`), in the order it was sent; the
 squares wrap on a phone and never run past the card. Each is named for a
 screen reader ("Image: screen.png") and shows its file's name under the
-pointer. A square holds its place while its picture loads; one whose read
-brings nothing shows the image's name instead.
+pointer. A square holds its place, blank, from the moment it is drawn until
+its picture comes, also while it waits to come near the window before its
+picture is asked for; only one whose read brings nothing shows the image's
+name instead, so a picture on its way never looks refused.
 
 Each thumbnail reads its bytes through the message that carries it
 (`/api/media/read` with that message as its source), so Theseus gives them
@@ -131,6 +133,9 @@ thumbnails.
   drawn near the window …", on a topic of thirty messages each with an image,
   which counts the reads at load and after a scroll, an unfold, the dossier
   and its earlier-messages row opened, and an earlier message shown whole.
+  The same case samples every frame before it is painted, at load and after
+  a jump to the card furthest from the window, and no square in view draws
+  its image's name while its picture is on the way.
   Behind the composer's own: `tests/ui_image_pick.test.mjs`, "a card thumbnail
   waits behind every other image read …".
 - A topic no longer readable keeps none of the bytes: `tests/outcome_rail_native.mjs`
