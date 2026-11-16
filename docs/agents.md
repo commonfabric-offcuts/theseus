@@ -302,8 +302,13 @@ the invitation as one act, `workspace.agent_invite`:
   too), the same person in another outcome (even one whose team the
   agent is on), or after the agent has left the team or been disabled, is refused
   `NAME_TAKEN`. Core keeps who invited each agent into which
-  outcome in `agent_invitations` (schema version 43, the step after release
-  81's 42, which invited agents from the page without keeping by whom).
+  outcome in `agent_invitations` (schema version 43). Release 81 (version
+  42) invited agents from the page without keeping by whom, so the step to 43
+  fills the table from the committed `workspace.agent_invite` receipts
+  already on the record: who invited which agent, under the ID it was
+  registered with, into which outcome. An agent invited then is given back to
+  its inviter like any other, with its sign-in file written; a refused
+  invitation registered no one and fills nothing.
 - A team already at its limit (128 members, its owner included) refuses a new
   agent, `TOO_MANY_WORKSPACE_MEMBERS` ("This outcome's team is full: it has
   128 members, its owner included."); an agent given back adds no one, so a

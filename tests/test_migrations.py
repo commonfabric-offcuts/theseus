@@ -3855,8 +3855,8 @@ class InviteStepCase(MigrationCase):
                 "target": {"workspace_id": "w1"}, "expected": {"workspace_revision": version, "authority": dict(self.pin)},
                 "args": {"name": name, "harness": "codex"}}
 
-    def invited_at_42(self, name, agent, op="invite-at-42"):
-        """The owner invites an agent from the page as release 81 does it (item 324): the agent registered under the ID
+    def invited_at_42(self, name, agent, op="invite-at-42", actor="owner"):
+        """actor invites an agent from the page as release 81 does it (item 324): the agent registered under the ID
         324's rule gave it, on w1's team, the outcome's version advanced and the committed receipt recorded, and no
         invitation row, since version 42 keeps none. Returns the request, for sending again."""
         envelope = self.envelope(name, op)
@@ -3865,7 +3865,7 @@ class InviteStepCase(MigrationCase):
             db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (agent, "agent", name))
             db.execute("INSERT INTO workspace_members VALUES ('w1',?)", (agent,))
             db.execute("UPDATE workspaces SET version=? WHERE id='w1'", (version,))
-        self.recorded_at_42("owner", op, envelope, {
+        self.recorded_at_42(actor, op, envelope, {
             "instance_id": "test-instance", "operation_id": op, "kind": "workspace.agent_invite", "status": "committed",
             "recorded": True, "result": {"workspace_id": "w1", "title": "Isolated test", "version": version, "harness": "codex",
                                          "agent": {"id": agent, "name": name, "kind": "agent"}},
@@ -3889,13 +3889,15 @@ class InviteStepCase(MigrationCase):
         # the request. Release 81 refuses the name typed again (NAME_TAKEN) and no sign-in file exists. After the upgrade
         # the same person typing it in the same outcome gets that agent back, and its sign-in file is written.
         self.invited_at_42("Late scribe", "late-scribe")
+        # The coordinator invites one too: the receipt says who invited it, not the outcome's owner.
+        self.invited_at_42("Night watch", "night-watch", op="coordinator-invites", actor="agent-a")
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         folder, actors = self.folder(), self.sql("SELECT * FROM actors ORDER BY id")
         receipt = invite(self.store, "owner", self.envelope("Late scribe", "retyped"), folder)
         self.assertEqual(receipt["status"], "committed", receipt)
-        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations"), [("late-scribe", "w1", "owner")],
-                         "the upgrade filled the invitation from its receipt")
+        self.assertEqual(self.sql("SELECT agent_id,workspace_id,inviter_id FROM agent_invitations ORDER BY agent_id"),
+                         [("late-scribe", "w1", "owner"), ("night-watch", "w1", "agent-a")], "the upgrade filled each invitation from its receipt")
         self.assertEqual(receipt["result"]["agent"], {"id": "late-scribe", "name": "Late scribe", "kind": "agent"})
         self.assertTrue(receipt["sign_in"]["written"], receipt)
         self.assertEqual(load_profile(folder / "late-scribe.profile.json").actor_id, "late-scribe")
@@ -3903,7 +3905,13 @@ class InviteStepCase(MigrationCase):
         # Anyone else typing that name is still refused: the coordinator, though it organises the outcome.
         refused = invite(self.store, "agent-a", self.envelope("Late scribe", "coordinator-types-it"), folder)
         self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
+        # Night watch is the coordinator's to have back, and the owner typing it is refused.
+        refused = invite(self.store, "owner", self.envelope("Night watch", "owner-types-it"), folder)
+        self.assertEqual((refused["status"], refused["error"]["code"]), ("rejected", "NAME_TAKEN"), refused)
         self.assertEqual(sorted(os.listdir(folder)), ["late-scribe.profile.json"])
+        given = invite(self.store, "agent-a", self.envelope("Night watch", "coordinator-retypes"), folder)
+        self.assertEqual((given["status"], given["result"]["agent"]["id"], given["sign_in"]["written"]), ("committed", "night-watch", True), given)
+        self.assertEqual(self.sql("SELECT * FROM actors ORDER BY id"), actors, "no one is registered again")
 
     def test_a_receipt_that_never_committed_fills_no_invitation_and_the_step_keeps_every_row(self):
         self.refused_at_42("agent-b", "Sneaky helper", "refused-forbidden", "FORBIDDEN")

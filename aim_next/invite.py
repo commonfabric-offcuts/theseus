@@ -19,6 +19,7 @@ is still on the team: nothing is registered or added again, and the adapter
 writes its sign-in file if it is missing or was cut short."""
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -42,6 +43,19 @@ INVITATIONS_SCHEMA = [
 ]
 INVITATIONS_DOWN = ["DROP TABLE agent_invitations"]
 INVITATIONS_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM agent_invitations)"
+
+
+def _invitations_backfill(db):
+    """Agents invited from the page before version 43 (item 324, live in release 81) have their committed receipts among
+    the operations: each says who invited which agent, as registered, into which outcome. A refusal registered no one."""
+    for inviter, outcome in db.execute("SELECT actor_id,outcome FROM operations WHERE kind=? ORDER BY rowid", (KIND,)).fetchall():
+        receipt = json.loads(outcome)
+        if receipt["status"] == "committed":
+            db.execute("INSERT INTO agent_invitations VALUES (?,?,?)",
+                       (receipt["result"]["agent"]["id"], receipt["result"]["workspace_id"], inviter))
+
+
+INVITATIONS_BACKFILL = [_invitations_backfill]
 
 
 # Latin letters Unicode leaves whole that are written with letters of their own, by their Unicode names.

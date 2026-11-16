@@ -41,7 +41,7 @@ from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
-from .invite import INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
+from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -179,9 +179,9 @@ STEPS = (
     ("41", "42", JUDGMENT_SCHEMA, JUDGMENT_DOWN, JUDGMENT_OCCUPIED),
     # Version 43 keeps who invited each agent into which outcome from its page (docs/agents.md, "Inviting an agent"),
     # so the same person typing the same name there again gets that agent back. It follows release 81's 42, where
-    # agents were already invited from the page. Stepping back is refused once anyone has been invited, since 42
-    # cannot say by whom.
-    ("42", "43", INVITATIONS_SCHEMA, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
+    # agents were already invited from the page: their invitations are filled from the committed receipts on the
+    # record. Stepping back is refused once anyone has been invited, since 42 cannot say by whom.
+    ("42", "43", INVITATIONS_SCHEMA + INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED),
 )
 
 
