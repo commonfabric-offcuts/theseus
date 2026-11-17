@@ -135,6 +135,8 @@ test('a dossier\'s cover comes with its place, so a stack of replies whose first
   // A message on its own takes its cover as pills; a dossier with none, or a Core before covers, shows none.
   const lone = { id: 'm-lone', reply_to: null, acts: { cover: COVER, cover_revision: 1 }, stack_position: at(4, { root_id: 'm-lone', cover: COVER, cover_revision: 1 }) };
   assert.equal(stackCover({ head: lone, replies: [] }), null, 'a message on its own has no sheet');
+  assert.equal(stackCover({ head: lone, replies: [] }, { alone: true }), COVER, 'its pills show its own cover');
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [] }, { alone: true }), COVER, 'a lone reply\'s pills show its dossier\'s');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
 });

@@ -26209,8 +26209,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "lone.has(id) ? coverOf(messages.get(id)) : null",
-     "coverOf(messages.get(id))"
+     "lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null",
+     "messages.get(id)?.acts?.cover ?? null"
     ]
    ],
    "check": {
@@ -26398,6 +26398,21 @@
      "web/stack-feed.mjs",
      "    const cover = stack ? stackCover(stack) : null;",
      "    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A dossier's one reply, loaded while its first message is above the page, shows its dossier's cover as pills under who wrote it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null",
+     "lone.has(id) ? stackCover({ ...lone.get(id), head: { ...lone.get(id).head, stack_position: null } }, { alone: true }) : null"
     ]
    ],
    "check": {

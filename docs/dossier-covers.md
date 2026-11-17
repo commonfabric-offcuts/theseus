@@ -135,7 +135,10 @@ because a closed folder shows that card as its tab alone. When the first
 message is above the loaded page, the reply that heads what is loaded is the
 tab, and the sheet is drawn after it, from the dossier's place
 (`stackCover` in `web/stack-order.mjs`); once Earlier messages loads the first
-message, the one sheet moves to it. The sheet shows:
+message, the one sheet moves to it. A dossier whose only loaded message is one
+reply has no folder to draw a sheet in: that card shows its dossier's cover as
+pills under who wrote it, as a message on its own does, until its first message
+loads. The sheet shows:
 
 - where the dossier stands;
 - its payload, with its kind as a label, its words, its link, a pill, and the
