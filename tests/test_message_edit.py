@@ -331,7 +331,7 @@ class NoticeCase(EditCase):
         self.assertIn("correction: message %s by owner was edited to revision 2; not a new ask, Tell or reply; read it, act on its latest "
                       "words, then ack delivery %s." % (message, correction["id"]), text)
         self.assertNotIn("A whisper", text)
-        self.assertIn("A correction says a person edited a message you were sent", hosted_notice.developer_instructions("agent-a", "cli", "p"))
+        self.assertIn("A correction says its author edited a message you were sent", hosted_notice.developer_instructions("agent-a", "cli", "p"))
 
 
 class RefusalCase(EditCase):
@@ -372,7 +372,8 @@ class RefusalCase(EditCase):
             (self.edit(mine, "   "), "EMPTY_MESSAGE", True),
             (self.edit(person, "Not mine"), "FORBIDDEN", True),
             (self.edit(theirs, "Not mine"), "FORBIDDEN", True),
-            (self.edit(theirs, "Agent words, fixed", actor="agent-a"), "FORBIDDEN", True),
+            # An agent edits only its own words (item 614): agent-b's edit of agent-a's message is refused.
+            (self.edit(theirs, "Agent words, fixed", actor="agent-b"), "FORBIDDEN", True),
             (self.edit(mine, "Opening message"), "INVALID_ARGUMENT", False),
             (self.command("message.edit", {"body": "No base"}, target={"message_id": mine}), "INVALID_ARGUMENT", False),
             (self.command("message.edit", {"body": "x", "extra": 1}, target={"message_id": mine}, expected={"message_revision": 1}), "INVALID_ARGUMENT", False),
@@ -380,8 +381,8 @@ class RefusalCase(EditCase):
         for receipt, code, recorded in cases:
             with self.subTest(code=code, receipt=receipt):
                 self.assertEqual((receipt.get("error", {}).get("code"), receipt["recorded"]), (code, recorded))
-        self.assertEqual(cases[3][0].get("error", {}).get("message"), "Only people edit messages")
-        self.assertEqual(cases[1][0].get("error", {}).get("message"), "Only the person who wrote a message edits it")
+        self.assertEqual(cases[3][0].get("error", {}).get("message"), "Only whoever wrote a message edits it")
+        self.assertEqual(cases[1][0].get("error", {}).get("message"), "Only whoever wrote a message edits it")
         for actor in ("agent-b", "other-reader"):
             with self.subTest(actor=actor):
                 hidden, unknown = self.edit(whisper, "Mine now", actor=actor), self.edit("m-nobody", "Mine now", actor=actor)

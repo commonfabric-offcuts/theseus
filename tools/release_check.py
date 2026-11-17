@@ -98,7 +98,7 @@ UNIT_MODULE = re.compile(r"tests/(test_[^/]+\.py|[^/]+\.test\.mjs)")
 # fix changes none of the deploy's tools, the controller, the scripts in bin/ or the data migrations, and at most
 # SMALL_FIX_FILES files: the small fixes of 16 November changed one to five (the code, its CSS, its case, its act row, its
 # doc), and the nine of a merged set of touches is a feature's run.
-SMALL_FIX_FILES = 6
+SMALL_FIX_FILES = 5
 SMALL_FIX_NEVER = ("tools/", ".github/", "bin/", "aim_next/migrations.py")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 

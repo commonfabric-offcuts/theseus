@@ -12,7 +12,8 @@ from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import act_fields, awaiting_fields, record_wait_start
-from .message_edit import current_words, edited, is_held, mark, plain, quoted_revision, reading, revision, words, withheld
+from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
+                           struck, words, withheld)
 
 
 CONVERSATION_SCHEMA = [
@@ -414,6 +415,8 @@ class Conversation:
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
         record_wait_start(db, sequence)
+        # And where agents' messages begin to be recorded as handed to other agents, who are corrected when one is edited (item 614).
+        record_agent_exposure_start(db, sequence)
         # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
         if counts and not record_only:
             db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
@@ -509,13 +512,15 @@ class Conversation:
         # The latest words, their revision (1 when never edited) and when they were edited (message_edit.py).
         body, current, edited_ms = current_words(db, row["id"])
         quotes = [] if held else self._source_quotes(db, actor, json.loads(row["quotes"]))
+        # For a person who had read words its agent author has since changed, those words, struck through (item 614).
+        seen = None if held or current <= 1 else struck(db, actor, row["id"], current, current_words(db, row["id"], plain=True)[0])
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
                 "attachments": [] if held else json.loads(row["attachments"]), "withheld": held,
                 "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
-                "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms,
+                "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
                 "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
 
     def _source_quotes(self, db, actor, stored):
@@ -627,6 +632,9 @@ class Conversation:
             cut = _preview(whole)
             item["preview"] = len(cut.encode("utf-8")) < len(whole.encode("utf-8"))
             item["body"] = mark(item["id"], item["revision"], cut)
+            # For a person who had read words its agent author has since changed, those within what the card shows,
+            # struck through (item 614); measured with the item.
+            item["struck"] = None if item["withheld"] else struck(db, actor, item["id"], item["revision"], whole, cut if item["preview"] else None)
             encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 break

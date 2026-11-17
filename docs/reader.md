@@ -22,6 +22,18 @@ off with an ellipsis, so the star, the archive button and ✕ keep their place;
 a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
 `Reader.paintTitle`).
 
+A message of a dossier with a cover (item 624, [dossier-covers.md](dossier-covers.md))
+shows the cover as one quiet line above the message: "Cover", where the dossier
+stands, and its payload's pill, also when the dossier's first message is above
+the loaded page. A press opens the whole sheet, for that message: another
+message, the same one opened again, a message whose dossier becomes another,
+and a cover that goes and comes back each start at the closed line. The line
+follows the cover as the page's stacks do, while the Reader is open, and a sheet
+opened stays open as its cover changes (`StackFeed.dossierCover`,
+`Reader.paintCover`). A message on its own, or one of a dossier with no cover,
+shows none. On a phone the line gives way while the reply is written, so with
+the keyboard up the message keeps its 7 lines.
+
 A star beside the message's title stars it for you, and pressed again
 unstars it: outline until starred, filled once starred, "Star for me" or
 "Unstar" by name, a 44 pixel target under a finger. It is the card's ⋯ Star

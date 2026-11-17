@@ -29,9 +29,12 @@ fencing prevents a late Undo from reversing another device's change.
 
 `stack_positions`, args `{topic_id, message_ids:[up to 100 ids]}`, returns
 `items:[{message_id, stack_position}]`. Topic-message pages also carry
-`stack_position: {root_id, through, aside_revision, below, name, name_revision, at:{messages,acts}}`,
+`stack_position: {root_id, through, aside_revision, below, name, name_revision, cover, cover_revision, at:{messages,acts}}`,
 where `name` and `name_revision` are the dossier's short name as its first
-message holds it (docs/reply-stacks.md), so a page holding only replies shows it.
+message holds it (docs/reply-stacks.md), and `cover` and `cover_revision` its
+cover ([dossier-covers.md](dossier-covers.md)), so a page holding only replies
+shows them. Both are the root's, the first message the reader can see, so a
+reader outside a whispered first message is never given its cover.
 Membership follows the latest shared join, otherwise same-topic reply ancestry,
 including ancestors outside the loaded page; inaccessible ancestors terminate
 it. Joined dossiers use the destination root's choice. Splitting restores the
@@ -48,7 +51,8 @@ grows. A later read has more acts, or as many acts and more messages: while
 the acts stand still a dossier only gains messages, and a split, which can
 leave it fewer, is a later act. The page keeps the later of two reads, and
 draws the stacks again only when `root_id`, `through`, `below`,
-`aside_revision` or `name_revision` changed: a later `at` alone moves no dossier.
+`aside_revision`, `name_revision` or `cover_revision` changed: a later `at`
+alone moves no dossier.
 A stack takes a position only where the page's own reading of it agrees: the
 position names the stack's first message, or that message hangs under one the
 page has not loaded and the position names none inside the stack. A join or a

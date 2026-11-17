@@ -538,7 +538,7 @@ class ReadCase(StackCase):
         shown = self.acts(message)
         self.assertEqual((shown["starred"], shown["placed"], shown["folded"], shown["name"]["text"], shown["joined"]), (True, 4, True, "Later", None))
         self.assertEqual(set(shown), {"aside", "aside_revision", "starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
-                                      "name", "name_revision", "joined", "join_revision"})
+                                      "name", "name_revision", "joined", "join_revision", "cover", "cover_revision"})
         # And the next act is fenced on it as on any other.
         self.committed(self.name(message, "Typed", revision=1))
 

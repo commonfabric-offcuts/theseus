@@ -7269,4 +7269,358 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
     assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
   });
+
+  // Item 624, a dossier's cover (docs/dossier-covers.md): what an agent wrote on it, through Core, drawn as the folder's
+  // first sheet right under its tab, before the chevron and the replies, closed and open; a message on its own shows its
+  // cover as pills under who wrote it; a dossier with no cover shows none. The outcome is the person's, so what waits,
+  // waits on them. Each device and theme is pictured (cover-*.png).
+  const coverSeed = async topic => {
+    const ids = await seed(topic, [
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which weekend suits the cabin trip?' }],
+      ['note', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'I checked the road report: it is clear both weekends.' }],
+      ['answer', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The second weekend: the lake is open and the road is clear.' }],
+      ['bare', { sender: other, addressees: [facts.actor], body: 'A dossier nobody wrote a cover for.' }],
+      ['bareReply', { sender: 'aim-ux', reply_to: 'bare', addressees: [facts.actor], body: 'And its one reply.' }],
+      ['lone', { sender: other, addressees: [facts.actor], body: 'A message on its own, with its answer in it: the lake opens in May.' }],
+    ]);
+    const write = async (id, args, op) => {
+      const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: id, operation_id: `${topic}-${op}`, args });
+      assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      return answer.result;
+    };
+    await write(ids.root, { stands: 'Answered: the second weekend, with the lake open', waiting: [{ text: 'Book the cabin for that weekend?', default: 'booked on Friday if nothing is said' }],
+      payload: { text: 'The second weekend', message_id: ids.answer, kind: 'answer' } }, 'cover');
+    await write(ids.lone, { stands: 'Answered in the message itself', payload: { text: 'The lake opens in May', message_id: ids.lone } }, 'lone');
+    return ids;
+  };
+  // What the page draws of a dossier's cover, and where: its sheet's place among the folder's parts, its box against the
+  // tab and the first part after it, and its words; null when the folder has none.
+  const coverOn = (p, root) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(root)}]');if(!s)return 'no folder';
+    const c=s.querySelector(':scope > .dossier-cover');if(!c)return {covered:s.dataset.covered,sheet:null};
+    const tab=s.querySelector('.stack-head').getBoundingClientRect(),box=c.getBoundingClientRect(),folder=s.getBoundingClientRect(),
+      next=[...s.children].slice([...s.children].indexOf(c)+1).flatMap(e=>e.classList.contains('stack-replies')?[...e.children]:[e]).find(e=>e.getClientRects().length&&e.getBoundingClientRect().height>0&&!['absolute','fixed'].includes(getComputedStyle(e).position)),
+      prev=c.previousElementSibling,pill=c.querySelector('.row-pill'),label=c.querySelector('.cover-wait .topic-state');
+    return {covered:s.dataset.covered,after:prev?.dataset.id??prev?.className,before:c.nextElementSibling?.className.split(' ')[0],
+      underTab:box.top>=tab.bottom-0.5,aboveNext:!next||box.bottom<=next.getBoundingClientRect().top+0.5,inside:box.left>=folder.left-0.5&&box.right<=folder.right+0.5,
+      shown:box.height>0&&getComputedStyle(c).visibility!=='hidden',
+      stands:c.querySelector('.cover-stands')?.textContent,payload:c.querySelector('.cover-payload .cover-words')?.textContent,
+      pill:pill&&{state:pill.dataset.state,words:pill.querySelector('.pill-words').textContent,glyph:pill.querySelector('svg')?.dataset.glyph},
+      waits:[...c.querySelectorAll('.cover-wait')].map(w=>w.textContent),mine:Boolean(label?.classList.contains('mine')),
+      cite:c.querySelector('.cover-payload .cover-src')?.textContent,
+      ink:getComputedStyle(c).color!==getComputedStyle(c).backgroundColor,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const pillsOn = (p, id) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});const r=c?.querySelector(':scope > .row-pills');
+    return r?{after:r.previousElementSibling?.className.split(' ')[0],pills:[...r.querySelectorAll('.row-pill')].map(x=>[x.dataset.state,x.querySelector('.pill-words').textContent]),
+      shown:r.getBoundingClientRect().height>0,sheet:Boolean(c.closest('.reply-stack')?.querySelector(':scope > .dossier-cover'))}:null})()`);
+  await check('reading covers an agent\'s cover is the dossier\'s first sheet right under its tab, before its chevron and replies, closed and open, on a laptop and a phone, light and dark; a message on its own shows its cover as pills under who wrote it; a dossier with no cover shows none', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-look-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const answerSeq = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.find(item => item.id === ids.answer).seq;
+      for (const level of ['folded', 'open']) {
+        // Its chevron pressed until the dossier shows its latest and unread replies, then all of them: each press waits for the one before.
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`, state = () => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
+        if (await state() !== level) {
+          const was = await state();
+          await centre(p, toggle); await press(p, device, toggle);
+          await until(async () => await state() !== was, `${device}: the chevron is heard`);
+        }
+        await until(async () => await state() === level, `${device}: the dossier is ${level}`);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          const at = await coverOn(p, ids.root);
+          assert.deepEqual([at.covered, at.after, at.before, at.underTab, at.aboveNext, at.inside, at.shown, at.ink, at.sideways], ['true', ids.root, 'stack-toggle', true, true, true, true, true, false],
+            `${device} ${level} ${theme}: the cover is the folder's first sheet, right after its first message's entry, under its tab and above the next part: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.stands, at.pill, at.waits, at.mine, at.cite], ['Answered: the second weekend, with the lake open', { state: 'proposed', words: 'payload proposed', glyph: 'payload' },
+            ['Waits on you Book the cabin for that weekend?Default: booked on Friday if nothing is said.'], true, '#' + answerSeq], `${device} ${level} ${theme}: its words`);
+          assert.match(at.payload, /^Payload · answer The second weekend payload proposed$/);
+          await shot(p, `cover-${device}-${level}-${theme}`);
+        }
+        await dossierTheme(p, 'light');
+      }
+      // A message on its own: pills under who wrote it, and no sheet; a dossier with no cover: no sheet, nothing said.
+      assert.deepEqual(await pillsOn(p, ids.lone), { after: 'message-author', pills: [['proposed', 'payload proposed']], shown: true, sheet: false }, `${device}: a message on its own shows its cover's pill`);
+      assert.deepEqual(await coverOn(p, ids.bare), { covered: 'false', sheet: null }, `${device}: a dossier with no cover shows none`);
+      assert.equal(await pillsOn(p, ids.bare), null, `${device}: nor any pill on its first message`);
+      for (const id of [ids.note, ids.answer, ids.bareReply]) assert.equal(await pillsOn(p, id), null, `${device}: a reply carries no pill`);
+      assert.equal(await pillsOn(p, ids.root), null, `${device}: a dossier's first message carries its cover as the sheet, never as pills`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, card(ids.lone)); await shot(p, `cover-lone-${device}-${theme}`); }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624's Done: the outcome's owner gives it, by a 👍 on the payload's message; anyone else's 👍 gives nothing, an
+  // agent's write naming Done is refused, and the 👍 taken back proposes the payload again. Each is read back from Core
+  // as the person and as another reader holds it, so a pill that only repaints fails.
+  await check('reading covers the person\'s 👍 on the payload\'s message makes it done for everyone, said with how; an agent\'s 👍 or an agent\'s write naming Done changes nothing, and the 👍 taken back proposes it again', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-done-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const coverHeld = async reader => (await actsOf(topic, ids.root, reader))?.cover ?? null;
+      const shownPill = async () => (await coverOn(p, ids.root)).pill;
+      assert.equal((await coverHeld(facts.actor)).owner, facts.actor, 'the outcome is the person\'s');
+      const before = (await actsOf(topic, ids.root)).cover_revision;
+      // An agent's 👍 on the payload's message, and an agent's write that names Done: nothing changes.
+      await control({ method: 'agent_thumb', sender: 'aim-ux', message_id: ids.answer, operation_id: topic + '-agent-thumb' });
+      const refused = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, operation_id: topic + '-done',
+        args: { payload: { text: 'The second weekend', message_id: ids.answer, done: { how: 'thumb', by: facts.actor, at_ms: 1 } } } });
+      assert.equal(refused.error?.code, 'DONE_BY_OWNER', JSON.stringify(refused));
+      assert.deepEqual([(await actsOf(topic, ids.root)).cover_revision, (await coverHeld('aim-ux')).payload.done], [before, null], `${device}: Core holds the payload proposed still`);
+      assert.deepEqual(await shownPill(), { state: 'proposed', words: 'payload proposed', glyph: 'payload' }, `${device}: the page shows it proposed`);
+      // The person's 👍 on it, from its bar.
+      await centre(p, card(ids.answer)); await light(p, device, ids.answer);
+      await press(p, device, '.message-bar [data-act=thumb]');
+      await until(async () => (await coverHeld(facts.actor))?.payload.done?.how === 'thumb', `${device}: Core holds it done by the person's 👍`);
+      assert.deepEqual((await coverHeld('aim-ux')).payload.done.by, facts.actor, `${device}: another reader holds it done too`);
+      await until(async () => (await shownPill())?.state === 'done', `${device}: the pill says done`);
+      const done = await shownPill();
+      assert.equal(done.glyph, 'kept');
+      assert.match(done.words, /^done · your 👍 at \d{1,2}:\d\d [AP]M$/, `${device}: said with how and when`);
+      assert.equal((await coverOn(p, ids.root)).stands, 'Answered: the second weekend, with the lake open', 'the rest of the cover stands');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`); await shot(p, `cover-done-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Taken back: proposed again, in Core and on the page. The 👍 folded the message for the person, and its row's 👍
+      // takes it back, unfolding nothing.
+      const folded = `${card(ids.answer)} > .message-folded > .folded-thumb`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(folded)})?.getClientRects().length)`), `${device}: the 👍 folded the message to its row`);
+      await centre(p, folded); await press(p, device, folded);
+      await until(async () => (await coverHeld(facts.actor))?.payload.done === null, `${device}: taken back, Core holds it proposed`);
+      await until(async () => (await shownPill())?.state === 'proposed', `${device}: and the pill says proposed`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624 in the Reader: a message of a dossier with a cover shows it as one line above the message, where it stands
+  // and its payload's pill, opening to the whole sheet; a message on its own, or of a dossier with none, shows nothing;
+  // on a phone the line gives way while the reply is written.
+  await check('reading covers the Reader shows a dossier\'s cover as one line above the message, opening to the sheet, none for a message without one; on a phone it gives way while the reply is written', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-reader-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const readerCover = () => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover'),s=document.querySelector('#source-body');
+        const shown=!d.hidden&&d.getClientRects().length>0&&d.getBoundingClientRect().height>0;
+        return {shown,open:d.open,line:d.querySelector('summary').textContent,sheet:Boolean(d.querySelector('.dossier-cover')?.getClientRects().length),
+          above:!shown||d.getBoundingClientRect().bottom<=s.getBoundingClientRect().top+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(async () => { const c = await readerCover(); return [c.shown, c.open, c.line, c.sheet, c.above, c.sideways]; },
+        [true, false, 'Cover Answered: the second weekend, with the lake open payload proposed', false, true, false], `${device}: one line above the message`);
+      await press(p, device, '#reader-cover > summary');
+      await becomes(async () => { const c = await readerCover(); return [c.open, c.sheet, c.above]; }, [true, true, true], `${device}: pressed, it opens to the sheet`);
+      // A finger's tap on the line flashes no tap highlight over it (Chrome's default paints the line light blue for the
+      // frames after the tap), as the page's other tappable summaries flash none. Safari's engine here exposes no such colour.
+      if (device === 'phone' && engine === 'chrome') {
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#reader-cover > summary')).webkitTapHighlightColor`), 'rgba(0, 0, 0, 0)', 'phone: a tap on the cover line flashes no highlight');
+      }
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-reader-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      if (device === 'phone') {
+        await press(p, device, '#reader-cover > summary');
+        await tap(p, '#writing-body');
+        await until(() => p.evaluate(`document.querySelector('#reader-composer').dataset.compose === 'writing'`), 'phone: the reply is being written');
+        assert.equal((await readerCover()).shown, false, 'phone: the cover gives way while the reply is written');
+        await p.evaluate('document.activeElement?.blur()');
+      }
+      await closeReader(p, device);
+      for (const [id, starts] of [[ids.lone, 'A message on its own'], [ids.bareReply, 'And its one reply']]) {
+        await openReader(p, device, id, starts);
+        assert.equal((await readerCover()).shown, false, `${device}: ${starts}: no cover`);
+        await closeReader(p, device);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624: a cover is for whoever arrives late, when the dossier's first message is above the loaded page. The cover
+  // rides with the dossier's place, which every message of it carries, so the reply heading what is loaded shows it as
+  // its folder's first sheet, a dossier's one reply loaded on its own (a card with no folder) shows it as pills under
+  // who wrote it, the Reader shows it on either, a rewrite reaches it, and once Earlier messages loads the first
+  // messages each cover is drawn there, once, and no pill is left.
+  await check('reading covers a dossier whose first message is more than a page behind its newest reply shows its cover under the reply\'s tab and in the Reader, and once when Earlier messages loads it', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-late-' + device;
+      const ids = await seed(topic, [['other', { sender: other, join: true, addressees: [facts.actor], body: 'Another dossier, its one reply far below.', read: true }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'The first message, above the loaded page.', read: true }],
+        ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: `Reply ${i}.`, read: true }]),
+        ['otherReply', { sender: other, reply_to: 'other', addressees: [facts.actor], body: 'The other dossier\'s one reply.', read: true }]]);
+      const write = async (message, args, op, revision) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: message, operation_id: `${topic}-${op}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        assert.equal(answer.result.cover_revision, revision);
+      };
+      await write(ids.root, { stands: 'The long dossier stands answered', payload: { text: 'Reply 30 says it', message_id: ids.r30, kind: 'answer' } }, 'cover', 1);
+      await write(ids.other, { stands: 'The other dossier stands too', payload: { text: 'Its answer', message_id: ids.other } }, 'other', 1);
+      const p = await open(topic, device, topic, ids.r34);
+      const look = () => p.evaluate(`(()=>{const covers=[...document.querySelectorAll('#messages .dossier-cover')];
+        return {roots:${JSON.stringify([ids.other, ids.root])}.filter(id=>document.querySelector('#messages [data-id='+JSON.stringify(id)+']')).length,
+          covers:covers.map(c=>{const s=c.parentElement,head=s?.firstElementChild,tab=s?.querySelector('.stack-head')?.getBoundingClientRect(),box=c.getBoundingClientRect();
+            return {stack:s?.dataset.stack,head:s?.dataset.stack===head?.dataset.id,after:c.previousElementSibling?.dataset.id===s?.dataset.stack,before:c.nextElementSibling?.className.split(' ')[0],
+              underTab:Boolean(tab)&&box.top>=tab.bottom-0.5,shown:box.height>0,stands:c.querySelector('.cover-stands')?.textContent}}).sort((a,b)=>a.stands<b.stands?-1:1),
+          tab:document.querySelector('#messages [data-id=${JSON.stringify(ids.r34)}]')?.closest('.reply-stack')?.dataset.stack??null,
+          lone:(c=>c&&{folder:Boolean(c.closest('.reply-stack')),pills:[...c.querySelectorAll(':scope > .row-pills .row-pill')].map(x=>[x.dataset.state,x.querySelector('.pill-words').textContent]),
+            after:c.querySelector(':scope > .row-pills')?.previousElementSibling?.className.split(' ')[0]??null})(document.querySelector('#messages .message-card[data-id=${JSON.stringify(ids.otherReply)}]')),
+          pills:document.querySelectorAll('#messages .row-pills').length,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const late = await look();
+      assert.equal(late.roots, 0, `${device}: both first messages are above the loaded page`);
+      const replyTab = late.tab;
+      assert.ok(replyTab && ![ids.root, ids.other].includes(replyTab) && Object.values(ids).includes(replyTab), `${device}: a reply heads what is loaded of the dossier: ${JSON.stringify(late)}`);
+      assert.deepEqual(late.covers, [{ stack: replyTab, head: true, after: true, before: 'stack-toggle', underTab: true, shown: true, stands: 'The long dossier stands answered' }],
+        `${device}: the cover is drawn once, as the first sheet under the reply that heads what is loaded of its dossier: ${JSON.stringify(late)}`);
+      assert.deepEqual(late.lone, { folder: false, pills: [['proposed', 'payload proposed']], after: 'message-author' },
+        `${device}: the other dossier's one reply, a card with no folder, shows its dossier's cover as pills under who wrote it: ${JSON.stringify(late)}`);
+      assert.deepEqual([late.pills, late.sideways], [1, false], `${device}: no other pill, nothing sideways`);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        await centre(p, `#messages .reply-stack[data-stack="${replyTab}"]`); await shot(p, `cover-late-${device}-${theme}`);
+        await centre(p, card(ids.otherReply)); await shot(p, `cover-late-lone-${device}-${theme}`);
+      }
+      await dossierTheme(p, 'light');
+      // The Reader on the newest reply shows the cover line: the folder pressed open to its latest replies first.
+      const toggle = `#messages .reply-stack[data-stack="${replyTab}"] > .stack-toggle`, level = () => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
+      if (await level() === 'head') {
+        await centre(p, toggle); await press(p, device, toggle);
+        await until(async () => await level() !== 'head', `${device}: the chevron is heard`);
+      }
+      assert.deepEqual((await look()).covers.map(at => [at.stack, at.after, at.before]), [[replyTab, true, 'stack-toggle']], `${device}: opened, the cover stays the first sheet`);
+      const readerLine = () => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover');return d.hidden||!d.getClientRects().length?null:d.querySelector('summary').textContent})()`);
+      await openReader(p, device, ids.r34, 'Reply 34.');
+      await becomes(readerLine, 'Cover The long dossier stands answered payload proposed', `${device}: the Reader shows the cover on a reply whose first message is not loaded`);
+      await shot(p, `cover-late-reader-${device}`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.otherReply, 'The other dossier');
+      await becomes(readerLine, 'Cover The other dossier stands too payload proposed', `${device}: and on a dossier's one reply loaded on its own`);
+      await closeReader(p, device);
+      // Rewritten by its agent, the cover under the reply's tab follows, its first message still not loaded.
+      await write(ids.root, { stands: 'The long dossier stands answered again' }, 'again', 2);
+      await becomes(async () => (await look()).covers.map(at => [at.stack, at.stands]), [[replyTab, 'The long dossier stands answered again']], `${device}: the rewrite reaches the reply's tab`);
+      // Earlier messages read until both first messages load: each cover is then drawn once, right after its first message.
+      const count = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+      for (let page = 0; (await look()).roots < 2; page++) {
+        assert.ok(page < 3, `${device}: Earlier messages reaches the first messages`);
+        const was = await count();
+        await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+        await until(async () => (await count()) > was, `${device}: Earlier messages reads an older page`);
+      }
+      const loaded = await look();
+      assert.deepEqual(loaded.covers.map(at => [at.stack, at.head, at.after, at.before, at.stands]),
+        [[ids.root, true, true, 'stack-toggle', 'The long dossier stands answered again'], [ids.other, true, true, 'stack-toggle', 'The other dossier stands too']],
+        `${device}: once their first messages load, each cover is drawn once, right after its first message: ${JSON.stringify(loaded)}`);
+      assert.deepEqual([loaded.pills, loaded.lone?.folder, loaded.lone?.pills], [0, true, []], `${device}: the reply is in its folder now, and no pill is left: ${JSON.stringify(loaded)}`);
+      await openReader(p, device, ids.r34, 'Reply 34.');
+      await becomes(readerLine, 'Cover The long dossier stands answered again payload proposed', `${device}: the Reader still shows it`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624, the Reader's cover line (docs/reader.md): one quiet line above the message, and a press opens the whole
+  // sheet, for the message and the dossier it was pressed on. The Reader opened on another dossier's message, on the
+  // same message again, or stepped to the next one shows the line closed, the message right under it; so it does when
+  // the open sheet's cover goes and comes back, or its message joins another dossier. A cover rewritten while its sheet
+  // is open keeps it open, saying the new words. What the Reader shows of it: shown, open, the line's words, the sheet,
+  // where it stands on the sheet, the message's first line inside the window, and nothing sideways.
+  const readerCoverAt = p => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover'),s=document.querySelector('#source-body'),m=d.querySelector('summary');
+    const shown=!d.hidden&&d.getClientRects().length>0&&d.getBoundingClientRect().height>0,pill=m.querySelector('.row-pill'),words=m.querySelector('.reader-cover-words');
+    return {shown,open:d.open,line:shown?m.textContent:null,sheet:Boolean(d.querySelector('.dossier-cover')?.getClientRects().length),
+      stands:d.querySelector('.dossier-cover .cover-stands')?.textContent??null,inView:s.getBoundingClientRect().top<innerHeight-24,
+      oneLine:!shown||(words?.getClientRects().length===1&&(!pill||!pill.getClientRects().length||pill.getBoundingClientRect().right<=m.getBoundingClientRect().right+0.5)),
+      sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  await check('reading covers the Reader\'s cover sheet opens only where it is pressed: another dossier\'s message, the same message opened again, the next message, a cover that goes and comes back and a message joined to another dossier each show the line closed, the message under it; a cover rewritten while open stays open; on a laptop and at 320, 375 and 390', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      const at = `${device} ${width}`, topic = `cover-sheet-${device}-${width}`, ids = await coverSeed(topic);
+      const write = async (id, args, op) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: id, operation_id: `${topic}-${op}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await write(ids.bare, { stands: 'The other dossier waits on the road report', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b');
+      const p = await open(topic, device, topic, ids.lone);
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+      const look = async () => { const c = await readerCoverAt(p); return { shown: c.shown, open: c.open, line: c.line, sheet: c.sheet, inView: c.inView, oneLine: c.oneLine, sideways: c.sideways }; };
+      const closed = line => ({ shown: true, open: false, line, sheet: false, inView: true, oneLine: true, sideways: false });
+      const opens = async message => {
+        await press(p, device, '#reader-cover > summary');
+        await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet]; }, [true, true], `${at}: ${message}: pressed, the line opens to the sheet`);
+      };
+      const A = 'Cover Answered again: the second weekend payload proposed';
+      // Dossier A's sheet, opened on its note and rewritten by its agent while open: it stays open, saying the new words.
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed('Cover Answered: the second weekend, with the lake open payload proposed'), `${at}: the line, closed`);
+      await opens('A');
+      await write(ids.root, { stands: 'Answered again: the second weekend' }, 'again');
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet, c.stands, c.line]; }, [true, true, 'Answered again: the second weekend', A],
+        `${at}: a rewrite keeps the sheet open, saying the new words`);
+      // The same message opened again: the line, closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed(A), `${at}: the same message opened again shows the line closed`);
+      // Another dossier's message, after A's sheet was open: B's own line, closed, the message right under it.
+      await opens('A again');
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await becomes(look, closed('Cover The other dossier waits on the road report payload proposed'), `${at}: another dossier's message shows its own line, closed, the message under it`);
+      if (width !== 375) for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-sheet-next-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Stepped to the next message above, with B's sheet open: that message's line, closed.
+      await opens('B');
+      const was = await readerOn(p), step = stepButton(device, 'above');
+      if (device === 'phone') await p.evaluate(`document.querySelector(${JSON.stringify(step)}).scrollIntoView({block:'center'})`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(step)}).disabled`), `${at}: the step above can be pressed`);
+      await press(p, device, step);
+      await until(async () => ![null, was].includes(await readerOn(p)), `${at}: the Reader steps to another message`);
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.shown, c.open, c.sheet]; }, [true, false, false], `${at}: the next message's line is closed`);
+      // Back on B's reply with its sheet open, its cover cleared and written again: the line comes back closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await opens('B again');
+      await write(ids.bare, { stands: '', payload: null }, 'b-clear');
+      await becomes(async () => (await readerCoverAt(p)).shown, false, `${at}: a cleared cover takes the line away`);
+      await write(ids.bare, { stands: 'The other dossier stands again', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b-again');
+      await becomes(look, closed('Cover The other dossier stands again payload proposed'), `${at}: written again, the line comes back closed`);
+      // B's sheet open, and B joined into A: the message reads A's line, closed.
+      await opens('B written again');
+      const joined = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.bare, operation_id: `${topic}-join`, args: { into: ids.root } });
+      assert.equal(joined.status, 'committed', JSON.stringify(joined));
+      await becomes(look, closed(A), `${at}: joined into A, the message shows A's line, closed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624: the open Reader's cover line follows the cover, as the page's stacks do (docs/reader.md). An agent's
+  // rewrite, and the person's 👍 on the payload's message given and taken back (from another of their devices), each
+  // reach the line with the Reader open on the payload's message; Core holds each first. On a laptop, and on a phone at
+  // 320, 375 and 390, light and dark.
+  await check('reading covers the open Reader\'s cover line follows the cover: an agent\'s rewrite, and the person\'s 👍 on the payload given and taken back, reach it with the Reader open', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-follows-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const line = async () => (await readerCoverAt(p)).line;
+      const thumb = async (thumbed, op) => {
+        const answer = await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.answer, thumbed, operation_id: `${topic}-${op}` });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await openReader(p, device, ids.answer, 'The second weekend');
+      await becomes(line, 'Cover Answered: the second weekend, with the lake open payload proposed', `${device}: the line`);
+      const rewrite = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, operation_id: `${topic}-again`, args: { stands: 'Booked for the second weekend' } });
+      assert.equal(rewrite.status, 'committed', JSON.stringify(rewrite));
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: an agent's rewrite reaches the open Reader's line`);
+      await thumb(true, 'thumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done?.how === 'thumb', `${device}: Core holds it done by the person's 👍`);
+      await until(async () => /^Cover Booked for the second weekend done · your 👍 at \d{1,2}:\d\d [AP]M$/.test(await line() ?? ''), `${device}: the person's 👍 reaches the open Reader's line as done`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const c = await readerCoverAt(p);
+          assert.deepEqual([c.shown, c.open, c.inView, c.oneLine, c.sideways], [true, false, true, true, false], `${device} ${width} ${theme}: the done line on one row, the message under it: ${JSON.stringify(c)}`);
+          if (width !== 375) await shot(p, `cover-follows-done-${device}-${width}-${theme}`);
+        }
+      }
+      await dossierTheme(p, 'light');
+      await thumb(false, 'unthumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done === null, `${device}: taken back, Core holds it proposed`);
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: taken back, the open Reader's line says proposed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
 }

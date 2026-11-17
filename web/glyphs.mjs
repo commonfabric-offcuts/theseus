@@ -58,6 +58,11 @@ const DRAWN = {
   moveto: { d: 'M3 12h11 M10 8l4 4-4 4 M14 4h6v16h-6' },
   // Drop…: a circle with a cross.
   drop: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9 9l6 6 M15 9l-6 6' },
+  // A dossier's cover (item 624, its approved design page): a payload proposed, a box; done, a tick; what waits on
+  // the outcome's owner, a question in a circle.
+  payload: { d: 'M4 8l8-4 8 4v8l-8 4-8-4z M4 8l8 4 8-4 M12 12v8' },
+  kept: { d: 'M5 12.5l4.5 4.5L19 7.5' },
+  waits: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5 M12 16.5v.01' },
 };
 // Glyphs another control of the page draws (index.html), by that control's id: its own drawing, cloned.
 const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };
