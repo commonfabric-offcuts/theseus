@@ -199,6 +199,112 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     return { step, kept, steps };
   };
 
+  // Item 642: geometry fixtures use the real writer's rendering branches, without making
+  // fake Core requests. Actual typing/autosave is checked separately below. Each fixture
+  // starts from a real page, and the rendered writer snapshot is never persisted.
+  const statusStates642 = [
+    ['saved', {}, 'Saved to Theseus'],
+    ['device-copy', {journalPending:1}, 'Keeping your writing on this device…'],
+    ['saving', {busy:true}, 'Saving…'],
+    ['device-saved', {dirty:true}, 'Saved on this device · saving to Theseus…'],
+    ['uploading', {images:[{id:'fixture-image',name:'Image',media:'fixture-media',associated:false}]}, 'Uploading image…'],
+    ['image-error', {images:[{id:'fixture-image',name:'Image',error:'Upload failed',associated:false}]}, 'An image needs attention. Your words are kept.'],
+    ['conflict', {conflict:{revision:2,content:{body:'Changed elsewhere.'}},hasLocal:true}, 'Your writing is kept on this device. Review the changed page.'],
+    ['error', {error:'The save could not be confirmed. Your words are kept.'}, 'The save could not be confirmed. Your words are kept.'],
+    ['refused', {readOnly:true,error:'Only those taking part in this topic, its owner and its outcome\'s owner write its Notebook'}, 'Only those taking part in this topic, its owner and its outcome\'s owner write its Notebook'],
+    ['paused', {readOnly:true}, 'Writing is paused. Your words are kept on this device.'],
+    ['to-read', {reading:true}, 'To read'],
+    ['journal-error', {journalError:'Storage is full'}, 'Device copy unavailable: Storage is full. Keep this page open.'],
+    ['unavailable', {unavailable:'Another tab keeps the writing for this page.'}, 'Another tab keeps the writing for this page.'],
+    ['image-refused', {imageError:'notes.pdf was not added: it is not a PNG, JPEG, GIF or WebP image.'}, 'notes.pdf was not added: it is not a PNG, JPEG, GIF or WebP image.'],
+    ['empty', {empty:true}, ''],
+  ];
+  const boxes642 = p => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet');return [...d.querySelectorAll('.notebook-sheet-views button')].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return {words:b.textContent,x:r.x,y:r.y,width:r.width,height:r.height}})})()`);
+  const frame642 = p => p.evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
+  const observePage642 = async p => {
+    await until(()=>p.evaluate("document.body.dataset.ready==='true'"),'item 642 topic is ready');
+    await p.evaluate(`(async()=>{const {NotebookPage}=await import('/notebook-page.mjs');const changed=NotebookPage.prototype.writingChanged;
+      NotebookPage.prototype.writingChanged=function(...args){globalThis.page642=this;return changed.apply(this,args)};})()`);
+  };
+  const render642 = (p, changes) => p.evaluate(`(()=>{const pg=page642;
+    pg.original642??={writer:pg.writing,revisionShown:pg.revisionShown};
+    const changes=${JSON.stringify(changes)},w=pg.original642.writer;
+    pg.writing={...w,dirty:false,busy:false,hasLocal:false,journalPending:0,journalError:null,error:null,readOnly:false,reading:false,conflict:null,images:[],...changes};
+    pg.unavailable=changes.unavailable??null;pg.imageError=changes.imageError??null;pg.revisionShown=()=>{};
+    pg.writingChanged();if(changes.empty)pg.say('');
+  })()`);
+  for (const [stateName, changes, expectedWords] of statusStates642) {
+    await check(`notebook item 642 ${stateName}: Text Cards and Draft keep their boxes while the saving words change, at 320 375 390 and laptop in light and dark`, async () => {
+      const id=await topicPage('Steady card buttons',cardsBody), failures=[];
+      const p=await page(`item-642-${stateName}`,null,true);
+      try {
+        await observePage642(p);
+        await listed(p,card(id),'item 642 page is listed');await press(p,card(id));
+        await opened(p,'Steady card buttons',['Plan','Steps','Notes']);
+        await until(()=>p.evaluate("Boolean(globalThis.page642?.writing?.base)"),'item 642 writer has loaded');
+        await p.point(`${PAGE} .deck-card .deck-words`);
+        await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card is open for writing');
+        const writing=await state(p);
+        for(const width of [320,375,390,1440])for(const theme of ['light','dark']) {
+          await p.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
+          await p.send('Emulation.setTouchEmulationEnabled',{enabled:width<760,maxTouchPoints:1});
+          await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+          await until(()=>p.evaluate(`innerWidth===${width}&&matchMedia('(prefers-color-scheme: ${theme})').matches`),'item 642 viewport and theme applied');
+          // Compare every state against the same controls in their quiet form. A read-only
+          // page intentionally has no Draft toggle, so its two view buttons are compared.
+          await render642(p,changes.readOnly?{readOnly:true}:changes.reading?{reading:true}:{});
+          await frame642(p);const before=await boxes642(p);
+          await render642(p,changes);await frame642(p);
+          const after=await boxes642(p),head=await sheetHead(p);
+          const sign=await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),s=d.querySelector('.notebook-sheet-status'),r=s.getBoundingClientRect();return {words:s.querySelector('.deck-status>span')?.textContent??'',below:[...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-views,.notebook-sheet-full,.notebook-sheet-close')].every(e=>e.getBoundingClientRect().bottom<=r.top+.5)}})()`);
+          await shot(p,`item-642-${stateName}-${width}-${theme}`);
+          if(JSON.stringify(before)!==JSON.stringify(after))failures.push({width,theme,before,after});
+          if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||head.cut||head.sideways)failures.push({width,theme,sign,head});
+          const now=await state(p);
+          assert.equal(now.box.words,writing.box.words,'item 642 status changes never change the card writing');
+          assert.deepEqual(now.box.at,writing.box.at,'item 642 status changes never move its cursor');
+          assert.equal(now.box.focused,true,'item 642 status changes never take focus');
+        }
+        assert.deepEqual(failures,[],`${stateName}: item 642 buttons never move and the status has its own place`);
+        assert.deepEqual(p.errors,[]);
+      } finally { await p.close(); }
+    });
+  }
+  await check('notebook item 642 typing: every painted save status keeps all three button boxes and exact card writing, at 320 375 390 and laptop in light and dark',async()=>{
+    for(const width of [320,375,390,1440])for(const theme of ['light','dark']) {
+      const id=await topicPage('Typing with steady buttons',cardsBody);
+      const p=await page(`item-642-typing-${width}-${theme}`,null,true,{beforeNavigate:async q=>{
+        await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
+        await q.send('Emulation.setTouchEmulationEnabled',{enabled:width<760,maxTouchPoints:1});
+        await q.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+        await q.send('Page.addScriptToEvaluateOnNewDocument',{source:`const own=fetch.bind(globalThis);globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
+          if(e?.kind==='memory.revise')await new Promise(resolve=>globalThis.release642=resolve);return own(...args)};`});
+      }});
+      try {
+        await listed(p,card(id),'item 642 page is listed');await press(p,card(id));await opened(p,'Typing with steady buttons',['Plan','Steps','Notes']);
+        await p.point(`${PAGE} .deck-card .deck-words`);
+        await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card writing has focus');
+        await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),boxes=()=>[...d.querySelectorAll('.notebook-sheet-views button')].map(b=>{const r=b.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
+          const baseline=JSON.stringify(boxes());globalThis.frames642=[];globalThis.stop642=false;
+          const sample=()=>{frames642.push({words:d.querySelector('.deck-status').textContent,moved:JSON.stringify(boxes())!==baseline});if(!stop642)requestAnimationFrame(sample)};requestAnimationFrame(sample)})()`);
+        const before=(await state(p)).box.words;
+        await p.send('Input.insertText',{text:' Typed.'});
+        await until(()=>p.evaluate('Boolean(globalThis.release642)'),'item 642 actual save is in flight');
+        await until(()=>p.evaluate("frames642.some(f=>f.words==='Saving…')"),'item 642 Saving is painted');
+        assert.equal((await view('memory_current',{item_id:id})).body,cardsBody,'item 642 held save has not changed Core');
+        await p.evaluate('release642()');
+        await until(()=>p.evaluate("document.querySelector('#new-message-sheet .deck-status>span')?.textContent==='Saved to Theseus'"),'item 642 confirmed save is shown');
+        await frame642(p);
+        const frames=await p.evaluate('stop642=true;frames642');
+        assert.deepEqual(frames.filter(f=>f.moved),[],`item 642 ${width} ${theme}: no painted status moves the three buttons`);
+        const box=(await state(p)).box;
+        assert.equal(box.focused,true);assert.equal(box.words.replace(' Typed.',''),before);
+        assert.ok((await view('memory_current',{item_id:id})).body.includes(' Typed.'),'item 642 actual autosave kept the typed words');
+        assert.deepEqual(p.errors,[]);
+      } finally {await p.close();}
+    }
+  });
+
   await check('notebook in the composer: a page opened from the right rail\'s whole outcome, the topic\'s Notebook, the right rail and the outcome\'s page comes up in the New message sheet over the feed, with its title, Text and Cards, Full page and ✕, at a laptop\'s width and a phone\'s', async () => {
     const plan = await outcomePage('sheet-entry-plan', 'Sheet plan', cardsBody);
     const notes = await topicPage('Sheet notes', '## First\n\nThe topic\'s own page.\n\n## Second\n\nMore.\n');
