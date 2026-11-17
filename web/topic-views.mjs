@@ -10,10 +10,12 @@ const carried = yours => [yours?.note === true, yours?.reply === true];
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
 // message, through, below and the revision of the act that set them, and the
-// revisions of the dossier's name and its cover, which every part of it shows
-// (items 470, 624). A position's snapshot (at) says only when it was read.
+// revisions of the dossier's name and cover, which every part of it shows
+// (items 470, 624), and the reader's starred messages of it (item 635).
+// A position's snapshot (at) says only when it was read.
 const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];
-const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
+const starsOf = position => (position.starred ?? []).join(' ');
+const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && starsOf(a) === starsOf(b) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
 // A reply's line reads how the message it answers begins: its first 120
@@ -300,6 +302,7 @@ export class TopicViews {
   // last act the reader had heard of before it (acts_before), the acts read
   // it brings has moved none of them, and asks for them nothing (item 426).
   ownAct(kind, result) {
+    if (result?.brought_back) return; // A star that brings its dossier back is also a move (item 635).
     if (!['message.fold', 'message.star', 'message.deal'].includes(kind) || !integer(result?.acts_version) || !integer(result.acts_before)) return;
     if (this.neighborsAt !== undefined && this.neighborsAt >= result.acts_before) this.neighborsAt = Math.max(this.neighborsAt, result.acts_version);
   }

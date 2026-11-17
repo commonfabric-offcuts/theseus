@@ -31,6 +31,11 @@ change:
 - `cover` (stack.cover, covers.py): the dossier's cover on its first message:
   where it stands, what waits on the outcome's owner, and its payload, whose
   Done only the owner's own 👍 or word gives (item 624). The topic's.
+- `aside` (stack.aside): the reader moved the dossier this message is the first
+  message of below More, as far as a message (`through`), or brought it back
+  (none). Theirs alone. A dossier holding a message they starred stays above
+  More for them: the move is refused (HELD_BY_STAR), and a star made in a
+  dossier below More brings it back in the same act (item 635).
 
 A personal row belongs to its reader (`owner` is their id); a shared row has the
 empty owner. An act's revision counts its rows for that message, kind and owner,
@@ -122,6 +127,8 @@ PLACE_BOUND = 1e15
 JOIN_DEPTH = 10000
 # A minted name is this many words, from the fewest to the most (item 479).
 MINT_WORDS = (2, 5)
+# Why a dossier holding a message the reader starred is not moved below More for them (item 635): the way out is to unstar.
+HELD_BY_STAR = ("STARRED_IN_DOSSIER", "This dossier has a message you starred: unstar it to move it below More")
 # What an act stands at before anyone has made it.
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
         "cover": cover_values.EMPTY_COVER}
@@ -402,6 +409,18 @@ NOT_THE_NAMER = {"named": ("ALREADY_NAMED", "This dossier already has a name; a 
                  "no_agent": ("NOT_THE_NAMER", "No agent has replied in this dossier, so it keeps its first line")}
 
 
+def starred_in(db, actor, topic, roots):
+    """{root: [message ids]}: the messages of topic the reader starred and can see, oldest first, by the dossier each is
+    in (roots: a StackRoots for the reader). Their own stars only, read through their index, never another reader's."""
+    found = {}
+    for row in db.execute("SELECT a.message_id FROM message_acts a INDEXED BY reader_stars JOIN messages m ON m.id=a.message_id "
+                          "WHERE a.owner=:actor AND a.kind='star' AND a.topic_id=:topic AND json_extract(a.value,'$.starred')=1 "
+                          "AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='star' AND b.owner=a.owner) "
+                          "AND " + VISIBLE + " ORDER BY m.seq", {"actor": actor, "topic": topic}):
+        found.setdefault(roots.root(row[0]), []).append(row[0])
+    return found
+
+
 def _seen_seq(db, actor, topic):
     """The newest sequence in the topic the reader can see: a whisper they are outside never moves it."""
     row = db.execute("SELECT m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=:topic AND " + VISIBLE +
@@ -419,23 +438,26 @@ def stack_positions(db, actor, items):
     """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
-    the dossier, so a page of earlier messages reads the same however the topic grows."""
-    roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
+    the dossier, so a page of earlier messages reads the same however the topic grows. `starred` names the messages of
+    the dossier the reader starred, loaded on their page or not: its title bar shows their star, and it is never below
+    More for them (item 635), whatever joined it."""
+    roots, acts_at, stars, positions, result = StackRoots(db, actor), {}, {}, {}, {}
     for item in items:
         topic = item["topic_id"]
         if topic not in acts_at:
             acts_at[topic] = _seen_acts(db, actor, topic)
+            stars[topic] = starred_in(db, actor, topic, roots)
         root = roots.root(item["id"])
         if root not in positions:
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
-            through = acts["aside"]
+            through, starred = acts["aside"], stars[topic].get(root, [])
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
-                               "name": acts["name"], "name_revision": acts["name_revision"],
+                               "name": acts["name"], "name_revision": acts["name_revision"], "starred": starred,
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
-                               "below": through is not None and (others is None or others <= through),
+                               "below": through is not None and not starred and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
     return result
@@ -494,6 +516,9 @@ class Stacks:
         if kind == "aside":
             if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
+            # A dossier holding a message the reader starred stays above More for them (item 635).
+            if value["through"] is not None and starred_in(db, actor, message["topic_id"], StackRoots(db, actor)).get(message["id"]):
+                raise Refusal(*HELD_BY_STAR)
         personal = kind in PERSONAL
         if not personal:
             # A reached, archived or completed outcome's topics are kept to read: its stacks keep their names and joins.
@@ -524,9 +549,24 @@ class Stacks:
         # The newest act in the topic its reader had heard of before this one: a page that read the topic's places at
         # that act or later knows that only its own act came since (docs/reply-stacks.md, item 426).
         before = _seen_acts(db, actor, message["topic_id"])
-        version = self._record_act(db, kind, message, owner, actor, value, revision)
+        back = self._brought_back(db, actor, message) if kind == "star" and value["starred"] else None
+        version = self._record_act(db, kind, message, owner, actor, value, revision, tell=back is None)
+        if back:
+            # The star and the dossier back above More are one act: one transaction, its reader told once, at the last row.
+            version = self._record_act(db, "aside", back["root"], actor, actor, {"through": None}, back["aside_revision"])
+            result["brought_back"] = {"root_id": back["root"]["id"], "aside_revision": back["aside_revision"]}
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version, "acts_before": before}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
+
+    def _brought_back(self, db, actor, message):
+        """{root, aside_revision} when message, about to be starred by actor, is in a dossier actor moved below More:
+        the star brings it back above More for them (item 635), as their own Bring back would, at its next revision.
+        None for a dossier they have not moved; another reader's move is theirs and stays."""
+        root = StackRoots(db, actor).root(message["id"])
+        if (self._act_value(db, root, "aside", actor) or NONE["aside"])["through"] is None:
+            return None
+        return {"root": db.execute("SELECT id,topic_id,seq FROM messages WHERE id=?", (root,)).fetchone(),
+                "aside_revision": self._act_revision(db, root, "aside", actor) + 1}
 
     def _record_act(self, db, kind, message, owner, actor, value, revision, tell=True):
         """Records an act as its next row and tells who hears of it: a personal act its reader, a shared one
