@@ -437,6 +437,30 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
   card.dataset.folded = 'true';
 }
 
+// Item 645: consecutive drawn folded rows share one visible sender name.
+// Keep each row's attribution in the accessibility tree. Work from the drawn
+// structure, with no layout reads and no grouping across a dossier or a line.
+function paintFoldedNames(list, messages, state) {
+  const visit = nodes => {
+    let previous = null;
+    for (const entry of nodes) {
+      if (entry.hidden || (!state.showCoordination && entry.dataset.coordination === 'agents')) continue;
+      if (entry.classList.contains('reply-stack')) {
+        const head = entry.querySelector(':scope > [data-id]');
+        visit([...(entry.dataset.headOpen === 'true' ? [head] : []), ...entry.querySelector(':scope > .stack-replies').children]);
+        previous = null;
+        continue;
+      }
+      const card = cardIn(entry), author = card.querySelector(':scope > .message-folded > .folded-author');
+      const item = messages.get(entry.dataset.id);
+      const folded = item && !card.hidden && state.folded.has(item.id) && !state.earlierRows.has(item.id);
+      if (author) author.classList.toggle('sr-only', Boolean(folded && previous === item.author_id));
+      previous = folded ? item.author_id : null;
+    }
+  };
+  visit(list.children);
+}
+
 // One of an open dossier's earlier messages, shown as one row set into its
 // card for this visit (item 476): who wrote it and its line, as a folded row
 // reads, with nothing saying it is folded, since it is not. A first message's
@@ -671,6 +695,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
   for (const node of top) if (node !== state.more && node !== home) node.hidden = aside.includes(node) && !asideShown;
+  paintFoldedNames(list, messages, state);
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
 }
