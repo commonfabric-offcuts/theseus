@@ -285,6 +285,74 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  // Items 644 and 668: observe every frame, including focus and layout changes during the act.
+  for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
+    await check(`item 644 ${shape} ${scheme}: opening, using and closing the card composer holds the page`, async () => {
+      const p = await page(shape, scheme);
+      await until(p, () => !document.querySelector('#inline-composer').hidden, 'the composer is ready');
+      // Put the quiet line in view before starting the act, leaving room below the page to detect a jump.
+      await p.locator('#inline-writing-body').scrollIntoViewIfNeeded();
+      await p.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      await picture(p, 'item-644-card-before');
+      await p.evaluate(() => {
+        window.item644 = { start: scrollY, frames: [], running: true };
+        const read = () => { const t = window.item644; t.frames.push(scrollY); if (t.running) requestAnimationFrame(read); };
+        read();
+      });
+      await press(p, '#inline-writing-body');
+      await until(p, () => document.activeElement.id === 'inline-writing-body' && document.querySelector('#inline-composer').dataset.compose === 'writing', 'the card composer opens');
+      await p.keyboard.insertText('Item 644 keeps these words.');
+      await until(p, () => document.querySelector('#inline-writing-body').value === 'Item 644 keeps these words.', 'the words are written');
+      await picture(p, 'item-644-card-writing');
+      // Escape in the field folds it; opening the sheet by the native shortcut must also hold the feed.
+      await p.keyboard.press('Escape');
+      await p.keyboard.press('Meta+Enter');
+      await until(p, () => document.querySelector('#new-message-sheet').open, 'the same composer opens over the page');
+      await picture(p, 'item-644-card-sheet');
+      await p.keyboard.insertText(' Still held.');
+      await press(p, '#new-message-close');
+      await until(p, () => !document.querySelector('#new-message-sheet').open, 'the composer closes');
+      await p.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      await picture(p, 'item-644-card-after');
+      const trail = await p.evaluate(() => { item644.running = false; return item644; });
+      assert.ok(trail.frames.every(y => Math.abs(y - trail.start) <= 1), `the page never scrolls while the composer opens, is used and closes: ${JSON.stringify(trail)}`);
+      assert.equal(await p.locator('#inline-writing-body').inputValue(), 'Item 644 keeps these words. Still held.', 'closing keeps the exact writing');
+      await close(p);
+    });
+    for (const mode of shape === 'stacked' ? ['stacked', 'wide'] : ['stacked']) await check(`item 644 quote ${shape} ${scheme} ${mode}: quoting keeps the composer mode`, async () => {
+      const p = await page(mode === 'wide' ? 'wide' : shape, scheme);
+      await open(p, second);
+      const geometry = () => p.evaluate(() => {
+        const r = document.querySelector('#reader'), a = document.querySelector('#source-body').getBoundingClientRect(), b = document.querySelector('#reader-composer').getBoundingClientRect();
+        return { mode: r.dataset.layout, stacked: b.top >= a.bottom - 1, wide: b.left >= a.right - 1, page: scrollY };
+      });
+      const before = await geometry();
+      assert.equal(before.mode, mode);
+      await picture(p, 'item-644-quote-before');
+      for (const how of ['Enter', 'pill', 'menu']) {
+        const passage = '#source-body > :nth-child(2)';
+        await p.locator(passage).scrollIntoViewIfNeeded();
+        if (p.touch) {
+          // Native touch cannot drag selection in this harness; use the same selection setup as existing quote cases.
+          await p.evaluate(s => { const r = document.createRange(); r.selectNodeContents(document.querySelector(s)); getSelection().removeAllRanges(); getSelection().addRange(r); }, passage);
+        } else {
+          const b = await p.locator(passage).boundingBox();
+          await p.mouse.move(b.x + 3, b.y + 8); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 8, { steps: 5 }); await p.mouse.up();
+        }
+        const selected = await p.evaluate(() => getSelection().toString().trim());
+        assert.ok(selected, 'words selected for the quote');
+        await until(p, () => !document.querySelector('#quote-selection').hidden, 'Quote is offered');
+        if (how === 'Enter') await p.keyboard.press('Enter');
+        else if (how === 'pill') await press(p, '#quote-selection');
+        else { await press(p, '#reader-menu'); await p.getByRole('menuitem', { name: 'Quote selection', exact: true }).click(); }
+        await until(p, text => document.activeElement.id === 'writing-body' && document.querySelector('#writing-body').value.includes(text), 'the quote is in the reply', selected);
+        const after = await geometry();
+        await picture(p, `item-644-quote-${mode}-${how}`);
+        assert.deepEqual(after, before, `${how} keeps both the mode and the visible pane arrangement, and never moves the page`);
+      }
+      await close(p);
+    });
+  }
   // Items 602 and 601 (tests/menu_glyphs.mjs): each item of the Reader's ⋯ shows its glyph before its words, in each
   // state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each width and theme
   // reads in a topic of its own, so what its acts change (a mark, a fold) is no other case's.
