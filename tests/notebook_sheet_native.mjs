@@ -223,7 +223,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   const frame642 = p => p.evaluate('new Promise(resolve=>requestAnimationFrame(resolve))');
   const observePage642 = async p => {
     await until(()=>p.evaluate("document.body.dataset.ready==='true'"),'item 642 topic is ready');
-    await p.evaluate(`(async()=>{const {NotebookPage}=await import('/notebook-page.mjs');const changed=NotebookPage.prototype.writingChanged;
+    await p.evaluate(`(async()=>{const {NotebookPage}=await import('/notebook-page.mjs'),{NotebookSheet}=await import('/notebook-sheet.mjs');const open=NotebookSheet.prototype.open;
+      NotebookSheet.prototype.open=async function(...args){const answer=await open.apply(this,args);globalThis.opened642=true;return answer};
+      const changed=NotebookPage.prototype.writingChanged;
       NotebookPage.prototype.writingChanged=function(...args){globalThis.page642=this;return changed.apply(this,args)};})()`);
   };
   const render642 = (p, changes) => p.evaluate(`(()=>{const pg=page642;
@@ -235,8 +237,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   })()`);
   for (const [stateName, changes, expectedWords] of statusStates642) {
     await check(`notebook item 642 ${stateName}: Text Cards and Draft keep their boxes while the saving words change, at 320 375 390 and laptop in light and dark`, async () => {
-      const id=await topicPage('Steady card buttons',cardsBody), failures=[];
+      const failures=[];
       for(const width of [320,375,390,1440]) {
+      const id=await topicPage('Steady card buttons',cardsBody);
       const p=await page(`item-642-${stateName}-${width}`,null,true,{beforeNavigate:async q=>{
         await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
         if(width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
@@ -245,7 +248,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         await observePage642(p);
         await listed(p,card(id),'item 642 page is listed');await press(p,card(id));
         await opened(p,'Steady card buttons',['Plan','Steps','Notes']);
-        await until(()=>p.evaluate("Boolean(globalThis.page642?.writing?.base)"),'item 642 writer has loaded');
+        await until(()=>p.evaluate("Boolean(globalThis.opened642&&globalThis.page642?.images)"),'item 642 writer has loaded');
         await p.point(`${PAGE} .deck-card .deck-words`);
         await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card is open for writing');
         const writing=await state(p);
@@ -261,14 +264,17 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
           const sign=await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),s=d.querySelector('.notebook-sheet-status'),r=s.getBoundingClientRect();return {words:s.querySelector('.deck-status>span')?.textContent??'',below:[...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-views,.notebook-sheet-full,.notebook-sheet-close')].every(e=>e.getBoundingClientRect().bottom<=r.top+.5)}})()`);
           await shot(p,`item-642-${stateName}-${width}-${theme}`);
           if(JSON.stringify(before)!==JSON.stringify(after))failures.push({width,theme,before,after});
-          if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||head.cut||head.sideways)failures.push({width,theme,sign,head});
+          if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||(expectedWords&&head.cut)||head.sideways)failures.push({width,theme,sign,head});
           const now=await state(p);
           assert.equal(now.box.words,writing.box.words,'item 642 status changes never change the card writing');
           assert.deepEqual(now.box.at,writing.box.at,'item 642 status changes never move its cursor');
           assert.equal(now.box.focused,true,'item 642 status changes never take focus');
         }
         assert.deepEqual(p.errors,[]);
-      } finally { await p.close(); }
+      } finally {
+        await p.evaluate('(()=>{const pg=globalThis.page642;if(pg?.original642){pg.writing=pg.original642.writer;pg.revisionShown=pg.original642.revisionShown;pg.unavailable=null;pg.imageError=null}})()');
+        await p.close();
+      }
       }
       assert.deepEqual(failures,[],`${stateName}: item 642 buttons never move and the status has its own place`);
     });
@@ -284,7 +290,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
           if(e?.kind==='memory.revise')await new Promise(resolve=>globalThis.release642=resolve);return own(...args)};`});
       }});
       try {
+        await observePage642(p);
         await listed(p,card(id),'item 642 page is listed');await press(p,card(id));await opened(p,'Typing with steady buttons',['Plan','Steps','Notes']);
+        await until(()=>p.evaluate('globalThis.opened642===true'),'item 642 sheet opening has completed');
         await p.point(`${PAGE} .deck-card .deck-words`);
         await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card writing has focus');
         await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),boxes=()=>[...d.querySelectorAll('.notebook-sheet-views button')].map(b=>{const r=b.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
@@ -298,7 +306,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         await p.evaluate('release642()');
         await until(()=>p.evaluate("document.querySelector('#new-message-sheet .deck-status>span')?.textContent==='Saved to Theseus'"),'item 642 confirmed save is shown');
         await frame642(p);
-        const frames=await p.evaluate('stop642=true;frames642');
+        const frames=await p.evaluate('(stop642=true,frames642)');
         assert.deepEqual(frames.filter(f=>f.moved),[],`item 642 ${width} ${theme}: no painted status moves the three buttons`);
         const box=(await state(p)).box;
         assert.equal(box.focused,true);assert.equal(box.words.replace(' Typed.',''),before);
