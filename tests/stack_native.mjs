@@ -53,7 +53,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const input = device === 'laptop' ? 'laptop' : 'phone';
       await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
       const read = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
-        visible=e=>!!e&&!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+        visible=e=>!!e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1&&getComputedStyle(e).visibility!=='hidden';
         return Object.fromEntries(Object.entries(ids).map(([name,id])=>{const e=c(id),a=e.querySelector(':scope > .message-folded > .folded-author');
           return [name,{folded:e.dataset.folded==='true',name:visible(a)?a.textContent:'',words:e.querySelector(':scope > .message-folded > .folded-words')?.textContent??null,
             wholeName:visible(e.querySelector(':scope > .message-author'))?e.querySelector(':scope > .message-author').textContent:null}]}))})()`);

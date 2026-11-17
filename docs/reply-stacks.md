@@ -243,7 +243,11 @@ their acts.
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
   and on its own, it is one row: who wrote it, its line (One line of a
-  message, below), a 👍, and "Folded". The row is all of the card that draws,
+  message, below), a 👍, and "Folded". Consecutive folded messages from one
+  sender show the name on the first alone (item 645); opening a message shows
+  its name again. A different sender, a whole message, a dossier boundary or
+  a separating line starts a new run. Each folded message still names its
+  sender to a screen reader. The row is all of the card that draws,
   on a phone by touch as on a laptop: nothing of its words, a cut-off message's
   excerpt and its cue included, shows past it (item 546). The 👍 is the message's thumbs-up,
   as its bar's: pressed once given, with the count once anyone has, and a press gives or takes it back
@@ -902,3 +906,7 @@ menu, moves it below More messages like any other dossier ([Put a dossier
 aside](#put-a-dossier-aside)), and it keeps its quiet row
 there. With Show agent coordination off, agent coordination below More is
 hidden as well and More counts only the dossiers it would show.
+
+Item 645 is held by `tests/stack_native.mjs`, the "reading item 645 folded"
+and "reading item 645 opened" cases in `native-reading` and
+`native-webkit-reading`, at 320, 375, 390 and laptop widths, light and dark.

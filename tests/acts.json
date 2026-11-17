@@ -26991,6 +26991,36 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 645,
+   "act": "Consecutive folded messages from one sender show the name on the first alone",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "Boolean(folded && previous === item.author_id)",
+     "false"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 645 folded"
+   }
+  },
+  {
+   "item": 645,
+   "act": "Opening a folded message shows its name again",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (!folded) { foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }",
+     "if (!folded) { foldedRows.get(card)?.remove(); card.querySelector(':scope > .message-author')?.classList.add('sr-only'); if (card.dataset.folded) card.dataset.folded = 'false'; return; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 645 opened"
+   }
   }
  ]
 }
