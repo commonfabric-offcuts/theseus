@@ -1273,12 +1273,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const inWindow = (p, selector) => p.evaluate(`(r=>r.bottom>0&&r.top<innerHeight)(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
 
   // Command-Z, or Undo in ⋯, right after a Bring back on a dossier starred since would move it below More again: it is
-  // held as any press on the move is (setAside, item 635), and says why where it was asked for. Undo in ⋯ says it by the
-  // message whose ⋯ it was. ⌘Z says it under the dossier's title bar, else under the message the keys are on, and on
-  // the page's status line where neither is in the window. Nothing moves on any frame, Core holds no move, and nothing
-  // says it was put back. The undo before it, the first move's, is a Bring back and is never held. On a laptop by ⌘Z,
-  // and by a finger at 320, 375 and 390 by Undo in ⋯'s moves (a phone has no ⌘Z), light and dark.
-  await check('reading stacks star undo: Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing and says why where it was asked for, or on the status line when that is out of the window; the Bring back before it is never held', async () => {
+  // held as any press on the move is (setAside, item 635), and says why by the dossier it would have moved. Undo in ⋯
+  // on a message of that dossier says it by that message. Otherwise, ⌘Z wherever the keys are and Undo in ⋯ of a
+  // message in another dossier, it is said under the dossier's title bar, which is brought into view where it was out
+  // of the window: never beside a message of another dossier, whose words "This dossier" and "unstar it" would point
+  // at the wrong thing. Nothing moves on any frame, Core holds no move, and nothing says it was put back. The undo
+  // before it, the first move's, is a Bring back and is never held. On a laptop by ⌘Z, and by a finger at 320, 375
+  // and 390 by Undo in ⋯'s moves (a phone has no ⌘Z), light and dark.
+  await check('reading stacks star undo: Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing and says why by that dossier, bringing its title bar into view, never beside a message of another dossier; the Bring back before it is never held', async () => {
     for (const [device, width] of STAR_WIDTHS) {
       const topic = `stack-star-undo-${device}-${width}`;
       const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Where do the rain barrels go?' }],
@@ -1290,17 +1292,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const titleBar = `#messages .reply-stack[data-stack="${ids.root}"] .message-card[data-id="${ids.root}"] > .stack-head`;
       const lineOf = id => `${card(id)} > .message-author`;
       const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
-      // Each round: the message the undo is asked for from (⋯ on it, or the keys on it), where the note is said
-      // (null: on the status line), whether the title bar is in the window, and whether the page is scrolled to its end
-      // after the keys reach the message (taking it and the title bar out of the window). The topic's newest messages
-      // (f11 the newest) are above the dossier.
+      const barTop = () => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(titleBar)}).getBoundingClientRect().top)`);
+      // Each round: the message the undo is asked for from (⋯ on it, or the keys on it), where the note is said,
+      // whether the title bar is in the window before the undo, whether the page is scrolled to its end after the
+      // keys reach the message (taking it and the title bar out of the window), and its screenshots' name. The topic's newest messages (f11 the
+      // newest, a message of its own: another dossier) are above the dossier.
       const rounds = device === 'phone'
-        ? [['by the message whose ⋯ it was', ids.two, lineOf(ids.two), true, false], ['by the message whose ⋯ it was, the title bar out of the window', ids.f11, lineOf(ids.f11), false, false]]
-        : [['under the title bar', ids.two, titleBar, true, false], ['where the keys are, the title bar out of the window', ids.f11, lineOf(ids.f11), false, false],
-          ['on the status line, the title bar and the keys out of the window', ids.f11, null, false, true]];
+        ? [['by the message whose ⋯ it was', ids.two, lineOf(ids.two), true, false, 'line'],
+          ['by ⋯ of a message in another dossier, the title bar out of the window: under the title bar, brought into view', ids.f11, titleBar, false, false, 'brought']]
+        : [['under the title bar', ids.two, titleBar, true, false, 'title'],
+          ['the keys on a message in another dossier, the title bar out of the window: under the title bar, brought into view', ids.f11, titleBar, false, false, 'brought'],
+          ['the title bar and the keys out of the window: under the title bar, brought into view', ids.f11, titleBar, false, true, 'brought-end']];
       // ⌘Z where the keys are, or Undo in the ⋯ of the message a finger is on.
       const undo = async on => { if (device === 'phone') { await menuAgain(p, device, on, on === ids.two ? ids.one : ids.f10); await moveItem(p, device, 'Undo'); } else await p.key('z', 4); };
-      for (const [round, on, near, barShown, toEnd] of rounds) {
+      for (const [round, on, near, barShown, toEnd, shotName] of rounds) {
         const label = `${device} ${width} ${round}`;
         await menuAgain(p, device, ids.two, ids.one); await moveItem(p, device, 'Move below More');
         await until(async () => (await positionIn(topic, ids.root)).below, `${label}: moved below More, in Core`);
@@ -1320,21 +1325,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await becomes(() => inWindow(p, lineOf(on)), !toEnd, `${label}: the message the keys are on is ${toEnd ? 'out of' : 'in'} the window`);
         } else await centre(p, card(on));
         await becomes(() => inWindow(p, titleBar), barShown, `${label}: the title bar is ${barShown ? 'in' : 'out of'} the window`);
+        const before = await barTop();
         await watchHeld(p, ids.two);
         await undo(on);
-        if (near === null) {
-          await until(async () => (await status()).includes(HELD), `${label}: the reason is said on the status line`);
-          assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${label}: and no note shows`);
-          assert.equal(await p.evaluate(`Boolean(document.getElementById('app-status').getClientRects().length)&&(r=>r.top>=0&&r.bottom<=innerHeight)(document.getElementById('app-status').getBoundingClientRect())`), true,
-            `${label}: the status line shows in the window`);
-        } else {
-          await until(async () => (await pressNote(p, near))?.text === HELD, `${label}: the note says why`);
-          assert.deepEqual(await pressNote(p, near), { text: HELD, role: 'status', inside: true, side: 'under', inDialog: false, sideways: false },
-            `${label}: said under ${near}, inside the window`);
-          assert.equal((await status()).includes(HELD), false, `${label}: and not on the status line`);
-        }
-        await becomes(() => inWindow(p, titleBar), barShown, `${label}: the undo scrolled nothing`);
-        const shotName = near === null ? 'status' : near === titleBar ? 'title' : on === ids.two ? 'line' : 'keys';
+        await until(async () => (await pressNote(p, near))?.text === HELD, `${label}: the note says why`);
+        assert.deepEqual(await pressNote(p, near), { text: HELD, role: 'status', inside: true, side: 'under', inDialog: false, sideways: false },
+          `${label}: said under ${near}, inside the window`);
+        assert.equal((await status()).includes(HELD), false, `${label}: and not on the status line`);
+        // Never beside a message of another dossier: not by the line of the message the undo was asked for from.
+        if (on !== ids.two) assert.equal((await pressNote(p, lineOf(on))).side, null, `${label}: and not beside the message in another dossier`);
+        // The title bar shows where it was when it was in the window, and is brought into it when it was not.
+        if (barShown) assert.ok(Math.abs((await barTop()) - before) <= 1, `${label}: the undo scrolled nothing`);
+        else assert.equal(await inWindow(p, titleBar), true, `${label}: the title bar is brought into the window`);
         for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-undo-${shotName}-${device}-${width}-${theme}`); }
         await dossierTheme(p, 'light');
         await until(() => p.evaluate('window.fetchesOut === 0'), `${label}: nothing is out`);
@@ -1353,6 +1355,65 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await menuAgain(p, device, ids.two, ids.one); await choose(p, device, 'Unstar');
         await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${label}: unstarred, in Core`);
       }
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // Where the held dossier is not drawn at all (an agents-only dossier, with Show agent coordination off), nothing on
+  // the page is that dossier's to say it by: ⌘Z, or Undo in ⋯ of a message of another dossier, says why on the page's
+  // status line, as any refusal is, never beside the message the keys or the ⋯ were on, and shows nothing the reader
+  // hid. On a laptop by ⌘Z, and by a finger at 320, 375 and 390 by Undo in ⋯'s moves, light and dark.
+  await check('reading stacks star undo hidden: Command-Z or Undo in ⋯ held for a dossier Show agent coordination hides says why on the status line, never beside a message of another dossier, and shows nothing hidden', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-undo-hidden-${device}-${width}`;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'The cold frame lids are on.' }],
+        ['mine', { sender: other, join: true, addressees: [facts.actor], body: 'Seed potatoes came today.' }],
+        ['root', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Compost turning, between agents' }],
+        ['reply', { sender: 'aim-ux', join: true, addressees: ['aim-core'], reply_to: 'root', body: 'Turned it on Tuesday.' }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`, toggle = `${section} > .stack-toggle`, filter = '#agent-coordination-show button';
+      const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
+      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+      const lineOf = id => `${card(id)} > .message-author`;
+      // The agents-only dossier opens from its quiet row to its title bar and first message (item 394).
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.compact === 'true'`), `${device} ${width}: the agents-only dossier is one quiet row`);
+      await centre(p, toggle); await press(p, device, toggle);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.compact === 'false'`), `${device} ${width}: opened from its row`);
+      await menuAgain(p, device, ids.root, ids.mine); await moveItem(p, device, 'Move below More');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: moved below More, in Core`);
+      await moreOpened(p, device);
+      await becomes(shown, true, `${device} ${width}: More shows it`);
+      await menuAgain(p, device, ids.root, ids.mine); await moveItem(p, device, 'Bring back above More');
+      await until(async () => !(await positionIn(topic, ids.root)).below, `${device} ${width}: brought back, in Core`);
+      await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.root))?.starred === true, `${device} ${width}: starred, in Core`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      // Show agent coordination off: the dossier is not drawn.
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(shown, false, `${device} ${width}: Show agent coordination hides the dossier`);
+      await watchHeld(p, ids.root);
+      if (device === 'phone') { await menuAgain(p, device, ids.mine, ids.primer); await moveItem(p, device, 'Undo'); }
+      else { await keyTo(p, ids.mine); await p.key('z', 4); }
+      await until(async () => (await status()).includes(HELD), `${device} ${width}: the reason is said on the status line`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: no note shows, beside the message of another dossier or anywhere`);
+      assert.equal(await p.evaluate(`(s=>Boolean(s.getClientRects().length)&&(r=>r.top>=0&&r.bottom<=innerHeight)(s.getBoundingClientRect()))(document.getElementById('app-status'))`), true,
+        `${device} ${width}: the status line shows in the window`);
+      assert.equal(await shown(), false, `${device} ${width}: the hidden dossier stays hidden`);
+      assert.equal(await inWindow(p, lineOf(ids.mine)), true, `${device} ${width}: the message the undo was asked from stays in view`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-undo-status-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: nothing is out`);
+      const frames = await heldFrames(p);
+      assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+      assert.deepEqual([(await positionIn(topic, ids.root)).below, (await actsOf(topic, ids.root))?.aside ?? null], [false, null], `${device} ${width}: Core holds no move`);
+      assert.notEqual(await said(p), 'Put back', `${device} ${width}: nothing says it was put back`);
+      // Show agent coordination on again, and the star taken off, so the cases after this one find the stars as they were.
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(shown, true, `${device} ${width}: Show agent coordination shows it again`);
+      await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Unstar');
+      await until(async () => (await actsOf(topic, ids.root))?.starred === false, `${device} ${width}: unstarred, in Core`);
       assert.deepEqual(p.errors, []); await p.close();
       await readAll(topic);
     }
