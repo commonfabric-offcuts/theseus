@@ -544,11 +544,12 @@ its message, and an index on (group, topic, delivery) over the pending ones
 gives a group's first pending delivery in the topic; deliveries are queued in
 the transaction that writes their message, so that is the oldest message the
 group holds unread. What counts is in two groups at most, each found by its
-key: the topic's subscription group of the reader's current participation,
-and the reader's one direct group. Rows that a subscription cancelled by
-leaving left pending are in other groups, so they are never read, however many
-there are. The reader's marked index gives their oldest mark in the topic,
-passing over only marks on their own messages. Each read stops at its first
+key: the topic's active subscription group, which is the reader's current
+participation's, and the reader's one direct group. Rows that a subscription
+cancelled by leaving left pending are in other groups, so they are never read,
+however many there are. The reader's marked index gives their oldest mark in
+the topic that the counts count, passing over only marks on their own messages
+and marks on messages a pending delivery counts already. Each read stops at its first
 row, so the cost does not grow with the topic, other topics, what the reader
 has read, or what they left pending by leaving.
 
@@ -648,9 +649,11 @@ row as far as it (docs/reply-stacks.md, "Earlier messages"), and brings it whole
 into view with the keys on it; on a phone the drawer closes first. Reading it on
 screen settles it, and the count goes. The count's tooltip says "Show the oldest
 unread message", and on a phone it answers a finger 44px each way. The count and
-the message it leads to are one rule: both are Core's unread (`_unread` counts
-it, `_oldest_unread` names it), a delivery pending in an active group or a mark,
-so while a topic's count is above nought its oldest unread message is one the
+the message it leads to are one rule, written once and read by both: a delivery
+pending in one of the reader's active groups (`SUBSCRIBED` and `ADDRESSED` in
+`aim_next/topic_reading.py`) or a mark (`MARKED` in `aim_next/marks.py`), which
+`_unread` counts, `_oldest_unread` names and a page's cards mark unread. So
+while a topic's count is above nought its oldest unread message is one the
 reader's own pages of the topic reach, and what the reader cannot reach (a
 topic they left, a whisper between others, another reader's delivery) is never
 counted. `tests/test_new_line.py`, `CountLeadsThereCase`, holds the two

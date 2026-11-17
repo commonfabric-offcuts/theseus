@@ -12,7 +12,8 @@ only, through indexes keyed by message. The first three come from
 `aim_next/topic_reading.py`:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
-  the same deliveries the counts and the New line read. The reader's own
+  the same deliveries the counts and the New line read, by the one rule both
+  read (`SUBSCRIBED` and `ADDRESSED`, docs/attention.md, "In the browser"). The reader's own
   messages are never unread. Marks are not folded in: the page has its own
   (`web/marks.mjs`).
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
