@@ -83,6 +83,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     });
   }
 
+  // Topic readiness precedes the background conversation read. Wait for its
+  // actual filter and item states before pressing either it or a dossier.
+  const item645ConversationReady = (p, ids) => until(() => p.evaluate(`(()=>{const button=document.querySelector('#conversation-show button');
+    return !!button && button.getClientRects().length>0 && window.fetchesOut===0 && ${JSON.stringify(ids)}.every(id=>{const card=document.querySelector('#messages .message-card[data-id="'+id+'"]');const entry=card?.parentElement?.classList.contains('message-fold')?card.parentElement:card;return !!entry?.dataset.item && entry.dataset.item!=='none'})})()`), 'item 645 conversation filter and item states are drawn after their background reads');
+  // Suppression changes only drawing. Both names stay available to accessibility;
+  // the fixture viewer's display label is You, not its record actor id.
+  const item645Attribution = async (p, ids) => assert.deepEqual(await p.evaluate(`${JSON.stringify(ids)}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return {text:e?.textContent,ariaHidden:e?.getAttribute('aria-hidden')}})`), ids.map(()=>({text:'You',ariaHidden:null})), 'exact viewer attribution remains in every folded row, including suppressed rows');
+
   // Independent review: Only new hides settled entries through CSS, rather
   // than entry.hidden. The first row a person can see must name its sender.
   for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
@@ -98,15 +106,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       for (const name of ['a', 'b']) await dossierFold(key, ids[name]);
       const p = await open(key, device, topic, ids.root, '', '/?conversation=w1');
       const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, [ids.root, ids.a, ids.b]);
       await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
       const visibleName = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-folded > .folded-author')});
         return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})()`);
+      await item645Attribution(p, [ids.a, ids.b]);
       assert.equal(await visibleName(), '', 'before filtering, the repeated sender is suppressed');
       await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
       await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
       await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.root))}).getClientRects().length && !document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length && document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length>0`), 'the answered root and first row are hidden and the new row is shown');
       await centre(p, card(ids.b)); await away(p); await shot(p, key);
-      assert.equal(await visibleName(), facts.actor, 'the first visible folded message names its sender after Only new hides its predecessor');
+      await item645Attribution(p, [ids.a, ids.b]);
+      assert.equal(await visibleName(), 'You', 'the first visible folded message names its sender after Only new hides its predecessor');
       await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
       await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again');
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length>0`), 'the first folded row is drawn again');
@@ -123,13 +134,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         ...(name === 'reply' ? { reply_to: ids.root } : { whole_topic: true }) })).result.message_id;
       for (const id of Object.values(ids)) await dossierFold(key, id);
       const p = await open(key, device, topic, ids.root, '', '/?conversation=w1');
-      const input = device === 'laptop' ? 'laptop' : 'phone'; await dossierTheme(p, theme);
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, Object.values(ids)); await dossierTheme(p, theme);
       await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
       await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
       await until(() => p.evaluate(`${JSON.stringify(Object.values(ids))}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), 'Only new draws both the folded head and reply');
       await centre(p, card(ids.reply)); await away(p); await shot(p, key);
       const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
-      assert.deepEqual(names, [facts.actor, ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
+      assert.deepEqual(names, ['You', ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
+      await item645Attribution(p, Object.values(ids));
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again for the drawn head');
+      await item645Attribution(p, Object.values(ids));
+      const restored = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(restored, ['You', ''], 'turning the filter off keeps the drawn head named and its repeated reply suppressed');
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {

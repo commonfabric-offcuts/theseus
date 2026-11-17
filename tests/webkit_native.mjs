@@ -228,7 +228,7 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const results = [], observations = [], hashes = {};
-for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
+for (const filename of [...(mode==='--reading'?['tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
   'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
@@ -236,7 +236,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
   'tests/targets_native.mjs', 'web/targets.mjs', 'web/outcomes.mjs', 'web/outcome-end.mjs', 'web/outcome-light.mjs', 'web/outcome-light-words.mjs', 'aim_next/outcome_end.py',
-  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
+  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']]) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
