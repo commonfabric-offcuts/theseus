@@ -1151,6 +1151,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         if (rule.endsWith('name')) assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'the title return has finished its reads');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-${rule}-${width}-${theme}-after-close`); }
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
         const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack'),r=c.getBoundingClientRect();
           return {name:s?.querySelector('.stack-name')?.textContent,inside:r.top<innerHeight&&r.bottom>0,topic:new URL(location.href).searchParams.get('topic')}})()`);
