@@ -116,6 +116,16 @@ A press outside a pop-up closes it and keeps unsent writing and images. A press
 outside, Escape and the close control all keep work the same way. A press that
 starts or ends inside the pop-up is not an outside press.
 
+- `tests/team_bar_native.mjs` (`native-colors`, `native-webkit-colors`):
+  "colors item 643 B1 drag endpoints keep picker open" and the empty,
+  refused, error and busy picker cases exercise drags from the Team label
+  into the name field or choices, and back out. The actual pointer release
+  decides whether it ended inside, even when the click targets their common
+  ancestor. Each runs at 320, 375, 390 and 1280px, light and dark.
+  `tests/ui_people.test.mjs`: "item 643 B1 Team dismissal uses both pointer
+  endpoints, not the common-ancestor click target" also checks captured,
+  cancelled and mismatched-pointer releases never close the picker.
+
 - `tests/links_native.mjs` (`native-header`): "header a press on the backdrop
   closes the Reader, keeping its writing, and a drag out of the writing or into
   it does not", "header a press on the backdrop closes Topic settings and a
@@ -209,6 +219,13 @@ An action sits on the surface where its work happens.
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
 - Otherwise no automated check. Held by Tony's preview of every new surface.
+
+The topic's Team says "Team". + Add becomes Done while the possible agent
+pills and field show; Done or a click outside closes them without adding the
+filter's words. `tests/team_bar_native.mjs` (native-colors and
+native-webkit-colors), the "item 643" cases, holds this at 320, 375, 390 and
+laptop widths in light and dark, including empty, refused, error, busy and
+read-only states. `tests/ui_people.test.mjs` holds drag-out and focus behavior.
 
 ## Quiet, not button land
 
