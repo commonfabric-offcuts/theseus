@@ -6219,6 +6219,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
     for (const device of Object.keys(DEVICES)) {
       p = await open(`${topic}-${device}-reload`, device, topic, ids.r34);
+      // Item 550: Earlier messages keeps the displayed stack's head. Its
+      // first message joins the filled run; it does not become the head.
+      const retainedHead = await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
       const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
       for (let page = 0; !await loaded(ids.root); page++) {
         assert.ok(page < 3, `${device}: Earlier messages reaches the first message`);
@@ -6226,13 +6229,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await centre(p, '#more-messages'); await press(p, device, '#more-messages');
         await until(async () => (await cards()) > count, `${device}: Earlier messages reads an older page`);
       }
-      await fullyOpen(p, device, ids);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`), retainedHead, `${device}: loading the first message keeps the displayed head`);
+      await fullyOpen(p, device, { root: retainedHead });
       const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ${JSON.stringify(keys)}.filter(k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]')?.dataset.folded==='true')})()`);
       await becomes(rows, before, `${device}: after a reload, with the earlier messages loaded, each message before reply 10 but the starred one is its row, and none after it`);
       // The earlier messages wait behind their row (item 476): it is opened so the shots show the stored folds.
-      const earlier = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-replies > .stack-earlier`;
+      const earlier = `#messages .reply-stack[data-stack="${retainedHead}"] > .stack-replies > .stack-earlier`;
       await centre(p, earlier); await press(p, device, earlier);
-      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r2))})?.getClientRects().length)`), `${device}: the starred reply 2 shows once the earlier messages' row is opened`);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r10))})?.getClientRects().length)`), `${device}: folded reply 10 shows once the retained stack's earlier messages' row is opened`);
+      assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r2))})?.getClientRects().length)`), `${device}: the starred reply 2 loaded by More stays visible too`);
       await centre(p, card(ids.r2));
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-fold-through-long-${device}-${theme}`); }
       assert.deepEqual(p.errors, []); await p.close();
@@ -9329,9 +9334,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 624: a cover is for whoever arrives late, when the dossier's first message is above the loaded page. The cover
   // rides with the dossier's place, which every message of it carries, so the reply heading what is loaded shows it as
   // its folder's first sheet, a dossier's one reply loaded on its own (a card with no folder) shows it as pills under
-  // who wrote it, the Reader shows it on either, a rewrite reaches it, and once Earlier messages loads the first
-  // messages each cover is drawn there, once, and no pill is left.
+  // who wrote it, the Reader shows it on either, and a rewrite reaches it. Earlier messages keeps the displayed
+  // head and its cover sheet, and the other dossier's standalone reply keeps its pills (item 550).
   await check('reading covers a dossier whose first message is more than a page behind its newest reply shows its cover under the reply\'s tab and in the Reader, and once when Earlier messages loads it', async () => {
+    const geometryTolerance = 2; // CSS-pixel rounding; a sheet overlapping its tab by 16px still fails.
     for (const device of Object.keys(DEVICES)) {
       const topic = 'cover-late-' + device;
       const ids = await seed(topic, [['other', { sender: other, join: true, addressees: [facts.actor], body: 'Another dossier, its one reply far below.', read: true }],
@@ -9350,11 +9356,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         return {roots:${JSON.stringify([ids.other, ids.root])}.filter(id=>document.querySelector('#messages [data-id='+JSON.stringify(id)+']')).length,
           covers:covers.map(c=>{const s=c.parentElement,head=s?.firstElementChild,tab=s?.querySelector('.stack-head')?.getBoundingClientRect(),box=c.getBoundingClientRect();
             return {stack:s?.dataset.stack,head:s?.dataset.stack===head?.dataset.id,after:c.previousElementSibling?.dataset.id===s?.dataset.stack,before:c.nextElementSibling?.className.split(' ')[0],
-              underTab:Boolean(tab)&&box.top>=tab.bottom-0.5,shown:box.height>0,stands:c.querySelector('.cover-stands')?.textContent}}).sort((a,b)=>a.stands<b.stands?-1:1),
+              underTab:Boolean(tab)&&box.top>=tab.bottom-${geometryTolerance},shown:box.height>0,stands:c.querySelector('.cover-stands')?.textContent}}).sort((a,b)=>a.stands<b.stands?-1:1),
           tab:document.querySelector('#messages [data-id=${JSON.stringify(ids.r34)}]')?.closest('.reply-stack')?.dataset.stack??null,
           lone:(c=>c&&{folder:Boolean(c.closest('.reply-stack')),pills:[...c.querySelectorAll(':scope > .row-pills .row-pill')].map(x=>[x.dataset.state,x.querySelector('.pill-words').textContent]),
             after:c.querySelector(':scope > .row-pills')?.previousElementSibling?.className.split(' ')[0]??null})(document.querySelector('#messages .message-card[data-id=${JSON.stringify(ids.otherReply)}]')),
-          pills:document.querySelectorAll('#messages .row-pills').length,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          pills:document.querySelectorAll('#messages .row-pills').length,sideways:document.documentElement.scrollWidth>innerWidth+${geometryTolerance}}})()`);
       const late = await look();
       assert.equal(late.roots, 0, `${device}: both first messages are above the loaded page`);
       const replyTab = late.tab;
@@ -9388,7 +9394,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // Rewritten by its agent, the cover under the reply's tab follows, its first message still not loaded.
       await write(ids.root, { stands: 'The long dossier stands answered again' }, 'again', 2);
       await becomes(async () => (await look()).covers.map(at => [at.stack, at.stands]), [[replyTab, 'The long dossier stands answered again']], `${device}: the rewrite reaches the reply's tab`);
-      // Earlier messages read until both first messages load: each cover is then drawn once, right after its first message.
+      // Earlier messages reads both first messages in place at the button;
+      // the long dossier keeps its displayed head and the other card stays apart.
       const count = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
       for (let page = 0; (await look()).roots < 2; page++) {
         assert.ok(page < 3, `${device}: Earlier messages reaches the first messages`);
@@ -9397,12 +9404,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await until(async () => (await count()) > was, `${device}: Earlier messages reads an older page`);
       }
       const loaded = await look();
-      assert.deepEqual(loaded.covers.map(at => [at.stack, at.head, at.after, at.before, at.stands]),
-        [[ids.root, true, true, 'stack-toggle', 'The long dossier stands answered again'], [ids.other, true, true, 'stack-toggle', 'The other dossier stands too']],
-        `${device}: once their first messages load, each cover is drawn once, right after its first message: ${JSON.stringify(loaded)}`);
-      assert.deepEqual([loaded.pills, loaded.lone?.folder, loaded.lone?.pills], [0, true, []], `${device}: the reply is in its folder now, and no pill is left: ${JSON.stringify(loaded)}`);
+      assert.equal(loaded.tab, replyTab, `${device}: Earlier messages keeps the displayed head`);
+      assert.deepEqual(loaded.covers, [{ stack: replyTab, head: true, after: true, before: 'stack-toggle', underTab: true, shown: true, stands: 'The long dossier stands answered again' }],
+        `${device}: the cover stays once under the retained tab after both first messages load: ${JSON.stringify(loaded)}`);
+      assert.deepEqual([loaded.pills, loaded.lone?.folder, loaded.lone?.pills], [1, false, [['proposed', 'payload proposed']]], `${device}: the standalone reply keeps its one cover pill: ${JSON.stringify(loaded)}`);
+      assert.equal(loaded.sideways, false, `${device}: loading earlier messages keeps the page inside the viewport`);
       await openReader(p, device, ids.r34, 'Reply 34.');
       await becomes(readerLine, 'Cover The long dossier stands answered again payload proposed', `${device}: the Reader still shows it`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.root, 'The first message, above the loaded page.');
+      await becomes(readerLine, 'Cover The long dossier stands answered again payload proposed', `${device}: the newly loaded first message shows the same cover`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.other, 'Another dossier, its one reply far below.');
+      await becomes(readerLine, 'Cover The other dossier stands too payload proposed', `${device}: the other first message keeps its own cover too`);
       await closeReader(p, device);
       assert.deepEqual(p.errors, []); await p.close();
     }
