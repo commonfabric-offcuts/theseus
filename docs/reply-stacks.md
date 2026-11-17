@@ -182,6 +182,30 @@ their acts.
   that one is loaded. Otherwise it is the message it answers, when loaded.
   Otherwise it heads its own stack. A loop, which joins made by different
   people can form, is cut at its newest message.
+- **One dossier, one stack (item 550).** Where a dossier's fork sits above
+  what the page has loaded, each reply made under the fork (every reply
+  straight under the dossier's first message is one) heads a branch of its
+  own by the rule above. Core's position on each message names the
+  dossier's first message (docs/dossier-below-more.md), and the branches
+  that name one are one stack: one tab, one name, one count, every loaded
+  reply in it oldest first. They go into the stack that holds that first
+  message where the page has loaded it (two runs of the page with a gap
+  between them can hold it and not the fork), and otherwise gather under
+  the oldest of their heads. A dossier whose first message heads its stack
+  reads as it did, two dossiers are two stacks whatever is loaded of each,
+  and Earlier messages, loading the fork and then the first message, leaves
+  the dossier one stack under the oldest message loaded. A stack whose own
+  join or split the page has not had answered carries the positions Core
+  read before it, which name the dossier it left: it gathers nothing by
+  them and takes none of that dossier's name (`moving` in the page's shown
+  messages, `stack-feed.mjs`). A reader's own reply among the branches
+  leaves the stack where it was, as in any stack (The stacks, below).
+  The stack is the dossier's whichever message heads it: when Earlier
+  messages loads a reply older than its head made under the first message,
+  or the first message itself, that message heads it from then on, and the
+  stack stays as the reader left it, open or folded, its earlier-messages
+  row opened or not, the seven it shows held (`reheaded`,
+  `stack-order.mjs`), and where the reader placed it (The stacks, below).
 - **Inside a stack.** The head stays first. Every other message in the
   stack runs oldest first, by sequence, as one run: the head's replies, each
   joined stack's messages, the replies to those, and stacks joined to a
@@ -203,6 +227,17 @@ their acts.
   everyone else it lifts the stack as any reply does. A stack joined to
   another counts for it whoever began it, so a join still puts the two
   where the newer would sit. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
+  A place is the dossier's, as its name is (item 550): it is kept on its
+  first message, loaded or not, fenced on the place revision Core sends with
+  each message's position (docs/dossier-below-more.md), so the dossier holds
+  it whatever of it the page loads. A page whose Core sends no place in the
+  positions places the stack's head. Before item 550 a stack was placed on the
+  message heading it, a reply or a stack later joined into the dossier; while
+  the first message carries no place, the one of those set last places the
+  dossier, loaded or not, whichever message heads its stack, and "Let new
+  replies move it" takes every one of them away with the first message's, ⌘Z
+  putting each back, the one set first first, so the same one places the
+  dossier again; each shows at once, before Core answers.
   When no number fits between two places, the two stacks trade keys. A
   placed stack says "Placed here by you", and "Let new replies move it"
   takes the place away.
@@ -477,6 +512,17 @@ A join makes the two stacks one: after it every message of both reads as
 one run under the head, oldest first, and a new reply to any of them lands
 at the bottom. The joined stack's first message keeps its "Joined from its
 own stack" line, with Split back out there and in ⋯.
+
+A dossier joins as a whole, as it is named and put aside (item 550). Where
+the page has not loaded its first message, its stack is its branches
+gathered (Gathering, above), and the join is sent for that first message,
+loaded or not, fenced on the `join_revision` Core sends with each message's
+position (docs/dossier-below-more.md): the whole dossier joins, its
+messages the page has not loaded included. Its loaded messages show in the
+stack it joins at once, taking that stack's position until Core's answer
+and the positions read after it land, and ⌘Z shows them back where they
+were at once. Its "Joined from its own stack" line is on that first
+message, so it shows once Earlier messages loads it.
 
 The right rail's Starred lists the reader's stars, this place's first and
 then Elsewhere. A press lands on the message, opening its stack if it is
@@ -769,6 +815,14 @@ twin without judging it, as the rule for that case is still open (item 430).
 | the star in a message's header: an outline while lit, filled once starred, for the reader alone, opening nothing | `tests/stack_native.mjs`, "reading stacks a star in a message's header …", in Chrome and Safari's engine |
 | a minted name, in Core: the coordinator once the first reply lands, two to five words, minted once, never over a typed name (cleared or not), a person's rename while the agent prepares its mint, not the coordinator's agent, the first agent with no coordinator, a whisper, a message that is not the first, an old name read unchanged | `tests/test_dossier_names.py` (`CoreCase`) |
 | the harness: `name_it` on the namer's delivery alone, the notice and `inbox` saying the mint once, a fake coordinator minting through `mint`, the hint after `reply`, a coordinator switched off told nothing while the first agent to reply is told and mints through the notice, `mint` refused after a person's rename | `tests/test_dossier_names.py` (`HarnessCase`, `NoticeCase`) |
+| one dossier, one stack: the branches of a dossier whose fork sits above the loaded page gathered under the oldest head with one name, one count and every reply oldest first; another dossier its own; a loaded first message unchanged; the fork, then the first message, loaded; the first message loaded and the fork not; the reader's own reply; a split not yet answered | `tests/ui_stack_order.test.mjs`, "the branches of one dossier whose fork sits above the loaded page are one stack …" |
+| on the page: the dossier's minted name once, with its mark and its count, every loaded reply in its stack, another dossier above the page under its own first line, a loaded dossier as before, and Earlier messages pressed twice leaving it one stack, at 320, 375 and 390 by a finger and on a laptop, light and dark | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks one dossier whose fork sits above the loaded page is one stack …" |
+| the dossier's place on its first message, its stack's head changing as more of it loads (`reheaded`), what the page keeps of it going to that head, a stack joined into a branch that does not head the one stack keeping its join line; a place on another message of the dossier, set before item 550, placing it while the first message carries none, whichever message heads its stack and whether or not it is loaded, the one set last winning, the first message's winning where both exist, a place in another dossier counting there alone | `tests/ui_stack_order.test.mjs`, "a dossier whose first message is above the page keeps the reader's place …", "a place the reader set on any message of a dossier …" and "a stack joined into a branch that is not the head's …"; the position's place and places, in Core, `tests/test_stack_aside.py` (`test_a_position_carries_the_readers_own_place_on_its_first_message_so_a_page_of_replies_keeps_it`, `test_a_position_carries_the_readers_own_places_on_the_dossiers_other_messages_the_most_recently_set_first`, `test_a_readers_listed_place_is_fenced_by_their_own_revisions_alone`) |
+| on the page: a dossier opened, its newest seven held as a reply arrives and its earlier-messages row opened, staying so as Earlier messages loads an older reply to its first message and then that first message, each heading it in turn, at 320, 375 and 390 by a finger and on a laptop | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a dossier whose first message is above the page stays as the reader left it …" |
+| on the page: ⌘↑ placing that dossier on top at once, its first message holding the place in Core and every frame keeping it there as the answers land, the place holding through Earlier messages twice and a reload, Let new replies move it; placed on another device, on top with its place line at 320, 375 and 390 | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a dossier the reader placed, its first message above the page, keeps its place …" |
+| on the page: a dossier placed on two replies that do not head its stack, as places were set before item 550, on top with its place line, through Earlier messages giving it another head; Let new replies move it taking both places away in Core, and ⌘Z putting each back; a place on the first message winning over them, and a place in another dossier placing that dossier alone | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a dossier placed on messages that do not head its stack …" and "reading stacks a place on a dossier's first message wins …" |
+| on the page: two places set before item 550 on messages of one dossier that disagree, the one set last placing it, on top or at the bottom; after Let new replies move it and ⌘Z, the same one placing it, on the page and after a reload; a stack placed on the reply heading it, ⌘Z showing its place line and place at once while Core's answers are held | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a dossier placed on two of its messages that disagree …"; in Chrome, "reading stacks ⌘Z of Let new replies move it on a stack placed on the reply heading it …" |
+| on the page: a stack joined into a branch of that dossier that does not head its stack, its join line and Split back out inside the one stack at 320, 375 and 390 and on a laptop, Split back out reaching Core | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a stack joined into a branch of a dossier above the page …" |
 | the head says who minted its name | `tests/ui_stack_order.test.mjs` (`mintedBy`); in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks a minted name says Named by …", at 320, 375 and 390 pixels and on a laptop, light and dark, folded and open |
 | Return on a dossier edits its title; Escape cancels; Return in writing types; Return on a message replies | `tests/stack_native.mjs`, "reading stacks Return on a selected dossier edits its title …", in Chrome and Safari's engine |
 | the view filter at the right of the Read it row, at a laptop's and a phone's width | `tests/stack_native.mjs`, "reading stacks the feed's view filter sits at the right of the row …" |

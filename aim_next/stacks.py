@@ -17,7 +17,8 @@ change:
   once, loaded on the reader's page or not (item 472).
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
-  new replies move it again. Theirs alone.
+  new replies move it again. Theirs alone. The page places a dossier on its first
+  message, which its position carries to every message in it (item 550).
 - `name` (stack.name): the short name of the dossier this message is the first
   message of; a name typed anywhere in a dossier lands there. The topic's:
   anyone who reads it may rename it, everyone sees it, and it says who typed
@@ -391,23 +392,44 @@ def _seen_acts(db, actor, topic):
                       "WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND " + VISIBLE, {"topic": topic, "actor": actor}).fetchone()[0]
 
 
+def _reader_places(db, actor, topic):
+    """The reader's own places in the topic, on messages they can see, each (message id, its place, the place's
+    revision, when it was set), the most recently set first."""
+    return db.execute("SELECT a.message_id,json_extract(a.value,'$.key') AS placed,a.revision,a.at_ms FROM message_acts a INDEXED BY topic_acts "
+                      "JOIN messages m ON m.id=a.message_id WHERE a.topic_id=:topic AND a.kind='place' AND a.owner=:actor AND " + VISIBLE +
+                      " AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='place' AND b.owner=:actor)"
+                      " AND json_extract(a.value,'$.key') IS NOT NULL ORDER BY a.at_ms DESC,a.id DESC", {"topic": topic, "actor": actor}).fetchall()
+
+
 def stack_positions(db, actor, items):
     """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
-    the dossier, so a page of earlier messages reads the same however the topic grows."""
-    roots, acts_at, positions, result = StackRoots(db, actor), {}, {}, {}
+    the dossier, so a page of earlier messages reads the same however the topic grows. `name_revision` and
+    `join_revision` are its first message's, the fences a page holding only replies names and joins it on, and
+    `placed` and `place_revision` the reader's own place for the dossier, on its first message, and its fence: a page
+    that has not loaded that message, whatever of the dossier it has loaded, keeps the dossier where the reader put
+    it (item 550). `places` lists the reader's own places on the dossier's other messages, each {message_id, placed,
+    place_revision, at_ms}, the most recently set first: before item 550 a stack was placed on the message heading it,
+    a reply or a stack later joined into the dossier, and while the first message carries no place the page sorts the
+    dossier by them, and Let new replies move it takes each away."""
+    roots, acts_at, places, positions, result = StackRoots(db, actor), {}, {}, {}, {}
     for item in items:
         topic = item["topic_id"]
         if topic not in acts_at:
             acts_at[topic] = _seen_acts(db, actor, topic)
+            for row in _reader_places(db, actor, topic):
+                places.setdefault(roots.root(row["message_id"]), []).append(
+                    {"message_id": row["message_id"], "placed": row["placed"], "place_revision": row["revision"], "at_ms": row["at_ms"]})
         root = roots.root(item["id"])
         if root not in positions:
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
             through = acts["aside"]
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
-                               "name": acts["name"], "name_revision": acts["name_revision"],
+                               "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
+                               "placed": acts["placed"], "place_revision": acts["place_revision"],
+                               "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
