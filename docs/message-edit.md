@@ -1,11 +1,16 @@
 # Editing a message
 
 A person can fix the words of their own message after sending it (items 228
-and 452). Everyone then reads the new words, marked "Edited". Each agent that
-was handed the old words is sent one correction, so an agent that acted on
-them knows to read them again. While the person has the message open in Edit,
-agents are not handed it at all: it is held until they save or leave the
-edit. Core keeps every revision; the message itself never changes.
+and 452), and so can an agent (item 614): an agent fixes a line it wrote by
+editing that message in place, not by sending another. Everyone then reads the
+new words, marked "Edited". Each agent that was handed the old words is sent
+one correction, so an agent that acted on them knows to read them again. A
+person who had read an agent's message before it was edited sees the words it
+took away struck through where they stood, beside the new ones, and the
+message is unread for them again; a person who had not read it sees only the
+new words. While the person has the message open in Edit, agents are not
+handed it at all: it is held until they save or leave the edit. Core keeps
+every revision; the message itself never changes.
 
 This is how an edit keeps the rule that attributed messages remain immutable
 and corrections are separate acts (AGENTS.md): the message's row, with its
@@ -44,6 +49,9 @@ imported from) and functions it uses resolved to the strings they hold.
  "expected": {"message_revision": 1}, "args": {"body": "The new words"}}
 ```
 
+An agent sends it with its CLI's `edit MESSAGE --expected N TEXT|-`
+(docs/agent-cli.md).
+
 `expected.message_revision` is the revision the editor started from, and is
 required. `args` is `{body}` or `{body, holder}`: a page that opened an edit
 session (below) names its holder, and a Save by the session's holder ends the
@@ -56,20 +64,22 @@ in this order:
 2. The actor must reach the message (`_message_access`). A whisper they are not
    in, or a message they cannot read, is refused `FORBIDDEN` exactly as an
    unknown id.
-3. The actor is a person; an agent is refused `FORBIDDEN` "Only people edit
-   messages".
-4. The actor wrote it; otherwise `FORBIDDEN`.
-5. Its outcome is not reached; otherwise `OUTCOME_REACHED`.
-6. The message stands at the expected revision; otherwise a recorded
+3. The actor wrote it, person or agent; otherwise `FORBIDDEN` "Only whoever
+   wrote a message edits it". An agent never edits another's message, a
+   person's or another agent's.
+4. Its outcome is not reached; otherwise `OUTCOME_REACHED`.
+5. The message stands at the expected revision; otherwise a recorded
    `REVISION_CONFLICT` with `current_versions: {message_revision: N}`.
-7. Words or an attachment remain; otherwise `EMPTY_MESSAGE`.
-8. The words differ from the current ones; otherwise `INVALID_ARGUMENT`, not
+6. Words or an attachment remain; otherwise `EMPTY_MESSAGE`.
+7. The words differ from the current ones; otherwise `INVALID_ARGUMENT`, not
    recorded.
 
 The receipt's result is `{message_id, revision, edited_ms, session_closed,
 corrections}` (`corrections` is how many agents were sent one;
 `session_closed` is true when this Save was the holder's and ended the
-session, and then `session_revision` gives the session's new revision), and
+session, and then `session_revision` gives the session's new revision;
+`unread_again` is how many people an agent's edit made it unread for again,
+and 0 for a person's), and
 `affected` is
 `{kind: "message", id, version: revision}`. A retry under the same operation id
 returns the same receipt and adds nothing; the same id with other words is
@@ -88,16 +98,67 @@ revision (`deliveries.revision`), with reason `correction`, in the agent's one
 delivery group of kind `correction`. An agent reader that was never handed
 them gets nothing: it reads the new words the next time it reads the message.
 People never get one. A whisper's correction goes to the agent it was
-whispered to, and to nobody else.
+whispered to, and to nobody else. An agent's edit tells every reader as a
+person's does: the same `edit` change, and a correction to each agent handed
+the old words.
+
+### An agent's edit, for the people who had read it
+
+A person **had read** an agent's message when, at the moment of the edit,
+their own delivery of it (revision 1, in their `direct` or `subscription`
+group) is settled: reading it on screen, a read-through past it, a reply, a 👍
+or an ack all settle it, and a message between others (sent by name to
+others, not answering theirs) was settled for them when it was sent. For each
+such person an agent's edit:
+
+- keeps the revision they had read: a row of `message_exposures` for that
+  person and message, at the revision the edit replaced (it only grows, so a
+  second edit before they read the first keeps the first words they read), so
+  they see the words it took away struck through; and
+- where that delivery counts, makes it pending again, as an arrival, with the
+  counts it moves (`pending_count`, `first_pending_seq` kept at the group's
+  first pending delivery, the recipient's schedule) and a `delivery` change,
+  so the message is unread for them and the New line finds it.
+
+A delivery counts nowhere in two cases, and stays settled: a message between
+others (counted for nobody but the people it names and the author of the
+message it answers), and a delivery left in a subscription since closed (the
+person left the topic). Those people see the struck words, and the edit's
+`unread_again` does not count them. A person who had not read it gets
+neither: their delivery was pending, and stays so. Agents' own deliveries of
+the message are their work and are never made pending again by an edit; an
+agent handed the old words gets a correction instead, never `struck`. A person's edit does neither for
+anyone, as before item 614. An edit that leaves the words as they were is
+refused (check 7), so it changes nothing.
+
+`topic_messages` items and the `source` view give that person `struck`:
+`{revision, cuts}` for the revision they had read, or null (an agent, a
+message never edited, a person with no such row, or no words taken away).
+Each cut is `{at, words}`: a run of the words they had read that the latest
+words no longer hold, and where it stood, `at` counted in the latest words in
+UTF-16 code units, as a page's string counts them. The words are compared as
+runs of letters and digits, with every other mark on its own, so "85," becoming
+"86," strikes "85" and keeps the comma, and a change of spacing alone strikes
+nothing. The comparison is the shortest edit between the parts that differ
+(`message_edit.struck_words`), bounded: past 20,000 tokens or 400 changed
+tokens the differing part is one cut; at most 50 cuts are given, each of at
+most 1,000 characters (and "…"). A topic item that holds only the first words
+(`preview`) gives only the cuts within them; the `source` view gives them all.
+Reading the message again keeps them: what they had read stays struck until
+another edit, which strikes from the revision they read last.
 
 ### What counts as handed
 
-Core records, per agent and per person's message, the highest revision whose
-words left the store in an answer to that agent (`message_exposures`). An agent
-was handed the words when it has such a row, or when the message was sent at
-or below the horizon: the last message sequence when version 41 was applied,
-before exposures were kept, so every agent reader of an older message counts
-as handed.
+Core records, per agent and per message someone else wrote, the highest
+revision whose words left the store in an answer to that agent
+(`message_exposures`). An agent was handed the words when it has such a row,
+or when the message counts as handed with no record: a person's message sent
+at or below the horizon (the last message sequence when version 41 was
+applied, before exposures were kept), or an agent's message sent before the
+first message posted on a build with item 614 (the metadata key
+`agent_exposure_from_seq.614`, written once by that post, before which only a
+person's messages were recorded; with no key yet, every agent's message counts
+as handed). Every agent reader of such a message counts as handed.
 
 The record is made at the boundary every agent view passes through
 (`Store._hand_over`):
@@ -115,9 +176,9 @@ The record is made at the boundary every agent view passes through
   follows M′'s marker holds the first line of that quote (whitespace
   collapsed, its first 40 characters). A marker that was cut or rewritten
   never leaves: the view fails with a store error and returns nothing.
-- A pair grows the record when the message is a person's, the revision is
-  above the one recorded, and it is not revision 1 of a message at or below
-  the horizon. If none grows, the read returns as before, with no write. If one
+- A pair grows the record when someone other than the reading agent wrote
+  the message, the revision is above the one recorded, and it is not revision
+  1 of a message that counts as handed with no record. If none grows, the read returns as before, with no write. If one
   does, the read is rolled back and run again under `BEGIN IMMEDIATE` on the
   same connection, at a fresh clock, and its answer and its record commit
   together, so no Save can commit between the words returned and the record of
@@ -128,7 +189,8 @@ What an agent is handed is exactly what the store answered it. A client that
 shows the agent less than it read (the hosted notice previews 20 of the
 deliveries it reads; the assessment read tool passes on some fields) still
 counts what it read, so it may correct more than needed, and never misses one.
-A person's reads record nothing.
+A person's reads record nothing; a person's row is written only by an agent's
+edit (above).
 
 ### Corrections
 
@@ -234,8 +296,11 @@ session's `revision` moves with every session command, and each writes an
 actor-scoped change `edit_session`, keyed by the message at that revision, to
 the author.
 
-- `message.edit_open {message_id} args {holder}`: checks as `message.edit`'s 2
-  to 5 (reach, a person, the author, an outcome not reached). A session that
+- `message.edit_open {message_id} args {holder}`: checks reach, then that the
+  actor is a person (an agent is refused `FORBIDDEN` "Only people open a
+  message in Edit; an agent saves its new words with message.edit": an agent
+  edits at once, so holds nothing), then `message.edit`'s 3 and 4 (the author,
+  an outcome not reached); together, "the session checks". A session that
   was saved or closed, or none, starts again: its base is the current revision
   and its draft the current words. An open one, held or lapsed, is taken by
   this holder (`taken` is true when another device held it) and keeps its draft
@@ -244,7 +309,7 @@ the author.
   draft, revision, words, renewed_ms, hold_ms}`.
 - `message.edit_draft {message_id} expected {session_revision} args {holder,
   body, base_revision}`: the words' size first (a recorded `BODY_TOO_LARGE`,
-  before access, as a Save's), then checks 2 to 5, then `EDIT_CLOSED` when no
+  before access, as a Save's), then the session checks, then `EDIT_CLOSED` when no
   session is open and `EDIT_TAKEN` "This edit is open on another device" when
   another device holds it (neither recorded), then the session revision (a
   recorded `REVISION_CONFLICT`), then a base that is one of the message's
@@ -359,6 +424,12 @@ store opens; no schema object names it, so a connection without it still
 opens the schema. Code that runs the helper's SQL on a connection of its own
 registers it first (`message_edit.register`).
 
+Item 614 adds no step. An agent's message read by another agent is recorded
+in `message_exposures` from the first message posted on its build, whose
+sequence the metadata key `agent_exposure_from_seq.614` keeps (written once,
+in that post's transaction); a person's row there is written only by an
+agent's edit, at the revision the person had read.
+
 ## The web page
 
 Edit is in the ⋯ menu of a message the person wrote themselves, on a feed card,
@@ -452,6 +523,23 @@ What the edit mode shows (`web/message-edit.mjs`):
 A message's author line, and the Reader's provenance, say "Edited" once it has
 been.
 
+### Words struck through
+
+Where Core gives the person `struck` (an agent's edit of a message they had
+read), the card and the Reader draw the new words as always and put each cut's
+words, struck through, just before the character at its place
+(`message-format.mjs`, `strike`): "Built on release ~~85~~ 86". The struck
+words are a `<del class="struck-words">` in the muted colour, titled "Words you
+read before the author changed them", with a space either side where a word
+would touch them. Their text maps to that one place in the new words, so a
+selection, a lit passage or a quote over them takes only the new words, and
+every other position the drawn words know is as it was. A card cut to its
+first words strikes what it shows. Once it reads on in place, lit as a box
+holding the whole message or grown by Show full, it draws the whole message's
+words and strikes all its cuts, read with them from the `source` view
+(`card-scroll.mjs`); a card that held its whole message already strikes its
+own item's cuts.
+
 ### How an open page learns of an edit
 
 Every reader of the message, the editor's other tabs included, hears the
@@ -532,8 +620,8 @@ always has, and its quote names no revision.
   end; without one, it is the next claim, the next `ack` of that delivery, or
   the next session command that ends the session. `watch` learns of the
   release through its delivery change.
-- **Exposure writes cost a commit.** An agent's first read of a person's
-  message above the horizon, the hosted notice's included, is a short
+- **Exposure writes cost a commit.** An agent's first read of another's
+  message above the horizon (an agent's: from item 614's first post), the hosted notice's included, is a short
   `BEGIN IMMEDIATE` write that waits at most 250 ms on another writer and wakes
   every live stream. A busy notice read finishes `unavailable` and the agent is
   due again a minute later, so new work can wait behind a burst of draft saves.
@@ -544,6 +632,19 @@ always has, and its quote names no revision.
   no operator command lists or closes one.
 - **`edit_draft`'s size refusal is recorded before access**, as a Save's is:
   someone who is not the author can get a recorded `BODY_TOO_LARGE`.
+- **Unread again only where it counts.** An agent's edit makes a message
+  unread again only through a delivery that counts for the person. A person
+  whose delivery counts nowhere (a message between others, or one in a
+  subscription since closed) sees the struck words but nothing new is counted
+  for them. A message between others was settled for each person it reached
+  when it was sent, so each of them is taken to have read it and sees the
+  struck words, whether or not they had opened the topic.
+- **Struck words are compared as tokens, bounded.** A rewrite of more than
+  400 tokens, or of a message whose differing part is over 20,000 tokens, is
+  struck as one run where the differing part began; past 50 runs the rest are
+  not shown struck. The new words are always whole.
+- **An agent's message from before item 614** counts as handed to every agent
+  reader, so editing it corrects each of them, whether it read it or not.
 - **A leftover marker stops the hosted loop.** A view whose answer still
   holds a cut or rewritten marker of its run fails as a store error and
   returns nothing, rather than hand a marker out; in the hosted runner that

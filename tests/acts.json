@@ -10662,16 +10662,16 @@
   },
   {
    "item": 228,
-   "act": "Only people edit messages",
+   "act": "Only people open a message in Edit",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if self._actor(db, actor)[\"kind\"] != \"human\":",
+     "if people and self._actor(db, actor)[\"kind\"] != \"human\":",
      "if False:"
     ]
    ],
    "check": {
-    "python": "test_message_edit.py"
+    "python": "test_agent_edit.py"
    }
   },
   {
@@ -10764,8 +10764,8 @@
    "break": [
     [
      "aim_next/cli.py",
-     "        if item.get(\"correction\"):\n            # A person edited",
-     "        if False:\n            # A person edited"
+     "        if item.get(\"correction\"):\n            # Its author edited",
+     "        if False:\n            # Its author edited"
     ]
    ],
    "check": {
@@ -11044,8 +11044,8 @@
    "break": [
     [
      "web/card-scroll.mjs",
-     "    this.wholes.delete(id); this.revisions.delete(id);\n    if (!card) return;",
-     "    this.revisions.delete(id);\n    if (!card) return;"
+     "    this.wholes.delete(id); this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;",
+     "    this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;"
     ]
    ],
    "check": {
@@ -12542,7 +12542,7 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     " and not (highest[row[\"id\"]] == 1 and row[\"seq\"] <= horizon)]",
+     "\n            and not (highest[row[\"id\"]] == 1 and _counted_handed(row[\"kind\"], row[\"seq\"], horizon, agent_from))]",
      "]"
     ]
    ],
@@ -13437,11 +13437,11 @@
   },
   {
    "item": 452,
-   "act": "Only a person's message is recorded as handed, so an agent's read of an agent's words writes nothing",
+   "act": "An agent's read of its own message records nothing and writes nothing",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if row[\"kind\"] == \"human\" and highest",
+     "if row[\"author_id\"] != actor and highest",
      "if highest"
     ]
    ],
@@ -27946,6 +27946,488 @@
    ],
    "check": {
     "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits its own message in place",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "message = self._editable(db, actor, target[\"message_id\"], people=False)",
+     "message = self._editable(db, actor, target[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits only a message it wrote",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if message[\"author_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)",
+     "        if False:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"struck\"] = None if item[\"withheld\"] else struck(",
+     "item[\"struck\"] = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through in the Reader",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "seen = None if held or current <= 1 else struck(",
+     "seen = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had not read it sees only the new words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if delivery is None or delivery[\"state\"] != \"acknowledged\":",
+     "if delivery is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes the message unread again for a person who had read it",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "db.execute(\"UPDATE deliveries SET state='pending' WHERE id=?\", (delivery[\"id\"],))",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person's edit strikes nothing and leaves the message read",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if self._actor_kind(db, actor) == \"agent\" else 0",
+     "if True else 0"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The struck words are what was last read, not the revision before",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
+     "ON CONFLICT(actor_id,message_id) DO NOTHING"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Another agent's read of an agent's message is recorded, and corrected on an edit",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return agent_from is None or seq < agent_from",
+     "    return True"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words sit where they stood, counted as a page counts",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return len(text.encode(\"utf-16-le\")) // 2",
+     "    return len(text)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card's excerpt strikes only what it shows",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        cuts = [cut for cut in cuts if cut[\"at\"] < _units(shown)]",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The CLI's edit is fenced on the revision read",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "{\"body\": self.text()}, {\"message_revision\": options.expected})",
+     "{\"body\": self.text()}, {\"message_revision\": 1})"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The brief says a correction to one's own words is an edit",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "fix words you wrote, in place: a correction to your own words is an edit",
+     "fix words you wrote, in place"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, options.struck);\n  host.classList.add('formatted');",
+     "  host.classList.add('formatted');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, struck);\n  DRAWN.set(host, body);",
+     "  DRAWN.set(host, body);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words are spaced from the words they touch",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "const nodes = [...(touches(before, true) ? [gap()] : []), del,",
+     "const nodes = [del,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card first drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "revision: revisionOf(item), struck: item.struck?.cuts }));",
+     "revision: revisionOf(item) }));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader shows the struck words",
+   "break": [
+    [
+     "web/reader.mjs",
+     "struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,",
+     "struck: null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An open Reader keeps the struck words when the agent edits again",
+   "break": [
+    [
+     "web/app.mjs",
+     "edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null });",
+     "edited_ms: latest.edited_ms ?? null });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again on the open page",
+   "break": [
+    [
+     "web/app.mjs",
+     "  paintCardReading(); stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();",
+     "  stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again though this visit opened it",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (item.unread === true) openedIds.delete(id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person sent a message between others sees the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n            if bool(addressees) and reader not in addressees and reader != row[\"answers\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A message between others is never unread again for a person",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if not delivery[\"active\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A delivery in a subscription closed since is not made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if between:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The edit's unread again counts only the people it made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if between or not delivery[\"active\"]:\n                continue\n",
+     "            count += between or not delivery[\"active\"]\n            if between or not delivery[\"active\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person whose message an agent answers while addressing others has it unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     " and reader != row[\"answers\"]\n            if between",
+     "\n            if between"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's own delivery is never made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if self._actor_kind(db, reader) != \"human\":\n                continue\n            delivery = db.execute(",
+     "            delivery = db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Only people are given the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "JOIN actors a ON a.id=e.actor_id AND a.kind='human' ",
+     "JOIN actors a ON a.id=e.actor_id "
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The message made unread again keeps an earlier unread one first",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "first_pending_seq=min(coalesce(first_pending_seq,?),?) WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"seq\"], delivery[\"group_id\"]))",
+     "first_pending_seq=? WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"group_id\"]))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card read on in place strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "revision: this.revisions.get(item.id), struck: this.strikes.get(item.id) });",
+     "revision: this.revisions.get(item.id) });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a cut-off card strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? null : item.struck?.cuts"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a whole card strikes its own item's words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? this.strikes.get(item.id) : null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The whole message read for a card keeps its struck words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "this.strikes.set(id, source.struck?.cuts ?? null);",
+     "this.strikes.set(id, null);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
    }
   }
  ]

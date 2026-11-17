@@ -185,7 +185,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
-         "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- "
+         "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| cover MESSAGE [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
@@ -302,6 +302,11 @@ def _parser():
     mint.add_argument("message")
     mint.add_argument("--expected", type=int)
     mint.add_argument("text")
+    # edit MESSAGE --expected N TEXT: new words for a message the actor wrote, fenced on the revision it read (item 614).
+    edit = verb("edit")
+    edit.add_argument("message")
+    edit.add_argument("--expected", type=int, required=True)
+    edit.add_argument("text")
     whisper = verb("whisper")
     whisper.add_argument("topic")
     whisper.add_argument("--to", required=True)
@@ -1258,7 +1263,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
     def delivery_line(item):
         message = item["message"]
         if item.get("correction"):
-            # A person edited a message this agent was sent: read it again, act on its latest words, then ack this line's id.
+            # Its author edited a message this agent was sent: read it again, act on its latest words, then ack this line's id.
             return 'correction "%s" #%s %s edited %s to revision %s: %s  [%s in %s]' % (
                 _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"], message["id"], item["correction"]["revision"],
                 _one_line(message["body"]), item["id"], message["topic_id"])
@@ -1357,6 +1362,18 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
         expected = found["name_revision"] if options.expected is None else options.expected
         result = self.command("stack.name", {"message_id": found["root_id"]}, {"name": self.text(), "minted": True}, {"name_revision": expected})
         self.out.plain('named the dossier of %s "%s"%s' % (result["message_id"], result["name"], "" if result["changed"] else " (already so)"))
+
+    def do_edit(self):
+        """New words for a message the actor wrote (docs/message-edit.md, item 614): one message.edit, fenced on
+        --expected, the revision read (1 when never edited). A correction to one's own words is an edit of them, not a
+        follow-up message. Core refuses another's message (FORBIDDEN), a stale revision (REVISION_CONFLICT, which names
+        the current one) and the words already there (INVALID_ARGUMENT); every reader is told, each agent that was
+        handed the old words is sent a correction, and each person who had read them sees them struck through, the
+        message unread for them again."""
+        options = self.options
+        result = self.command("message.edit", {"message_id": options.message}, {"body": self.text()}, {"message_revision": options.expected})
+        self.out.plain("edited %s to revision %s (corrections: %s; unread again: %s)" % (
+            result["message_id"], result["revision"], result["corrections"], result.get("unread_again", 0)))
 
     def do_whisper(self):
         """A whisper: to one agent, or an agent's answer to the person who whispered to it (--reply-to)."""

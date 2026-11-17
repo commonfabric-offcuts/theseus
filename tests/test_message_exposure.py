@@ -145,14 +145,18 @@ class HandedCase(test_message_hold.HoldCase):
     def corrected(self, agent, message=None):
         return [row[2] for row in self.corrections(agent, message or self.m) if row[3] in ("pending", "held")]
 
-    def test_an_agents_read_of_an_agents_message_records_nothing_and_writes_nothing(self):
-        # Only people edit, so only a person's message is recorded: an agent's read of an agent's words commits nothing.
+    def test_an_agents_read_of_another_agents_message_is_recorded_and_of_its_own_writes_nothing(self):
+        # An agent edits its own words (item 614), so another agent's read of them is recorded, in one write, as a
+        # read of a person's words is; its read of its own words records nothing and writes nothing.
         self.store.view("agent-b", "topic_messages", {"topic_id": "t1"})
         theirs = self.post("Agent words on the plan", actor="agent-a")
         before = self.commit_seq()
         self.assertEqual(self.saw("agent-b", theirs)["body"], "Agent words on the plan")
         self.store.view("agent-b", "topic_messages", {"topic_id": "t1"})
-        self.assertEqual((self.exposures(theirs), self.commit_seq()), ([], before), "no record and no write")
+        self.assertEqual((self.exposures(theirs), self.commit_seq()), ([("agent-b", theirs, 1)], before + 1), "one record, one write")
+        before = self.commit_seq()
+        self.saw("agent-a", theirs)
+        self.assertEqual((self.exposures(theirs), self.commit_seq()), ([("agent-b", theirs, 1)], before), "its own read: nothing")
         # A person's message, read the same way, is recorded, in one write.
         mine = self.post("Owner words on the plan")
         before = self.commit_seq()

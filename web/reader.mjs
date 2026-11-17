@@ -456,10 +456,11 @@ export class Reader {
   }
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs). A Notebook page's image
-  // lines show their images, read through the page (page-image.mjs, docs/decks.md "Images in a card").
+  // lines show their images, read through the page (page-image.mjs, docs/decks.md "Images in a card"). A message's
+  // words its agent author changed after this person read them show struck through where they stood (item 614).
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
-    drawPassages(this.sourceBody, body, document, { copyFences: true,
+    drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
   }

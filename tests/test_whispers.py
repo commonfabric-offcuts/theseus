@@ -945,7 +945,9 @@ MESSAGE_READS = {
                                  "the caller reached through _message_access; the horizon the version 41 step sets, a number; the stored "
                                  "quotes of messages whose marked words an answer already carries, read only to record what was handed; "
                                  "the author kind and sequence of messages so marked, to record an exposure; and an edited message's "
-                                 "sequence against the horizon; none of them shown", 8),
+                                 "sequence and its author's kind against the horizon or the first post recording agents' messages; "
+                                 "and, for an agent's edit (item 614), the edited message's addressees and the author of the message it "
+                                 "answers, to leave a message between others as it was; none of them shown", 10),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
                                           "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
