@@ -101,7 +101,8 @@ export const inMessages = (at, doc) => Boolean(doc.getElementById('messages')?.c
 // which stand in a row with the dossier's chevron, as a message's bar's buttons do with each other. There ← and → go
 // along that row to the nearest control that way (arrow-reach.mjs): from ⋯ to Move below More, Reply and the chevron;
 // past its end, on to the pane beside, as from the messages.
-export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');
+export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));
+export const messagesSideways = (at, doc) => inMessages(at, doc) && !onTitleBar(at);
 
 // Whether the keys are in the feed: on a message, or on the page itself (pane-keys.mjs).
 export function inFeed(doc) {
@@ -146,7 +147,8 @@ export function feedKey(event, doc) {
     const rows = headerRows(doc), r = rows.findIndex(row => row.buttons.includes(doc.activeElement));
     if (r >= 0) { panes.button.set(rows[r].host, doc.activeElement); moved = headerKey(action, rows, r, doc); }
     else if (!inFeed(doc)) return false;
-    else if (action === 'left' || action === 'right') moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);
+    // ← and → from the messages, or the page itself, go on to the pane beside; on a title bar's glyphs, along its row.
+    else if (action === 'left' || action === 'right') moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);
     else if (action === 'up' && rows.length && atTop(doc)) moved = reach(landing(rows[rows.length - 1]));
   }
   if (!moved) return false;

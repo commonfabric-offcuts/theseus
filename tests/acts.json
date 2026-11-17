@@ -26725,8 +26725,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+     "export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));",
+     "export const onTitleBar = at => false;"
     ]
    ],
    "check": {
@@ -26740,8 +26740,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+     "export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));",
+     "export const onTitleBar = at => false;"
     ]
    ],
    "check": {
@@ -26755,8 +26755,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+     "export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));",
+     "export const onTitleBar = at => false;"
     ]
    ],
    "check": {
@@ -26770,8 +26770,8 @@
    "break": [
     [
      "web/panes.mjs",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
-     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+     "export const onTitleBar = at => Boolean(at?.closest?.('.reply-stack > .stack-tools'));",
+     "export const onTitleBar = at => false;"
     ]
    ],
    "check": {
@@ -26837,6 +26837,36 @@
    "check": {
     "native": "reading",
     "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "→ from the page itself still goes on to the right rail: only a title bar's glyphs keep ← and → to their row",
+   "break": [
+    [
+     "web/panes.mjs",
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail in the right rail → and ← open and fold a section without ⌘"
+   }
+  },
+  {
+   "item": 473,
+   "act": "→ from the page itself still goes on to the right rail: only a title bar's glyphs keep ← and → to their row, in Safari's engine",
+   "break": [
+    [
+     "web/panes.mjs",
+     "moved = !onTitleBar(doc.activeElement) && panes.step('feed', action, doc);",
+     "moved = messagesSideways(doc.activeElement, doc) && panes.step('feed', action, doc);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail in the right rail → and ← open and fold a section without ⌘"
    }
   }
  ]

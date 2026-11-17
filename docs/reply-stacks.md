@@ -386,9 +386,10 @@ their acts.
   the light where the tap landed: the message it was in is read from the
   path the release was sent along, so the tap is not taken for one outside
   the messages.
-- **The bar.** A head showing only its row has no message bar, nor has a
-  dossier's folded row (item 471); Return still replies to it, and the bar
-  comes back once its whole message shows.
+- **The bar.** A head showing only its row has no message bar; Return still
+  replies to it, and the bar comes back once its whole message shows. A
+  dossier's folded row keeps its bar, which offers Unfold (item 473 over item
+  471's barless fold).
   In a stack the bar stays below the head row's bottom edge while that row
   is in the window; where that leaves no room above a card's reply arrow, the
   bar sits under the card rather than over its words and answers. It never
