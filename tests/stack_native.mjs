@@ -1131,6 +1131,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere);
     return menuOf(p, device, id);
   };
+  // What these cases seed is read through at their end, as reading it on screen would, so the cases after them find the
+  // counts of new messages as they were: a wider count on the phone header's Outcomes button can wrap its row at 320.
+  const readAll = topic => control({ method: 'agent_message', operation_id: `${topic}-read`, topic_id: topic, whole_topic: true, sender: other, body: 'That is all for now.', read: true });
   const starSeed = topic => seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A note on the gate hinges.' }],
     ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
     ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
@@ -1179,6 +1182,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-theirs-off`, args: { starred: false } });
       assert.equal((await starsOf(other)).includes(ids.two), false, `${device} ${width}: the other reader's star is off`);
       assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
     }
   });
 
@@ -1243,6 +1247,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs-off`, args: { starred: false } });
       assert.equal((await starsOf(other)).includes(ids.one), false, `${device} ${width}: the other reader's star is off`);
       assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
     }
   });
 
@@ -1292,6 +1297,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         }
       }
       assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
     }
   });
 
@@ -1328,6 +1334,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await choose(p, device, 'Move below More');
       await until(async () => (await positionIn(topic, ids.root)).below, `${device}: unstarred, the dossier moves below More`);
       assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
     }
   });
 
@@ -1359,6 +1366,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length) && !document.querySelector('#messages .stack-more')`), true,
         `${device} ${width}: the dossier is above More, where Core holds it`);
       assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
     }
   });
   else observations.push({ name: 'reading stacks star refused by Core', engine, held: 'holds the page\'s reads with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
