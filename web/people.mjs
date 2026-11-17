@@ -293,12 +293,22 @@ export class PeoplePanel {
     if (dismissible) {
       const doc = host.ownerDocument ?? document;
       const inside = target => this.opener.contains(target) || this.row.contains(target);
-      let outsidePress = false;
+      let outsidePress = null;
       doc.addEventListener('pointerdown', event => {
-        outsidePress = !this.row.hidden && event.button === 0 && event.isPrimary !== false && !inside(event.target);
+        outsidePress = !this.row.hidden && event.button === 0 && event.isPrimary !== false && !inside(event.target)
+          ? { pointerId: event.pointerId, releasedOutside: false } : null;
+      }, true);
+      doc.addEventListener('pointerup', event => {
+        if (!outsidePress || event.pointerId !== outsidePress.pointerId) return;
+        // A drag's click targets the common ancestor of its endpoints. Touch
+        // may also capture pointerup to the start node: hit-test the release.
+        outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));
+      }, true);
+      doc.addEventListener('pointercancel', event => {
+        if (event.pointerId === outsidePress?.pointerId) outsidePress = null;
       }, true);
       doc.addEventListener('click', event => {
-        const startedOutside = outsidePress; outsidePress = false;
+        const startedOutside = outsidePress?.releasedOutside === true; outsidePress = null;
         // Close before the outside control acts; keep its focus and default.
         if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);
       }, true);

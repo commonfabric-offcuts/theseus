@@ -143,8 +143,10 @@ the pointer's way, the keys' and the phone's.
   agent pills and the field, and the button reads "Done" while they show.
   Done, Escape in the field, or a click or tap outside the button and those
   controls closes them, keeping the filter and submitting no name. An outside
-  press keeps its own action and focus. A press begun inside the controls and
-  released outside is not an outside click. These rules also hold while an add
+  press keeps its own action and focus. A press begun or released inside the
+  controls is not an outside click, even when a drag's click targets their
+  common ancestor (for example, from the Team label into the name field).
+  A cancelled press does not close them. These rules also hold while an add
   is out or refused; a late answer never opens the controls again. A reader
   who cannot change the Team sees no Add or Done. (item 643)
 - **A Notebook page** opens in that sheet, over the feed, from wherever it is

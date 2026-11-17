@@ -27081,6 +27081,50 @@
     "native": "webkit-colors",
     "case": "colors item 643 outside closes"
    }
+  },
+  {
+   "item": 643,
+   "act": "B1 a drag into or out of the topic Team picker keeps it open",
+   "break": [
+    [
+     "web/people.mjs",
+     "outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));",
+     "outsidePress.releasedOutside = true;"
+    ]
+   ],
+   "check": {
+    "native": "whispers",
+    "case": "whispers item 643 B1 drag endpoints keep picker open"
+   }
+  },
+  {
+   "item": 643,
+   "act": "B1 a drag into or out of the topic Team picker keeps it open in Safari’s engine",
+   "break": [
+    [
+     "web/people.mjs",
+     "outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));",
+     "outsidePress.releasedOutside = true;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-whispers",
+    "case": "whispers item 643 B1 drag endpoints keep picker open"
+   }
+  },
+  {
+   "item": 643,
+   "act": "B1 Team dismissal requires an outside pointer release under capture too",
+   "break": [
+    [
+     "web/people.mjs",
+     "outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));",
+     "outsidePress.releasedOutside = true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_people.test.mjs"
+   }
   }
  ]
 }

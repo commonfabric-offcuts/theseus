@@ -34,9 +34,11 @@ class Element {
 function dom(t) {
   const previous = globalThis.document;
   const listeners = new Map();
+  let pointerTarget;
   globalThis.document = { createElement: tag => new Element(tag),
+    elementFromPoint: () => pointerTarget,
     addEventListener: (name, fn) => { const group = listeners.get(name) ?? []; group.push(fn); listeners.set(name, group); },
-    emit: (name, event) => { for (const fn of listeners.get(name) ?? []) fn(event); } };
+    emit: (name, event) => { if (name === 'pointerup') pointerTarget = event.target; for (const fn of listeners.get(name) ?? []) fn(event); } };
   t.after(() => { globalThis.document = previous; });
 }
 // A view answering from a sorted list of ids, a page at a time, as core does.
