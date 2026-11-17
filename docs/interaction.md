@@ -2,8 +2,10 @@
 
 One short page of the rules every screen follows. The page itself is in the
 app: press ? anywhere outside writing, or the small "? Pointer, keys and taps"
-under who you are at the top of the side rail, which on a phone "☰ Topics"
-opens (`web/interaction-guide.mjs`, the same words). Each rule there names
+under who you are at the foot of the side rail, below its last section, at
+the end of what "☰ Outcomes" or "☰ Topics" opens on a phone, and at the end of
+the page on a page with no rail (`web/interaction-guide.mjs`, the same words;
+docs/rails.md, "The rail's foot"). Each rule there names
 the pointer's way, the keys' and the phone's.
 
 ## The topic page
@@ -343,8 +345,9 @@ rule above. (`web/arrow-reach.mjs`)
 
 - **Past a pane's edge.** ↑ above the outline's first row, New outcome (the
   Outcomes heading's pencil), goes on up the side rail: "N new" and "N waiting
-  on you", then the logo block (the wordmark, "? Pointer, keys and taps",
-  Health, Turn on notifications); ↓ below its last row reaches Keys. → from
+  on you", then the logo block (the wordmark, Turn on notifications); ↓ below
+  its last row reaches Keys, and below Keys the rail's foot: "? Pointer, keys
+  and taps", then Health. → from
   New outcome, a row with nothing under it, goes on into the messages, as
   from a topic. ↑ above the right rail's first section
   reaches its name, "Just this topic" and "All of this outcome". ↓ past the
@@ -361,7 +364,7 @@ rule above. (`web/arrow-reach.mjs`)
   on to the page's controls (docs/decks.md).
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
   message above or below, as from the message.
-- **In a pane, off its keys.** On the logo block, the chips, Keys, the right
+- **In a pane, off its keys.** On the logo block, the chips, Keys, the rail's foot, the right
   rail's name and chips, People and the Notebook, ↑ and ↓ move within that
   pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
   as from the messages.
@@ -375,8 +378,8 @@ rule above. (`web/arrow-reach.mjs`)
   first control from the right or the left: on a phone both, and on an iPad
   with a keyboard → (the right rail is behind "Pipeline & pages" below 1181px).
 - **On a phone**, in the side rail's drawer, the arrows move as they do beside
-  the topic: the outline's rows (New outcome the first), the chips and the
-  logo block, never the page behind the drawer. The drawer opens with the focus on the
+  the topic: the outline's rows (New outcome the first), the chips, the
+  logo block and the rail's foot, never the page behind the drawer. The drawer opens with the focus on the
   open topic where it shows and is live, never on a copy of it in a list not
   drawn or kept inert while the outline draws its own, so the arrows always
   start there.
@@ -589,7 +592,8 @@ The arrows everywhere are pressed by `tests/outcome_rail_native.mjs`
 (`native-rail`, `native-webkit-rail`), each case marking every control on show
 and pressing every arrow from each, natively, to show the arrows reach them
 all and none loses the focus to the page: past the outline's edges, "rail
-arrows ↑ above the outline's first row goes on up the side rail …"; the right
+arrows ↑ above the outline's first row goes on up the side rail …" (↓ below
+Keys reaches the rail's foot, the guide's ? and then Health); the right
 rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
