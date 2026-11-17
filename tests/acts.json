@@ -9254,13 +9254,13 @@
    "break": [
     [
      "web/aim.css",
-     ".notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}",
-     ".notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}"
+     "  .notebook-sheet-status:has(.deck-status>[data-save=attention]){flex-basis:100%}\n",
+     ""
     ]
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook item 642 refused"
+    "case": "a refused save takes a line"
    }
   },
   {
@@ -9269,13 +9269,13 @@
    "break": [
     [
      "web/aim.css",
-     "grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:\"title views full close\" \"status status status status\";",
-     "grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:\"title views status full close\";"
+     ".notebook-sheet-head:has(.deck-status>[data-save=attention]){grid-template-areas:\"title views . full close\" \"status status status status status\"}\n",
+     ""
     ]
    ],
    "check": {
     "native": "notebook",
-    "case": "notebook item 642 refused"
+    "case": "a refused save takes a line"
    }
   },
   {
@@ -26990,36 +26990,6 @@
    ],
    "check": {
     "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 642,
-   "act": "On a laptop Text, Cards and Draft stay still while the saving words change in their own row",
-   "break": [
-    [
-     "web/aim.css",
-     "grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:\"title views full close\" \"status status status status\";",
-     "grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:\"title views status full close\";"
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "notebook item 642 saving"
-   }
-  },
-  {
-   "item": 642,
-   "act": "At every phone width the saving sign keeps its own row below Text, Cards and Draft",
-   "break": [
-    [
-     "web/aim.css",
-     ".notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}",
-     ".notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}"
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "notebook item 642 saving"
    }
   }
  ]
