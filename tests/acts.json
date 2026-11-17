@@ -26275,6 +26275,21 @@
     "native": "reading",
     "case": "reading covers the Reader shows a dossier's cover as one line"
    }
+  },
+  {
+   "item": 624,
+   "act": "A finger's tap on the Reader's cover line flashes no highlight over it",
+   "break": [
+    [
+     "web/aim.css",
+     "font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}",
+     "font-size:.85rem;cursor:pointer}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader shows a dossier's cover as one line"
+   }
   }
  ]
 }

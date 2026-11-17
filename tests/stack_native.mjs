@@ -7257,6 +7257,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         [true, false, 'Cover Answered: the second weekend, with the lake open payload proposed', false, true, false], `${device}: one line above the message`);
       await press(p, device, '#reader-cover > summary');
       await becomes(async () => { const c = await readerCover(); return [c.open, c.sheet, c.above]; }, [true, true, true], `${device}: pressed, it opens to the sheet`);
+      // A finger's tap on the line flashes no tap highlight over it (Chrome's default paints the line light blue for the
+      // frames after the tap), as the page's other tappable summaries flash none. Safari's engine here exposes no such colour.
+      if (device === 'phone' && engine === 'chrome') {
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#reader-cover > summary')).webkitTapHighlightColor`), 'rgba(0, 0, 0, 0)', 'phone: a tap on the cover line flashes no highlight');
+      }
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-reader-${device}-${theme}`); }
       await dossierTheme(p, 'light');
       if (device === 'phone') {
