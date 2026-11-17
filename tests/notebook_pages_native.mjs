@@ -915,7 +915,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         await q.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: theme}]});
         if (width < 760) await q.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1});
       }});
-      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-words p'))"), 'the card shows');
+      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-words')?.textContent)"), 'the card shows');
       // Preparation only: put the card's title just outside the viewport, its words still under the pointer.
       await p.evaluate("(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+40,behavior:'instant'});return true})()");
       await shot(p, `item-644-${width}-${theme}-card-before`);

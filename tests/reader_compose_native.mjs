@@ -304,8 +304,21 @@ async function run() {
       await p.keyboard.insertText('Item 644 keeps these words.');
       await until(p, () => document.querySelector('#inline-writing-body').value === 'Item 644 keeps these words.', 'the words are written');
       await picture(p, 'item-644-card-writing');
-      // Escape in the field folds it; opening the sheet by the native shortcut must also hold the feed.
-      await p.keyboard.press('Escape');
+      // Leaving writing by Tab is navigation and can reveal its destination. Finish
+      // measuring the inline act first, then start a separate hold for the sheet.
+      const inlineTrail = await p.evaluate(() => { item644.running = false; return item644; });
+      assert.ok(inlineTrail.frames.every(y => Math.abs(y-inlineTrail.start) <= 1), `inline writing holds the page: ${JSON.stringify(inlineTrail)}`);
+      for (let n = 0; n < 16 && await p.evaluate(() => Boolean(document.activeElement.closest('.composer'))); n++) {
+        const old = await p.evaluate(() => { window.item644Focus = document.activeElement; return document.activeElement.id; });
+        await p.keyboard.press('Shift+Tab');
+        await until(p, () => document.activeElement !== window.item644Focus, `Tab leaves ${old}`);
+      }
+      assert.equal(await p.evaluate(() => Boolean(document.activeElement.closest('.composer'))), false, 'Tab left writing for the page shortcut');
+      await p.evaluate(() => {
+        window.item644 = { start: scrollY, frames: [], running: true };
+        const read = () => { const t = window.item644; t.frames.push(scrollY); if (t.running) requestAnimationFrame(read); };
+        read();
+      });
       await p.keyboard.press('Meta+Enter');
       await until(p, () => document.querySelector('#new-message-sheet').open, 'the same composer opens over the page');
       await picture(p, 'item-644-card-sheet');
