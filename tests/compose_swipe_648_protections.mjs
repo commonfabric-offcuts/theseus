@@ -12,10 +12,22 @@ export async function observe648(p) {
       window.swipe648Inputs.push({ type, trusted: e.isTrusted, target: e.target.id, ctrl: e.ctrlKey });
     }, { capture: true, passive: true });
   });
+  await p.route('**/reader.mjs', async route => {
+    const response = await route.fetch(), body = await response.body();
+    p.swipe648ReaderHash = createHash('sha256').update(body).digest('hex');
+    await route.fulfill({ response, body });
+  });
   await p.route('**/app.mjs', async route => {
     const response = await route.fetch();
     const observer = `import { Reader as Swipe648Reader } from './reader.mjs';
 import { EditorRegistry as Swipe648Registry } from './app-session.mjs';
+import { RecoveryJournal as Swipe648Journal } from './journal.mjs';
+const swipe648Save = Swipe648Journal.prototype.saveLatest;
+Swipe648Journal.prototype.saveLatest = async function(...args) {
+  const result = await swipe648Save.apply(this, args), hold = window.swipe648SaveHold;
+  if (hold?.armed) { hold.armed = false; hold.entered = true; await new Promise(resolve => { hold.release = resolve; }); throw Error('Fixture device close save refused'); }
+  return result;
+};
 const swipe648Show = Swipe648Reader.prototype.show;
 Swipe648Reader.prototype.show = function(...args) { window.swipe648Reader = this; return swipe648Show.apply(this, args); };
 const swipe648Open = Swipe648Registry.prototype.open;
@@ -111,11 +123,11 @@ export async function composeSwipe648Protections(h) {
         .map(e => { const b = e.getBoundingClientRect(); return { id: e.id || e.textContent, w: b.width, h: b.height }; });
       return { left: dialog.left, right: dialog.right, width: innerWidth, overflow: document.documentElement.scrollWidth - innerWidth, targets };
     });
+    records.push({ shape: f.p.shape, theme: f.p.scheme, label, geometry, state: await snapshot(f.p) }); await saveRecords();
+    await picture(f.p, `item648-protection-${label}`);
     assert.ok(geometry.left >= -CONTAINMENT_TOLERANCE_PX && geometry.right <= geometry.width + CONTAINMENT_TOLERANCE_PX, `${label}: Reader contained within named ${CONTAINMENT_TOLERANCE_PX}px tolerance`);
     assert.ok(geometry.overflow <= CONTAINMENT_TOLERANCE_PX, `${label}: page overflow <= named ${CONTAINMENT_TOLERANCE_PX}px, got ${geometry.overflow}`);
     if (f.p.touch) for (const t of geometry.targets) assert.ok(Math.min(t.w, t.h) >= 44 - PHONE_TARGET_TOLERANCE_PX, `${label}: ${t.id} 44px phone floor with named ${PHONE_TARGET_TOLERANCE_PX}px tolerance, got ${t.w}×${t.h}`);
-    records.push({ shape: f.p.shape, theme: f.p.scheme, label, geometry, state: await snapshot(f.p) }); await saveRecords();
-    await picture(f.p, `item648-protection-${label}`);
   };
 
   for (const shape of shapes) for (const theme of ['light', 'dark']) {
@@ -149,11 +161,10 @@ export async function composeSwipe648Protections(h) {
       await kept(f, 'source change and return'); await screen(f, 'negative-after'); await close(p);
     });
 
-    await check(`item 648 access ${shape} ${theme}: sourceUnavailable unconfirmed busy error Retry access read-only; ${input}`, async () => {
+    await check(`item 648 access ${shape} ${theme}: sourceUnavailable unconfirmed busy error Retry access destination-unavailable; ${input}`, async () => {
       const f = await setup(shape, theme, 'access'), { p } = f;
-      let mode = 'busy', release, entered;
+      let mode = 'busy', release;
       const gate = new Promise(resolve => { release = resolve; });
-      const sourceEntered = new Promise(resolve => { entered = resolve; });
       let denyChanges = true;
       await p.route('**/api/view', async route => {
         const req = route.request().postDataJSON();
@@ -163,7 +174,7 @@ export async function composeSwipe648Protections(h) {
         }
         if (req.name === 'source' && req.args?.id === f.id) {
           const selected = mode;
-          if (selected === 'busy') { entered(); await gate; }
+          if (selected === 'busy') await gate;
           if (['busy', 'unavailable'].includes(selected)) return route.fulfill({ status: 403, json: { error: { code: 'FORBIDDEN', message: 'Fixture source access refusal', retryable: false } } });
           if (selected === 'error') return route.fulfill({ status: 503, json: { error: { code: 'DATABASE_BUSY', message: 'Fixture access check failed', retryable: true } } });
         }
@@ -183,22 +194,53 @@ export async function composeSwipe648Protections(h) {
         release();
         await until(p, () => window.swipe648Registry.current.sourceUnavailable && !window.swipe648Registry.current.availabilityChecking, 'actual sourceUnavailable branch');
         assert.equal(await p.locator('#source-body').textContent(), '', 'unavailable source words removed');
-        assert.equal(await p.locator('#writing-body').evaluate(e => e.readOnly), true, 'real unavailable writing is read-only');
+        assert.equal(await p.locator('#send-reply').isDisabled(), true, 'unavailable source disables Send');
+        assert.equal(await p.locator('#writing-body').evaluate(e => e.readOnly), false, 'unavailable source still allows safe local writing');
         await right(p); noFold(f); await kept(f, 'sourceUnavailable', { text: false }); await screen(f, 'access-unavailable');
         mode = 'error'; await press(p, '#retry-source');
         await until(p, () => !window.swipe648Registry.current.availabilityChecking && document.querySelector('#source-access-status').textContent.includes('Could not confirm source access'), 'access error offers Retry');
         await right(p); noFold(f); await kept(f, 'error unconfirmed', { text: false }); await screen(f, 'access-error');
         mode = 'read-only'; await press(p, '#retry-source');
         await until(p, () => !window.swipe648Registry.current.sourceUnavailable && !window.swipe648Registry.current.availabilityUnconfirmed && !window.swipe648Registry.current.availabilityChecking, 'Retry restores readable source');
-        assert.equal(await p.locator('#writing-body').evaluate(e => e.readOnly), true, 'readable source has genuinely read-only destination');
-        await press(p, '#writing-body'); await p.keyboard.insertText('MUST NOT ENTER READ-ONLY WRITING');
-        await right(p); noFold(f); await kept(f, 'read-only destination'); await screen(f, 'access-read-only');
+        assert.equal(await p.locator('#send-reply').isDisabled(), true, 'unavailable destination disables Send');
+        assert.equal(await p.locator('#writing-body').evaluate(e => e.readOnly), false, 'destination refusal keeps local writing available');
+        await right(p); noFold(f); await kept(f, 'unavailable destination'); await screen(f, 'access-destination-unavailable');
         mode = 'available';
         // The paused-topic state deliberately admits no feed act. Source
         // retry does not grant topic access or fold a hidden card.
         assert.equal(await p.locator('#retry-source').isVisible(), false, 'Retry disappears after confirmed source access');
         await close(p);
       } finally { release(); }
+    });
+
+    await check(`item 648 read-only ${shape} ${theme}: native Close waits for device save, source swipe keeps exact protected writing; ${input}`, async () => {
+      const f = await setup(shape, theme, 'read-only'), { p } = f;
+      // Hold only completion of the genuine device save; the native Close
+      // itself enters the registry's real isWritable=false branch. Refusing
+      // this completion leaves the Reader open for the preserved writing.
+      await p.evaluate(() => { window.swipe648SaveHold = { armed: true }; });
+      try {
+        await press(p, '#reader-close');
+        await until(p, () => window.swipe648SaveHold.entered && document.querySelector('#writing-body').readOnly, 'real close-wait read-only writing');
+        await press(p, '#writing-body'); await p.keyboard.insertText('MUST NOT CHANGE READ-ONLY WRITING');
+        assert.equal(await p.locator('#writing-body').inputValue(), f.before.writing, 'native input cannot change the genuine read-only field');
+        await screen(f, 'writing-read-only');
+        const response = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold');
+        await right(p); await (await response).finished();
+        assert.equal(f.commands.filter(e => e.kind === 'message.fold').length, 1, 'read-only writing does not disable the readable source personal fold');
+        const mine = (await control({ method: 'acts_as', reader: facts.actor, topic_id: f.topic })).acts;
+        assert.equal(mine.items.find(row => row.message_id === f.id)?.acts.folded, true, 'only the readable source folds in Core');
+        assert.equal(mine.items.find(row => row.message_id === f.other)?.acts.folded ?? false, false, 'other message unchanged');
+        await p.evaluate(() => window.swipe648SaveHold.release());
+        await until(p, () => !document.querySelector('#writing-body').readOnly && document.querySelector('#reader').open, 'refused close keeps Reader and writing');
+        assert.equal(await p.locator('#writing-body').inputValue(), f.before.writing, 'exact writing remains after refusal');
+        assert.equal(await p.locator('#who-chip').textContent(), f.before.destination, 'destination remains after refusal');
+        const foreign = await control({ method: 'acts_as', reader: facts.agent, topic_id: f.topic });
+        assert.equal(foreign.acts.items.find(row => row.message_id === f.id)?.acts.folded ?? false, false, 'other actor has no fold');
+        assert.ok(!JSON.stringify(foreign).includes('Exact protected α writing'), 'private writing remains private');
+        assert.equal(f.commands.some(e => ['message.send', 'submission.prepare', 'note.save'].includes(e.kind)), false, 'read-only gesture sends no writing');
+        await screen(f, 'writing-read-only-recovered'); await close(p);
+      } finally { await p.evaluate(() => window.swipe648SaveHold?.release?.()).catch(() => {}); }
     });
   }
 
@@ -214,9 +256,11 @@ export async function composeSwipe648Protections(h) {
     const exercise = async (shape, theme, phase) => {
       const f = await setup(shape, theme, `binding-${phase}`), { p } = f;
       try {
+        assert.equal(p.swipe648ReaderHash, phase === 'mutant' ? proof.mutantHash : proof.originalHash, 'browser received exact actual source bytes for this mutation phase');
         const response = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold');
         response.catch(() => {});
         await right(p);
+        await picture(p, `item648-binding-${phase}`);
         // Delivered native events, no timeout is the mutant's failure.
         assert.equal(f.commands.filter(e => e.kind === 'message.fold').length, 1, 'eligible native right swipe records one fold command');
         await (await response).finished();
@@ -228,7 +272,9 @@ export async function composeSwipe648Protections(h) {
       } finally { await close(p); }
     };
     try {
-      await writeFile(filename, mutant); assert.equal(digest(await readFile(filename)), proof.mutantHash, 'actual served mutant read back');
+      await writeFile(filename, mutant);
+      await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+      assert.equal(digest(await readFile(filename)), proof.mutantHash, 'actual served mutant read back');
       for (const [shape, theme] of [['phone-390', 'light'], ['stacked', 'dark']]) {
         let failure;
         try { await exercise(shape, theme, 'mutant'); } catch (error) { failure = error; }
@@ -236,7 +282,9 @@ export async function composeSwipe648Protections(h) {
         proof.cases.push({ shape, theme, phase: 'mutant', failure: failure.stack });
       }
     } finally {
-      await writeFile(filename, original); proof.restoredHash = digest(await readFile(filename)); proof.restored = proof.restoredHash === proof.originalHash;
+      await writeFile(filename, original);
+      await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+      proof.restoredHash = digest(await readFile(filename)); proof.restored = proof.restoredHash === proof.originalHash;
       records.push({ mutation: proof }); await saveRecords();
     }
     assert.equal(proof.restored, true, 'actual source restored exactly');

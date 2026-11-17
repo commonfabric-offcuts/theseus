@@ -482,6 +482,11 @@ Item 648's bounded continuation checks (`tests/compose_swipe_648_protections.mjs
 and "item 648 ledger") exercise the access guards through real HTTP refusal and
 state responses, native Retry access and read-only writing, negative gestures,
 and the ledger's actual binding-removal break with byte-for-byte restoration.
+The access states disable sending while safe local typing remains available.
+Actual read-only writing is checked while native Close waits for device-save
+completion; refusal keeps the Reader open, exact writing and destination kept.
+A source fold remains its own act while that writing is read-only. The title
+button shares the header's 44px coarse-pointer floor.
 The HTTP seams measure client behavior; they do not claim a backend permission
 transition. WebKit's phone-width input is desktop wheel with native taps. The
 unavailable native WebKit finger path remains harness item 720. Final physical
