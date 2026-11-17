@@ -1101,6 +1101,60 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 655: an old starred reply is outside the page's loaded range. The first dossier and the
+  // topic deliberately have different names, and Starred is pressed from a different topic.
+  for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const rule of ['name', 'return']) await check(`reading item 655 ${rule} at ${width}: Starred and the dossier agree on the composer title and its way back`, async () => {
+      const topic = `item-655-${rule}-${width}`, elsewhere = topic + '-elsewhere';
+      const ids = await seed(topic, [
+        ['first', { sender: other, join: true, addressees: [facts.actor], body: 'First dossier root.' }],
+        ['firstReply', { sender: other, reply_to: 'first', addressees: [facts.actor], body: 'First dossier reply.' }],
+        ['second', { sender: other, addressees: [facts.actor], body: 'Second dossier root.' }],
+        ['star', { sender: other, reply_to: 'second', addressees: [facts.actor], body: 'The starred reply in the second dossier.' }],
+        ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Later independent message ${n}.`, read: true }]),
+      ]);
+      for (const [id, name] of [[ids.first, 'First dossier'], [ids.second, 'Second dossier']])
+        await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: id, operation_id: topic + id + '-name', args: { name } });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.star, operation_id: topic + '-star', args: { starred: true } });
+      const awayIds = await seed(elsewhere, [['away', { sender: other, join: true, addressees: [facts.actor], body: 'Another topic is on screen.' }]]);
+      const p = await open(topic, device, elsewhere, awayIds.away);
+      try {
+        if (device === 'phone') {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await press(p, device, '#things-open');
+        }
+        const section = '#things .things-sec[data-key=starred]';
+        await until(() => p.evaluate(`Boolean(document.querySelector('${section}'))`), 'Starred is listed');
+        if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
+        const link = `${section} .things-starred a[href*="message=${ids.star}"]`;
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'Starred lists the exact reply');
+        await centre(p, link); await press(p, device, link);
+        await until(async () => (await readerOn(p))?.startsWith('The starred reply in the second dossier.'), 'Starred opens the exact reply in the composer');
+        assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`), topic, 'the reply belongs to its own topic');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.second))}))`), false, 'the dossier root is outside the loaded page');
+        const title = await titleOf(p);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          await shot(p, `item-655-${rule}-${width}-${theme}-starred`);
+        }
+        if (rule === 'name') assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
+        const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack'),r=c.getBoundingClientRect();
+          return {name:s?.querySelector('.stack-name')?.textContent,inside:r.top<innerHeight&&r.bottom>0,topic:new URL(location.href).searchParams.get('topic')}})()`);
+        assert.equal(landed.inside, true, 'the returned dossier is in view');
+        assert.equal(landed.topic, topic, 'the return never goes to the topic left before Starred');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-${rule}-${width}-${theme}-dossier`); }
+        await openReader(p, device, ids.star, 'The starred reply in the second dossier.');
+        assert.equal((await titleOf(p)).text, 'Second dossier', 'opening the same reply from its dossier agrees');
+        assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === ids.star)?.acts.starred, true, 'navigation never takes the star off');
+        assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.first, ids.second] })).items.every(i => i.stack_position.below === false), true, 'navigation moves neither dossier below More');
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
   // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
