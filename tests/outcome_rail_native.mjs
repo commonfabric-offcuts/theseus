@@ -3723,7 +3723,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const REMARK = `(()=>{const sig=${SIG},known=window.__arrowSig??={};for(const e of document.querySelectorAll('a[href],button,summary,input,select,textarea,[tabindex]')){const k=sig(e);if(!k)continue;if(e.dataset.arrowNode&&!e.dataset.arrowNode.startsWith('tree')){known[k]??=e.dataset.arrowNode}else if(!e.dataset.arrowNode&&known[k])e.dataset.arrowNode=known[k]}})()`;
   // A tree is one node: its rows as they are drawn now, by the tree's place on the page.
   const treeRows = id => `[...(document.querySelectorAll('[role=tree]')[${Number(id.slice(4))}]?.querySelectorAll('[role=treeitem]')??[])].filter(e=>e.checkVisibility())`;
-  const arrowClosure = async (p, scope, start, skip = null) => {
+  // through: a control inside skip that the pane's own arrows start from (a deck's picked card): from it ↑ and ↓ are
+  // pressed until the focus leaves the pane, so what lies past the pane's ends (the rail's foot under a deck, item
+  // 628) is reached through it, as a person's arrows reach it.
+  const arrowClosure = async (p, scope, start, skip = null, through = null) => {
     const nodes = await p.evaluate(`(()=>{const root=document.querySelector(${JSON.stringify(scope)}),skip=${JSON.stringify(skip)};
       const shown=e=>e.checkVisibility({visibilityProperty:true})&&!e.disabled&&!e.closest('[inert],[aria-hidden=true]')&&e.getBoundingClientRect().width>0;
       const all=[...root.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea,[tabindex]')].filter(e=>(e.tabIndex>=0||e.getAttribute('role')==='treeitem')&&shown(e)&&!(skip&&e.closest(skip)));
@@ -3811,6 +3814,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         edges.push({ from: node.id, key, to });
         if (to === node.id && await p.evaluate(ACTED) === before) { const lies = await p.evaluate(LIES(key)); if (lies.length) dead.push(`${label(node.id)} ${key} stays; lies that way: ${lies.join(' | ')}`); }
       }
+    }
+    if (through) for (const key of ['ArrowUp', 'ArrowDown']) {
+      via = null;
+      const on = await p.evaluate(`(e=>{e?.focus();return Boolean(e)&&document.activeElement===e})(document.querySelector(${JSON.stringify(through)}))`);
+      assert.equal(on, true, `the keys are put on ${through}`);
+      let to = 'out';
+      for (let n = 0; n < 40 && to === 'out'; n++) { await arrowPress(p, key); to = await landed(); }
+      edges.push({ from: 'out', key, to });
     }
     const reached = new Set(), queue = [start];
     while (queue.length) { const at = queue.shift(); if (reached.has(at)) continue; reached.add(at); for (const edge of edges) if (edge.from === at) queue.push(edge.to); }
@@ -4160,7 +4171,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // Every control on the page (in the sheet, the sheet's) is reached from the one above the cards.
       const scope = url.includes('page=') ? '#new-message-sheet' : 'body';
       const first = async () => { await p.evaluate("document.querySelector('.deck-card[tabindex=\"0\"]').focus()"); await outOfDeck(p); return p.evaluate("document.activeElement?.dataset?.arrowNode ?? 'none'"); };
-      const { missing, lost, dead, count } = await arrowClosure(p, scope, first, '.deck-cards');
+      const { missing, lost, dead, count } = await arrowClosure(p, scope, first, '.deck-cards', '.deck-card[tabindex="0"]');
       assert.ok(count > 2, `${where}: the page has its controls (${count})`);
       assert.deepEqual(missing, [], `${where}: the arrows reach every control from the cards`);
       assert.deepEqual(lost, [], `${where}: and none loses the focus to the page`);
@@ -4904,7 +4915,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await footShots(o, `foot-outcome-${width}-${theme}`);
       seen.push({ at, phone, page: 'outcome', drawn: await footDrawn(o), errors: o.errors }); await o.close();
       const h = await sized(`foot-home-${width}-${theme}`, '/', width, theme);
-      await until(() => h.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))').catch(() => false), at + ': the outcomes are listed');
+      await until(() => h.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#workspaces a[data-workspace-id]"))').catch(() => false), at + ': the outcomes are listed');
       await footShots(h, `foot-home-${width}-${theme}`);
       seen.push({ at, phone, page: 'home', drawn: await footDrawn(h), errors: h.errors }); await h.close();
     }
