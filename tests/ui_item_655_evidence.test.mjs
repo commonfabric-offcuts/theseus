@@ -37,3 +37,36 @@ test('item 655 selection retains all 44 own cases per engine without executing a
     for (const width of [320, 375, 390, 1280]) assert.equal(names.filter(name => name.includes(`at ${width}:`)).length, 11, engine + ': complete width ' + width);
   }
 });
+
+test('item 655 capture refuses an actual unfinished animation and translucent endpoint', async () => {
+  const { qualifyDialogCapture655 } = await import('./stack_native.mjs');
+  const settled = { open: true, animations: [], opacity: 1 };
+  assert.equal(qualifyDialogCapture655(settled), true);
+  assert.equal(qualifyDialogCapture655({ ...settled, animations: ['paused'] }), false, 'paused appear control cannot qualify');
+  assert.equal(qualifyDialogCapture655({ ...settled, animations: ['running'] }), false, 'still fading control cannot qualify');
+  assert.equal(qualifyDialogCapture655({ ...settled, opacity: .4 }), false, 'a translucent surface cannot qualify');
+  const source = readFileSync(new URL('./stack_native.mjs', import.meta.url), 'utf8');
+  assert.match(source, /await animation\.finished/, 'wait for actual animation completion');
+  assert.match(source, /const settled = await settleCapture655\(p\);[\s\S]*?await shot\(p, image\)/, 'all qualifying item captures use the settlement barrier');
+});
+
+test('item 655 capture waits for completion rather than a timer or an opaque intermediate frame', async () => {
+  const { settleDialogCapture655 } = await import('./stack_native.mjs');
+  let complete;
+  const animation = { playState: 'running', finished: new Promise(resolve => { complete = resolve; }) };
+  const dialog = { open: true, getAnimations: () => [animation] };
+  let frames = 0, done = false;
+  const p = { evaluate: code => vm.runInNewContext(code, {
+    document: { querySelector: () => dialog },
+    getComputedStyle: () => ({ opacity: '1' }),
+    requestAnimationFrame: resolve => { frames++; resolve(); },
+  }) };
+  const waiting = settleDialogCapture655(p).then(() => { done = true; });
+  await Promise.resolve();
+  assert.equal(done, false, 'opaque but still animating cannot qualify');
+  assert.equal(frames, 0, 'frame qualification follows animation.finished');
+  animation.playState = 'finished'; complete();
+  await waiting;
+  assert.equal(done, true);
+  assert.equal(frames, 1);
+});

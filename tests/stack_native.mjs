@@ -11,6 +11,22 @@ import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 
+// Screenshot qualification, independent of how quickly an engine opens a dialog.
+export function qualifyDialogCapture655(state) {
+  const opacityTolerance655 = 0.001;
+  return !state.open || (state.animations.every(value => value === 'finished' || value === 'idle') &&
+    Math.abs(state.opacity - 1) <= opacityTolerance655);
+}
+
+export async function settleDialogCapture655(p) {
+  const settled = await p.evaluate(`(async()=>{const d=document.querySelector('#reader');
+    if(d.open){for(const animation of d.getAnimations()) await animation.finished;
+      await new Promise(done=>requestAnimationFrame(done));}
+    return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+  assert.equal(qualifyDialogCapture655(settled), true, 'capture requires a settled dialog animation and opaque endpoint');
+  return settled;
+}
+
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
   const { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
@@ -1134,9 +1150,31 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // #7715: named tolerances apply to every measured edge/extent below. A 2px
   // moving-target mutant still fails the shared tapStableTolerancePx=0.5 check.
   const viewportEdgeTolerancePx655 = 1, visibleExtentTolerancePx655 = 0.5;
+  const settleCapture655 = settleDialogCapture655;
+  const capture655 = async (p, image) => {
+    const settled = await settleCapture655(p);
+    observations.push({ name: 'item 655 qualified capture', image, engine, ...settled });
+    await shot(p, image);
+  };
   const proof655 = async (p, state, expected, image) => {
     for (const theme of ['light', 'dark']) {
       await dossierTheme(p, theme);
+      if (state === 'B1-loaded') {
+        // Negative capture control: replay the actual CSS appear animation, pause
+        // in its fade, and prove it cannot qualify. Restore the original inline
+        // animation bytes and let that animation finish before the real image.
+        await settleCapture655(p);
+        const fading = await p.evaluate(`(()=>{const d=document.querySelector('#reader'),saved=d.getAttribute('style');
+          d.style.animation='none';void d.offsetWidth;if(saved===null)d.removeAttribute('style');else d.setAttribute('style',saved);
+          const a=d.getAnimations().find(a=>a.animationName==='appear');
+          if(!a)throw Error('actual dialog appear animation missing');a.pause();a.currentTime=30;
+          return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+        assert.equal(qualifyDialogCapture655(fading), false, 'actual paused appear surface is refused for capture');
+        observations.push({ name: 'item 655 unqualified capture control', engine, theme, ...fading });
+        await shot(p, image + '-' + theme + '-unqualified-control');
+        await p.evaluate(`document.querySelector('#reader').getAnimations().forEach(a=>a.play())`);
+      }
+      await settleCapture655(p);
       const actual = await p.evaluate(`import('/message-format.mjs').then(({drawnText})=>{const d=document.querySelector('#reader'),c=document.querySelector('#source-body'),r=d.getBoundingClientRect();
         return {open:d.open,title:document.querySelector('#reader-title').textContent,source:drawnText(c),readable:c.textContent,
           notice:document.querySelector('#reader-notice').textContent,noticeShown:!document.querySelector('#reader-notice').hidden&&Boolean(document.querySelector('#reader-notice').getClientRects().length),writing:document.querySelector('#writing-body').value,
@@ -1152,7 +1190,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           `${state} ${theme}: Reader fits (viewportEdgeTolerancePx655=1, visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual.box)}`);
       }
       observations.push({ name: 'item 655 state', state, theme, engine, expected, actual, tolerances: { viewportEdgeTolerancePx655, visibleExtentTolerancePx655 } });
-      await shot(p, image + '-' + theme);
+      await capture655(p, image + '-' + theme);
     }
   };
   const returned655 = async (p, id, state, image) => {
@@ -1162,7 +1200,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.ok(actual.shown && actual.top < actual.height - visibleExtentTolerancePx655 && actual.bottom > visibleExtentTolerancePx655,
         `${state} ${theme}: source in view (visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual)}`);
       observations.push({ name: 'item 655 returned source', state, engine, theme, actual, tolerances: { visibleExtentTolerancePx655 } });
-      await shot(p, image + '-' + theme);
+      await capture655(p, image + '-' + theme);
     }
   };
   // Passive frame sampling catches a transient repaint too. Never calls a
@@ -1217,7 +1255,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
         await until(() => p.evaluate('window.fetchesOut === 0'), 'the title return has finished its reads');
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-${rule}-${width}-${theme}-after-close`); }
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await capture655(p, `item-655-${rule}-${width}-${theme}-after-close`); }
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
         const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack');
           return {name:s?.querySelector('.stack-name')?.textContent,topic:new URL(location.href).searchParams.get('topic')}})()`);
@@ -1324,7 +1362,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // The root is on the newest page; all its members predate that page.
         // Joining the older branch into it creates this real Core membership.
         const partial = topic + '-partial', members = await seed(partial, [
-          ['old', { sender: other, addressees: [facts.actor], body: 'Older joined branch.' }],
+          ['old', { sender: other, join: true, addressees: [facts.actor], body: 'Older joined branch.' }],
           ['reply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'Reply outside the root page.' }],
           ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Partial page filler ${n}.`, read: true }]),
           ['root', { sender: other, addressees: [facts.actor], body: 'Loaded root with older members.' }],
@@ -1333,7 +1371,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         const q = await open(partial, device, partial, members.root);
         try {
           if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(members.root))}))`), true, 'the root is on the loaded page');
           assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(members.reply))}))`), false, 'the members are outside the loaded page');
+          const positions = (await view('stack_positions', { topic_id: partial, message_ids: [members.old, members.reply, members.root] })).items;
+          assert.equal(positions.length, 3, 'all three exact fixture messages have a position');
+          assert.ok(positions.every(i => i.stack_position.root_id === members.root && i.stack_position.has_other_messages), 'real joined membership has the exact loaded root');
+          observations.push({ name: 'item 655 loaded root unloaded members', engine, width, members, positions });
           await openReader(q, device, members.root, 'Loaded root with older members.');
           await proof655(q, 'B1-loaded', { open: true, source: 'Loaded root with older members.', title: 'Loaded root with older members.' }, `item-655-B1-loaded-${width}`);
           await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: members.root, operation_id: partial + '-name', args: { name: 'Named loaded root' } });
