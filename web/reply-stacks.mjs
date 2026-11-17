@@ -21,7 +21,7 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
+import { gather, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -428,6 +428,18 @@ export function paintFolderColors(list) {
   }
 }
 
+// Item 550: a dossier whose stack another head now heads (stack-order.mjs,
+// reheaded) keeps what the page holds of it for this visit, from its head
+// before (from) to its head now (to): how far it is open, the first of the
+// seven it shows, and whether its earlier-messages row was opened.
+function rehead(state, from, to) {
+  for (const kept of [state.levels, state.held]) {
+    if (kept.has(from)) kept.set(to, kept.get(from)); else kept.delete(to);
+    kept.delete(from);
+  }
+  if (state.earlier.delete(from)) state.earlier.add(to); else state.earlier.delete(to);
+}
+
 // A line of the stack's (a fold line, a join line), kept across repaints by
 // key, so one holding the focus keeps it.
 function line(section, key, make) {
@@ -695,6 +707,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
   const stacks = ordered(gather(loaded, { viewer }));
+  for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
   state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
