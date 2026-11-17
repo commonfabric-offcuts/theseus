@@ -51,8 +51,7 @@ jobs:
           base = '1bc72642c726076e29362171131bc1babf7e2c50'
           subprocess.run(['git', 'merge-base', '--is-ancestor', original, source], check=True)
           subprocess.run(['git', 'merge-base', '--is-ancestor', base, source], check=True)
-          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'check'
-          out.mkdir(parents=True, exist_ok=True)
+          out = pathlib.Path(os.environ['RUNNER_TEMP'])
           record = {'version': 1, 'requested_source': source, 'checked_source': git('rev-parse', 'HEAD'),
                     'checked_tree': git('rev-parse', 'HEAD^{tree}'), 'parents': git('show', '-s', '--format=%P', 'HEAD').split(),
                     'original_source': original, 'original_run': 44178925337, 'original_attempt': 1,
@@ -109,6 +108,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/check"
+          # The check must begin with a fresh output directory. Preserve the pre-run binding only after it ends.
+          cp "$RUNNER_TEMP/dispatch-source.json" "$RUNNER_TEMP/check/dispatch-source.json"
           # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
           # another run or attempt cannot pass as this one. The profile says what the cases ran on.
           /usr/bin/python3 -I - "$RUNNER_TEMP/check/run.json" <<'PY'
