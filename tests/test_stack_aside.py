@@ -242,7 +242,7 @@ class StarHoldCLICase(AgentCLIBase):
         self.committed(self.star(later, actor='agent-a'))
         before = self.rows('aside')
         code, result, _ = self.aside_cli(root)
-        self.assertEqual((code, result['status'], result['error']['code']), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
+        self.assertEqual((code, result.get('status'), result.get('error', {}).get('code')), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
         self.assertIn('has a message you starred', result['error']['message'])
         self.assertEqual(self.rows('aside'), before, 'nothing moved')
         # Unstarred, the same command moves it.
