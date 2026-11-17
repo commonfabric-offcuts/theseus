@@ -363,10 +363,10 @@ export class OutlineRail {
         if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
           // must not close it. The tree has already selected the pressed row.
+          event.stopPropagation();
           this.setOpen(outcome, true);
           return;
         }
-        this.open(this.nameTarget(outcome), outcome.item.title);
         return;
       }
       const open = !this.isOpen(outcome.id);
