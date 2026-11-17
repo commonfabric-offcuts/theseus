@@ -7185,7 +7185,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       if (touch) assert.deepEqual(badge.reach, { up: true, down: true, left: true, right: true }, `${device}: the count answers a finger 44px each way`);
       // On screen, the page reports it read: Core settles the message, and the count goes.
       await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, `${device}: read on screen, Core settles it`);
-      if (touch) { await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens again`); }
+      // The page is scrolled down to the message, so the drawer's button is scrolled up with it: the person scrolls back to it.
+      if (touch) {
+        await p.evaluate(`document.getElementById('rail-open').scrollIntoView({block:'nearest'})`);
+        await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens again`);
+      }
       await until(() => p.evaluate(`Boolean(document.querySelector('#outline a.nav-item[data-topic-id="${deep}"]'))&&!document.querySelector(${JSON.stringify(countOf(deep))})`), `${device}: the count is gone`);
       await shot(p, `unread-gone-${device}-light`);
       assert.deepEqual(p.errors, []); await p.close();
