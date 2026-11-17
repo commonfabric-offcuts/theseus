@@ -17809,12 +17809,12 @@
   },
   {
    "item": 305,
-   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the logo block keeps the guide's ? through the move, so the rail never grows shorter",
+   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the rail's foot keeps the guide's ? through the move, so the rail never grows shorter",
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }",
-     "    if (selector === BRAND) { const brand = live.cloneNode(true); for (const added of brand.querySelectorAll('.guide-open')) added.remove(); children.push(brand); continue; }"
+     "    if (AS_READ.includes(selector)) { children.push(live.cloneNode(true)); continue; }",
+     "    if (AS_READ.includes(selector)) { const kept = live.cloneNode(true); for (const added of kept.querySelectorAll('.guide-open')) added.remove(); children.push(kept); continue; }"
     ]
    ],
    "check": {
@@ -26990,6 +26990,115 @@
    ],
    "check": {
     "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 628,
+   "act": "The outline goes into the side rail above its foot, so through a move in place the rail's foot stays at the rail's end and the rail keeps its scroll near its end",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "      rail.insertBefore(outline, rail.querySelector(':scope > .rail-foot'));",
+     "      rail.append(outline);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a page with no rail, the rail's foot ends the page",
+   "break": [
+    [
+     "web/outcome-scope.mjs",
+     "  if (foot && host.lastElementChild !== foot) host.append(foot);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a laptop the rail's foot stands one line under the other",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail-foot{display:flex;flex-direction:column;",
+     ".rail-foot{display:flex;flex-direction:row;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a phone the rail's foot keeps the logo block's row: who you are on its own line, then the guide's ? and Health side by side",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.8rem;row-gap:.3rem}.rail-foot #instance-label{grid-column:1/-1;min-width:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "A move in place puts the rail's foot back as it reads, so the rail keeps its scroll near its end",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "const AS_READ = ['.brand', '.rail-foot'];",
+     "const AS_READ = ['.brand'];"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 628,
+   "act": "Health, lit at the rail's foot, keeps the alert colour and opens Health",
+   "break": [
+    [
+     "web/index.html",
+     "        <a id=\"health-link\" class=\"health-link\" href=\"?health\">Health · checking</a>\n",
+     ""
+    ],
+    [
+     "web/index.html",
+     "        <button id=\"notify\" type=\"button\" hidden>Turn on notifications</button>\n",
+     "        <a id=\"health-link\" class=\"health-link\" href=\"?health\">Health · checking</a>\n        <button id=\"notify\" type=\"button\" hidden>Turn on notifications</button>\n"
+    ]
+   ],
+   "check": {
+    "native": "health",
+    "case": "health the page says the runner and every agent from the view|lit at the foot of the side rail"
+   }
+  },
+  {
+   "item": 628,
+   "act": "The markup draws the rail's foot last in the rail, after Skills and tools",
+   "break": [
+    [
+     "web/index.html",
+     "      <div class=\"rail-foot\">",
+     "      <div class=\"rail-feet\">"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reread_messages.test.mjs"
    }
   }
  ]

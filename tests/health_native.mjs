@@ -145,6 +145,77 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.deepEqual([...p.errors, ...topic.errors], []);
   });
 
+  // Item 628: the link is the last of the rail's foot, below the side rail's last section (the outline, in the
+  // drawer on a phone). Lit, it keeps the alert colour there and opens Health, at every phone width and a laptop, in
+  // light and dark. It needs the runner the fixture starts in "the link is quiet while nothing is red": run alone, run
+  // that case with it.
+  await check('health lit at the foot of the side rail, below its last section, keeps the alert colour and opens Health, at 320, 375, 390 and a laptop, light and dark', async () => {
+    const sizes = [['320', { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }], ['375', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true }],
+      ['390', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }], ['laptop', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }]];
+    // Where the link is, read from the page as drawn: in the rail, the last of the three under the workspace name, and
+    // below everything else on show there.
+    const placed = p => p.evaluate(`(()=>{const a=document.getElementById('health-link'),foot=a.parentElement,rail=document.getElementById('rail'),shown=e=>e.getClientRects().length>0;
+      const others=[...rail.children].filter(e=>e!==foot&&shown(e)),top=foot.getBoundingClientRect().top;
+      return {inRail:foot.parentElement===rail,last:foot.lastElementChild===a,afterName:Boolean(foot.querySelector('#instance-label ~ #health-link')),
+        below:others.length>0&&others.every(e=>top>=e.getBoundingClientRect().bottom-0.5),order:[...rail.children].filter(shown).map(e=>e.id||e.classList[0])}})()`);
+    await control({ method: 'health', action: 'fail', count: 3, reason: 'deadline' });
+    const seen = [];
+    try {
+      for (const [width, metrics] of sizes) {
+        for (const theme of ['light', 'dark']) {
+          const where = `${width} ${theme}`;
+          const p = await page(`health-foot-${width}-${theme}`, null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+            await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+            await q.send('Emulation.setDeviceMetricsOverride', metrics);
+            if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+          } });
+          await ready(p);
+          // A finger on a phone, the mouse on a laptop, on the middle of what the selector names, once it is in view.
+          const press = async selector => {
+            await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+            if (!metrics.mobile) return p.point(selector);
+            const b = await p.box(selector), x = b.x + b.width / 2, y = b.y + b.height / 2;
+            assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${x}, ${y}))`), true, `${where}: nothing covers ${selector}`);
+            await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          };
+          if (metrics.mobile) {
+            await press('#rail-open');
+            await until(() => quiet(p, "document.getElementById('rail').classList.contains('open')"), `${where}: "☰ Outcomes" opens the drawer`);
+          }
+          const lit = await until(async () => { const l = await readLink(p); return l.red && l; }, `${where}: the link is lit`);
+          await p.evaluate("document.getElementById('health-link').scrollIntoView({block:'center'})");
+          await shot(p, `health-foot-${width}-${theme}`);
+          const at = await placed(p);
+          await press('#health-link');
+          await until(() => quiet(p, `location.search === '?health' && document.body.dataset.ready === 'true' && document.getElementById('health-link').getAttribute('aria-current') === 'page'`),
+            `${where}: a press opens Health, which marks its link as the page`);
+          const there = await until(async () => { const l = await readLink(p); return l.red && l; }, `${where}: lit on Health too`);
+          // Health itself, a page with no rail: the foot at its end.
+          await p.evaluate('scrollTo(0, document.documentElement.scrollHeight)');
+          await shot(p, `health-page-${width}-${theme}`);
+          const end = await p.evaluate(`(()=>{const foot=document.getElementById('health-link').parentElement,main=document.querySelector('main'),shown=e=>e.getClientRects().length>0;
+            return {inMain:foot.parentElement===main,last:[...main.children].filter(shown).at(-1)===foot}})()`);
+          seen.push({ where, lit, at, there, end, errors: p.errors });
+          await p.close();
+        }
+      }
+      // Every width and theme is drawn and shot before anything is judged.
+      for (const { where, lit, at, there, end, errors } of seen) {
+        assert.deepEqual([lit.text, lit.label], ['Health · needs attention', 'Health: something needs attention'], `${where}: it says so in words`);
+        assert.equal(lit.color, lit.alert, `${where}: in the theme's alert colour`);
+        assert.deepEqual(lit.edges, ['0px', '0px'], `${where}: no edge or box of its own`);
+        assert.deepEqual([at.inRail, at.last, at.afterName, at.below], [true, true, true, true],
+          `${where}: the last line of the rail's foot, under the workspace name, below the rail's last section: ${at.order.join(' ')}`);
+        assert.equal(there.color, there.alert, `${where}: in the alert colour on Health`);
+        assert.deepEqual([end.inMain, end.last], [true, true], `${where}: on Health, a page with no rail, the foot ends the page`);
+        assert.deepEqual(errors, [], where);
+      }
+    } finally {
+      await control({ method: 'health', action: 'through' });
+    }
+  });
+
   await check('health a paused runner is said at the top and lights the link; taking the role again clears it and says what it came back from', async () => {
     const p = await healthPage('health-paused');
     const paused = await control({ method: 'health', action: 'pause' });

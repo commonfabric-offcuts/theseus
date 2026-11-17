@@ -1405,7 +1405,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await until(() => p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing textarea'))"), `${title} opens for writing`);
       if (title === 'Notes') await shot(p, 'notebook-cards-written');
       still(shown, await where(title), words);
-      await p.key('Escape'); await p.key('ArrowDown');
+      // ↓ to the next card; below the last, ↓ would go on out of the cards to the rail's foot (item 628).
+      await p.key('Escape'); if (title !== long) await p.key('ArrowDown');
     }
     // A press around the box, in the card's own margin, leaves the writing as it was.
     for (let n = 0; n < 4; n++) await p.key('ArrowUp');
