@@ -14,7 +14,7 @@ const source = app.slice(app.indexOf('async function loadToUnread()'), app.index
 const reading = app.slice(app.indexOf('function noteRead()'), app.indexOf('// A card counts as on screen'));
 function fixture({ renewed = false } = {}) {
   let revision = 1, current = true, visible = true, serial = 0, transient = false;
-  const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} };
+  const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} }, main = { inert: false };
   const sent = [], focus = [], reveals = [], readReports = [];
   const marks = new Marks({ instanceId: 'fixture', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }), doc, win: {}, id: () => 'op-' + ++serial,
     api: { command: async envelope => {
@@ -29,14 +29,14 @@ function fixture({ renewed = false } = {}) {
   const bindings = { shell: { drawer: { isOpen: () => false } }, views: { line: { id: 'old' }, oldestUnread: { id: 'old' },
     messages: new Map([['old', { id: 'old', seq: 1, stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2 }]]), runOf: () => 'run', sighted() {} },
     loadUntil: async wanted => { transient = true; actions.noteRead(); if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
-    entries: () => [entry, later], $: () => ({}), reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
+    entries: () => [entry, later], $: id => id === 'main' ? main : {}, reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
     topic: { id: 'beds' }, topicUnavailable: false, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
     readThrough: { seen: (topic, from, through) => { readReports.push([from, through]); return Promise.resolve(null); } },
     halfShown: new Set([1, 2]), atMiddle: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
     revealSelection() {}, marks, registry: { get disposed() { return !current; } }, document: doc,
     onScreen: node => visible && (node === card || node === (transient ? later : entry)) };
   const actions = new Function(...Object.keys(bindings), reading + source + '\nreturn { landOnUnread, loadToUnread, noteRead };')(...Object.values(bindings));
-  return { ...actions, marks, sent, focus, reveals, readReports, doc, revision: () => revision, leave: () => { current = false; }, hide: () => { doc.visibilityState = 'hidden'; }, show: () => { doc.visibilityState = 'visible'; marks.resume(); }, offscreen: () => { visible = false; } };
+  return { ...actions, marks, sent, focus, reveals, readReports, doc, main, revision: () => revision, leave: () => { current = false; }, hide: () => { doc.visibilityState = 'hidden'; }, show: () => { doc.visibilityState = 'visible'; marks.resume(); }, offscreen: () => { visible = false; } };
 }
 
 for (const action of ['landOnUnread', 'loadToUnread']) test(`B1/B2 ${action} reveals the whole message and clears its captured mark`, async () => {
@@ -56,6 +56,12 @@ test('B1 loading toward a mark reads only the landing, never a transient newer d
     const f = fixture(); await f[action]();
     assert.deepEqual(f.readReports, [[1, 1]], 'pagination must not consume the next unread message on the way to the mark');
   }
+});
+test('B1 the phone drawer covering the page reports no reading behind it', () => {
+  const f = fixture(); f.main.inert = true; f.noteRead();
+  assert.deepEqual(f.readReports, [], 'the outline drawer covers the topic; its cards are not being read');
+  f.main.inert = false; f.noteRead();
+  assert.deepEqual(f.readReports, [[1, 1]], 'reading resumes once the page is uncovered');
 });
 test('B1 a background landing waits until shown and a departed landing clears nothing', async () => {
   const f = fixture(); f.hide(); await f.landOnUnread(); assert.equal(f.sent.length, 0);
