@@ -7174,9 +7174,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         missed.push(`${device}: ${error.message}`); await p.close(); continue;
       }
       observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target, ids.root) });
+      // Still there in both themes. The keys are a laptop's: by touch the focus the landing gave the message is only
+      // recorded afterwards (Safari's engine moves it on after a tap), since a finger has no keys for it to serve.
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        assert.deepEqual(await landed(p, deep, ids.target, ids.root), want(deep), `${device} ${theme}: still there`);
+        const look = await landed(p, deep, ids.target, ids.root);
+        if (touch) observations.push({ name: 'unread count lands, focus after', engine, device, theme, focused: look.focused,
+          active: await p.evaluate(`(()=>{const a=document.activeElement;return a?a.tagName+'#'+a.id+'.'+a.className+' '+(a.dataset?.id??''):null})()`) });
+        assert.deepEqual(look, { ...want(deep), ...(touch ? { focused: look.focused } : {}) }, `${device} ${theme}: still there`);
         await shot(p, `unread-landed-${device}-${theme}`);
       }
       await dossierTheme(p, 'light');
