@@ -180,7 +180,8 @@ has no rail. Checks: `outcome_rail_native.mjs` (`native-rail`,
 `native-webkit-rail`), "rail the rail's foot: who you are on which instance,
 the guide's ? and Health sit below the side rail's last section …", at 320,
 375, 390 and a laptop, light and dark, on a topic, a tool's page, an
-outcome's page and the Outcomes home; `health_native.mjs` (`native-health`,
+outcome's page, the Outcomes home and a Notebook page's cards, where ↓ below
+the last card goes on to the guide's ?; `health_native.mjs` (`native-health`,
 `native-webkit-health`), "health lit at the foot of the side rail …".
 
 ## The right rail

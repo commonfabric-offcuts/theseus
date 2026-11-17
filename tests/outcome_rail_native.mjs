@@ -4878,6 +4878,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   const RAIL_SEQUENCE = ['brand', 'outcomes-home', 'conversation-navigation', 'pipeline-navigation', 'topic-navigation', 'skills-navigation'];
   await check('rail the rail\'s foot: who you are on which instance, the guide\'s ? and Health sit below the side rail\'s last section, in that order, the wordmark still first and every section in its place, on a topic, a tool\'s page and the pages with no rail, at 320, 375, 390 and on a laptop, light and dark; the guide\'s ? there opens the guide', async () => {
     await control({ method: 'tools_seed' });
+    // A Notebook page shown as cards, a page with no rail whose cards keep their own arrows.
+    await control({ method: 'outcome_reference', operation_id: 'rail-foot-deck', item_id: 'rail-foot-deck', title: 'Kite knots', body: '## Bowline\n\nA loop that holds.\n\n## Clove hitch\n\nQuick to tie.\n' });
     // Every page is read and drawn before anything is judged, so each one's shots are kept.
     const seen = [];
     for (const [width, theme] of TOOL_WIDTHS) {
@@ -4918,8 +4920,23 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(() => h.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#workspaces a[data-workspace-id]"))').catch(() => false), at + ': the outcomes are listed');
       await footShots(h, `foot-home-${width}-${theme}`);
       seen.push({ at, phone, page: 'home', drawn: await footDrawn(h), errors: h.errors }); await h.close();
+      const k = await sized(`foot-cards-${width}-${theme}`, '/?cards=rail-foot-deck', width, theme);
+      await until(() => k.evaluate("document.body?.dataset.ready==='true' && [...document.querySelectorAll('.deck-card')].some(e=>e.checkVisibility())").catch(() => false), at + ': the cards are up');
+      await footShots(k, `foot-cards-${width}-${theme}`);
+      const cards = await footDrawn(k);
+      // On a laptop, ↓ below the last card goes on out of the cards to the guide's ? under them, and ↑ comes back.
+      let below = null;
+      if (!phone) {
+        await k.evaluate("document.querySelector('.deck-card[tabindex=\"0\"]').focus()");
+        const on = () => k.evaluate("(e=>e?.matches('#instance-label ~ .guide-open')?'guide':e?.closest('.deck-card')?'card:'+e.closest('.deck-card').dataset.index:e?.id||e?.tagName||'page')(document.activeElement)");
+        const path = [await on()];
+        for (let n = 0; n < 4 && path.at(-1) !== 'guide'; n++) { await k.key('ArrowDown'); path.push(await on()); }
+        await k.key('ArrowUp'); path.push(await on());
+        below = path;
+      }
+      seen.push({ at, phone, page: 'cards', drawn: cards, below, errors: k.errors }); await k.close();
     }
-    for (const { at, phone, page: kind, drawn, opened, errors } of seen) {
+    for (const { at, phone, page: kind, drawn, opened, below, errors } of seen) {
       const where = `${at} ${kind}`;
       assert.deepEqual(drawn.lines, ['instance-label', 'guide-open', 'health-link'], where + ': the workspace name, the guide\'s ? under it, then Health');
       assert.deepEqual([drawn.below, drawn.inside, drawn.scroll], [true, true, true],
@@ -4943,6 +4960,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         assert.deepEqual([drawn.column, sections.at(-1)], ['rail', 'skills-navigation'], where + ': in the rail, under its last section, Skills and tools: ' + drawn.order.join(' '));
         assert.deepEqual(sections, RAIL_SEQUENCE.filter(name => sections.includes(name)), where + ': every section keeps its place: ' + drawn.order.join(' '));
       } else assert.equal(drawn.column, 'main', where + ': with no rail, at the page\'s end');
+      if (kind === 'cards' && below) assert.deepEqual([below.at(-2), below.at(-1).startsWith('card:')], ['guide', true],
+        where + ': ↓ below the last card reaches the guide\'s ? at the page\'s foot, and ↑ comes back to the cards: ' + below.join(' → '));
       assert.deepEqual(errors, [], where);
     }
   });

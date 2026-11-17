@@ -361,7 +361,8 @@ rule above. (`web/arrow-reach.mjs`)
   of them and ← comes back to the row. A row with no such control keeps the
   tree's → (open a folded row, else go to its first row).
   On a Notebook page's cards, ↑ above the first card and ↓ below the last go
-  on to the page's controls (docs/decks.md).
+  on to the page's controls (docs/decks.md): below the last, the rail's foot
+  at the page's end.
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
   message above or below, as from the message.
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the rail's foot, the right
