@@ -209,7 +209,12 @@ is folded into it (docs/reply-stacks.md, "The head"). The row's second line
 never wraps: on a narrow tab who replied and what is new give way first, then
 its marks, whole glyphs dropped from the end, then who started it, cut short;
 the reply count always shows, as it did before the marks, so a phone may show
-fewer marks there than the card does.
+fewer marks there than the card does. The dossier's title bar glyphs (item
+473) take none of that row's room while they are hidden: the tab reaches as far
+as it does without them, and they stand on the folder's paper past its curved
+corner, inside its right edge. Selected on a phone, ⋯ takes the few pixels it
+needs there back from the tab (docs/reply-stacks.md, "The title bar and the
+message bar").
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its
@@ -220,8 +225,10 @@ Another reader's note or draft never marks a card. `tests/card_marks_native.mjs`
 checks them in Chrome and Safari's engine at 320, 375 and 390 points with
 touch and on a laptop, light and dark, and at every width that a marked line
 holds no line showing nothing and the star's place stays inside the card,
-that every head row shows its reply count whole and only whole marks, and
-that a whisper's card says its marks in the name the browser gives it. In
+that every head row shows its reply count whole and only whole marks, that
+at 390 a dossier whose first message carries a picture alone keeps its image
+mark and who started it whole once a tap selects it and its title bar shows ⋯
+("picture-only head row at 390px …"), and that a whisper's card says its marks in the name the browser gives it. In
 Safari's engine that name is read from Playwright's accessibility snapshot,
 whose line for the card is quoted whole when the name holds ": ", as an image's
 "Image: screen.png" puts there; the check reads either form back to the exact

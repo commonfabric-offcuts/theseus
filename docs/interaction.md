@@ -15,7 +15,13 @@ the pointer's way, the keys' and the phone's.
   for a go-ahead, Reply, and ⋯, the message's menu (Copy Link, Mark read or
   unread; docs/links.md; in the Reader also Start a topic from this and Add to
   pipeline, as a sheet from the bottom on a phone), which a right-click on the
-  message also opens. The bar is only as wide as its buttons, and never covers
+  message also opens. The bar is only as wide as its buttons (one taking more
+  than half its card, as on a phone, sits flush with the card's end), and never
+  wider than the window less 8px each side. Where its buttons, each a finger
+  wide on a phone, do not fit in one row (a go-ahead ask its card cuts off has
+  seven, too many for a 320px window, and "Link copied" widens its ⋯), it puts
+  Fold, then Show full message, behind its ⋯, whose menu offers both, and they
+  come back once there is room again. It never covers
   the reply arrow beside the card's time (docs/topic-reading.md): where it
   would, it sits above that line, or below it at the window's top. ↑ and ↓
   move the light; Tab onto a message lights it, and Tab again goes through
@@ -88,7 +94,9 @@ the pointer's way, the keys' and the phone's.
 - **Return** opens the Reader on the lit message with the cursor in the reply:
   with the words selected on its card, or else its lit passages, quoted, as
   Return quotes them in the Reader, and nothing quoted when neither (a message
-  the keys lit). **Reply** on the bar (a phone's way) quotes nothing; to quote
+  the keys lit). **Reply** on the bar (a phone's way; its glyph is an arrow
+  turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
+  the message bar") quotes nothing; to quote
   part of the message there, select that part in the Reader and press Return. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does: Return
   saves it and Escape cancels; Space folds and opens the dossier. Return in
@@ -364,7 +372,10 @@ rule above. (`web/arrow-reach.mjs`)
   on to the page's controls (docs/decks.md): below the last, the rail's foot
   at the page's end.
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
-  message above or below, as from the message.
+  message above or below, as from the message. On a dossier's title bar glyphs
+  ← and → move along the title bar, from ⋯ to Move below More, Reply and the
+  chevron, and past its end on to the pane beside; ↑ and ↓ stay the messages'
+  (docs/reply-stacks.md, "The title bar and the message bar").
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the rail's foot, the right
   rail's name and chips, People and the Notebook, ↑ and ↓ move within that
   pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
@@ -598,7 +609,9 @@ Keys reaches the rail's foot, the guide's ? and then Health); the right
 rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
-→ move along its buttons, …"; the pages with no panes and a one-line field,
+→ move along its buttons, …"; a dossier's title bar, "reading stacks ← and →
+on a dossier's title bar glyphs …" (`tests/stack_native.mjs`, `native-reading`,
+`native-webkit-reading`); the pages with no panes and a one-line field,
 "rail arrows on the Outcomes home, an outcome's page, its pipeline and its
 Conversation, …" (at
 1280, 390, 375 and 320); a Notebook page's cards, "rail arrows on a Notebook
