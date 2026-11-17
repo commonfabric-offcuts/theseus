@@ -6,6 +6,9 @@ import zipfile
 import json
 from pathlib import Path
 import subprocess
+import tempfile
+import unittest
+import copy
 
 from tools import deploy, release_check, ci_known_reds as ci, base_move
 from test_tools_train import TrainCase, listed, BRANCH, REPOSITORY
@@ -137,7 +140,7 @@ class BaseMoveFixture(TrainCase):
                             'inputs': {'tests/reader_compose_native.mjs': self.git(self.work, 'rev-parse', self.assembly + ':tests/reader_compose_native.mjs')}}
                 self.receipts.append({'step': self.save(prefix + '/step.json', step), 'report': report, 'log': log,
                                       'snapshot': self.save(prefix + '/snapshot.json', snapshot)})
-        self.evidence_body = {'version': 2, 'source_head': self.head, 'original_base': self.old,
+        self.evidence_body = {'version': 3, 'source_head': self.head, 'original_base': self.old,
             'live_base': self.L, 'live_release': 19, 'assembly_head': self.assembly, 'assembly_tree': self.tree(self.assembly),
             'source': {'run': 101, 'attempt': 1, 'tested_merge': self.original_merge, 'base_at_run': self.original_base, 'files': self.files,
                        'inventory': self.save('inventory.json', self.inventory)}, 'receipts': self.receipts}
@@ -160,24 +163,25 @@ class BaseMoveFixture(TrainCase):
         url = 'https://github.com/' + REPOSITORY + '/actions/runs/202'
         self.github.answers['repos/' + REPOSITORY + '/actions/runs/202'] = dict(
             listed(202, self.controller_head, conclusion='success'), name='Verdict',
-            path='.github/workflows/verdict.yml', run_attempt=1, event='workflow_run')
+            path='.github/workflows/verdict.yml', run_attempt=1, event='workflow_run', head_branch='main')
         producer = {'run_id': '101', 'run_attempt': '1', 'event': 'pull_request', 'conclusion': 'failure',
                     'workflow_id': 123, 'workflow_path': '.github/workflows/checks.yml', 'workflow_name': 'Checks',
                     'head_sha': self.head, 'head_branch': 'train/source', 'head_repository': REPOSITORY,
                     'created_at': '2026-11-17T17:00:00Z',
                     'pull_request': {'number': 31, 'head_sha': self.head,
-                                     'base_ref': 'train/previous', 'base_sha': self.old}}
+                                     'base_ref': BRANCH, 'base_sha': self.L}}
         controller = {'run_id': '202', 'run_attempt': '1', 'workflow_sha': self.controller_head,
                       'workflow_ref': REPOSITORY + '/.github/workflows/verdict.yml@refs/heads/main',
                       'sha': self.controller_head, 'ref': 'refs/heads/main', 'repository': REPOSITORY, 'url': url}
-        self.controller_check = {'name': 'Verdict', 'head_sha': self.head, 'status': 'completed', 'conclusion': 'failure',
+        self.controller_check = {'name': 'Verdict for ' + BRANCH, 'head_sha': self.head, 'status': 'completed', 'conclusion': 'failure',
                                 'details_url': url, 'external_id': '101-1',
                                 'output': {'title': 'refused', 'summary': 'Refused:\n- the base is not judged here\nProducer: run 101 attempt 1'}}
-        self.published = {'check_run_id': 201, 'head_sha': self.head, 'name': 'Verdict', 'external_id': '101-1',
+        self.published = {'check_run_id': 201, 'head_sha': self.head, 'name': 'Verdict for ' + BRANCH, 'base': BRANCH, 'external_id': '101-1',
                           'controller_run': '202', 'controller_attempt': '1', 'producer_run': '101', 'producer_attempt': '1'}
         self.controller_producer = {'producer': producer, 'controller': controller}
         self.github.answers['repos/' + REPOSITORY + '/check-runs/201'].update(
-            self.controller_check, id=201, app={'id': 5763648, 'slug': 'theseus-verdict'})
+            self.controller_check, id=201, app={'id': 5763648, 'slug': 'theseus-verdict'},
+            pull_requests=[{'number': 31, 'head': {'sha': self.head}, 'base': {'ref': BRANCH, 'sha': self.L}}])
         self.freeze_controller()
 
     def freeze_controller(self):
@@ -196,7 +200,7 @@ class BaseMoveFixture(TrainCase):
                 'id': id_, 'name': kind + '-101-1-c1', 'digest': 'sha256:' + ref['sha256'],
                 'workflow_run': {'id': 202, 'head_sha': self.controller_head}}
             refs[kind + '_artifact'] = {'id': id_, 'archive': ref}
-        self.evidence_body['source']['controller'] = dict(run=202, attempt=1, **refs)
+        self.evidence_body['source']['controller'] = dict(run=202, attempt=1, current_base={'ref': BRANCH, 'sha': self.L}, **refs)
 
     def freeze_audit(self):
         source = self.evidence_body['source']
@@ -718,3 +722,219 @@ class NativeSourceHashes(BaseMoveFixture):
     def test_claimed_source_hash_must_not_be_invented(self):
         self.source_hash('0' * 64)
         self.refuse('native source hash differs')
+
+
+class ControllerProvenance(unittest.TestCase):
+    """Public contract only, synthetic bytes; archived38.py is separate real evidence.
+
+    Network alone is replaced with an exact API-path table. No git/browser/deploy.
+    """
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix='controller-v3-')
+        self.addCleanup(self.tmp.cleanup)
+        self.head, self.old, self.current, self.controller_head = (c * 40 for c in 'abcd')
+        self.current_base = {'ref': 'release/live73', 'sha': self.current}
+        self.source = {'run': 101, 'attempt': 1, 'base_at_run': {'ref': 'train/35', 'sha': self.old},
+                       'tested_merge': {'sha': 'e' * 40, 'tree': 'f' * 40,
+                                        'first_parent': self.old, 'second_parent': self.head},
+                       'controller': {'run': 202, 'attempt': 1, 'current_base': self.current_base}}
+        self.url = 'https://github.com/' + REPOSITORY + '/actions/runs/202'
+        self.binding = {'producer': {'run_id': '101', 'run_attempt': '1', 'head_sha': self.head,
+            'head_repository': REPOSITORY, 'event': 'pull_request', 'workflow_name': 'Checks',
+            'workflow_path': '.github/workflows/checks.yml', 'conclusion': 'failure', 'head_branch': 'train/source',
+            'pull_request': {'number': 31, 'head_sha': self.head, 'base_ref': 'release/live73', 'base_sha': self.current}},
+            'controller': {'run_id': '202', 'run_attempt': '1', 'repository': REPOSITORY, 'url': self.url,
+            'sha': self.controller_head, 'workflow_sha': self.controller_head, 'ref': 'refs/heads/main',
+            'workflow_ref': REPOSITORY + '/.github/workflows/verdict.yml@refs/heads/main'}}
+        self.refusals = b'original refusal\n'
+        self.check = {'name': 'Verdict for release/live73', 'head_sha': self.head, 'status': 'completed',
+            'conclusion': 'failure', 'details_url': self.url, 'external_id': '101-1',
+            'output': {'title': 'refused', 'summary': 'Refused:\n- original refusal\n'}}
+        self.published = {'check_run_id': 201, 'head_sha': self.head, 'name': self.check['name'],
+            'base': 'release/live73', 'external_id': '101-1', 'controller_run': '202',
+            'controller_attempt': '1', 'producer_run': '101', 'producer_attempt': '1'}
+        self.run = dict(id=202, run_attempt=1, name='Verdict', path='.github/workflows/verdict.yml',
+                        event='workflow_run', status='completed', conclusion='success',
+                        head_sha=self.controller_head, head_branch='main')
+        self.raw = dict(copy.deepcopy(self.check), id=201, app=dict(base_move.VERDICT_APP),
+                        pull_requests=[{'number': 31, 'head': {'sha': self.head}, 'base': dict(self.current_base)}])
+        self.api = {'actions/runs/202': self.run, 'check-runs/201': self.raw}
+        self.judgment = {'producer_runs': [{'id': 101, 'conclusion': 'failure'}],
+                         'verdict_checks': [{'id': 201, 'conclusion': 'failure'}]}
+        api = self.api
+        class Provider:
+            def get(self, path):
+                return api[path[len('repos/' + REPOSITORY + '/'):]]
+        self.provider = Provider()
+        self.freeze()
+
+    def freeze(self):
+        for kind, id_, members in [('verdict', 301, {'producer.json': self.binding, 'check-run.json': self.check,
+                                                   'refusals': self.refusals}),
+                                   ('published', 302, {'published.json': self.published})]:
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w') as archive:
+                for name, value in members.items():
+                    archive.writestr(zipfile.ZipInfo(name, date_time=(2026, 11, 17, 0, 0, 0)),
+                                     value if isinstance(value, bytes) else json.dumps(value).encode())
+            path = Path(self.tmp.name) / (kind + '.zip')
+            data = stream.getvalue(); path.write_bytes(data)
+            self.source['controller'][kind + '_artifact'] = {'id': id_, 'archive': {'path': str(path), 'sha256': digest(data)}}
+            self.api['actions/artifacts/' + str(id_)] = {'id': id_, 'name': kind + '-101-1-c1',
+                'digest': 'sha256:' + digest(data), 'workflow_run': {'id': 202, 'head_sha': self.controller_head}}
+
+    def consume(self):
+        return base_move.controller_binding(self.source, self.judgment, self.provider, REPOSITORY, self.head)
+
+    def refuses(self, why):
+        with self.assertRaisesRegex(base_move.Refused, why):
+            self.consume()
+
+    def test_retargeted_controller_preserves_original_failure(self):
+        result = self.consume()
+        self.assertEqual(result['current_base'], self.current_base)
+        self.assertNotEqual(result['current_base'], self.source['base_at_run'])
+        self.assertEqual(result['refusals'], 'original refusal\n')
+        self.assertEqual(result['output'], self.check['output'])
+
+    def test_missing_current_base(self):
+        del self.source['controller']['current_base']; self.refuses('fields')
+
+    def test_missing_original_base(self):
+        del self.source['base_at_run']; self.refuses('fields')
+
+    def test_missing_base_component(self):
+        del self.current_base['sha']; self.refuses('fields')
+
+    def test_unknown_base_component(self):
+        self.current_base['override'] = True; self.refuses('fields')
+
+    def test_wrong_current_ref(self):
+        self.current_base['ref'] = 'release/unknown'; self.refuses('current PR binding')
+
+    def test_wrong_archived_producer_base_sha(self):
+        self.binding['producer']['pull_request']['base_sha'] = self.old
+        self.freeze(); self.refuses('current PR binding')
+
+    def test_wrong_archived_producer_base_ref(self):
+        self.binding['producer']['pull_request']['base_ref'] = 'train/35'
+        self.freeze(); self.refuses('current PR binding')
+
+    def test_wrong_current_sha(self):
+        self.current_base['sha'] = '0' * 40; self.refuses('current PR binding')
+
+    def test_short_sha(self):
+        self.current_base['sha'] = 'abc'; self.refuses('object digest')
+
+    def test_invalid_branch_refs(self):
+        for ref in ('', '../x', 'refs/heads/main', '-main', 'a@{x', 'a.lock', 'a b', 'a//b', 'a/', 'a.', '@', 'a\\b', 'a\nb'):
+            with self.subTest(ref=ref):
+                self.current_base['ref'] = ref; self.refuses('base ref')
+
+    def test_original_first_parent(self):
+        self.source['tested_merge']['first_parent'] = self.current; self.refuses('original merge binding')
+
+    def test_original_second_parent(self):
+        self.source['tested_merge']['second_parent'] = self.old; self.refuses('original merge binding')
+
+    def test_original_base_sha(self):
+        self.source['base_at_run']['sha'] = self.current; self.refuses('original merge binding')
+
+    def test_archived_current_sha(self):
+        self.raw['pull_requests'][0]['base']['sha'] = self.old; self.refuses('archived check current PR')
+
+    def test_archived_current_ref(self):
+        self.raw['pull_requests'][0]['base']['ref'] = 'train/35'; self.refuses('archived check current PR')
+
+    def test_missing_archived_pr(self):
+        self.raw['pull_requests'] = []; self.refuses('archived check current PR')
+
+    def test_wrong_archived_pr_number(self):
+        self.raw['pull_requests'][0]['number'] = 32; self.refuses('archived check current PR')
+
+    def test_wrong_archived_pr_head(self):
+        self.raw['pull_requests'][0]['head']['sha'] = self.old; self.refuses('archived check current PR')
+
+    def test_wrong_source_run(self):
+        self.binding['producer']['run_id'] = '102'; self.freeze()
+        with self.assertRaises(ci.Refused): self.consume()
+
+    def test_wrong_source_head(self):
+        self.binding['producer']['head_sha'] = self.old; self.freeze(); self.refuses('producer binding')
+
+    def test_wrong_source_attempt(self):
+        self.binding['producer']['run_attempt'] = '2'; self.freeze()
+        with self.assertRaises(ci.Refused): self.consume()
+
+    def test_wrong_controller_attempt(self):
+        self.run['run_attempt'] = 2; self.refuses('controller run identity')
+
+    def test_wrong_controller_head(self):
+        self.binding['controller']['sha'] = self.head; self.freeze(); self.refuses('protected controller identity')
+
+    def test_wrong_controller_ref(self):
+        self.binding['controller']['ref'] = 'refs/heads/other'
+        self.binding['controller']['workflow_ref'] = REPOSITORY + '/.github/workflows/verdict.yml@refs/heads/other'
+        self.freeze(); self.refuses('protected controller identity')
+
+    def test_wrong_app(self):
+        self.raw['app']['id'] = 1; self.refuses('untrusted Verdict App')
+
+    def test_wrong_published_name(self):
+        self.published['name'] = 'Verdict for release/live73 extra'; self.freeze(); self.refuses('published Verdict binding')
+
+    def test_legacy_name_is_not_a_fallback(self):
+        self.published['name'] = self.raw['name'] = self.check['name'] = 'Verdict'
+        self.freeze(); self.refuses('published Verdict binding')
+
+    def test_wrong_api_name(self):
+        self.raw['name'] = 'Verdict for train/35'; self.refuses('source check binding')
+
+    def test_wrong_archive_check_name(self):
+        self.check['name'] = 'Verdict for train/35'; self.freeze(); self.refuses('source check binding')
+
+    def test_wrong_published_base(self):
+        self.published['base'] = 'train/35'; self.freeze(); self.refuses('published Verdict binding')
+
+    def test_wrong_external_id(self):
+        self.published['external_id'] = '101-2'; self.freeze(); self.refuses('published Verdict binding')
+
+    def test_wrong_api_external_id(self):
+        self.raw['external_id'] = '101-2'; self.refuses('source check binding')
+
+    def test_wrong_published_attempt(self):
+        self.published['controller_attempt'] = '2'; self.freeze(); self.refuses('published attempt binding')
+
+    def test_wrong_refusal(self):
+        self.refusals = b'altered refusal\n'; self.freeze(); self.refuses('refusal ground')
+
+    def test_wrong_output(self):
+        self.raw['output']['summary'] = 'rewritten'; self.refuses('Verdict output')
+
+    def test_wrong_archive_hash(self):
+        self.source['controller']['verdict_artifact']['archive']['sha256'] = '0' * 64
+        self.refuses('artifact digest')
+
+    def test_wrong_api_archive_hash(self):
+        self.api['actions/artifacts/301']['digest'] = 'sha256:' + '0' * 64; self.refuses('artifact provenance')
+
+    def test_wrong_archive_run(self):
+        self.api['actions/artifacts/301']['workflow_run']['id'] = 101; self.refuses('artifact provenance')
+
+
+class V3SourceBindings(BaseMoveFixture):
+    def test_original_ref_still_binds_provenance(self):
+        self.evidence_body['source']['base_at_run'] = dict(self.original_base, ref='train/unknown')
+        self.refuse('source merge binding')
+
+    def test_original_base_is_required(self):
+        del self.evidence_body['source']['base_at_run']
+        self.refuse('fields')
+
+    def test_current_base_is_required(self):
+        del self.evidence_body['source']['controller']['current_base']
+        self.refuse('fields')
+
+    def test_v2_envelope_is_not_v3(self):
+        self.evidence_body['version'] = 2
+        self.refuse('unknown version')

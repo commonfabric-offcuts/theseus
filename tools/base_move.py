@@ -127,6 +127,18 @@ def safe_path(path):
 VERDICT_APP = {'id': 5763648, 'slug': 'theseus-verdict'}
 
 
+def base_fact(value):
+    fields(value, 'ref sha'); sha(value['sha'])
+    ref = value['ref']
+    # Short branch syntax, matching git check-ref-format --branch restrictions.
+    require(isinstance(ref, str) and bool(ref) and not ref.startswith(('-', 'refs/'))
+            and ref != '@' and not any(c in ref for c in ('..', '@{', '//'))
+            and not re.search(r'[\x00-\x20\x7f~^:?*\[\\]', ref)
+            and not ref.endswith('.') and all(part and not part.startswith('.')
+                and not part.endswith('.lock') for part in ref.split('/')), 'invalid base ref')
+    return value
+
+
 def controller_archive(ref, github, repository, controller, name):
     fields(ref, 'id archive'); number(ref['id'])
     raw = artifact(ref['archive'])
@@ -142,7 +154,11 @@ def controller_archive(ref, github, repository, controller, name):
 
 
 def controller_binding(source, judgment, github, repository, head):
-    data = fields(source['controller'], 'run attempt verdict_artifact published_artifact')
+    data = fields(source['controller'], 'run attempt current_base verdict_artifact published_artifact')
+    current = base_fact(data['current_base'])
+    original = base_fact(source.get('base_at_run'))
+    require(source['tested_merge']['first_parent'] == original['sha']
+            and source['tested_merge']['second_parent'] == head, 'controller original merge binding differs')
     number(data['run']); number(data['attempt'])
     require(data['run'] != source['run'], 'controller is not a separate run')
     run = github.get('repos/%s/actions/runs/%d' % (repository, data['run']))
@@ -164,30 +180,36 @@ def controller_binding(source, judgment, github, repository, head):
             and producer.get('workflow_path') == '.github/workflows/checks.yml'
             and producer.get('conclusion') == judgment['producer_runs'][0]['conclusion'], 'controller producer binding differs')
     pr = producer['pull_request']
-    require(pr.get('head_sha') == head and pr.get('base_sha') == source['base_at_run']['sha']
-            and pr.get('base_ref') == source['base_at_run']['ref'], 'controller original PR binding differs')
+    require(pr.get('head_sha') == head and pr.get('base_sha') == current['sha']
+            and pr.get('base_ref') == current['ref'], 'controller current PR binding differs')
     number(pr['number'])
     url = 'https://github.com/%s/actions/runs/%d' % (repository, data['run'])
     ci.same_run({'id': controller.get('run_id'), 'attempt': controller.get('run_attempt')},
                 {'id': data['run'], 'attempt': data['attempt']})
     require(controller.get('repository') == repository and controller.get('url') == url
             and controller.get('sha') == controller.get('workflow_sha') == run['head_sha']
-            and controller.get('ref', '').startswith('refs/heads/')
+            and controller.get('ref') == 'refs/heads/' + run['head_branch']
             and controller.get('workflow_ref') == repository + '/.github/workflows/verdict.yml@' + controller['ref'],
             'protected controller identity differs')
     require(len(judgment['verdict_checks']) == 1, 'need exact published Verdict check')
     listed = judgment['verdict_checks'][0]
     raw = github.get('repos/%s/check-runs/%d' % (repository, listed['id']))
+    prs = raw.get('pull_requests')
+    require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == pr['number']
+            and prs[0].get('head', {}).get('sha') == head
+            and prs[0].get('base', {}).get('ref') == current['ref']
+            and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
     external = '%d-%d' % (source['run'], source['attempt'])
+    name = 'Verdict for ' + current['ref']
     require(pub.get('check_run_id') == listed['id'] == raw.get('id')
-            and pub.get('head_sha') == head and pub.get('name') == 'Verdict'
+            and pub.get('head_sha') == head and pub.get('name') == name and pub.get('base') == current['ref']
             and pub.get('external_id') == external, 'published Verdict binding differs')
     for key, expected in (('controller_run', data['run']), ('controller_attempt', data['attempt']),
                           ('producer_run', source['run']), ('producer_attempt', source['attempt'])):
         require(str(pub.get(key)) == str(expected), 'published attempt binding differs')
     require(raw.get('app', {}).get('id') == VERDICT_APP['id']
             and raw.get('app', {}).get('slug') == VERDICT_APP['slug'], 'untrusted Verdict App')
-    expected = {'name': 'Verdict', 'head_sha': head, 'status': 'completed',
+    expected = {'name': name, 'head_sha': head, 'status': 'completed',
                 'conclusion': listed['conclusion'], 'details_url': url, 'external_id': external}
     require(listed['conclusion'] in ('success', 'failure') and all(
         raw.get(k) == check.get(k) == v for k, v in expected.items()), 'source check binding differs')
@@ -202,7 +224,7 @@ def controller_binding(source, judgment, github, repository, head):
                 and summary.startswith('Refused:\n' + ''.join('- ' + line + '\n' for line in refusal.splitlines())),
                 'Verdict refusal ground differs')
     return {'run': data['run'], 'attempt': data['attempt'], 'head': run['head_sha'],
-            'check': listed['id'], 'output': output, 'refusals': refusal,
+            'check': listed['id'], 'current_base': current, 'output': output, 'refusals': refusal,
             'producer': {'head_ref': producer['head_branch'], 'pr': pr['number']}}
 
 
@@ -326,7 +348,7 @@ def audit_reds(source, judgment, head, reds):
 def full_source(source, judgment, git, github, repository, head):
     fields(source, 'run attempt tested_merge base_at_run files inventory audit controller')
     number(source['run']); number(source['attempt'])
-    fields(source['base_at_run'], 'ref sha'); words(source['base_at_run']['ref']); sha(source['base_at_run']['sha'])
+    base_fact(source['base_at_run'])
     merge = fields(source['tested_merge'], 'sha tree first_parent second_parent')
     for value in merge.values():
         sha(value)
@@ -461,7 +483,7 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
     """The verified record, including all artifact references and review, or refusal."""
     try:
         data = fields(document(ref), 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review')
-        require(type(data['version']) is int and data['version'] == 2, 'unknown version')
+        require(type(data['version']) is int and data['version'] == 3, 'unknown version')
         for key in ('source_head', 'original_base', 'live_base', 'assembly_head', 'assembly_tree'):
             sha(data[key])
         number(data['live_release'])

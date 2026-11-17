@@ -1,4 +1,4 @@
-# Reviewed base move v2 — candidate, not cleared
+# Reviewed base move v3 — candidate, not cleared
 
 This consumes retained evidence; it never runs candidate code. Only an explicit
 `base_move: Ref` on a judged-first train uses this form. The no-record
@@ -8,7 +8,7 @@ parent/same-tree guard, ordinary path and deploy sequence stay strict.
 bytes. New envelopes reject extra/missing/duplicate fields, invalid constants,
 boolean numbers and duplicate identities. All artifacts are digest checked.
 
-The manifest is exactly `{version: 2, source_head, original_base, live_base,
+The manifest is exactly `{version: 3, source_head, original_base, live_base,
 live_release, assembly_head, assembly_tree, source, receipts, review}`. Object
 names are full Git OIDs. Git must prove assembly parents `[source_head,
 live_base]`, release parents `[live_base, assembly_head]`, exact release/assembly
@@ -45,17 +45,27 @@ ends at unittest's first error-report separator; failure blocks are then read
 separately. This avoids interpreting assertion tuple diffs as test names.
 This is a documented parsing transformation, not a new measurement.
 
-`controller` is exactly `{run, attempt, verdict_artifact, published_artifact}`.
+`controller` is exactly `{run, attempt, current_base, verdict_artifact, published_artifact}`.
+`current_base` is exactly `{ref, sha}`, the archived controller-observed retargeted
+PR base. Both it and `source.base_at_run` are required: branch refs must be valid
+short Git branch names and SHAs full lowercase 40-digit OIDs. The latter stays
+bound to original merge parents, provenance, original plan and every shard; the
+former must equal the authenticated archived producer PR base and the archived
+check API PR base (same PR number and source head), plus published.json `base`.
+They need not be equal. Unknown, missing or inconsistent base facts refuse.
 Each artifact is exactly `{id, archive: Ref}`. GitHub artifact metadata must
 bind archive digest, exact producing controller run/head and the original
 `verdict-RUN-ATTEMPT-cCONTROLLER_ATTEMPT` / `published-...` name. ZIP members are
 read by exact name, never extracted. The verdict archive holds `producer.json`,
 `check-run.json`, `refusals` (and may hold validator output); the published
 archive holds `published.json`. Producer and controller identities are checked
-against their separate API runs. The authenticated producer PR base/head must
-match original provenance, not the PR's subsequently moved current base.
+against their separate API runs. The authenticated controller producer PR head
+matches the original source; its
+base is the current retargeted base, never substituted for original provenance.
+The controller ref must exactly match its API run head branch.
 The check must come from trusted App id 5763648 (`theseus-verdict`), be named
-Verdict, bind the producer via external_id, match the published check ID and
+exactly `Verdict for BRANCH`, where BRANCH is authenticated `current_base.ref`,
+bind the producer via external_id, match the published check ID and
 controller attempt, and match retained check output and refusal bytes. API
 summary may append only the known `Published by controller run ... attempt ...`
 line. A refusal may have no tested-merge field in producer.json; the raw source
@@ -112,3 +122,10 @@ Exact new live head/release is rechecked against the normal plan before stop.
 No full run on the assembly is requested or claimed. Missing genuine evidence
 is a blocker. Coordinator installation/use waits for independent review of
 this new freeze in a dedicated checkout; v1 was not cleared.
+
+V3 supports only that branch-qualified name on all three retained/API/published
+check records. It does not guess a legacy fallback. V2/Train35 retained the old
+exact `Verdict` form; those artifacts remain evidence for v2, not a v3 name
+exception. V3 changes only controller provenance compatibility; Train38 stays
+red/held. No same-tree acceptance, item719 change or normal-path change is made.
+Independent review must include #7715; no measured layout case is expected.
