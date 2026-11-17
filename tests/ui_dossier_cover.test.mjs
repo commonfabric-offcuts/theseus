@@ -171,6 +171,7 @@ test('item 717 missing times stay explicit, same times are not struck, lone prom
   assert.ok(sheet.text.includes('No time given'));
   assert.equal(of(sheet, 'promise-prior').length, 0);
   const pills = coverPills(miniDocument(), cover, context());
+  assert.ok(pills, 'a lone promise has a visible pill');
   assert.equal(pills.children[0].dataset.state, 'promised');
   assert.ok(pills.text.includes(PROMISE.text));
   assert.ok(pills.text.includes('No time given'));
