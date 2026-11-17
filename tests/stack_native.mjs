@@ -107,6 +107,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await visibleName(), facts.actor, 'the first visible folded message names its sender after Only new hides its predecessor');
       assert.deepEqual(p.errors, []); await p.close();
     });
+    await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {
+      const topic = `review-645-line-${device}-${theme}`;
+      const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Words across the New line ' + name, read: name === 'a' }]));
+      for (const id of Object.values(ids)) await dossierFold(topic, id);
+      const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
+      await dossierTheme(p, theme);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).nextElementSibling?.dataset.line==='new'`), 'the New line separates unread b from read a');
+      await centre(p, card(ids.b)); await away(p); await shot(p, topic);
+      const names = await p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
+        return e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1?e.textContent:''})`);
+      assert.deepEqual(names, [other, '', other], 'a separating New line starts a named folded run');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
     await check(`reading item 645 review standalone regroup after opening at ${device} ${theme}`, async () => {
       const topic = `review-645-alone-${device}-${theme}`;
       const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Standalone folded words ' + name }]));
