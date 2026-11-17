@@ -86,6 +86,17 @@ shows them: inside a reply stack, ↓ goes down to its newer replies and then
 on to the stack below (docs/reply-stacks.md). On a phone the ⋯ is a sheet
 from the bottom, and the message ends with a quiet "↑ Previous · ↓ Next".
 
+A swipe right over the message in the composer folds that message for the
+reader, as in a dossier (item 648). It is the same act as Fold message in
+⋯: the Reader stays open, its writing and destination kept, and the card on
+the topic folds to its row. A starred or already folded message stays as it
+is. A drag on code or a table scrolling sideways scrolls it instead; vertical
+scrolls, left swipes and gestures in the writing fold nothing. The phone's
+finger crosses 80 pixels with at most 40 pixels vertically; a trackpad uses
+the dossier's natural-scrolling direction and 80-pixel threshold, once per
+gesture. A gesture interrupted by another source opening acts on neither.
+The existing fold command owns optimistic display, refusal and recovery.
+
 ## Writing
 
 A press or Tab into the field makes it the composer:
