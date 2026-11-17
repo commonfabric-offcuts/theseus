@@ -1,6 +1,7 @@
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
+import { composerWidth } from './composer-width.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
@@ -87,6 +88,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
+    composerWidth(this.dialog);
   }
   $(id) { return this.dialog.querySelector(`#${id}`); }
   get editor() { return this.sessions?.[this.mode]; }

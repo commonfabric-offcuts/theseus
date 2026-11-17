@@ -30,12 +30,19 @@ States are derived from the adapters and `writingState`: empty, writing,
 saving a draft, preparing a send, refused image with Attach as download and
 Remove, adopting/read-only, error notice, unavailable source with Retry
 access, and a private note. New message has no source access or private note.
-Busy and saving use held real requests, image refusal uses a real HEIC file;
+Busy and saving use held real requests, image refusal uses a corrupt PNG file;
 adopting, source unavailability and error are seeded on the real adapters.
 The gesture under test always comes from native input, never a handler call.
 Chromium narrow cases use native CDP touch; WebKit's public touchscreen API
 only offers taps, so its narrow drags use native mouse input, with the same
 44px target checks. Physical WebKit finger dragging remains device evidence.
+
+Applied served-source mutants break each side, symmetry, centring, height,
+keyboard adjustment and preservation of writing. Each is caught by the same
+native gesture proof, then a fresh page receives the original source and passes.
+The revised refused-image setup also proves the missing-edge red on the base
+application sources in the same hosted call, with source bytes read from the
+named base commit, not from another checkout.
 
 All measured geometry assertions use named tolerances: 2px for CSS geometry,
 0.5px for touch targets. Edge movements are 16px (32px width difference), so

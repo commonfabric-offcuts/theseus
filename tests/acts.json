@@ -28429,6 +28429,111 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
+  },
+  {
+   "item": 650,
+   "act": "Dragging the left composer edge changes both sides",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Dragging the right composer edge changes both sides",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'right' ? 0 : -2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Both composer edges grow and shrink symmetrically",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta",
+     "width + delta"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "The composer stays centred while an edge moves",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.clientX - drag.x;",
+     "dialog.style.marginLeft = '0px'; const delta = event.clientX - drag.x;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "An edge drag leaves the composer height and vertical position alone",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.clientX - drag.x;",
+     "dialog.style.height = '400px'; const delta = event.clientX - drag.x;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Left and Right on a composer edge adjust its width",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.key === 'ArrowLeft' ? -16 : 16;",
+     "const delta = 0;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Resizing preserves the exact writing and destination",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.clientX - drag.x;",
+     "doc.querySelector('#writing-body').value = 'lost'; const delta = event.clientX - drag.x;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
   }
  ]
 }

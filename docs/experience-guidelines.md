@@ -45,6 +45,11 @@ maximum, and on a phone never reach past the screen.
   keyboard (`keyboard.visualBefore`, `keyboard.visualSmallest`), as evidence for
   that check ([device-evidence.md](device-evidence.md)).
 
+- `tests/reader_compose_native.mjs` (`native-compose`): the “item 650” cases
+  hold resizing either composer edge symmetrically around the centre, only
+  horizontally, at 320, 375, 390 and laptop in both themes and engines, in
+  each affected state ([composer-width.md](composer-width.md)).
+
 ## Keys mean one thing in each place
 
 While reading a source, Return quotes the selected or lit passage, in the

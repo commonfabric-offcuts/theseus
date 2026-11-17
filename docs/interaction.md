@@ -167,6 +167,12 @@ the pointer's way, the keys' and the phone's.
 
 ## Writing
 
+- **Composer width.** Drag the left or right outer edge of the Reader or New
+  message sheet: both sides grow or shrink equally, staying centred, with no
+  vertical resize or movement. Tab reaches either edge; Left/Right moves it.
+  Writing, destination and sending stay as they were. (item 650,
+  [composer-width.md](composer-width.md))
+
 - **The reply in the Reader** is one quiet line while you read (+, the field
   saying whom it answers, 👍) and opens to the who chip, the field and Send when
   you write, with 👍 beside Send until a word is typed, and again once it is deleted. The who chip and + open panels; Done, Escape or a press outside

@@ -1200,3 +1200,14 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
+
+/* Item 650: only horizontal width changes; the existing vertical rules hold.
+   The transparent 44px targets carry quiet neutral grips, never card edges. */
+dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,var(--widest)),calc(100vw - 3rem));min-width:min(760px,calc(100vw - 3rem));margin-inline:auto}
+.composer-edge{position:absolute;z-index:6;top:calc(50% - 22px);width:44px;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
+.composer-edge[data-edge=left]{left:0}.composer-edge[data-edge=right]{right:0}
+.composer-edge::after{content:'';position:absolute;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--muted);opacity:.55}
+.composer-edge[data-edge=left]::after{left:3px}.composer-edge[data-edge=right]::after{right:3px}
+.composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
+dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge{display:none}
+@media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}

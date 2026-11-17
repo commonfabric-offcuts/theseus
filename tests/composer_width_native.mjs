@@ -6,10 +6,11 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 export async function composerWidthCases(h) {
   const { check, page, open, press, until, picture, close, control, root, evidence, engine, second, HEIC } = h;
-  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/fixtures/ui_http.py'];
+  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py'];
   const hashes = {};
   for (const name of inputs) {
     let bytes;
@@ -19,6 +20,17 @@ export async function composerWidthCases(h) {
     await writeFile(path.join(evidence, 'item-650-source', name), bytes);
   }
   await writeFile(path.join(evidence, 'item-650-inputs.json'), JSON.stringify(hashes, null, 2));
+  const BASE = '1bc72642c726076e29362171131bc1babf7e2c50';
+  const baseHashes = {};
+  for (const name of ['web/reader.mjs', 'web/inline-composer.mjs', 'web/aim.css']) {
+    const bytes = execFileSync('git', ['show', `${BASE}:${name}`], { cwd: root });
+    baseHashes[name] = createHash('sha256').update(bytes).digest('hex');
+    await mkdir(path.dirname(path.join(evidence, 'item-650-base-source', name)), { recursive: true });
+    await writeFile(path.join(evidence, 'item-650-base-source', name), bytes);
+  }
+  await writeFile(path.join(evidence, 'item-650-base-inputs.json'), JSON.stringify({ commit: BASE, hashes: baseHashes }, null, 2));
+  const invalidImage = { name: 'item650-invalid.png', mimeType: 'image/png', buffer: Buffer.from('invalid PNG: server must refuse this image') };
+  const receipts = [];
   const surfaces = ['Reader', 'New message', 'Wide Reader'];
   const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error', 'permission unavailable', 'private note'];
   const shapes = ['phone-320', 'phone-375', 'phone-390', 'stacked'];
@@ -43,15 +55,34 @@ export async function composerWidthCases(h) {
       source: document.querySelector('#source-body').textContent, sendDisabled: document.querySelector(a.send).disabled,
       sendDim: document.querySelector(a.send).getAttribute('aria-disabled'), images: document.querySelector(a.strip).textContent };
   }, a);
-  const instrument = p => p.route(/\/(reader|inline-composer)\.mjs(?:\?.*)?$/, async route => {
-    const response = await route.fetch(), source = await response.text();
+  const instrument = (p, baseline = false) => p.route(/\/(reader|inline-composer)\.mjs(?:\?.*)?$/, async route => {
+    const response = await route.fetch();
+    const file = route.request().url().includes('/inline-composer.mjs') ? 'inline-composer.mjs' : 'reader.mjs';
+    const source = baseline ? execFileSync('git', ['show', `${BASE}:web/${file}`], { cwd: root, encoding: 'utf8' }) : await response.text();
     const name = route.request().url().includes('/inline-composer.mjs') ? 'item650Inline' : 'item650Reader';
     const needle = 'this.callbacks = callbacks;';
     assert.equal(source.split(needle).length, 2, 'one adapter constructor observation point');
     await route.fulfill({ response, body: source.replace(needle, `${needle} window.${name} = this;`) });
   });
-  async function setup(surface, state, shape, scheme) {
-    const a = at(surface), p = await page(surface === 'Wide Reader' ? 'wide' : shape, scheme, '/?topic=t1', undefined, instrument);
+  async function setup(surface, state, shape, scheme, { baseline = false, mutation = null } = {}) {
+    let applied = null;
+    const prepare = async p => {
+      await instrument(p, baseline);
+      if (baseline) await p.route(/\/aim\.css(?:\?.*)?$/, async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: execFileSync('git', ['show', `${BASE}:web/aim.css`], { cwd: root, encoding: 'utf8' }) });
+      });
+      if (mutation) await p.route(/\/composer-width\.mjs(?:\?.*)?$/, async route => {
+        const response = await route.fetch(), original = await response.text();
+        assert.equal(original.split(mutation.old).length, 2, `unique applied mutant ${mutation.name}`);
+        const changed = original.replace(mutation.old, mutation.new);
+        assert.notEqual(changed, original, 'mutant changes served bytes');
+        applied = { name: mutation.name, engine, file: 'web/composer-width.mjs', original: createHash('sha256').update(original).digest('hex'), mutated: createHash('sha256').update(changed).digest('hex') };
+        await writeFile(path.join(evidence, `${engine}-item-650-${mutation.name}.mjs`), changed);
+        await route.fulfill({ response, body: changed });
+      });
+    };
+    const a = at(surface), p = await page(surface === 'Wide Reader' ? 'wide' : shape, scheme, '/?topic=t1', undefined, prepare);
     if (surface === 'New message') {
       await until(p, () => !document.querySelector('#inline-composer').hidden, 'the new-message composer');
       await press(p, '#new-message');
@@ -81,13 +112,13 @@ export async function composerWidthCases(h) {
       await press(p, a.plus);
       const chooser = p.waitForEvent('filechooser');
       await press(p, a.add);
-      await (await chooser).setFiles(HEIC);
+      await (await chooser).setFiles(invalidImage);
       await until(p, a => Boolean(document.querySelector(`${a.strip} [data-method=asDownload]:not([disabled])`)), 'the refused image offers Attach as download', a, 20000);
       if (surface === 'New message') await press(p, `${a.strip} .image-open`);
       else await press(p, a.send, true);
       await until(p, a => document.querySelector(`${a.strip} .image-choice`)?.hasAttribute('data-open'), 'both recovery controls open', a);
       assert.equal(await p.locator(a.strip).getByRole('button', { name: 'Attach as download', exact: true }).count(), 1);
-      assert.equal(await p.locator(a.strip).getByRole('button', { name: `Remove ${HEIC.name}`, exact: true }).count(), 1);
+      assert.equal(await p.locator(a.strip).getByRole('button', { name: `Remove ${invalidImage.name}`, exact: true }).count(), 1);
     }
     // These branches are seeded through the actual adapter/state objects,
     // rather than imitating their DOM. No synthetic resize handler is called.
@@ -112,7 +143,7 @@ export async function composerWidthCases(h) {
       await until(p, a => document.querySelector(a.sign).dataset.save === 'saved', 'the private note saved', a, 15000);
     }
     await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(x => x.playState !== 'running'), 'the settled state');
-    return { p, a, release, held };
+    return { p, a, release, held, applied };
   }
   async function drag(p, a, side, dx, dy = 0, touch = false) {
     const selector = `${a.dialog} > .composer-edge[data-edge="${side}"]`;
@@ -146,6 +177,8 @@ export async function composerWidthCases(h) {
         assert.ok(edge.label && edge.title, 'each edge has an accessible name and tooltip');
         assert.ok(edge.width >= 44 - TOUCH_PX && edge.height >= 44 - TOUCH_PX, `touch target tolerance ${TOUCH_PX}px: ${JSON.stringify(edge)}`);
       }
+      await p.locator(`${a.dialog} > .composer-edge[data-edge=left]`).click();
+      near((await geometry(p, a)).width, initial.width, 'a click alone changes no width');
       for (const side of ['left', 'right']) {
         const before = await geometry(p, a), inward = side === 'left' ? STEP_PX : -STEP_PX;
         await drag(p, a, side, inward, 25, touch);
@@ -165,10 +198,26 @@ export async function composerWidthCases(h) {
         near(vertical.width, before.width, 'vertical dragging cannot resize');
         near(vertical.top, initial.top, 'vertical dragging cannot move');
       }
+      for (const side of ['left', 'right']) {
+        const edge = p.locator(`${a.dialog} > .composer-edge[data-edge="${side}"]`);
+        await edge.press(side === 'left' ? 'ArrowRight' : 'ArrowLeft');
+        near((await geometry(p, a)).width, initial.width - 32, 'keyboard moves the focused edge symmetrically');
+        await edge.press(side === 'left' ? 'ArrowLeft' : 'ArrowRight');
+        near((await geometry(p, a)).width, initial.width, 'keyboard grows it back');
+      }
       assert.deepEqual(await kept(p, a), saved, 'width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
       assert.deepEqual(commands, [], 'dragging neither saves nor sends nor changes recipients');
       await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
+  }
+  for (const surface of surfaces) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
+    await check(`item 650 base reproof ${surface} refused with recovery ${shape} ${scheme}`, async () => {
+      const { p, a } = await setup(surface, 'refused with recovery', shape, scheme, { baseline: true });
+      await picture(p, `item-650-base-${surface.replaceAll(' ', '-')}-refused-with-recovery`);
+      await assert.rejects(() => proof(p, a, 'base'), error => error.code === 'ERR_ASSERTION' && /either edge offers width adjustment/.test(error.message), 'base application fails because width edges are absent');
+      console.log(`RED-PROVED ${engine} ${surface} refused with recovery ${shape} ${scheme} at ${BASE}: missing width edges`);
+      await close(p);
+    });
   }
   for (const surface of surfaces) for (const state of states) {
     if (surface === 'New message' && ['permission unavailable', 'private note'].includes(state)) continue;
@@ -189,4 +238,27 @@ export async function composerWidthCases(h) {
       });
     }
   }
+  const mutations = [
+    { name: 'left-inert', old: "width + 2 * delta * (side === 'left' ? -1 : 1)", new: "width + (side === 'left' ? 0 : 2 * delta)", expected: /left shrinks both edges symmetrically/ },
+    { name: 'right-inert', old: "width + 2 * delta * (side === 'left' ? -1 : 1)", new: "width + (side === 'right' ? 0 : -2 * delta)", expected: /right shrinks both edges symmetrically/ },
+    { name: 'asymmetric', old: 'width + 2 * delta', new: 'width + delta', expected: /left shrinks both edges symmetrically/ },
+    { name: 'not-centred', old: "const delta = event.clientX - drag.x;", new: "dialog.style.marginLeft = '0px'; const delta = event.clientX - drag.x;", expected: /left edge moves inward|stays centred/ },
+    { name: 'vertical-resize', old: "const delta = event.clientX - drag.x;", new: "dialog.style.height = '400px'; const delta = event.clientX - drag.x;", expected: /no vertical movement|no vertical resize/ },
+    { name: 'keyboard-inert', old: "const delta = event.key === 'ArrowLeft' ? -16 : 16;", new: "const delta = 0;", expected: /keyboard moves the focused edge symmetrically/ },
+    { name: 'writing-lost', old: "const delta = event.clientX - drag.x;", new: "doc.querySelector('#writing-body').value = 'lost'; const delta = event.clientX - drag.x;", expected: /width changes preserve exact writing/ },
+  ];
+  for (const mutation of mutations) await check(`item 650 applied mutant ${mutation.name} and restored control`, async () => {
+    const broken = await setup('Reader', 'writing', 'stacked', 'light', { mutation });
+    assert.ok(broken.applied, 'the product source mutant was actually served');
+    await assert.rejects(() => proof(broken.p, broken.a, `mutant-${mutation.name}`), error => error.code === 'ERR_ASSERTION' && mutation.expected.test(error.message), `the gesture catches ${mutation.name} on its own assertion`);
+    await close(broken.p);
+    await control({ method: 'reset_drafts' });
+    const restored = await setup('Reader', 'writing', 'stacked', 'light');
+    await proof(restored.p, restored.a, `restored-${mutation.name}`);
+    await close(restored.p);
+    receipts.push({ ...broken.applied, caught: true, restored: true, restoredHash: hashes['web/composer-width.mjs'] });
+    await writeFile(path.join(evidence, `item-650-mutants-${engine}.json`), JSON.stringify(receipts, null, 2));
+    console.log(`MUTANT ${engine} ${mutation.name}: applied, caught, original restored and control passed`);
+  });
+
 }
