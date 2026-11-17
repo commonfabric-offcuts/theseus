@@ -162,10 +162,11 @@ move …").
 ### The rail's foot
 
 The side rail ends with its foot (item 628): who you are on which instance,
-the guide's "? Pointer, keys and taps" under it, and Health, one under the
-other, below the rail's last section (the outline on a topic and a
-Conversation, Skills and tools on a page whose rail lists the outcome's
-sections), with the looks they had at its top: the name and the guide's ? in
+the guide's "? Pointer, keys and taps" under it, and Health, below the rail's
+last section (the outline on a topic and a Conversation, Skills and tools on a
+page whose rail lists the outcome's sections), with the looks they had at its
+top: one under the other on a laptop, and on a phone the name on its own line
+with the guide's ? and Health side by side under it; the name and the guide's ? in
 the quiet colour, Health in its own, lit in the alert colour while something
 needs attention, and opening Health. The logo block, the wordmark with its
 presence dot and Turn on notifications, stays at the top, and no section

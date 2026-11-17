@@ -26356,12 +26356,27 @@
   },
   {
    "item": 628,
-   "act": "The rail's foot stands one line under the other",
+   "act": "On a laptop the rail's foot stands one line under the other",
    "break": [
     [
      "web/aim.css",
      ".rail-foot{display:flex;flex-direction:column;",
      ".rail-foot{display:flex;flex-direction:row;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a phone the rail's foot keeps the logo block's row: who you are on its own line, then the guide's ? and Health side by side",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.8rem;row-gap:.3rem}.rail-foot #instance-label{grid-column:1/-1;min-width:0}",
+     ""
     ]
    ],
    "check": {
