@@ -250,7 +250,7 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
 // Use a span button, as the card's star does: the card itself is a button.
 export function paintNoteCorner(card, item, open, doc = document) {
   let corner = card.querySelector(':scope > .note-corner');
-  if (false) { corner?.remove(); return; }
+  if (item?.yours?.note !== true) { corner?.remove(); return; }
   if (corner) return;
   corner = doc.createElement('span'); corner.className = 'note-corner';
   corner.setAttribute('role', 'button'); corner.tabIndex = 0;
