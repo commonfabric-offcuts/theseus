@@ -7238,11 +7238,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // On a phone the person returns to the header to open the drawer. The
       // default dossier shows latest + unread, so putting it just below that
       // header would read its waiting reply on the way back and legitimately
-      // remove the badge before the second press. Keep that trip among read
-      // cards; the pending reply must still need the second press to reach it.
-      for (let n = 0; n < 12; n++) await control({ method: 'agent_message', operation_id: deep + '-read-cover-' + n,
-        topic_id: deep, source: 'topic', sender: other, addressees: [facts.actor],
-        body: `Read note ${n + 1}: the spare pots are in the shed.`, read: true });
+      // remove the badge before the second press. Keep that trip among notes
+      // to someone else; the pending reply must still need its badge press.
+      // Do not use the fixture's read:true: that reads the whole topic.
+      for (let n = 0; n < 20; n++) await control({ method: 'agent_message', operation_id: deep + '-cover-' + n,
+        topic_id: deep, source: 'topic', sender: other, addressees: ['aim-ux'],
+        body: `Rota note ${n + 1}: the spare pots are in the shed.` });
       const p = await open(deep, device, calm, made[0].result.message_id);
       await unreadDrawer(p, device);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='2'`), 'the badge counts both the explicit mark and the delivery');
