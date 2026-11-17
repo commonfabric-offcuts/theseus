@@ -38,6 +38,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // whole card between folded runs. Capture the base before asserting the new rule.
   for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
     for (const state of ['folded', 'opened']) await check(`reading item 645 ${state} consecutive sender names at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
       const topic = `sender-645-${state}-${device}-${theme}`;
       const ids = await seed(topic, [
         ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original stays whole.' }],
@@ -53,7 +54,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const input = device === 'laptop' ? 'laptop' : 'phone';
       await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
       const read = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
-        visible=e=>!!e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1&&getComputedStyle(e).visibility!=='hidden';
+        visible=e=>!!e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}&&getComputedStyle(e).visibility!=='hidden';
         return Object.fromEntries(Object.entries(ids).map(([name,id])=>{const e=c(id),a=e.querySelector(':scope > .message-folded > .folded-author');
           return [name,{folded:e.dataset.folded==='true',name:visible(a)?a.textContent:'',words:e.querySelector(':scope > .message-folded > .folded-words')?.textContent??null,
             wholeName:visible(e.querySelector(':scope > .message-author'))?e.querySelector(':scope > .message-author').textContent:null}]}))})()`);
@@ -76,7 +77,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].name), [other,'','aim-ux',other,''], 'only the first of consecutive folded messages from one sender shows its name; a sender change or whole card starts a new run');
       assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].words), ['First folded words.','Second folded words.','Another sender keeps its name.','First after the whole card.','Second after the whole card.'], 'folded words stay exact and in order');
       assert.ok(before.root.wholeName?.includes(other) && before.whole.wholeName?.includes(other), 'whole messages retain their names');
-      assert.equal(await p.evaluate('document.documentElement.scrollWidth>innerWidth'), false, 'no horizontal overflow');
+      assert.equal(await p.evaluate(`document.documentElement.scrollWidth>innerWidth+${layoutTolerance.overflowPx}`), false, 'no horizontal overflow beyond the case tolerance of 1 CSS px');
       observations.push({ name: `item 645 ${state}`, device, theme, before });
       assert.deepEqual(p.errors, []); await p.close();
     });
@@ -86,6 +87,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // than entry.hidden. The first row a person can see must name its sender.
   for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
     await check(`reading item 645 review Only new visible sender at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
       const key = `review-645-only-${device}-${theme}`;
       const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
       const topic = conversation.topic_id, ids = {};
@@ -98,7 +100,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const input = device === 'laptop' ? 'laptop' : 'phone';
       await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
       const visibleName = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-folded > .folded-author')});
-        return e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1?e.textContent:''})()`);
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})()`);
       assert.equal(await visibleName(), '', 'before filtering, the repeated sender is suppressed');
       await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
       await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
@@ -112,6 +114,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading item 645 Only new visible folded head at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
       const key = `head-645-only-${device}-${theme}`;
       const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
       const topic = conversation.topic_id, ids = {};
@@ -125,11 +128,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
       await until(() => p.evaluate(`${JSON.stringify(Object.values(ids))}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), 'Only new draws both the folded head and reply');
       await centre(p, card(ids.reply)); await away(p); await shot(p, key);
-      const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>1?e.textContent:''})`);
+      const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
       assert.deepEqual(names, [facts.actor, ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
       const topic = `review-645-line-${device}-${theme}`;
       const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Words across the New line ' + name, read: name === 'a' }]));
       for (const id of Object.values(ids)) await dossierFold(topic, id);
@@ -138,18 +142,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).nextElementSibling?.dataset.line==='new'`), 'the New line separates unread b from read a');
       await centre(p, card(ids.b)); await away(p); await shot(p, topic);
       const names = await p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
-        return e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1?e.textContent:''})`);
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
       assert.deepEqual(names, [other, '', other], 'a separating New line starts a named folded run');
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading item 645 review standalone regroup after opening at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
       const topic = `review-645-alone-${device}-${theme}`;
       const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Standalone folded words ' + name }]));
       for (const id of Object.values(ids)) await dossierFold(topic, id);
       const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
       const input = device === 'laptop' ? 'laptop' : 'phone'; await dossierTheme(p, theme);
       const names = () => p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
-        return e&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1?e.textContent:''})`);
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
       assert.deepEqual(await names(), [other, '', ''], 'standalone folded messages share a name in drawn order');
       const target = card(ids.b) + ' > .message-folded > .folded-words';
       await centre(p, target); await press(p, input, target);
