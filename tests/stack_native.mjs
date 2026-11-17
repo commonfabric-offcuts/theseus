@@ -1198,7 +1198,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await menuOf(p, device, ids.lone); await choose(p, device, 'Star for me');
       await menuOf(p, device, ids.two); await choose(p, device, 'Star for me');
       await until(async () => (await actsOf(topic, ids.two))?.starred === true && (await actsOf(topic, ids.lone))?.starred === true, `${device} ${width}: Core holds both stars`);
+      // Another reader stars a message of the dossier too: theirs alone.
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs`, args: { starred: true } });
       await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
       await watchHeld(p, ids.two);
       // The menu's Move below More shows as ever; pressed, it says why under the title bar, and nothing moves.
       const offered = await menuAgain(p, device, ids.two, ids.lone);
@@ -1230,8 +1233,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const frames = await heldFrames(p);
       assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
       assert.deepEqual([(await actsOf(topic, ids.root))?.aside ?? null, (await positionIn(topic, ids.root)).below], [null, false], `${device} ${width}: Core holds no move`);
-      // Another reader's star does not hold this reader's move; unstarring the reader's own frees it.
-      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs`, args: { starred: true } });
+      // Another reader's star (made before the presses above) does not hold this reader's move; unstarring the reader's
+      // own frees it. The Reader's star is pressed once it shows the reader's star, as a person sees it before pressing.
+      await becomes(() => p.evaluate(`document.querySelector('#reader-star').getAttribute('aria-pressed')`), 'true', `${device} ${width}: the Reader's star shows the reader's star`);
       await press(p, device, '#reader-star');
       await becomes(async () => [...await p.evaluate(`(b=>[b.getAttribute('aria-pressed'),b.title])(document.querySelector('#reader-star'))`), await said(p)],
         ['false', 'Star for me', 'Star taken off'], `${device} ${width}: the Reader's star is pressed off, on the page`);
