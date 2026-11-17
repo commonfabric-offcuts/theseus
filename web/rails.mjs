@@ -54,7 +54,9 @@ shell.extend((doc, win) => {
     listen,
     managed: (at, way) => feed() && ((way === 'up' || way === 'down') && (onNothing(at, doc) && Boolean(doc.querySelector('#messages [data-id]'))) && !doc.getElementById('main')?.inert
       || ((way === 'up' || way === 'down') ? inMessages(at, doc) : messagesSideways(at, doc))),
-    region: at => feed() ? at.closest('.message-bar') ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
+    // A message's bar is a region of its own, and so is a dossier whose title bar's glyphs hold the keys: ← and → go
+    // along the title bar and the chevron, never to a control of the messages below, and past its end on to the pane beside.
+    region: at => feed() ? at.closest('.message-bar') ?? at.closest('.reply-stack > .stack-tools')?.parentElement ?? at.closest(PANES.map(([pane]) => pane).join(',')) : null,
     beyond: (at, way) => {
       const pane = PANES.find(([selector]) => at.closest(selector))?.[1];
       return Boolean(pane) && (way === 'left' || way === 'right') && !at.closest('.message-bar') && panes.step(pane, way, doc);
