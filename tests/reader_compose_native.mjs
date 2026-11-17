@@ -1441,8 +1441,13 @@ async function run() {
     const before = await p.evaluate(() => document.querySelector('#writing-body').value);
     await p.keyboard.press('Enter');
     await until(p, v => document.querySelector('#writing-body').value !== v && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted', before);
-    await press(p, '#reader-menu');
-    await p.getByRole('menuitem', {name:'Stacked layout',exact:true}).click();
+    // A phone is already stacked and has no layout choice (reader.layoutChoice).
+    // Quoting on a desktop makes it wide; reset only that actual layout.
+    const layout = await p.evaluate(() => ({ narrow: matchMedia('(max-width: 760px)').matches, mode: document.querySelector('#reader').dataset.layout }));
+    if (!layout.narrow && layout.mode === 'wide') {
+      await press(p, '#reader-menu');
+      await p.getByRole('menuitem', {name:'Stacked layout',exact:true}).click();
+    }
     await until(p, () => document.querySelector('#reader').dataset.layout === 'stacked', 'Stacked chosen again after quoting');
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   };
@@ -1557,6 +1562,7 @@ async function run() {
   // person's: the words quoted are still kept in sight when the keyboard
   // comes up again.
   await check('phone: quoting at the end of a message: the keyboard going down and coming up again keeps the quoted words in sight', async () => {
+    const geometryTolerance = 2; // CSS-pixel rounding; a line hidden by 16px still fails.
     const p = await page('phone', 'light', '/?topic=compose-wrap');
     await open(p, wrap, 'A plan in one item');
     await p.evaluate(() => { const body = document.querySelector('#source-body'); body.scrollTop = body.scrollHeight; });
@@ -1568,13 +1574,13 @@ async function run() {
     await keyboardUp(p);
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const up = await wordsAt(p, n);
-    assert.ok(up.bottom <= up.room.bottom + 2 && up.top >= up.room.top - 2, `with the keyboard up, the quoted words show above the reply (${JSON.stringify(up)})`);
+    assert.ok(up.bottom <= up.room.bottom + geometryTolerance && up.top >= up.room.top - geometryTolerance, `with the keyboard up, the quoted words show above the reply (${JSON.stringify(up)})`);
     await keyboardDown(p);
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await keyboardUp(p);
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const again = await wordsAt(p, n);
-    assert.ok(again.bottom <= again.room.bottom + 2 && again.top >= again.room.top - 2, `the keyboard down and up again, the quoted words still show above the reply (words ${Math.round(again.top)}–${Math.round(again.bottom)}px, the room ${Math.round(again.room.top)}–${Math.round(again.room.bottom)}px)`);
+    assert.ok(again.bottom <= again.room.bottom + geometryTolerance && again.top >= again.room.top - geometryTolerance, `the keyboard down and up again, the quoted words still show above the reply (words ${Math.round(again.top)}–${Math.round(again.bottom)}px, the room ${Math.round(again.room.top)}–${Math.round(again.room.bottom)}px)`);
     await shot(p, 'quote-kept-keyboard-again');
     await p.emulateMedia({ colorScheme: 'dark' }); p.scheme = 'dark';
     await shot(p, 'quote-kept-keyboard-again');
