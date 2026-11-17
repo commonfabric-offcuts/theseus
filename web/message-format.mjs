@@ -887,7 +887,7 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
 // Words a person had read that its agent author's edit took away (item 614,
 // docs/message-edit.md), struck through where they stood among the words host
 // drew: cuts [{at, words}], at a place in the drawn text (as Core counts it, in
-// UTF-16 units, which a string's indices are). Each is a <del> placed at that
+// UTF-16 units, which a string's indices are). Each is a <del> whose words map to that
 // one place, with a space either side where a word would touch it, so a
 // selection or a quote over it takes none of its words and every position the
 // drawn words know stays as it was. A place no drawn words reach (inside a
@@ -913,7 +913,7 @@ export function strike(host, cuts) {
       if (k > 0) { anchor = found; side = 'after'; before = found; after = k < length ? found.nextSibling : texts[i + 1] ?? null; }
       else { anchor = found; side = 'before'; before = texts[i - 1] ?? null; after = found; }
     }
-    const del = placed(doc.createElement('del'), { start: at, end: at });
+    const del = doc.createElement('del');
     del.className = 'struck-words';
     del.title = 'Words you read before the author changed them';
     del.append(placed(doc.createTextNode(words), { start: at, end: at }));

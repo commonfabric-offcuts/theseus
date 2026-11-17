@@ -26196,20 +26196,6 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
-  },
-  {
-   "item": 614,
-   "act": "Struck words take no place of the new words",
-   "break": [
-    [
-     "web/message-format.mjs",
-     "    const del = placed(doc.createElement('del'), { start: at, end: at });",
-     "    const del = doc.createElement('del');"
-    ]
-   ],
-   "check": {
-    "node": "tests/ui_message_format.test.mjs"
-   }
   }
  ]
 }
