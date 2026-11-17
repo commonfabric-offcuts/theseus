@@ -2344,6 +2344,26 @@
     "fbaa4716569d5fa9868b339cf1da93465ef6c330cb4ad06b36bfa2b817a1920e": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "1393445e601bbe4b55ad14b521ad6f7b579496605ae1f6fc51ae81cdd1a11a1d": {
+      "inputs": [
+        "tests/fixtures/schema_45.sql"
+      ],
+      "scope": "repository"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0f9d16fe90b6e08a278ea8f11a27de833507dbee0b4436ab446aa25645fa48be": {
+      "inputs": [
+        "tests/fixtures/schema_46.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {

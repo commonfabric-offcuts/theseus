@@ -154,6 +154,13 @@ Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
 
 ## Your place holds
 
+Topics stay where the reader puts them in the left rail. New messages,
+reloads and other people’s activity never move them. A new topic appears
+at the top of its outcome once, then stays until the reader moves it.
+`tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`), the
+"rail item 641" cases, check this at 320, 375, 390 and laptop widths, light
+and dark, including the reader’s own native reorder.
+
 A message arriving never moves what is being read or written, and nor does
 quoting from it, nor typing in the reply. A quote keeps its words in sight
 until you scroll the message yourself, however you scroll it, and keeps the

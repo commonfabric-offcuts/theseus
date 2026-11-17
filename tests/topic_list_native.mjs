@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 // The topic list in the real browser against the real server
-// (docs/topic-list.md): latest activity first, done topics folded into a
+// (docs/topic-list.md): stable topic positions, done topics folded into a
 // "Done (N)" line the person opens with the pointer and finds open again
 // after a reload, archived ones behind an "Archived (N)" line, a new message
 // bringing a done topic back, and a list that keeps still under the pointer
@@ -16,7 +16,7 @@ export async function listChecks({ check, page, until, control, view, shot }) {
   const post = (operation, topic) => control({ method: 'agent_message', operation_id: operation, body: 'News in ' + topic, topic_id: topic, addressees: [], join: true });
   const state = (operation, topic, args) => control({ method: 'topic_state', operation_id: operation, topic_id: topic, args });
 
-  await check('list the list is latest activity first and a new message moves its topic to the top live', async () => {
+  await check('list the list keeps stable topic positions and a new message moves no topic live', async () => {
     await control({ method: 'navigation_topics', topics: [{ id: 'list-a', title: 'List A' }, { id: 'list-b', title: 'List B' }, { id: 'list-c', title: 'List C' }] });
     const p = await page('list-order', null, true);
     await away(p);
@@ -24,7 +24,8 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     const served = (await view('workspace_topics', { workspace_id: 'w1' })).items.map(item => item.id);
     assert.deepEqual(await rows(p), served, 'the page shows the server order');
     await post('list-order-a', 'list-a');
-    await until(async () => (await rows(p))?.[0] === 'list-a', 'the topic written in comes to the top without a reload');
+    await until(() => p.evaluate("Number(document.querySelector('#topics [data-topic-id=list-a] .unread-count')?.textContent) > 0"), 'the message updates the unread count');
+    assert.deepEqual(await rows(p), served, '641: the message moves no topic');
     await shot(p, 'topics-order');
     assert.deepEqual(p.errors, []);
   });
@@ -63,12 +64,13 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     assert.deepEqual(third.errors, []);
   });
 
-  await check('list a new message in a done topic brings it back to the top of the list', async () => {
+  await check('list a new message in a done topic brings it back at its stable position', async () => {
     const p = await page('list-reopen', null, true);
     await away(p);
     await until(async () => (await line(p, 'done')).label === 'Done (1)', 'one done topic');
     await post('list-reopen-b', 'list-b');
-    await until(async () => (await rows(p))?.[0] === 'list-b', 'the reopened topic heads the list');
+    await until(async () => (await rows(p))?.includes('list-b'), 'the reopened topic returns to the list');
+    assert.deepEqual(await rows(p), (await view('workspace_topics', { workspace_id: 'w1' })).items.map(item => item.id), '641: it returns at its stable position');
     await until(async () => (await line(p, 'done')).hidden, 'no done topic left, so no Done line');
     const topic = (await view('topic', { topic_id: 'list-b' })).topic;
     assert.equal(topic.state, 'active');
@@ -90,7 +92,7 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     assert.deepEqual(p.errors, []);
   });
 
-  await check('list the list keeps still under the pointer and takes its order once the pointer leaves', async () => {
+  await check('list activity leaves the list still under the pointer and after the pointer leaves', async () => {
     const p = await page('list-pointer', null, true);
     await away(p);
     const before = await until(async () => { const r = await rows(p); return r?.length > 3 && r; }, 'list read');
@@ -103,7 +105,7 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     const spot = await p.box(resting);
     assert.equal(await p.evaluate(`document.elementFromPoint(${spot.x + 12}, ${spot.y + 12})?.closest('.nav-item')?.dataset.topicId`), first, 'the pointer is still on the row it rested on');
     await away(p);
-    await until(async () => (await rows(p))?.[0] === last, 'the list takes its order once the pointer leaves');
+    assert.deepEqual(await rows(p), before, '641: activity moves nothing after the pointer leaves either');
     assert.deepEqual(p.errors, []);
   });
 
@@ -119,13 +121,14 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     assert.equal(focused, before[1], '↓ reached the second row');
     await p.evaluate(`(()=>{window.listBlurs=0;document.activeElement.addEventListener('blur',()=>{window.listBlurs++;});return true})()`);
     await post('list-focus-move', focused);
-    await until(async () => (await rows(p))?.[0] === focused, 'the focused topic moves to the top');
+    await until(() => p.evaluate(`Number(document.querySelector('#topics [data-topic-id="${focused}"] .unread-count')?.textContent) > 0`), 'the message updates the row');
+    assert.deepEqual(await rows(p), before, '641: the focused topic stays in its position');
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), focused, 'focus stayed on that row');
     assert.equal(await p.evaluate('window.listBlurs'), 0, 'it never lost focus while it moved');
     // Said done while focused: it stays put, focused, until focus moves on.
     await state('list-focus-done', focused, { state: 'done' });
     await until(async () => (await line(p, 'done')).label === 'Done (1)', 'the server counts it done');
-    assert.equal((await rows(p))?.[0], focused, 'the focused row has not left the list');
+    assert.deepEqual(await rows(p), before, 'the focused row has not left the list');
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), focused);
     await p.key('Tab');
     await until(async () => without(await rows(p), focused), 'once focus moves on, it leaves for the Done line');

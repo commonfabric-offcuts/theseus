@@ -1,7 +1,7 @@
 # An outcome's topics
 
-Each outcome lists its topics latest activity first, so the topics with
-something new or something said about them come to the top and quiet ones sink.
+Each outcome lists its topics in stable position order, newest topics first.
+A new message or a state change updates the row without moving it (item 641).
 Done topics are listed apart, below the rest, and archived topics apart again.
 The web app's topic list (in the sidebar and on the outcome page) and the CLI's
 `topics` verb both show the server's order.
@@ -80,19 +80,19 @@ said, and for a reader outside a person's whisper that reopened the topic
   started in it. Each such change moves the topic's version, with a change in
   its own feed, so a page reading the topic reads it again and the outline and
   the right rail move it at once.
-- Each list is ordered by `activity_ms`, latest first, and then by topic id,
-  descending, so topics with the same time keep one order.
+- Each list is ordered by immutable `list_position`, newest first, and then by topic id,
+  descending, so topics with the same position keep one order.
 - `next_cursor` is the position of the page's last topic, written
-  `DONE:ACTIVITY_MS:ID` (`DONE` is 1 for a done topic); pass it back as
+  `DONE:LIST_POSITION:ID` (`DONE` is 1 for a done topic); pass it back as
   `cursor` for the next page; an empty cursor is the start. Any other cursor
   is refused (`INVALID_ARGUMENT`).
-  A topic whose activity changes between pages moves; a reload reads the list
-  again from its start.
+  Activity changes between pages never move a topic across the cursor.
+  A new topic appears before the cursor and is read on the next reload.
 - Every page carries `groups: {done, archived}`, how many topics the done list
   and the archived list hold, so a client can say "Done (3)" without reading
   them.
-- Each page is read from one index on (outcome, archived, done, activity
-  time, id), so its cost follows the page, not the outcome's history. Each
+- Each page is read from one index on (outcome, archived, done, list
+  position, id), so its cost follows the page, not the outcome's history. Each
   count is read from its own stretch of that index, index entries only and no
   topic rows, so it costs one entry per done or archived topic: it grows with
   how many topics the outcome has done or archived, and every page carries it.
@@ -113,7 +113,8 @@ the Done line as any topic is (docs/rails.md).
 
 Once the reader has moved topics with ⌘↑ and ⌘↓, each list shows them in
 the reader's own order, which every list read carries (`order`), and a topic
-they never placed goes right after the one the server lists before it
+they never placed follows the one the server lists before it. Newly created
+topics are listed first, so enter at the top once
 (docs/outline-order.md).
 
 A row whose topic waits on the reader for an ask opens the topic at that
@@ -121,7 +122,7 @@ ask's message, so the Reader shows the question (item 148,
 docs/outcome-light.md); its link says so. Any other row opens the topic.
 
 The open topic's row sits in the list its own state puts it in, in its place
-by activity, before the lists are read again. A topic that two lists hold,
+by stable position, before the lists are read again. A topic that two lists hold,
 because it moved between their reads, shows once, in the list read last.
 
 The lists keep still under the pointer. While the pointer is over the topic
@@ -135,6 +136,6 @@ until focus moves on.
 ## The CLI
 
 `topics OUTCOME` prints the topics that are neither done nor archived, latest
-activity first, then `done (N):` and the done ones, then, when there are any,
+position first, then `done (N):` and the done ones, then, when there are any,
 `archived (N): topics OUTCOME --archived`. `topics OUTCOME --archived` prints
 the archived list.

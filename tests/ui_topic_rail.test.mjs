@@ -19,10 +19,10 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
   }
   globalThis.document = { createElement: () => new Element(), activeElement: null }; t.after(() => { globalThis.document = previous; });
-  // Ids in letter order were active latest first; the open topic z was active
-  // latest of all, so it heads the list wherever a page puts it.
+  // Ids in letter order have newest stable positions first; the open topic z
+  // has the newest position, so it heads the list wherever a page puts it.
   const at = id => 3e8 - [...id.padEnd(4, '\0')].slice(0, 4).reduce((sum, c) => sum * 128 + c.charCodeAt(0), 0);
-  const item = id => ({ id, title: id, workspace_id: 'w1', activity_ms: at(id) }), pos = id => topicPosition(item(id));
+  const item = id => ({ id, title: id, workspace_id: 'w1', list_position: at(id) }), pos = id => topicPosition(item(id));
   const page = (ids,next=null) => ({ instance_id: 'i1', items: ids.map(item), next_cursor: next === null ? null : pos(next) });
   const nodes = Object.fromEntries(['host','more','retry','message','area'].map(key => [key,new Element()]));
   nodes.area.append(nodes.host, nodes.more, nodes.retry);
@@ -31,7 +31,7 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
   const lines = folds ? { done: fold(), archived: fold() } : {};
   for (const line of Object.values(lines)) { nodes.area.append(line.details); line.details.append(line.host, line.more); }
   const calls = [], opened = [], queue = [];
-  const rail = new TopicRail({ ...nodes, ...lines, storage, reader: 'tony', pages: new TopicPages('i1','w1',current ?? { ...item('z'), activity_ms: 4e8 }), read: args => { calls.push(args); const r = queue.shift(); return typeof r==='function'?r():Promise.resolve(r); }, open: (id, title) => opened.push(title === id ? id : [id, title]), denied: error => error.status===403 });
+  const rail = new TopicRail({ ...nodes, ...lines, storage, reader: 'tony', pages: new TopicPages('i1','w1',current ?? { ...item('z'), list_position: 4e8 }), read: args => { calls.push(args); const r = queue.shift(); return typeof r==='function'?r():Promise.resolve(r); }, open: (id, title) => opened.push(title === id ? id : [id, title]), denied: error => error.status===403 });
   return { ...nodes, ...lines, rail, calls, opened, queue, item, page, pos };
 }
 test('rail paging deduplicates current and hands final More focus to newly available links', async t => {
@@ -190,7 +190,7 @@ const as = (f, id, fields) => ({ ...f.item(id), ...fields });
 
 test('done and archived topics fold into lines that say how many they hold and are read only when opened', async t => {
   const f = fixture(t, { folds: true, current: { ...f0('t1') } });
-  function f0(id) { return { id, title: id, workspace_id: 'w1', activity_ms: 1 }; }
+  function f0(id) { return { id, title: id, workspace_id: 'w1', list_position: 1 }; }
   f.queue.push(listed(f, ['a', 'b'], { done: 2, archived: 1 }));
   await f.rail.load();
   assert.deepEqual(f.calls, [{ workspace_id: 'w1', limit: 20 }], 'a closed line is not read');
@@ -259,7 +259,7 @@ test('a topic that moved between lists is shown once, where the list read last p
   await f.rail.load();
   assert.deepEqual(shown(f.host), ['z', 'a']); assert.deepEqual(shown(f.done.host), ['b', 'c']);
   // The open topic, said done on this page, moves to the done line before any list is read again.
-  f.rail.updateCurrent({ ...f.item('z'), activity_ms: 4e8, state: 'done' });
+  f.rail.updateCurrent({ ...f.item('z'), list_position: 4e8, state: 'done' });
   assert.deepEqual(shown(f.host), ['a']); assert.deepEqual(shown(f.done.host), ['z', 'b', 'c']);
 });
 
@@ -283,7 +283,7 @@ test('a closed line whose last topic left it is not shown, with nothing behind i
   g.queue.push(listed(g, ['a'], { done: 0, archived: 0 }));
   await g.rail.load();
   assert.equal(g.done.details.hidden, true);
-  g.rail.updateCurrent({ ...g.item('z'), activity_ms: 4e8, state: 'done' });
+  g.rail.updateCurrent({ ...g.item('z'), list_position: 4e8, state: 'done' });
   assert.deepEqual(shown(g.done.host), ['z']);
   assert.equal(g.done.details.hidden, false, 'the open topic, now done, is in the Done line');
   assert.equal(g.done.label.textContent, 'Done (1)', 'and counted, though the counts read before said none: never "Done (0)" with a topic behind it');
@@ -302,7 +302,7 @@ test('the outcome is empty only when no list holds a topic', async t => {
 });
 
 // The list keeps still under the pointer and around the focused row.
-const moved = (f, id, activity_ms, fields = {}) => ({ ...f.item(id), activity_ms, ...fields });
+const moved = (f, id, list_position, fields = {}) => ({ ...f.item(id), list_position, ...fields });
 
 test('a change found while the pointer is over the list redraws its rows in place and moves them once the pointer leaves', async t => {
   const f = fixture(t);
@@ -310,7 +310,7 @@ test('a change found while the pointer is over the list redraws its rows in plac
   assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c']);
   const rows = [...f.host.children];
   f.area.handlers.pointerenter?.();
-  // c is written in, so it comes first after z; b is renamed; a new topic arrives.
+  // A replacement list puts c first after z; b is renamed; a new topic arrives.
   f.queue.push({ instance_id: 'i1', items: [moved(f, 'c', 3.5e8), moved(f, 'aa', 3.4e8), f.item('a'), { ...f.item('b'), title: 'B renamed' }], next_cursor: null });
   await f.rail.load();
   assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c'], 'nothing moves under the pointer');
@@ -340,7 +340,7 @@ test('a focused row keeps its focus while rows move around it, and leaves its li
   const empty = { instance_id: 'i1', items: [], next_cursor: null, groups: { done: 0, archived: 0 } };
   f.queue.push(listed(f, ['a', 'b', 'c'], { done: 0, archived: 0 }), empty); await f.rail.load();
   const b = f.host.children.find(x => x.dataset.topicId === 'b'); b.focus();
-  // b is written in: it moves to the top, and keeps the focus.
+  // A replacement list puts b at the top, and keeps the focus.
   f.queue.push(listed(f, [], { done: 0, archived: 0 }, { items: [moved(f, 'b', 3.5e8), f.item('a'), f.item('c')] }), empty);
   await f.rail.load();
   assert.deepEqual(shown(f.host), ['z', 'b', 'a', 'c']);
@@ -426,7 +426,7 @@ test('opening a line under the pointer shows its rows at once, whether it was re
 // (docs/outcome-light.md): a press opens the topic at its asking message, so
 // the Reader shows it; a row waiting on someone else, or on nobody, opens the topic.
 test('a topic row waiting on the reader opens the topic at its question, and a row waiting on someone else opens only the topic', async t => {
-  const f = fixture(t), at = f.item('a').activity_ms;
+  const f = fixture(t), at = f.item('a').list_position;
   const asked = (id, actor, message) => ({ ...f.item(id), asks: [{ actor_id: actor, message_id: message, by: 'fable', since_ms: at }] });
   f.queue.push({ instance_id: 'i1', items: [asked('a', 'tony', 'm-ask-a'), asked('b', 'cynthia', 'm-ask-b'), f.item('c')], next_cursor: null });
   await f.rail.load();
@@ -441,4 +441,15 @@ test('a topic row waiting on the reader opens the topic at its question, and a r
   await f.rail.load();
   opened.length = 0; row('a').onclick({ button: 0, preventDefault() {} });
   assert.deepEqual([opened, row('a').href], [[['a', 'a', null]], '?topic=a']);
+});
+
+
+test('item 641 activity updates a topic row without changing its stable position', async t => {
+  const f = fixture(t);
+  f.queue.push(f.page(['a', 'b', 'c'])); await f.rail.load();
+  const before = shown(f.host), current = f.rail.pages.current;
+  f.rail.updateCurrent({ ...current, activity_ms: 999999999 });
+  f.queue.push({ instance_id: 'i1', items: ['a', 'b', 'c'].map((id, n) => ({ ...f.item(id), activity_ms: 1000 * n, unread: n })), next_cursor: null });
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), before, 'current and other topics keep their positions while activity and counts change');
 });
