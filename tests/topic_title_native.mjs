@@ -87,7 +87,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       // CDP answers reload before the old execution context has gone. Wait on
       // this reload's document response completing before reading its DOM.
       // WebKit's Page.reload adapter already awaits the document's load event.
-      if (p.network) await until(() => {
+      if (!p.pw && p.network) await until(() => {
         const events = p.network.slice(networkFrom);
         const document = events.find(e => e.method === 'Network.responseReceived' && e.params.type === 'Document');
         return document && events.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === document.params.requestId);
