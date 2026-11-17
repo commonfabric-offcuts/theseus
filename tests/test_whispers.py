@@ -979,7 +979,8 @@ MESSAGE_READS = {
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; and the reader's own places in a topic (item 550), "
-                           "each on a message under VISIBLE, so a whisper they are outside places nothing", 24),
+                           "each on a message under VISIBLE, so a whisper they are outside places nothing; and the first message of the "
+                           "dossier a source is in (item 550, source_dossier), the root that same walk reached, so one the reader sees", 25),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
