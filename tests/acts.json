@@ -11044,8 +11044,8 @@
    "break": [
     [
      "web/card-scroll.mjs",
-     "    this.wholes.delete(id); this.revisions.delete(id);\n    if (!card) return;",
-     "    this.revisions.delete(id);\n    if (!card) return;"
+     "    this.wholes.delete(id); this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;",
+     "    this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;"
     ]
    ],
    "check": {
@@ -26195,6 +26195,96 @@
    ],
    "check": {
     "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card first drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "revision: revisionOf(item), struck: item.struck?.cuts }));",
+     "revision: revisionOf(item) }));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader shows the struck words",
+   "break": [
+    [
+     "web/reader.mjs",
+     "struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,",
+     "struck: null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An open Reader keeps the struck words when the agent edits again",
+   "break": [
+    [
+     "web/app.mjs",
+     "edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null });",
+     "edited_ms: latest.edited_ms ?? null });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again on the open page",
+   "break": [
+    [
+     "web/app.mjs",
+     "  paintCardReading(); stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();",
+     "  stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again though this visit opened it",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (item.unread === true) openedIds.delete(id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
    }
   }
  ]
