@@ -2186,7 +2186,7 @@ async function initialize() {
       const p = reader.presentation;
       try {
         if (!await registry.close(p, { explicit: true })) return false;
-        if (false && !p.sourceUnavailable && p.source.source_ref.kind === 'message' && p.source.topic_id === topic.id) {
+        if (reason === 'parent' && !p.sourceUnavailable && p.source.source_ref.kind === 'message' && p.source.topic_id === topic.id) {
           const source = p.source, id = source.source_ref.id, accessEpoch = listAccessEpoch;
           if (!views.messages.has(id)) {
             const foreground = registry.cleanup.foreground();
