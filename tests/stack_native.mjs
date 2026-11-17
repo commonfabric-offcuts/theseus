@@ -1270,6 +1270,64 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 550: Earlier messages, pressed under a dossier's stack whose first message and older replies are above the
+  // page, fills that stack where the button was. Each older message comes in as a whole card a sheet gap below the
+  // one before, newest first and its first message last, none tucked under another; the stack's head stays its head
+  // and the cards already shown hold still. Shot before and after at 320, 375, 390 and on a laptop, light and dark.
+  await check('reading stacks Earlier messages fills the stack it was under with whole cards where the button was: what was shown holds still and the stack keeps its head (item 550)', async () => {
+    const older = ['o0', 'o1', 'o2', 'o3', 'o4'], loaded = ['a1', 'a2', 'a3', 'a4', 'a5'];
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-more-fills-' + device;
+      const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+      const said = [['root', say(other, 'Should the pier lamps be relit before the tide fair?', { join: true })]];
+      for (const [n, name] of older.entries()) said.push([name, say(n % 2 ? other : 'aim-ux', `Pier lamp ${n}: the wick is trimmed and the glass wiped.`, { reply_to: 'root', ...(n ? {} : { join: true }) })]);
+      for (const [n, name] of loaded.entries()) said.push([name, say(n % 2 ? 'aim-ux' : other, `Lamp post ${n + 1} is lit and holding in the wind.`, { reply_to: 'root' })]);
+      for (let n = 0; n < 25; n++) said.push(['q' + n, say(other, `Quay note ${n}, a message of its own.`)]);
+      const ids = await seed(topic, said);
+      const p = await open(topic, device, topic, ids.q24);
+      const key = `(id=>{const m=${JSON.stringify(ids)};return Object.keys(m).find(k=>m[k]===id)??id})`;
+      const widths = device === 'phone' ? [320, 375, 390] : [1280];
+      const shots = async (at, into) => {
+        for (const width of widths) {
+          if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await p.evaluate(into);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-fills-${device}-${width}-${at}-${theme}`); }
+          await dossierTheme(p, 'light');
+        }
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      };
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.root}"]'))`), false, `${device}: the dossier's first message is above the page`);
+      await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), `${device}: Earlier messages is offered`);
+      await shots(0, "document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const before = await p.evaluate(`(()=>{const key=${key},cards=[...document.querySelectorAll('#messages .message-card[data-id]')].filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1),b=last.getBoundingClientRect();
+        return {last:key(last.dataset.id),lastTop:Math.round(b.top),lastBottom:Math.round(b.bottom),stack:key(last.closest('.reply-stack')?.dataset.stack??null)}})()`);
+      const count = await p.evaluate("document.querySelectorAll('#messages .message-card[data-id]').length");
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length > ${count} && Boolean(document.querySelector('#messages [data-id="${ids.root}"]'))`), `${device}: Earlier messages loads the dossier's older messages`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const after = await p.evaluate(`(()=>{const key=${key},last=document.querySelector('#messages .message-card[data-id="${ids[before.last]}"]');
+        const filled=[...document.querySelectorAll('#messages [data-stack-filled="true"]')],box=e=>e.getBoundingClientRect();
+        const runs=filled.slice(1).map((e,i)=>Math.round(box(e).top-box(filled[i]).bottom));
+        return {lastTop:Math.round(box(last).top),filled:filled.map(e=>key(e.dataset.id)),stacks:[...new Set(filled.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],
+          head:key(document.querySelector('#messages [data-id="${ids.a5}"]').closest('.reply-stack')?.dataset.stack??null),
+          first:filled.length?Math.round(box(filled[0]).top):null,gaps:[...new Set(runs)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await shots(1, `document.querySelector('#messages [data-id="${ids[before.last]}"]').scrollIntoView({block:'start'})`);
+      const seen = JSON.stringify({ before, after });
+      assert.equal(before.stack, 'a1', `${device}: the last card above Earlier messages is in the dossier's stack, headed by its oldest loaded reply: ${seen}`);
+      assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1, `${device}: the cards already shown hold still: ${seen}`);
+      assert.deepEqual(after.filled, [...older].reverse().concat('root'), `${device}: the older messages fill the stack newest first, its first message last: ${seen}`);
+      assert.deepEqual(after.stacks, ['a1'], `${device}: every older message is in the stack Earlier messages was under: ${seen}`);
+      assert.equal(after.head, 'a1', `${device}: the stack keeps its head; its first message, now loaded, does not take it: ${seen}`);
+      assert.equal(after.gaps.length, 1, `${device}: the older cards are one even run: ${seen}`);
+      assert.ok(after.gaps[0] > 0, `${device}: no older card tucks under the one before: ${seen}`);
+      assert.ok(Math.abs(after.first - (before.lastBottom + after.gaps[0])) <= 1, `${device}: the first older card follows the last shown as each follows the one before: ${seen}`);
+      assert.equal(after.sideways, false, `${device}: nothing runs off the side`);
+      observations.push({ name: 'Earlier messages fills its stack', engine, device, before, after });
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 550: a dossier whose first message is above the page is one stack of its branches, and it joins as a whole,
   // as it is named and put aside: ⇧⌘↑ sends the join for that first message, every loaded message of it shows in the
   // stack above at once, while the join waits for its answer, and Core joins the whole dossier; ⌘Z puts it back as it
