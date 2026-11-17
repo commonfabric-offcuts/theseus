@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -98,8 +99,8 @@ class BrowserShards(unittest.TestCase):
         self.assertIn('native-d,native-e', [s['steps'] for s in browser])
         self.assertEqual(sorted(s['minutes'] for s in browser), [30, 35, 40, 45])
 
-    def combine(self, absent=(), refused=(), narrow=False):
-        plan = self.plan()
+    def combine(self, absent=(), refused=(), narrow=False, cancelled=None, plan=None, partial=False):
+        plan = self.plan() if plan is None else plan
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             shards = root / 'shards'
@@ -115,21 +116,126 @@ class BrowserShards(unittest.TestCase):
                        'steps': [{'name': n, 'passed': True, 'exit': 0} for n in names],
                        'tree_unchanged': True, 'tree_after': {}, 'passed': True,
                        'started_at': '2026-11-17T00:00:00Z', 'finished_at': '2026-11-17T00:01:00Z'}
+                if partial and index == 0:
+                    doc['steps'] = self.logged_results()
                 if index in refused:
                     doc = {'refused': 'no browser', 'steps': [], 'passed': False}
                 raw = json.dumps(doc)
                 (folder / 'summary.json').write_text(raw)
-                receipt = {'run': {'id': '1', 'attempt': '1'}, 'merge': {'sha': 'a' * 40},
+                receipt = {'run': {'id': '44099688612', 'attempt': '1'}, 'merge': {'sha': 'a' * 40},
                            'summary_sha256': hashlib.sha256(raw.encode()).hexdigest()}
                 (folder / 'run.json').write_text(json.dumps(receipt))
-            env = dict(os.environ, GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='1', GITHUB_SHA='a' * 40,
+            if cancelled is not None:
+                (shards / 'cancelled.json').write_text(json.dumps(cancelled))
+            env = dict(os.environ, GITHUB_RUN_ID='44099688612', GITHUB_RUN_ATTEMPT='1', GITHUB_SHA='a' * 40,
                        GITHUB_EVENT_NAME='push', PLAN_SHARDS=json.dumps(plan))
             out = root / 'summary.json'
             code = script(self.workflow.split("      - name: Fold the shards' summaries into one\n", 1)[1])
             with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(sys, 'argv', ['combine', str(shards), str(out)]), \
                     redirect_stdout(io.StringIO()) as printed, self.assertRaises(SystemExit) as ended:
                 exec(compile(code, str(WORKFLOW), 'exec'), {})
-            return ended.exception.code, json.loads(out.read_text()), json.loads(printed.getvalue()), plan
+            summary = json.loads(out.read_text())
+            summary_path = root / 'judge.json'
+            summary_path.write_text(json.dumps(summary))
+            self.judged = release_check.judge_summary(summary_path, 'a' * 40)
+            self.provenance = json.loads((root / 'provenance.json').read_text())
+            return ended.exception.code, summary, json.loads(printed.getvalue()), plan
+
+    def cancellation(self):
+        return json.loads((ROOT / 'tests/fixtures/cancelled-browser-44099688612.json').read_text())
+
+    def logged_results(self):
+        return [json.loads(line.split(' ', 1)[1]) for line in self.cancellation()['log'].splitlines()
+                if ' {"name":' in line]
+
+    def cancellation_input(self):
+        fixture = self.cancellation()
+        return [{'run_id': fixture['run_id'], 'attempt': fixture['attempt'], 'head_sha': 'a' * 40,
+                 'id': 1234, 'name': fixture['name'], 'conclusion': 'cancelled',
+                 'started_at': '2026-11-17T14:08:30Z', 'completed_at': '2026-11-17T15:23:40Z',
+                 'log': fixture['log']}]
+
+    def cancelled_plan(self):
+        fixture = self.cancellation()
+        return [{'name': fixture['name'], 'steps': ','.join(fixture['steps'])},
+                {'name': 'remaining steps', 'steps': ','.join(n for n in release_check.REQUIRED if n not in fixture['steps'])}]
+
+    def test_train_33_cancel_keeps_six_logged_results_with_shard_and_cancel_time(self):
+        fixture = self.cancellation()
+        for partial in (False, True):
+            with self.subTest(partial_artifact=partial):
+                code, summary, printed, _ = self.combine(absent=() if partial else (0,), narrow=True,
+                    cancelled=self.cancellation_input(), plan=self.cancelled_plan(), partial=partial)
+                kept = [s for s in summary['steps'] if s['name'] in fixture['steps']]
+                self.assertEqual(len(kept), 6, 'train 33 lost six already logged results')
+                for actual, logged in zip(kept, self.logged_results()):
+                    self.assertEqual({k: actual[k] for k in logged}, logged)
+                    self.assertEqual(actual['shard'], fixture['name'])
+                    self.assertEqual(actual['cancelled_at'], fixture['cancelled_at'])
+                    self.assertEqual(actual['result_source'], 'github-job-log')
+                self.assertEqual(sum(s['passed'] for s in kept), 4)
+                self.assertEqual(len(summary['cancelled_shards']), 1)
+                self.assertEqual(self.provenance['cancelled_shards'], summary['cancelled_shards'])
+
+    def test_cancelled_unreached_steps_stay_missing_and_results_never_make_a_sample(self):
+        code, summary, printed, _ = self.combine(absent=(0,), narrow=True,
+            cancelled=self.cancellation_input(), plan=self.cancelled_plan())
+        missing = sorted(set(self.cancellation()['steps']) - {s['name'] for s in self.logged_results()})
+        self.assertEqual(printed['missing'], missing)
+        self.assertEqual(len(missing), 10)
+        self.assertFalse(summary['passed'])
+        self.assertFalse(summary['quarantine']['green'])
+        self.assertEqual(code, 1)
+        self.assertTrue(any('did not run native-webkit-pipeline' in reason for reason in self.judged[1]))
+
+    def test_cancel_even_after_last_result_cannot_be_a_release_verdict(self):
+        plan = self.cancelled_plan()
+        plan[0]['steps'] = ','.join(s['name'] for s in self.logged_results())
+        plan[1]['steps'] = ','.join(n for n in release_check.REQUIRED if n not in plan[0]['steps'].split(','))
+        data = self.cancellation_input()
+        # All logged results green still cannot prove the cancelled shard's checkout stayed unchanged.
+        data[0]['log'] = data[0]['log'].replace('"passed": false', '"passed": true')
+        code, summary, printed, _ = self.combine(absent=(0,), narrow=True, cancelled=data, plan=plan)
+        self.assertEqual(printed['missing'], [])
+        self.assertFalse(summary['passed'])
+        self.assertFalse(summary['quarantine']['green'])
+        self.assertTrue(self.judged[0] or self.judged[1])
+        self.assertEqual(code, 1)
+
+    def test_workflow_fetches_cancelled_logs_for_this_attempt_and_survives_unavailable_logs(self):
+        self.assertIn('      - name: Recover cancelled browser jobs', self.workflow)
+        section = self.workflow.split('      - name: Recover cancelled browser jobs\n', 1)[1]
+        code = textwrap.dedent(section.split('          script: |\n', 1)[1].split("      - name: Fold the shards' summaries into one", 1)[0])
+        jobs = self.cancellation_input()
+        jobs += [dict(jobs[0], id=2345, name='unrelated', conclusion='success'),
+                 dict(jobs[0], id=3456, name=self.cancellation()['name'], conclusion='timed_out')]
+        harness = '''
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+let written, requests = [];
+const github = {rest: {actions: {listJobsForWorkflowRunAttempt: 'attempt-jobs', downloadJobLogsForWorkflowRun: 'job-logs'}},
+  paginate: async (method, args) => { requests.push([method, args]); return input.jobs; },
+  request: async (route, args) => { requests.push([route, args]);
+    if (args.job_id === 3456) throw new Error('logs unavailable');
+    return {data: input.jobs[0].log}; }};
+const context = {repo: {owner:'owner', repo:'repo'}, runId:44099688612, sha:'a'.repeat(40)};
+const core = {warning: () => {}};
+const original = fs.writeFileSync;
+fs.writeFileSync = (path, data) => { written = JSON.parse(data); };
+(async () => { await new (Object.getPrototypeOf(async function(){}).constructor)('github','context','core',input.code)(github,context,core);
+  fs.writeFileSync = original; process.stdout.write(JSON.stringify({written, requests})); })().catch(e=>{console.error(e);process.exit(1)});
+'''
+        answer = subprocess.run(['node', '-e', harness], input=json.dumps({'jobs': jobs, 'code': code}),
+            capture_output=True, text=True, env=dict(os.environ, GITHUB_RUN_ATTEMPT='1', PLAN_SHARDS=json.dumps(self.cancelled_plan())))
+        self.assertEqual(answer.returncode, 0, answer.stderr)
+        result = json.loads(answer.stdout)
+        self.assertEqual(result['requests'][0][1]['attempt_number'], 1)
+        self.assertEqual(result['requests'][0][1]['run_id'], 44099688612)
+        self.assertEqual([r[1]['job_id'] for r in result['requests'][1:]], [1234, 3456])
+        self.assertEqual(result['written'][0]['log'], jobs[0]['log'])
+        self.assertEqual(result['written'][1]['log'], '')
+        self.assertIn('log_error', result['written'][1])
+        self.assertIn('    permissions:\n      contents: read\n      actions: read', self.workflow)
 
     def test_combined_summary_keeps_all_required_steps_when_a_shard_reports_nothing(self):
         for absent, refused, narrow in (((), (), False), ((0,), (), False), ((), (0,), False),
