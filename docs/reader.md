@@ -486,7 +486,8 @@ The access states disable sending while safe local typing remains available.
 Actual read-only writing is checked while native Close waits for device-save
 completion; refusal keeps the Reader open, exact writing and destination kept.
 A source fold remains its own act while that writing is read-only. The title
-button shares the header's 44px coarse-pointer floor.
+button shares the header's 44px phone-layout and coarse-pointer floor, which
+remains in force when native mixed input changes the primary pointer.
 The HTTP seams measure client behavior; they do not claim a backend permission
 transition. WebKit's phone-width input is desktop wheel with native taps. The
 unavailable native WebKit finger path remains harness item 720. Final physical

@@ -9,7 +9,7 @@ export async function observe648(p) {
   await p.addInitScript(() => {
     window.swipe648Inputs = [];
     for (const type of ['touchstart', 'touchend', 'touchcancel', 'wheel']) document.addEventListener(type, e => {
-      window.swipe648Inputs.push({ type, trusted: e.isTrusted, target: e.target.id, ctrl: e.ctrlKey });
+      window.swipe648Inputs.push({ type, trusted: e.isTrusted, target: e.target.id, inSource: Boolean(e.target.closest('#source-body')), ctrl: e.ctrlKey });
     }, { capture: true, passive: true });
   });
   await p.route('**/reader.mjs', async route => {
@@ -22,12 +22,14 @@ export async function observe648(p) {
     const observer = `import { Reader as Swipe648Reader } from './reader.mjs';
 import { EditorRegistry as Swipe648Registry } from './app-session.mjs';
 import { RecoveryJournal as Swipe648Journal } from './journal.mjs';
-const swipe648Save = Swipe648Journal.prototype.saveLatest;
-Swipe648Journal.prototype.saveLatest = async function(...args) {
-  const result = await swipe648Save.apply(this, args), hold = window.swipe648SaveHold;
-  if (hold?.armed) { hold.armed = false; hold.entered = true; await new Promise(resolve => { hold.release = resolve; }); throw Error('Fixture device close save refused'); }
-  return result;
-};
+for (const method of ['save', 'saveLatest']) {
+  const swipe648Save = Swipe648Journal.prototype[method];
+  Swipe648Journal.prototype[method] = async function(...args) {
+    const result = await swipe648Save.apply(this, args), hold = window.swipe648SaveHold;
+    if (hold?.armed) { hold.entered = true; await new Promise(resolve => { hold.releases.push(resolve); }); throw Error('Fixture device close save refused'); }
+    return result;
+  };
+}
 const swipe648Show = Swipe648Reader.prototype.show;
 Swipe648Reader.prototype.show = function(...args) { window.swipe648Reader = this; return swipe648Show.apply(this, args); };
 const swipe648Open = Swipe648Registry.prototype.open;
@@ -48,7 +50,7 @@ export async function composeSwipe648Protections(h) {
     return { open: document.querySelector('#reader').open, source: p.source.source_ref, text: document.querySelector('#source-body').textContent,
       writing: document.querySelector('#writing-body').value, destination: document.querySelector('#who-chip').textContent,
       unavailable: Boolean(p.sourceUnavailable), unconfirmed: Boolean(p.availabilityUnconfirmed), checking: Boolean(p.availabilityChecking),
-      readOnly: document.querySelector('#writing-body').readOnly, inputs: window.swipe648Inputs };
+      readOnly: document.querySelector('#writing-body').readOnly, coarse: matchMedia('(pointer:coarse)').matches, viewportScale: visualViewport.scale, inputs: window.swipe648Inputs };
   });
   const setup = async (shape, theme, tag) => {
     const topic = `648-${engine}-${shape}-${theme}-${tag}`;
@@ -68,8 +70,18 @@ export async function composeSwipe648Protections(h) {
     return { p, topic, id, other, commands, before };
   };
   const point = async (p, selector = '#source-body') => {
-    const b = await p.locator(selector).boundingBox(); assert.ok(b && b.width > 0 && b.height > 0, `visible input surface ${selector}`);
-    return { x: b.x + Math.min(65, b.width / 3), y: b.y + Math.min(25, b.height / 2) };
+    await until(p, () => document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'native input surface layout settled');
+    const handle = await p.waitForFunction(selector => {
+      const el = document.querySelector(selector), b = el?.getBoundingClientRect();
+      if (!b || b.width <= 0 || b.height <= 0) return null;
+      const left = Math.max(b.left, 0), right = Math.min(b.right, innerWidth), top = Math.max(b.top, 0), bottom = Math.min(b.bottom, innerHeight);
+      for (const y of [top + Math.min(25, (bottom - top) / 2), (top + bottom) / 2]) for (const x of [left + Math.min(65, (right - left) / 3), (left + right) / 2]) {
+        const target = document.elementFromPoint(x, y);
+        if (el.contains(target) && (selector !== '#source-body' || !target.closest('button,a,.reader-end'))) return { x, y };
+      }
+      return null;
+    }, selector, { polling: 'raf', timeout: 8000 });
+    return handle.jsonValue();
   };
   // Completion follows delivered native input then the next rendered frame;
   // no elapsed-time sleep stands in for the browser having received it.
@@ -153,11 +165,18 @@ export async function composeSwipe648Protections(h) {
       noFold(f); await kept(f, 'cancellation/reset');
       await wheel(p, -100, 0, '#source-body', true); noFold(f); await kept(f, 'native Control-wheel zoom');
       // The native Next press changes the source between native gesture parts.
-      const change = async () => { await press(p, '#next-message'); await until(p, id => window.swipe648Reader.source.source_ref.id !== id, 'native Next changes source', f.id); };
+      // Use the keyboard for the concurrent step: starting a second
+      // touchscreen tap while a finger is down would replace that contact.
+      const focusSource = async () => {
+        for (let n = 0; n < 30 && !await p.locator('#source-body').evaluate(e => e === document.activeElement); n++) await p.keyboard.press('Shift+Tab');
+        assert.equal(await p.locator('#source-body').evaluate(e => e === document.activeElement), true, 'native keys reach source before stepping');
+      };
+      await focusSource();
+      const change = async () => { await p.keyboard.press('Meta+ArrowUp'); await until(p, id => window.swipe648Reader.source.source_ref.id !== id, 'native Cmd-Up changes source', f.id); };
       if (engine === 'chromium' && p.touch) await finger(p, 100, 0, { between: change });
       else { await wheel(p, 0, 20); await wheel(p, -40); await change(); await wheel(p, -50); }
       noFold(f);
-      await press(p, '#previous-message'); await until(p, id => window.swipe648Reader.source.source_ref.id === id, 'native Previous restores source', f.id);
+      await focusSource(); await p.keyboard.press('Meta+ArrowDown'); await until(p, id => window.swipe648Reader.source.source_ref.id === id, 'native Cmd-Down restores source', f.id);
       await kept(f, 'source change and return'); await screen(f, 'negative-after'); await close(p);
     });
 
@@ -218,7 +237,7 @@ export async function composeSwipe648Protections(h) {
       // Hold only completion of the genuine device save; the native Close
       // itself enters the registry's real isWritable=false branch. Refusing
       // this completion leaves the Reader open for the preserved writing.
-      await p.evaluate(() => { window.swipe648SaveHold = { armed: true }; });
+      await p.evaluate(() => { window.swipe648SaveHold = { armed: true, releases: [], release() { this.armed = false; for (const resolve of this.releases.splice(0)) resolve(); } }; });
       try {
         await press(p, '#reader-close');
         await until(p, () => window.swipe648SaveHold.entered && document.querySelector('#writing-body').readOnly, 'real close-wait read-only writing');
