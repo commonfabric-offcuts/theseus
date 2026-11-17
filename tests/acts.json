@@ -26808,6 +26808,36 @@
     "native": "webkit-reading",
     "case": "the earlier-messages row is reached by Tab"
    }
+  },
+  {
+   "item": 473,
+   "act": "A laptop's window at 761 pixels keeps the title bar's three glyphs: only 760 or narrower folds them into ⋯",
+   "break": [
+    [
+     "web/stack-look.css",
+     "@media(max-width:760px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n",
+     "@media(max-width:761px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A laptop's window at 760 pixels folds the title bar's Reply and Move below More into ⋯, as a phone does",
+   "break": [
+    [
+     "web/stack-look.css",
+     "@media(max-width:760px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n",
+     "@media(max-width:759px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
   }
  ]
 }

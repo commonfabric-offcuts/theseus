@@ -7180,6 +7180,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const TOOL_NAMES = { reply: 'Reply to the first message', aside: 'Move below More', menu: 'More for this dossier' };
 
   await check('reading stacks the title bar shows Reply, Move below More and ⋯ at its right under the pointer, or once selected by touch, each named with its tooltip and 44px by touch, beside the tab at 320, 375 and 390 pixels and on a laptop, in light and dark; a message on its own has none', async () => {
+    // Under the pointer at 1280 and 761 pixels the three glyphs; at 760, as on a phone, ⋯ alone.
     for (const device of Object.keys(DEVICES)) {
       const topic = `title-bar-${device}`, ids = await barDossierSeed(topic), resting = {};
       const p = await open(topic, device, topic, ids.root);
@@ -7215,18 +7216,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await away(p);
         await until(async () => !await toolsShown(p, ids.root), 'laptop: the pointer gone, they hide again');
       }
-      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width];
+      // A laptop's window at 761 pixels keeps the three glyphs, and at 760 folds them into ⋯ as a phone does.
+      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width, 761, 760];
       for (const width of widths) {
-        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
         await showTools(p, device, ids.root);
         for (const theme of ['light', 'dark']) {
           await dossierTheme(p, theme);
           const f = await toolFacts(p, ids.root);
-          // On a phone the three fold into ⋯ alone, which offers Reply and Move below More first: three 44px glyphs
-          // beside the tab leave its second line too little room for who began the dossier and who named it (item 479).
-          const shownTools = device === 'phone' ? { menu: TOOL_NAMES.menu } : TOOL_NAMES;
+          await shot(p, `title-bar-${device}-${width}-${theme}`);
+          // In a window 760px or narrower (a phone's) the three fold into ⋯ alone, which offers Reply and Move below
+          // More first: there the tab may reach 85% of the folder, and the paper past its corner holds one glyph.
+          const folded = device === 'phone' || width <= 760, shownTools = folded ? { menu: TOOL_NAMES.menu } : TOOL_NAMES;
           assert.deepEqual(f.tools.map(t => [t.tool, t.label, t.title]), Object.entries(shownTools).map(([tool, name]) => [tool, name, name]),
-            device === 'phone' ? `phone ${width}: ⋯ alone, named with its tooltip` : `${device} ${width}: Reply, Move below More and ⋯, each named with that name as its tooltip`);
+            folded ? `${device} ${width}: ⋯ alone, named with its tooltip` : `${device} ${width}: Reply, Move below More and ⋯, each named with that name as its tooltip`);
           for (const t of f.tools) {
             assert.ok(t.glyph, `${device} ${width}: ${t.tool} is a glyph, not a word`);
             assert.ok(t.hit, `${device} ${width}: a press at ${t.tool}'s centre lands on it`);
@@ -7246,7 +7249,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           }
           assert.equal(f.overflow, false, `${device} ${width}: nothing scrolls sideways`);
           observations.push({ name: 'title bar glyphs', engine, device, width, theme, ...f });
-          await shot(p, `title-bar-${device}-${width}-${theme}`);
         }
         await dossierTheme(p, 'light');
       }
