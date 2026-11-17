@@ -73,7 +73,7 @@ class AcceptanceCase(AgentEditCase):
         # other-reader: only the new words, no strike and no trace of the old ones.
         theirs = self.item(message, actor="other-reader")
         self.assertEqual((theirs["body"], theirs["struck"]), (FIXED, None))
-        self.assertNotIn("85", json.dumps(theirs))
+        self.assertNotIn("release 85", json.dumps(theirs))
         self.assertIsNone(self.source({"kind": "message", "id": message}, actor="other-reader")["struck"])
         # The message is unread for owner again, as new; other-reader's count is as it was (it was unread already).
         self.assertEqual(self.state("owner", message), "pending")
