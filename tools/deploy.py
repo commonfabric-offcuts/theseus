@@ -787,6 +787,10 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
                 else releases.measurements(json.loads(Path(summary).read_text()), accepted, judged))
     measured = dict(measured, **steps_beyond_policy(config, head))
     planned, before, commits, latest = release_plan(config, head, sha, measured, number, no_items, live_since, revert)
+    if trained is not None and "base_move" in trained:
+        require(latest is not None and latest["commit"] == head
+                and latest["release"] == trained["base_move"]["live_release"],
+                "base move: live release does not match the reviewed base; nothing was stopped")
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None
     record(evidence, "02-release", {"record": planned, "before": before, "commits": commits,

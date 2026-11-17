@@ -3767,6 +3767,76 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/test_tools_base_move.py": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "874866ee1dd5e2f3fdcf25dc1ede33c85d09750111c430120a70ceb932ead74e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "af9f11a828d5bd159079720b8dfd1b3b0e184c0d53b28ce0fdb21be5d01222b0": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_tools_train.py": {
     "0145d1e96b57de8ab95910318f1af19ab8b4a9c9615ac96ef116cacdbb4a3c5b": {
       "inputs": [

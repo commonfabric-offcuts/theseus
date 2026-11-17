@@ -263,3 +263,5 @@ Release 19's measurements come from its release check's summary. Release 18
 ran before that tool kept a summary, so its measurements are `null`: the only
 count for it is a sentence written by hand on the pipeline page, and a record
 holds what a check measured, not what someone wrote down.
+
+For a reviewed base move, `measurements.train.base_move` keeps the compact evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment` and raw source verdict remain unchanged; the separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.

@@ -25,6 +25,8 @@ import re
 import subprocess
 from typing import Protocol
 
+from tools import base_move
+
 KEYS = ("pr", "merge_commit", "items", "merged_tree", "kind", "hosted_run", "judgment")
 ITEM_FIELDS = ("item", "approved_head", "review")
 JUDGMENT_FIELDS = ("producer_runs", "verdict_checks", "audit")
@@ -38,7 +40,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
 DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
-               "tools/quarantine.py", "tools/steps_for.py")
+               "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py")
 CONTROLLER = ".github/"
 MIGRATIONS = ("aim_next/migrations.py",)
 # GitHub's REST API paths for one workflow run, one check run and one pull request, and its compare of a commit with a
@@ -100,11 +102,11 @@ def load(path):
     if not Path(path).is_absolute():
         raise Refused("--train is an absolute path, not %s" % path)
     try:
-        train = json.loads(Path(path).read_text())
-    except (OSError, ValueError) as error:
+        train = base_move.loads(Path(path).read_text())
+    except (OSError, ValueError, RecursionError, base_move.Refused) as error:
         raise Refused("no readable train at %s: %s" % (path, error))
-    if not isinstance(train, dict) or set(train) != set(KEYS):
-        raise Refused("the train is a JSON object with exactly %s" % ", ".join(KEYS))
+    if not isinstance(train, dict) or set(train) not in (set(KEYS), set(KEYS) | {"base_move"}):
+        raise Refused("the train is a JSON object with exactly %s, optionally base_move" % ", ".join(KEYS))
     if not _number(train["pr"]):
         raise Refused("pr is the pull request's number, not %r" % (train["pr"],))
     for key in ("merge_commit", "merged_tree"):
@@ -130,6 +132,13 @@ def load(path):
         ids(judgment["verdict_checks"], "verdict_checks")
         if not _words(judgment["audit"]):
             raise Refused("the judgment names its audit, the message that read it")
+    if "base_move" in train:
+        if train["kind"] != "judged-first":
+            raise Refused("base_move is only for a judged-first train")
+        try:
+            base_move.fields(train["base_move"], "path sha256")
+        except base_move.Refused as error:
+            raise Refused(str(error))
     return train
 
 
@@ -286,10 +295,27 @@ def judge(path, sha, live, release_branch, repository, git, github):
     else:
         if train["judgment"] is None:
             raise Refused("a judged-first train comes with its judgment: the runs and checks of its judged run, and the audit")
-        judgment = before_merge(git, github, repository, train["judgment"], merge, tree)
-    return {"file": str(path), "pr": train["pr"], "kind": train["kind"], "merge_commit": merge, "merged_tree": tree,
+        if "base_move" in train:
+            # The exception has a concrete evidence contract; the original guard
+            # below remains the only path when no explicit record exists.
+            runs, checks = judged(github, repository, train["judgment"])
+            heads = {found["head_sha"] for found in runs + checks}
+            if len(heads) != 1:
+                raise Refused("the judgment's runs and checks do not name one commit")
+            judgment = {"head": next(iter(heads)), "producer_runs": runs, "verdict_checks": checks,
+                        "audit": train["judgment"]["audit"]}
+            try:
+                moved = base_move.validate(train["base_move"], judgment, git, github, repository, live, merge, train["items"])
+            except (base_move.Refused, Unreadable) as error:
+                raise Refused(str(error))
+        else:
+            judgment = before_merge(git, github, repository, train["judgment"], merge, tree)
+    result = {"file": str(path), "pr": train["pr"], "kind": train["kind"], "merge_commit": merge, "merged_tree": tree,
             "release_branch": release_branch, "live": live, "items": train["items"], "hosted_run": hosted,
             "guarded_changes": kept, "judgment": judgment}
+    if "base_move" in train:
+        result["base_move"] = moved
+    return result
 
 
 def before_merge(git, github, repository, judgment, merge, tree):
@@ -319,5 +345,7 @@ def said(train):
         conclusions = ", ".join("%s %d %s" % (found["kind"], found["id"], found["conclusion"])
                                 for found in judgment["producer_runs"] + judgment["verdict_checks"])
         words = "judged at %s: %s (audit %s)" % (judgment["head"][:12], conclusions, judgment["audit"])
+    if "base_move" in train:
+        words += "; reviewed base move to %s (review %s)" % (train["base_move"]["assembly_head"][:12], train["base_move"]["review"]["sha256"])
     return "train: PR #%d (%s), merge commit %s on %s at GitHub; %s" % (
         train["pr"], train["kind"], train["merge_commit"][:12], train["release_branch"], words)

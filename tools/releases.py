@@ -147,8 +147,11 @@ def scoped(summary):
 def train_measurements(train):
     """A merged train's measurements (items 481, 482): the train as tools/train.py read it, an ordinary train's hosted
     judgment "pending" and naming its PR. No release check ran here, so no count claims one did."""
-    return {"train": {key: train[key] for key in ("file", "pr", "kind", "merge_commit", "merged_tree", "release_branch",
+    result = {"train": {key: train[key] for key in ("file", "pr", "kind", "merge_commit", "merged_tree", "release_branch",
                                                   "items", "hosted_run", "judgment")}}
+    if "base_move" in train:
+        result["train"]["base_move"] = train["base_move"]
+    return result
 
 
 def _answers(argv, what):
