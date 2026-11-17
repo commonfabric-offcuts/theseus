@@ -1114,7 +1114,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 655: an old starred reply is outside the page's loaded range. The first dossier and the
   // topic deliberately have different names, and Starred is pressed from a different topic.
   for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
-    for (const rule of ['name', 'return']) await check(`reading item 655 ${rule} at ${width}: Starred and the dossier agree on the composer title and its way back`, async () => {
+    for (const rule of ['name', 'return', 'linked-name', 'linked-return']) await check(`reading item 655 ${rule} at ${width}: Starred and the dossier agree on the composer title and its way back`, async () => {
       const topic = `item-655-${rule}-${width}`, elsewhere = topic + '-elsewhere';
       const ids = await seed(topic, [
         ['first', { sender: other, join: true, addressees: [facts.actor], body: 'First dossier root.' }],
@@ -1127,18 +1127,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: id, operation_id: topic + id + '-name', args: { name } });
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.star, operation_id: topic + '-star', args: { starred: true } });
       const awayIds = await seed(elsewhere, [['away', { sender: other, join: true, addressees: [facts.actor], body: 'Another topic is on screen.' }]]);
-      const p = await open(topic, device, elsewhere, awayIds.away);
+      const linked = rule.startsWith('linked-');
+      const p = await open(topic, device, linked ? topic : elsewhere, linked ? ids.f33 : awayIds.away, '', linked ? `/?topic=${topic}&message=${ids.star}` : `/?topic=${elsewhere}`);
       try {
-        if (device === 'phone') {
-          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
-          await press(p, device, '#things-open');
-        }
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        if (!linked) {
+        if (device === 'phone') await press(p, device, '#things-open');
         const section = '#things .things-sec[data-key=starred]';
         await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy') !== 'true' && Boolean(document.querySelector('${section}:not([hidden])')?.getClientRects().length)`), 'the rail has read and drawn Starred');
         if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
         const link = `${section} .things-starred a[href*="message=${ids.star}"]`;
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length)`), 'the open Starred section draws the exact reply');
         await centre(p, link); await press(p, device, link);
+        }
         await until(async () => (await readerOn(p))?.startsWith('The starred reply in the second dossier.'), 'Starred opens the exact reply in the composer');
         assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`), topic, 'the reply belongs to its own topic');
         assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.second))}))`), false, 'the dossier root is outside the loaded page');
@@ -1147,7 +1148,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await dossierTheme(p, theme);
           await shot(p, `item-655-${rule}-${width}-${theme}-starred`);
         }
-        if (rule === 'name') assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
+        if (rule.endsWith('name')) assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
