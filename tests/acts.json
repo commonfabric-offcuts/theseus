@@ -26991,6 +26991,104 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 667,
+   "act": "A verified new release fast-forwards its configured remote branch after recording the release",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        publish_release_branch(config, sha, evidence)\n",
+     "        pass  # mutant: leave the remote branch behind\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A restart never contacts or moves the release branch",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if planned is not None:\n        publish_release_branch",
+     "    if True:\n        publish_release_branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A remote head outside the shipped history is refused before any push",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(follows(config, old, sha), \"release branch",
+     "require(True, \"release branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A concurrent remote change is never overwritten by force",
+   "break": [
+    [
+     "tools/deploy.py",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force\", \"origin\", sha + \":\" + ref)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "Only a remote read-back equal to the shipped head attests success",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(result[\"read_back\"] == sha, \"release branch",
+     "require(True, \"release branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A release without a configured branch says that no branch was moved",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        record(evidence, \"12-release-branch\", result)\n        return",
+     "        return  # mutant: no evidence for an unconfigured branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A release branch deleted or moved after fetch is not recreated or overwritten; publication refuses and keeps the release record",
+   "break": [
+    [
+     "tools/deploy.py",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"origin\", sha + \":\" + ref)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
   }
  ]
 }

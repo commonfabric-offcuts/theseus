@@ -56,7 +56,8 @@ REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile",
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
 # release_branch, repository: the branch a merged train lands on and the GitHub repository that branch and its runs are
-# read from (owner/name), which --train needs (tools/train.py).
+# read from (owner/name), which --train needs (tools/train.py). After recording a verified new release,
+# release_branch is also fast-forwarded on the live checkout's origin and read back from that remote.
 OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository")
 
 
@@ -888,6 +889,58 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         raise Refused("%s is live but the record of release %d was not written (%s); write it, and those after it, "
                       "with: %s" % (this, failed["release"], (failed["stdout"] or failed["stderr"]).strip()[:300],
                                     " && ".join(" ".join(argv) for argv in commands[len(writes) - 1:])))
+
+    # 9. Publish only a verified, recorded NEW release; a restart never moves the remote branch.
+    if planned is not None:
+        publish_release_branch(config, sha, evidence)
+
+
+def publish_release_branch(config, sha, evidence):
+    """12-release-branch (667): fast-forward origin's configured branch, then attest its remote head.
+
+    The release is already live and recorded. Any refusal leaves that record alone. Fetching the exact branch
+    reads its old head and brings its history here for the ancestry check; no cached remote-tracking ref is trusted.
+    The ancestry check permits only a fast-forward, and an explicit lease makes the remote compare the fetched
+    head atomically. A normal push alone could recreate a branch deleted since fetch, or overwrite a rewind.
+    """
+    result = {"branch": config.release_branch, "remote": "origin", "old_head": None, "new_head": sha,
+              "read_back": None, "moved": False, "success": False}
+    if not config.release_branch:
+        result["why"] = "no release_branch configured; the branch was not moved"
+        record(evidence, "12-release-branch", result)
+        return
+    ref = "refs/heads/" + config.release_branch
+
+    def git(step, *args):
+        answer = run(["git", "-C", str(config.live)] + list(args))
+        result[step] = {"exit": answer.returncode, "stdout": answer.stdout, "stderr": answer.stderr}
+        require(answer.returncode == 0, "release branch %s %s failed (exit %s): %s" % (
+            config.release_branch, step, answer.returncode, (answer.stderr or answer.stdout).strip()[:300]))
+        return answer.stdout.strip()
+
+    try:
+        git("fetch", "fetch", "--no-tags", "origin", ref)
+        old = git("fetched_head", "rev-parse", "--verify", "FETCH_HEAD")
+        result["old_head"] = old
+        require(re.fullmatch(r"[0-9a-f]{40}", old), "the fetched release branch names no full commit")
+        require(follows(config, old, sha), "release branch %s at %s is not an ancestor of shipped head %s; "
+                "the branch was not moved (never forced)" % (config.release_branch, old, sha))
+        if old != sha:
+            git("push", "push", "--porcelain", "--force-with-lease=" + ref + ":" + old, "origin", sha + ":" + ref)
+            result["moved"] = True
+        read = git("read-back", "ls-remote", "--exit-code", "--refs", "origin", ref)
+        rows = [line.split() for line in read.splitlines()]
+        require(len(rows) == 1 and len(rows[0]) == 2 and rows[0][1] == ref,
+                "release branch %s read-back did not name the exact remote branch" % config.release_branch)
+        result["read_back"] = rows[0][0]
+        require(result["read_back"] == sha, "release branch %s read-back is %s, not shipped head %s" % (
+            config.release_branch, result["read_back"], sha))
+        result["success"] = True
+    except (Refused, OSError) as error:
+        result["refused"] = str(error)
+        raise Refused("%s; %s is live and its release record is kept" % (error, sha[:12]))
+    finally:
+        record(evidence, "12-release-branch", result)
 
 
 def main(argv=None):
