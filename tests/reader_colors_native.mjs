@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { teamBarChecks } from './team_bar_native.mjs';
 import { pngPixels, paintedBand } from './png-bands.mjs';
 
 export async function readingColorsCheck({ check, page, until, facts, view, control, field, shot, observations }) {
+  await teamBarChecks({ check, page, until, facts, view, control, shot });
   await check('colors reading colors distinguish authors and preserve source geometry', async () => {
     const failures=[];
     const expect=(ok,why)=>{if(!ok)failures.push(why);};
