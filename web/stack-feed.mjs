@@ -16,22 +16,13 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf, dossierOf } from './stack-order.mjs';
-import { noteAt } from './press-note.mjs';
+import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
 import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 
-// Why Move below More does nothing for a dossier holding a message the reader
-// starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
-// way out is to unstar.
-export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it to move it below More';
-// The line a card is pressed by and read from: its title bar on a dossier's
-// first message, else who wrote it, else its folded or earlier row.
-const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
-const lineOf = card => LINES.map(selector => card?.querySelector(selector)).find(line => line?.getClientRects().length) ?? card;
 const FIELD = { 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 const FEED_ACTIONS = ['move-up', 'move-down', 'right', 'left', 'join-up', 'join-down', 'undo', 'fold-message'];
 
@@ -434,14 +425,6 @@ export class StackFeed {
       known.acts = laterActs(known.acts, { folded: true, fold_revision });
     }
     if (kind === 'message.star') this.starsChanged();
-    // A star in a dossier the reader moved below More brought it back, in the same act (item 635): its first
-    // message learns the move's revision, so ⌘Z or the next move is fenced on it, and the places are read again.
-    const back = kind === 'message.star' ? receipt.result.brought_back : null;
-    if (back) {
-      const known = this.messages().get(back.root_id) ?? this.standIns.get(back.root_id);
-      if (known) known.acts = laterActs(known.acts, { aside: null, aside_revision: back.aside_revision });
-      await this.refreshPositions();
-    }
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
     // messages to another dossier, whose positions they carry from then on (item 470).
     if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();
@@ -465,13 +448,10 @@ export class StackFeed {
     if (above) revealSelection(above);
     revealSelection(shownSelected(target));
   }
-  // A star keeps a message in view: starring a folded message unfolds it too,
-  // and starring one in a dossier the reader moved below More brings the
-  // dossier back above More, shown at once as Core does it (item 635).
+  // A star keeps a message in view: starring a folded message unfolds it too.
   star(item) {
     const on = !this.actsOf(item.id, item).starred;
-    const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
+    this.act('message.star', item, { starred: on });
     if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
     this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
   }
@@ -692,27 +672,11 @@ export class StackFeed {
     const head = headOf(stack, { preview: messagePreview });
     return head.typed?.text || (stack.replies.length ? head.name : '') || null;
   }
-  // Whether the dossier stack is drawn from holds a message the reader
-  // starred, so its title bar shows their star (item 635): Move below More
-  // then does nothing, and says why.
-  heldByStar(stack) { return this.state.starred.has(dossierOf(stack)); }
-  // Says why a move below More did nothing, where the press was (at: the
-  // control pressed, such as the Reader's archive button, or the line of the
-  // message whose menu it was), else under the dossier's title bar (its first
-  // message's line, for a message on its own), and on the page's status line
-  // where none of them is on the screen.
-  held(stack, at = null) {
-    const head = this.entryFor(stack.id);
-    if (!noteAt(at, HELD_BY_STAR, this.doc) && !noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc)) this.status(HELD_BY_STAR);
-  }
   // focus: false leaves the focus where it is, as on the Reader's archive
-  // button, whose dialog keeps it while the page behind it changes. at: the
-  // control pressed, where a refusal is said.
-  setAside(stack, below, { undoable = true, restoreThrough, focus = true, at = null } = {}) {
+  // button, whose dialog keeps it while the page behind it changes.
+  setAside(stack, below, { undoable = true, restoreThrough, focus = true } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
-    // A dossier holding a message the reader starred stays above More for them (item 635): nothing moves.
-    if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }
     const { item, position } = found, root = item.id;
     // Below More through the newest message of the dossier the page has seen.
     const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]
@@ -721,8 +685,6 @@ export class StackFeed {
     // before Core answers, and also when Core finds the place unchanged (the
     // same through keeps its revision, so drawnBelow's place would hold).
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
-    // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
-    // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
     this.act('stack.aside', item, { through });
     if (undoable) this.remember(() => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through }));
     this.arrange();
@@ -865,7 +827,7 @@ export class StackFeed {
     const moves = [
       // Item 601: Move below More shows the Reader's archive tray, Bring back above More the tray with an arrow out.
       ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', glyph: positionOf(stack).below ? 'back' : 'archive',
-        act: () => this.setAside(stack, !positionOf(stack).below, { at: lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id))) }) }] : []),
+        act: () => this.setAside(stack, !positionOf(stack).below) }] : []),
       { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },
       ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', glyph: 'chevron', act: () => this.fold(entry, 'fold') }] : []),
