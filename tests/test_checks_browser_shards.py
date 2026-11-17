@@ -99,7 +99,7 @@ class BrowserShards(unittest.TestCase):
         self.assertIn('native-d,native-e', [s['steps'] for s in browser])
         self.assertEqual(sorted(s['minutes'] for s in browser), [30, 35, 40, 45])
 
-    def combine(self, absent=(), refused=(), narrow=False, cancelled=None, plan=None, partial=False):
+    def combine(self, absent=(), refused=(), narrow=False, cancelled=None, plan=None, partial=False, event='push'):
         plan = self.plan() if plan is None else plan
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -124,11 +124,14 @@ class BrowserShards(unittest.TestCase):
                 (folder / 'summary.json').write_text(raw)
                 receipt = {'run': {'id': '44099688612', 'attempt': '1'}, 'merge': {'sha': 'a' * 40},
                            'summary_sha256': hashlib.sha256(raw.encode()).hexdigest()}
+                if event == 'pull_request':
+                    receipt['merge']['first_parent'] = 'b' * 40
+                    receipt['base_at_run'] = {'ref': 'release/fixture', 'sha': 'b' * 40}
                 (folder / 'run.json').write_text(json.dumps(receipt))
             if cancelled is not None:
                 (shards / 'cancelled.json').write_text(json.dumps(cancelled))
             env = dict(os.environ, GITHUB_RUN_ID='44099688612', GITHUB_RUN_ATTEMPT='1', GITHUB_SHA='a' * 40,
-                       GITHUB_EVENT_NAME='push', PLAN_SHARDS=json.dumps(plan))
+                       GITHUB_EVENT_NAME=event, BASE_REF='release/fixture', PLAN_SHARDS=json.dumps(plan))
             out = root / 'summary.json'
             code = script(self.workflow.split("      - name: Fold the shards' summaries into one\n", 1)[1])
             with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(sys, 'argv', ['combine', str(shards), str(out)]), \
@@ -179,6 +182,62 @@ class BrowserShards(unittest.TestCase):
                 self.assertEqual(len(summary['cancelled_shards']), 1)
                 self.assertEqual(self.provenance['cancelled_shards'], summary['cancelled_shards'])
                 self.assertEqual(summary['finished_at'], fixture['cancelled_at'])
+
+    def test_no_finished_summary_retains_cancelled_results_and_all_missing_steps(self):
+        plan = self.cancelled_plan()
+        # No artifacts, only refusals, and a mixture: none has a finished sibling to lend metadata.
+        for absent, refused in (((0, 1), ()), ((), (0, 1)), ((0,), (1,))):
+            for event in ('push', 'pull_request'):
+                with self.subTest(absent=absent, refused=refused, event=event):
+                    code, summary, printed, _ = self.combine(absent, refused, narrow=True,
+                        cancelled=self.cancellation_input(), plan=plan, event=event)
+                    self.assertIsNotNone(summary, 'cancelled evidence must not need a finished sibling: %s' % code)
+                    self.assertEqual(len(summary['steps']), 6)
+                    for actual, logged in zip(summary['steps'], self.logged_results()):
+                        self.assertEqual({k: actual[k] for k in logged}, logged)
+                        self.assertEqual(actual['shard'], self.cancellation()['name'])
+                        self.assertEqual(actual['cancelled_at'], self.cancellation()['cancelled_at'])
+                    missing = sorted(set(release_check.REQUIRED) - {s['name'] for s in self.logged_results()})
+                    self.assertEqual(printed['missing'], missing)
+                    self.assertEqual(summary['required'], sorted(release_check.REQUIRED))
+                    self.assertEqual(set(summary['failed']), set(missing) | {s['name'] for s in self.logged_results() if not s['passed']})
+                    self.assertEqual(summary['commit'], 'a' * 40)
+                    self.assertEqual(summary['started_at'], self.cancellation_input()[0]['started_at'])
+                    self.assertEqual(summary['finished_at'], self.cancellation()['cancelled_at'])
+                    self.assertEqual(self.provenance['cancelled_shards'], summary['cancelled_shards'])
+                    self.assertFalse(summary['tree_unchanged'])
+                    self.assertFalse(summary['passed'])
+                    self.assertFalse(summary['quarantine']['green'])
+                    self.assertTrue(self.judged[0] or self.judged[1])
+                    self.assertEqual(code, 1)
+                    if not refused:
+                        self.assertEqual(self.provenance['merge'], dict(sha='a' * 40, tree=None, first_parent=None, second_parent=None))
+                        self.assertNotIn('base_at_run', self.provenance)
+
+    def test_no_finished_summary_reports_missing_even_without_recoverable_logs(self):
+        for absent, refused in (((0, 1), ()), ((), (0, 1))):
+            for logs in ('unavailable', 'no cancelled jobs'):
+                with self.subTest(absent=absent, refused=refused, logs=logs):
+                    data = self.cancellation_input() if logs == 'unavailable' else []
+                    if data:
+                        data[0].update(log='', log_error='job logs unavailable')
+                    code, summary, printed, _ = self.combine(absent, refused, narrow=True,
+                        cancelled=data, plan=self.cancelled_plan())
+                    self.assertIsNotNone(summary, 'missing-step evidence must survive without finished summaries: %s' % code)
+                    self.assertEqual(summary['steps'], [])
+                    self.assertEqual(summary['failed'], sorted(release_check.REQUIRED))
+                    self.assertEqual(printed['missing'], sorted(release_check.REQUIRED))
+                    self.assertFalse(summary['tree_unchanged'])
+                    self.assertFalse(summary['passed'])
+                    self.assertFalse(summary['quarantine']['green'])
+                    self.assertTrue(self.judged[0] or self.judged[1])
+                    self.assertEqual(code, 1)
+                    if data:
+                        self.assertEqual(summary['cancelled_shards'][0]['log_error'], 'job logs unavailable')
+                        self.assertEqual(summary['finished_at'], data[0]['completed_at'])
+                    else:
+                        self.assertIsNone(summary['started_at'])
+                        self.assertIsNone(summary['finished_at'])
 
     def test_cancelled_unreached_steps_stay_missing_and_results_never_make_a_sample(self):
         code, summary, printed, _ = self.combine(absent=(0,), narrow=True,
