@@ -1175,6 +1175,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await actsOf(topic, ids.one))?.starred === false, `${device} ${width}: the last star is taken off, in Core`);
       await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: unstarring the last starred message clears the title bar`);
       assert.equal((await titleStar(p, ids.other)).shown, true, `${device} ${width}: the other dossier keeps its star`);
+      // The other reader's star is taken off again, so the cases after this one find their stars as they left them.
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-theirs-off`, args: { starred: false } });
+      assert.equal((await starsOf(other)).includes(ids.two), false, `${device} ${width}: the other reader's star is off`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -1237,6 +1240,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await closeReader(p, device);
       await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length)`), false, `${device} ${width}: the dossier is below More`);
       assert.equal((await positionIn(topic, ids.lone)).below, false, `${device} ${width}: the starred message outside it stays where it is`);
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs-off`, args: { starred: false } });
+      assert.equal((await starsOf(other)).includes(ids.one), false, `${device} ${width}: the other reader's star is off`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -4559,9 +4564,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
     assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'and the dossier stays above More');
     assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'wide', 'kept', 'last'], 'every reply in its place');
+    // The header swiped: a dossier holding the reader's star (kept) stays above More, and says why under its title bar
+    // (item 635); unstarred, the same swipe moves it.
     await reload();
     await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
-    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the header moves its dossier too');
+    await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent === ${JSON.stringify(HELD)}`), 'a trackpad swipe on a starred dossier\'s header says why it stays above More');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out');
+    assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'and Core holds no move');
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.kept, operation_id: topic + '-unstar', args: { starred: false } });
+    await reload();
+    await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'unstarred, a trackpad swipe on the header moves its dossier too');
     assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere through it all');
     assert.deepEqual(p.errors, []);
     await p.close();
