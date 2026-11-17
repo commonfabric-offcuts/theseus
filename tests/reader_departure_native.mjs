@@ -19,6 +19,37 @@ export function assertDepartureTrace(trace, expectedReceipts) {
   for(const operationId of expectedReceipts)assert.ok(entries.some(e=>e.state.sessions.some(s=>s.submissions.some(i=>i.receipt?.operation_id===operationId&&i.receipt.status==='committed'))),'exact confirmed receipt retained at departure');
 }
 
+// Semantic row identities are exact; no equality on a measured coordinate or size.
+export const departureListSnapshot = `(()=>({ids:[...document.querySelectorAll('#topics a')].filter(a=>!a.closest('[inert]')).map(a=>a.dataset.topicId),
+  busy:document.querySelector('#more-topics').hasAttribute('aria-disabled'),document:document.querySelector('#topic-navigation').dataset.listing}))()`;
+
+// Do not press a row from before the reply's commit. A feed frame must name
+// it, a topics request begun after that frame must finish, and two animation
+// frames must elapse before the unchanged list and its target are observed.
+export async function waitForDepartureList(p, expected, now, until, what) {
+  const seqOf=frame=>{try{return JSON.parse(frame.params.response.payloadData).seq;}catch{return null;}};
+  return until(async()=>{
+    const network=p.network,named=network.findIndex(e=>e.method==='Network.webSocketFrameReceived'&&seqOf(e)>=now);
+    if(named<0)return false;
+    const after=network.slice(named),reads=after.filter(e=>{
+      if(e.method!=='Network.requestWillBeSent')return false;
+      try{const q=JSON.parse(e.params.request.postData);return q.name==='workspace_topics'&&q.args.workspace_id===expected.workspace&&!q.args.done&&!q.args.archived&&q.args.build!==true;}catch{return false;}
+    }).map(e=>e.params.requestId);
+    if(!reads.some(id=>after.some(e=>e.method==='Network.loadingFinished'&&e.params.requestId===id)
+      &&after.some(e=>e.method==='Network.responseReceived'&&e.params.requestId===id&&e.params.response.status===200)))return false;
+    const drawn=await p.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const state=${departureListSnapshot},target=document.querySelector(${JSON.stringify('#topics a[data-topic-id="'+expected.target+'"]')}),
+        reply=document.querySelector(${JSON.stringify('#messages [data-id="'+expected.message.id+'"]')});
+      resolve({...state,target:Boolean(target&&!target.closest('[inert]')&&target.getClientRects().length),
+        reply:Boolean(reply&&reply.getClientRects().length&&reply.textContent.includes(${JSON.stringify(expected.message.body)}))});
+    })))`);
+    if(drawn.busy||!drawn.target||!drawn.reply)return false;
+    assert.equal(drawn.document,expected.document,'the already-revealed target stays in this document');
+    assert.deepEqual(drawn.ids,expected.ids,'the committed reply changes no topic position, including the already-revealed target');
+    return drawn;
+  },what);
+}
+
 export async function departureChecks({check,page,until,facts,view,control,observations,shot}) {
   const ready=(p,id)=>until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)}`);}catch{return false;}},'ready '+id);
   // A control the composer keeps in a panel is reached through its opener by p.point (compose-reach.mjs).
@@ -26,7 +57,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0||Boolean(all[0].closest('.composer'));})()`),'unique rendered departure target '+selector);
     await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);await p.point(selector);
   };
-  // The rail lists a workspace's topics in ID order, 20 to a page, behind More
+  // The rail lists a workspace's topics in stable position order, 20 to a page, behind More
   // (workspace_topics in aim_next/store.py, PAGE in web/topic-navigation.mjs).
   // Earlier cases in this fixture add topics that sort ahead of t1 and t2, so
   // the instrument pages the rail natively until its target is rendered, and
@@ -95,7 +126,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const messages=await view('topic_messages',{topic_id:'t1',limit:100,cursor:source.seq-1,direction:'after'});
     assert.equal(messages.items.filter(m=>m.body===body).length,1,'exact message occurs once');
     assert.equal(p.calls.filter(c=>c.payload?.kind==='message.send'&&c.payload.operation_id===call.payload.operation_id).length,1);
-    observations.push({name:'exact departure publication',receipt,source});
+    observations.push({name:'exact departure publication',receipt,source});return {receipt,source};
   };
 
   // A load the page decides (in-place-navigation.mjs leave) can still be
@@ -113,30 +144,40 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.evaluate("location.hash===''"),'back on the page\'s own entry');
     assert.equal(await p.evaluate('(window.documentOrigin??=performance.timeOrigin)'),origin,'making the entry and going back to the page\'s own loaded nothing');
   };
-  // The page's topic list shows all Theseus holds now: the live feed has
-  // named the current commit (health_light's commit_seq), a read of the topics
-  // the page began after that has finished, the list is drawn (its More is no
-  // longer busy), and the topic the page has open stands where the page, having
-  // read it again, now puts it (first). Rows that either read moves would
-  // otherwise move under the next press.
-  const seqOf=frame=>{try{return JSON.parse(frame.params.response.payloadData).seq;}catch{return null;}};
-  const listedNow=async(p,first,what)=>{
+  const listedNow=async(p,expected,what)=>{
     const {commit_seq:now}=await view('health_light',{});
-    await until(async()=>{
-      const network=p.network,named=network.findIndex(e=>e.method==='Network.webSocketFrameReceived'&&seqOf(e)>=now);
-      if(named<0)return false;
-      const after=network.slice(named),reads=after.filter(e=>e.method==='Network.requestWillBeSent'&&/"name":"workspace_topics"/.test(e.params.request.postData??'')).map(e=>e.params.requestId);
-      return reads.some(id=>after.some(e=>e.method==='Network.loadingFinished'&&e.params.requestId===id))&&await p.evaluate(`!document.querySelector('#more-topics').hasAttribute('aria-disabled')
-        && [...document.querySelectorAll('#topics a')].find(a=>!a.closest('[inert]'))?.dataset.topicId===${JSON.stringify(first)}`);
-    },what);
+    const drawn=await waitForDepartureList(p,expected,now,until,what);
+    observations.push({name:'item 641 departure committed stable list',commit_seq:now,expected,drawn});
   };
   // A reply on its way holds the load: the browser asks the person, who
   // stays (the harness answers Stay), and the reply goes out.
-  await check('navigation a load the page decides while a reply is on its way, which the person stays from, sends the reply and goes on',async()=>{
-    await setup();const p=await page('departure-stay',null,true),body='A reply on its way while Forward is pressed';
-    await reveal(p,'t2');await foreignEntry(p);
+  for(const [size,width,height] of [['laptop',1280,900],['w320',320,568],['w375',375,667],['phone',390,844]])for(const theme of ['light','dark'])
+  await check(size==='laptop'&&theme==='light'?'navigation a load the page decides while a reply is on its way, which the person stays from, sends the reply and goes on':`navigation item 641 a committed reply keeps its revealed departure target and topic order at ${size} ${theme}`,async()=>{
+    await setup();
+    await control({method:'navigation_topics',topics:Array.from({length:24},(_,n)=>({id:'departure-641-page-'+n,title:'Later topic '+n}))});
+    const tag='departure-stay-'+size+'-'+theme,body='A reply on its way while Forward is pressed — '+tag;
+    const p=await page(tag,null,true,{beforeNavigate:async q=>{
+      await q.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});
+      await q.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
+    }});
+    await p.evaluate(`document.addEventListener('click',e=>{if(e.target.closest('#topics a[data-topic-id="t2"]'))console.log('item-641-native-departure-target');},true)`);
+    const drawer=async open=>{if(width>=600)return;
+      if(await p.evaluate("document.getElementById('rail').classList.contains('open')")!==open){
+        if(open)await point(p,'#rail-open');else await p.key('Escape');
+        await until(()=>p.evaluate(`document.getElementById('rail').classList.contains('open')===${open}`),'departure drawer '+open);
+      }
+    };
+    await drawer(true);
+    const more=await reveal(p,'t2');assert.ok(more>0,'the target is actually revealed beyond the first page');
+    const before={...(await p.evaluate(departureListSnapshot)),document:await listing(p),target:'t2',
+      workspace:(await view('topic',{topic_id:'t1'})).topic.workspace_id};
+    assert.ok(before.ids.includes('t1')&&before.ids.includes('t2'),'both source and revealed target are captured');
+    await drawer(false);await foreignEntry(p);
     p.intercept(payload=>payload?.kind==='submission.prepare');
-    await write(p,body);await p.key('Enter',4);
+    await write(p,body);
+    assert.equal(await p.evaluate("document.activeElement.id"),'inline-writing-body','native writing keeps focus in the composer');
+    assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"),body,'native select-all and typing retain exact writing');
+    await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'the reply\'s prepare is held');
     const origin=await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
     await p.evaluate("history.forward()");
@@ -145,12 +186,16 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.release(preparing);
     const sent=await until(()=>p.calls.find(c=>c.payload?.kind==='message.send'),'after the person stayed, the reply is sent');
     await until(async()=>(await view('operation',{operation_id:sent.payload.operation_id})).status==='committed','the reply is recorded');
-    // The reply is t1's latest activity, so the list puts t1 first; t2,
-    // revealed on this page, is still shown, and choosing it presses no More.
-    await listedNow(p,'t1','the topic list shows the reply\'s commit, with t1 first');
-    await choose(p,'t2');
+    const {receipt}=await exact(p,sent,body);
+    // The reply is shown by its committed identity. Its activity moves no row,
+    // and the target revealed before writing stays available without More.
+    await drawer(true);
+    await listedNow(p,{...before,message:{id:receipt.result.message_id,body}},'the reply commit is painted with the captured topic order unchanged');
+    assert.equal(await choose(p,'t2'),0,'the next native press needs no more paging');
     await until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')==='t2'`);}catch{return false;}},'the page goes on to t2');
-    await p.close();
+    assert.equal(p.events.filter(e=>e.method==='Runtime.consoleAPICalled'&&e.params.args[0]?.value==='item-641-native-departure-target').length,1,'one actual native target press goes on to t2');
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='message.send').length,1,'one send across the stopped load and topic choice');
+    assert.deepEqual(p.errors,[]);await p.close();
   });
   // Nothing holds the load, so the page reads nothing more from the moment
   // it asks; the person stops the load before its page arrives. A press on
