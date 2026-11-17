@@ -26154,6 +26154,62 @@
    "check": {
     "python": "test_agent_edit.py"
    }
+  },
+  {
+   "item": 614,
+   "act": "A card draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, options.struck);\n  host.classList.add('formatted');",
+     "  host.classList.add('formatted');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, struck);\n  DRAWN.set(host, body);",
+     "  DRAWN.set(host, body);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words are spaced from the words they touch",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "const nodes = [...(touches(before, true) ? [gap()] : []), del,",
+     "const nodes = [del,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words take no place of the new words",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "    const del = placed(doc.createElement('del'), { start: at, end: at });",
+     "    const del = doc.createElement('del');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
   }
  ]
 }

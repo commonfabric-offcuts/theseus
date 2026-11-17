@@ -38,6 +38,17 @@ class Element {
   set textContent(value) { this.childNodes = []; if (String(value)) this.append(new Text(value)); }
   get ownerDocument() { return doc; }
 }
+// A node's place among its parent's, and words put just before or after it, as the browser's ChildNode does.
+for (const Kind of [Text, Element]) {
+  Object.defineProperty(Kind.prototype, 'nextSibling', { get() { const kids = this.parentNode?.childNodes ?? []; return kids[kids.indexOf(this) + 1] ?? null; } });
+  const put = (node, nodes, offset) => {
+    const parent = node.parentNode, kids = parent.childNodes;
+    kids.splice(kids.indexOf(node) + offset, 0, ...nodes);
+    for (const added of nodes) added.parentNode = parent;
+  };
+  Kind.prototype.after = function (...nodes) { put(this, nodes, 1); };
+  Kind.prototype.before = function (...nodes) { put(this, nodes, 0); };
+}
 const doc = { createElementNS: (_, tag) => new Element(tag), createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
 
 // Every node under node, in document order.
@@ -878,4 +889,49 @@ test('two inline pairs stay inline and a pasted pair inside a fence stays litera
   const message = render('Pasted:\n\n```\n' + paste + '\n```\n\nThat is all.', { copyFences: true });
   assert.deepEqual(texts(byClass(message, 'md-pre')), [paste]);
   assert.deepEqual(texts(byClass(message, 'md-p')), ['Pasted:', 'That is all.']);
+});
+
+// Words a person had read that its agent author's edit took away (item 614, docs/message-edit.md): struck through
+// where they stood, on the card (formatWords) and in the Reader (drawPassages), in a <del> placed at that one place, so
+// every position the drawn words know is as it was and nothing a selection or a quote reads holds the struck words.
+test('struck words sit where they stood, spaced from the words beside them, and leave every position as it was', () => {
+  const struckOf = host => byClass(host, 'struck-words').map(node => [node.tagName, node.textContent]);
+  for (const [body, cuts, shown] of [
+    ['Built on release 86, the checks are green.', [{ at: 17, words: '85' }], 'Built on release 85 86, the checks are green.'],
+    ['New words here', [{ at: 0, words: 'Old' }], 'Old New words here'],
+    ['ship it', [{ at: 7, words: 'now' }], 'ship it now'],
+    ['uno two tres', [{ at: 0, words: 'one' }, { at: 8, words: 'three' }], 'one uno two three tres'],
+    ['**Release 86** is out', [{ at: 10, words: '85' }], 'Release 85 86 is out'],
+    ['- first\n- release 86 lands', [{ at: 18, words: '85' }], '•first•release 85 86 lands'],
+  ]) {
+    const plain = render(body), card = render(body, { struck: cuts });
+    assert.deepEqual(struckOf(plain), [], `nothing struck without cuts: ${body}`);
+    assert.equal(card.textContent, shown, `the card: ${body}`);
+    assert.deepEqual(struckOf(card), cuts.map(cut => ['DEL', cut.words]));
+    assert.equal(format.drawnText(card), body, 'the card still drew the new words');
+    // Every character of the new words maps where it did before the strike, and the struck words map to their one place.
+    const places = host => walk(host).filter(node => node.nodeType === 3 && !byClass(host, 'struck-words').some(del => del.childNodes.includes(node)) && node.data.trim())
+      .flatMap(node => [...node.data].map((_, k) => format.sourcePosition(node, k)));
+    assert.deepEqual(places(card).filter((_, k, all) => all.indexOf(_) === k), places(plain).filter((_, k, all) => all.indexOf(_) === k), `positions: ${body}`);
+    for (const [k, del] of byClass(card, 'struck-words').entries()) {
+      const at = [...cuts].sort((a, b) => b.at - a.at).reverse()[k].at;
+      assert.equal(format.sourcePosition(del.childNodes[0], 1), at, 'the struck words are at their one place');
+      assert.equal(del.title, 'Words you read before the author changed them');
+    }
+    // The Reader's passages cover the same spans with or without the strike.
+    const reader = passages(body, { struck: cuts }), before = passages(body);
+    assert.deepEqual(reader.childNodes.map(node => [node.dataset.start, node.dataset.end]), before.childNodes.map(node => [node.dataset.start, node.dataset.end]));
+    assert.deepEqual(struckOf(reader), cuts.map(cut => ['DEL', cut.words]), `the Reader: ${body}`);
+  }
+});
+
+test('a quote over struck words takes the new words only', () => {
+  doc.createTreeWalker = root => { const texts = walk(root).filter(node => node.nodeType === 3); let at = -1; return { nextNode: () => texts[++at] ?? null }; };
+  doc.createRange = () => ({ setStart(node, k) { this.start = [node, k]; }, setEnd(node, k) { this.end = [node, k]; }, get collapsed() { return this.start[0] === this.end[0] && this.start[1] === this.end[1]; } });
+  try {
+    const body = 'Built on release 86, the checks are green.', card = render(body, { struck: [{ at: 17, words: '85' }] });
+    const range = format.rangeOf(card, 0, body.length);
+    assert.equal(body.slice(format.sourcePosition(...range.start), format.sourcePosition(...range.end, true)), body);
+    assert.ok(!byClass(card, 'struck-words')[0].childNodes.includes(range.start[0]), 'the range starts in the new words');
+  } finally { delete doc.createTreeWalker; delete doc.createRange; }
 });
