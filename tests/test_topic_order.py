@@ -60,6 +60,25 @@ class TopicOrderCase(fixtures.ReaderCase):
                 return ids, cursors
             cursors.append(cursor)
 
+    def test_item_641_activity_does_not_move_topics_including_across_a_page_boundary(self):
+        self.open_topic("t2", "Second")
+        self.open_topic("t3", "Third")
+        before = self.order()
+        first = self.page(limit=1)
+        self.post("t1", actor="agent-a")
+        self.assertEqual(self.order(), before, "another person's message never changes topic order")
+        self.assertEqual(self.walk(1)[0], before, "paging keeps every topic once")
+        rest = self.page(limit=100, cursor=first["next_cursor"])
+        self.assertEqual([item["id"] for item in rest["items"]], before[1:])
+        self.post("t2")
+        self.assertEqual(self.order(), before, "the reader's own message never changes topic order")
+        self.update("t1", {"state": "review", "note": "Look"}, actor="agent-a")
+        self.assertEqual(self.order(), before, "other activity also leaves topics where they were")
+        self.open_topic("t4", "New to the reader")
+        self.assertEqual(self.order(), ["t4"] + before, "a new topic enters at the top once")
+        self.post("t1")
+        self.assertEqual(self.order(), ["t4"] + before, "then stays there")
+
     def test_topics_are_listed_latest_activity_first_and_a_new_message_brings_one_to_the_top(self):
         self.open_topic("t2", "Second")
         self.open_topic("t3", "Third")
