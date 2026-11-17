@@ -219,7 +219,7 @@ export class EditorRegistry {
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
-  async open(sourceRef, { topicId, opener } = {}) {
+  async open(sourceRef, { topicId, opener, mode = 'reply' } = {}) {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
