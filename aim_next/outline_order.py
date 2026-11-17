@@ -4,7 +4,7 @@ from __future__ import annotations
 (docs/outline-order.md).
 
 The outline lists outcomes in the order Core gives them and each outcome's
-topics latest activity first. A person may move a row up or down; what they
+topics newest stable position first. A person may move a row up or down; what they
 placed is kept here, not in a browser, so it follows them to every page and
 device, and nobody else sees it. One order for their outcomes, and one for the
 topics of each outcome they can read.
@@ -13,7 +13,7 @@ An order is a list of ids. Reading it, Core leaves out what the person can no
 longer place (an outcome they left, a topic gone from the outcome), so a client
 never sends back what it would be refused. What a client shows is worked out
 there: the ids placed keep their order, and anything the person never placed
-goes where it goes today relative to them (web/outline-order.mjs).
+follows its stable position relative to them (web/outline-order.mjs).
 
 An order changes no message, topic, outcome, count or light: it writes one
 actor-scoped change, and nothing to a topic's or outcome's scope. Its revision
@@ -35,6 +35,29 @@ ORDER_DOWN = ("DROP TABLE outline_orders",)
 ORDER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM outline_orders)"
 # The outcomes' own order is kept under the empty name; an outcome's id is never empty.
 OUTCOMES = ""
+
+
+# Derive the default order from the first recorded topic change. Future topics get a monotonic position in
+# their creation transaction, never from activity or a browser's observations.
+TOPIC_POSITION_SCHEMA = [
+    "ALTER TABLE topics ADD COLUMN list_position INTEGER NOT NULL DEFAULT 0",
+    "WITH ranked AS (SELECT t.id,row_number() OVER (ORDER BY coalesce((SELECT c.seq FROM changes c "
+    "WHERE c.scope_kind='topic' AND c.scope_id=t.id AND c.resource_kind='topic' AND c.resource_id=t.id ORDER BY c.seq LIMIT 1),0),t.id) AS position FROM topics t) "
+    "UPDATE topics SET list_position=(SELECT position FROM ranked WHERE ranked.id=topics.id)",
+    "CREATE TABLE topic_position_clock (singleton INTEGER PRIMARY KEY CHECK(singleton=1), value INTEGER NOT NULL)",
+    "INSERT INTO topic_position_clock SELECT 1,coalesce(max(list_position),0) FROM topics",
+    "CREATE TRIGGER topic_position_insert AFTER INSERT ON topics BEGIN "
+    "UPDATE topic_position_clock SET value=value+1 WHERE singleton=1; "
+    "UPDATE topics SET list_position=(SELECT value FROM topic_position_clock WHERE singleton=1) WHERE id=NEW.id; END",
+    "DROP INDEX workspace_topic_order",
+    "CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',list_position DESC,id DESC)",
+]
+TOPIC_POSITION_DOWN = (
+    "DROP TRIGGER topic_position_insert", "DROP TABLE topic_position_clock", "DROP INDEX workspace_topic_order",
+    "ALTER TABLE topics DROP COLUMN list_position",
+    "CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',activity_ms DESC,id DESC)",
+)
+TOPIC_POSITION_OCCUPIED = None  # Rebuilt from the retained creation changes; saved orders are separate records.
 
 
 class OutlineOrder:

@@ -78,7 +78,7 @@ class OutlineOrderCase(fixtures.StoreCase):
         for args in ({}, {"done": True}, {"archived": True}):
             with self.subTest(args=args):
                 self.assertEqual(self.topics(**args)["order"], {"ids": ["t1", "t3", "t2"], "revision": 1}, "every list of the outcome carries it")
-        self.assertEqual([item["id"] for item in self.topics()["items"]], ["t3", "t2", "t1"], "the list itself stays latest activity first")
+        self.assertEqual([item["id"] for item in self.topics()["items"]], ["t3", "t2", "t1"], "the list itself keeps stable creation positions")
         self.assertEqual(self.topics("w2")["order"], {"ids": [], "revision": 0}, "another outcome's topics keep their own")
         self.assertEqual(self.outcomes()["order"], {"ids": [], "revision": 0}, "and the outcomes theirs")
         self.assertEqual(self.topics(actor="agent-a")["order"], {"ids": [], "revision": 0}, "and another viewer theirs")

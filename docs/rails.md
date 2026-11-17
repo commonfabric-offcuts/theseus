@@ -98,10 +98,11 @@ rail.
   kept on the browser. Whether an outcome is open is on its row for a screen
   reader (`aria-expanded`), and on screen in its topics under it.
 - **Order.** Outcomes keep the order the `workspaces` view gives them, and
-  topics the order their lists give, until the reader places them with ⌘↑
+  topics their stable default position, newest topics first, until the reader places them with ⌘↑
   and ⌘↓: then their own order, which Core keeps for them on every device
   (docs/outline-order.md). A new message changes counts and lights, never the
-  order. There is no "Not in an outcome" group.
+  order. A topic new to the reader appears at the top once and stays there
+  until the reader moves it. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
   the messages: → on a folded outcome opens it and shows its topics, the next
