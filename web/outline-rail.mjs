@@ -536,7 +536,7 @@ export class OutlineRail {
       // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });
+      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.

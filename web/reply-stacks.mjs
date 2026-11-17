@@ -210,7 +210,9 @@ export function lineSeq(list, seq) {
 // the place it held then, until a Move below More or Bring back on any device.
 // One among an open dossier's earlier messages opens their row and shows
 // whole (item 476), for this visit; its first message only when full is asked.
-export function reveal(entry, { full = false } = {}) {
+// open: the dossier is drawn open whatever its level, as a topic's unread
+// count lands on a message (item 613), so the row is expanded as far as it.
+export function reveal(entry, { full = false, open = false } = {}) {
   const feed = entry?.closest?.('#messages');
   if (feed && states.has(feed)) {
     const state = stackState(feed);
@@ -226,6 +228,7 @@ export function reveal(entry, { full = false } = {}) {
   if (section && levelOf(state, id) === 'head') { state.levels.set(id, 'open'); changed = true; }
   if (section && entry.hidden) { state.levels.set(id, 'open'); changed = true; }
   if (section && full && own === id && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
+  if (section && open && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }
   const stack = state.stacks.find(each => each.id === own || each.replies.some(item => item.id === own));
   if (section && stack && (own !== id || full) && earlierOf(stack, levelOf(state, id), { held: state.held.get(id) ?? null }).some(item => item.id === own)) {
     if (!state.earlier.has(id)) { state.earlier.add(id); changed = true; }

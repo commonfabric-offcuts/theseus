@@ -73,6 +73,7 @@ import { StackFeed } from './stack-feed.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
 import { headerClick } from './reply-stacks.mjs';
+import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
@@ -1666,19 +1667,39 @@ function listPage(kind, more = false) {
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
 }
-// The New line's "More new below": older pages, one after another, until the
-// line's message's card is loaded or no older page is left; then that
-// message takes the focus, with the line in its place below it. A read that
-// moves nothing on (a refusal, or a review pending) ends it.
-async function loadToUnread() {
-  const loaded = () => entries($('messages')).find(child => Number(child.dataset.seq) === views.line?.seq);
-  while (views.line && !loaded() && views.olderCursor !== null) {
+// Older pages, one after another, until the message wanted() names ({seq},
+// or none) is loaded or no older page is left; its entry, or null. A read
+// that moves nothing on (a refusal, or a review pending) ends it.
+async function loadUntil(wanted) {
+  const loaded = () => entries($('messages')).find(child => wanted() && Number(child.dataset.seq) === wanted().seq) ?? null;
+  while (wanted() && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
-  const entry = loaded();
+  return loaded();
+}
+// The New line's "More new below": the line's message read in; then it takes
+// the focus, with the line in its place below it.
+async function loadToUnread() {
+  const entry = await loadUntil(() => views.line);
   if (entry) opened(reveal(entry)).focus();
+}
+// What a topic's unread count leads to (item 613, docs/attention.md): the
+// oldest message still unread for the reader, as Core finds it by the rule
+// the count keeps, read in however far back it is; its dossier open, its
+// earlier-messages row expanded as far as it, the message whole, brought into
+// view and given the focus, so it is plainly on the screen. Reading it there
+// settles it, as any card read on screen, and the count goes with it.
+async function landOnUnread() {
+  // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
+  if (shell.drawer?.isOpen()) shell.drawer.close();
+  const entry = await loadUntil(() => views.oldestUnread);
+  if (!entry) return;
+  reveal(entry, { full: true, open: true });
+  const card = opened(entry);
+  revealSelection(card);
+  card.focus({ preventScroll: true });
 }
 // Where the oldest unread message is, read again after each commit: reading,
 // marks and replies move it without changing the topic. During a visit the
@@ -2028,7 +2049,9 @@ async function initialize() {
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
-  if (anchored || pageAnchor) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
+  // A topic's unread count opens it at its oldest unread message (item 613).
+  const atUnread = route.kind === 'topic' && route.at === 'unread';
+  if (anchored || pageAnchor || atUnread) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -2303,7 +2326,7 @@ async function initialize() {
       if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
       return answer;
     },
-    open: (id, title, message) => openDestination(topicTarget(id, message), title),
+    open: (id, title, message, at) => openDestination(topicTarget(id, message, at), title),
     // Read once: the outline takes this list in from then on (outline-rail.mjs).
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
@@ -2365,6 +2388,7 @@ async function initialize() {
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
+  if (atUnread) run(landOnUnread);
   if (anchored) {
     const card = landOn(anchored);
     run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
@@ -2655,6 +2679,8 @@ function topicName(id) {
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
+  // The open topic's unread count lands on its oldest unread message here (item 613).
+  if (target.kind === 'topic' && target.at === 'unread' && topic && views && target.id === topic.id) return run(landOnUnread);
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
     // A message the page shows is landed on first, its stack opened; the
@@ -2807,7 +2833,7 @@ async function initializeOutcomePage(route) {
       const serial=++standingSerial,retry=()=>run(reload);
       try {
         const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
-        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),
           bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});
         return true;
       } catch {
@@ -2845,7 +2871,7 @@ async function initializeOutcomePage(route) {
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-        open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+        open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
       return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeTools.load(),outcomeReferences.load(),loadConversation(),
@@ -2903,7 +2929,7 @@ async function initializePipelinePage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.id,()=>{});
   // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
@@ -2967,7 +2993,7 @@ async function initializeMeasurementsPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
     sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
@@ -2991,7 +3017,7 @@ async function initializeToolPage(route) {
     topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
       retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
       read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-      open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+      open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
     pagesInPlace(route.id,()=>{});
     // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
     here={workspaceId:route.id,title:page.answer.tool.home.title,view:null,page:false,has:false,onlyNew:false,items:new Map()};
@@ -3122,7 +3148,7 @@ async function initializeOpeningPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.workspace,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,

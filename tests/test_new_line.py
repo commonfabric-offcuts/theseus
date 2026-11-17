@@ -298,3 +298,90 @@ class NewLineCase(ReaderCase):
         answer = self.store.view("outsider", "topic_unread", {"topic_id": "t1"})
         self.assertEqual(answer["error"]["code"], "FORBIDDEN")
         self.assertEqual(self.store.view("owner", "topic_unread", {"topic_id": "t1", "extra": 1})["error"]["code"], "INVALID_ARGUMENT")
+
+
+class CountLeadsThereCase(ReaderCase):
+    """Item 613: a topic's unread count leads to the oldest message still unread for the reader, and counts nothing
+    that press cannot reach (docs/attention.md, "In the browser").
+
+    The page counts what `workspace_topics` counts for the topic, and a press on that count opens the topic at
+    `oldest_unread`, read in page by page however far back it is (web/app.mjs, landOnUnread). So the two must be one
+    rule: while the count is above nought, `oldest_unread` names a message the reader's own pages of the topic
+    reach; at nought it names none. Each shape below is checked by that one property, the deep dossier of the live
+    defect (a pending delivery 19 replies deep, 118 messages up) and the negatives: nothing unread, another reader's
+    pending delivery, a whisper not to the reader and a topic the reader left."""
+
+    post, line, at, read, unread_count, caught_up = (NewLineCase.post, NewLineCase.line, NewLineCase.at, NewLineCase.read,
+                                                    NewLineCase.unread_count, NewLineCase.caught_up)
+
+    def leads_there(self, actor="owner"):
+        """The topic's count for actor and the message its press leads to, after asserting they agree."""
+        count, oldest = self.unread_count(actor), self.line(actor)
+        self.assertEqual(count > 0, oldest is not None, "a count leads somewhere, and nothing unread leads nowhere: %s %s" % (count, oldest))
+        if oldest is not None:
+            cursor, pages = None, 0
+            while True:
+                page = self.store.view(actor, "topic_messages", dict({"topic_id": "t1", "audience": "all", "direction": "before", "limit": 30},
+                                                                     **({"cursor": cursor} if cursor is not None else {})))
+                pages += 1
+                if any(item["id"] == oldest["id"] for item in page["items"]):
+                    break
+                cursor = page["next_cursor"]
+                self.assertIsNotNone(cursor, "the reader's own pages of the topic reach the message its count leads to")
+            oldest = dict(oldest, pages=pages)
+        return count, oldest
+
+    def test_a_pending_delivery_deep_in_a_dossier_far_up_the_topic_is_counted_and_led_to_until_it_is_read(self):
+        self.caught_up()
+        self.post("agent-b", "The seed trays went out this morning.", addressees=["agent-a"], intent="tell")
+        root = previous = self.post("agent-a", "A plan for the spring beds", addressees=["owner"], intent="tell")
+        for depth in range(1, 19):
+            author = "owner" if depth % 2 else "agent-a"
+            previous = self.post(author, "Bed %d: more compost" % depth, reply_to=previous,
+                                 **({} if author == "owner" else {"addressees": ["owner"], "intent": "tell"}))
+            # Other talk between agents lands between the dossier's replies, as it does in a busy topic.
+            self.post("agent-b", "Watering rota note %d" % depth, addressees=["agent-a"], intent="tell")
+        target = self.post("agent-a", "The 9:58 note: the tomatoes go in the south bed.", reply_to=previous, addressees=["owner"], intent="tell")
+        newer = previous = target
+        for n in range(118):
+            if n % 2:
+                newer = self.post("agent-b", "Rota line %d" % n, addressees=["agent-a"], intent="tell")
+            else:
+                # The reader's own replies answer the agent's, never the note itself, which a reply would settle.
+                author = "owner" if n % 4 == 2 else "agent-a"
+                previous = self.post(author, "Later reply %d" % n, reply_to=previous,
+                                     **({} if author == "owner" else {"addressees": ["owner"], "intent": "tell"}))
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE topic_id='t1' AND seq>(SELECT seq FROM messages WHERE id=?)", (target,)), [(118,)])
+        # Everything else is read; the 9:58 note alone waits for the reader.
+        seq = self.at(target)["seq"]
+        self.committed(self.command("topic.read_through", {"from_seq": 0, "seq": seq - 1}, target={"topic_id": "t1"}))
+        self.committed(self.command("topic.read_through", {"from_seq": seq + 1, "seq": 10 ** 6}, target={"topic_id": "t1"}))
+        positions = self.store.view("owner", "stack_positions", {"topic_id": "t1", "message_ids": [target]})["items"]
+        self.assertEqual(positions[0]["stack_position"]["root_id"], root, "the note is in the dossier the plan began, 19 replies down")
+        count, oldest = self.leads_there()
+        self.assertEqual((count, oldest["id"]), (1, target))
+        self.assertGreaterEqual(oldest["pages"], 4, "it is further up the topic than the first three pages of thirty reach")
+        self.read(target)
+        self.assertEqual(self.leads_there(), (0, None), "read, nothing is counted and the count leads nowhere")
+
+    def test_what_the_reader_cannot_reach_or_is_not_theirs_is_never_counted(self):
+        self.caught_up()
+        self.assertEqual(self.leads_there(), (0, None), "nothing unread shows no count")
+        # Another reader's pending delivery is theirs: a message by name to them is between others for this reader.
+        self.participation("other-reader", True)
+        theirs = self.post("agent-a", "Your seedlings are ready", addressees=["other-reader"], intent="tell")
+        self.assertEqual(self.leads_there(), (0, None), "another reader's pending delivery is not counted for this one")
+        self.assertEqual(self.store.view("other-reader", "topic_unread", {"topic_id": "t1"})["oldest_unread"]["id"], theirs)
+        # A whisper not to the reader: they cannot see it, so it is never theirs to count.
+        self.committed(self.command("message.post", {"body": "Between us: the shed key", "addressees": ["agent-a"], "whisper": True},
+                                    target={"topic_id": "t1"}, actor="other-reader"))
+        self.assertEqual(self.leads_there(), (0, None), "a whisper between others is not counted")
+        # A topic the reader left: what waited for them by subscription is no longer counted, and nothing leads there.
+        self.post("agent-a", "To the whole topic: frost tonight")
+        self.assertEqual(self.leads_there()[0], 1, "a message to the whole topic waits for its participant")
+        self.participation("owner", False)
+        self.assertEqual(self.leads_there(), (0, None), "having left, what waited by subscription is not counted")
+        # A message sent to them by name since still reaches them, in a topic they can still read: counted, and led to.
+        named = self.post("agent-a", "Owner, the frost cloth is in the shed", addressees=["owner"], intent="tell")
+        count, oldest = self.leads_there()
+        self.assertEqual((count, oldest["id"]), (1, named))

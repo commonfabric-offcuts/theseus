@@ -7120,4 +7120,64 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
     assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
   });
+
+  // Item 613: a topic's unread count leads to the oldest message still unread for the reader (docs/attention.md,
+  // "In the browser"). The shape a person met: the one message waiting for them is 19 replies down a dossier
+  // whose first message is far up the topic, with 118 messages after it, so it is neither on the topic's first
+  // page nor among the dossier's newest seven, but behind its earlier-messages row. One press on the topic's
+  // count in the outline, from another topic, opens the topic there: the dossier open, its earlier row expanded
+  // as far as the message, the message whole on screen, uncovered, with the keys on it, and the phone's drawer
+  // closed. Read on screen, Core settles it and the count goes. A topic with nothing unread, its only message
+  // to someone else by name, shows no count. At a laptop's width and at 390, 375 and 320 on a phone, light and
+  // dark; on a phone the count answers a finger 44px each way. Pressed on the open topic's own row, it lands
+  // there in place too.
+  await check('reading unread count one press lands on the oldest unread message deep in a dossier behind its earlier row, on screen, and the count goes once it is read', async () => {
+    const countOf = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
+    const landed = (p, topic, target) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))});
+      const here=new URL(location.href).searchParams.get('topic'),drawer=document.getElementById('rail').classList.contains('open');if(!c)return {here,drawer,card:false};
+      const s=c.closest('.reply-stack'),w=c.querySelector(':scope > .message-preview'),b=c.getBoundingClientRect(),r=w&&w.getClientRects().length?w.getBoundingClientRect():null;
+      const plain=Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2)));
+      return {here,drawer,card:true,fold:s?.dataset.fold??null,whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=0&&b.bottom<=innerHeight,plain,focused:document.activeElement===c,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const want = topic => ({ here: topic, drawer: false, card: true, fold: 'open', whole: true, onScreen: true, plain: true, focused: true, sideways: false });
+    for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
+      const deep = `unread-deep-${device}`, calm = `unread-calm-${device}`, touch = device !== 'laptop';
+      const made = await control({ method: 'navigation_topics', topics: [{ id: calm, title: 'Greenhouse ' + device }, { id: deep, title: 'Spring beds ' + device }] });
+      await control({ method: 'agent_message', operation_id: calm + '-theirs', topic_id: calm, source: 'topic', sender: other, join: true, addressees: ['aim-ux'], body: 'For aim-ux: the hose is fixed.' });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The tomatoes go in the south bed, by the fence.' });
+      const p = await open(`${deep}-press`, device, calm, made[0].result.message_id);
+      if (touch) { await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens`); }
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(deep))})?.textContent==='1'`), `${device}: the deep topic counts its one waiting message`);
+      const badge = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(countOf(deep))});b.scrollIntoView({block:'center'});const r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,on=(x,y)=>b.contains(document.elementFromPoint(x,y));
+        return {calm:Boolean(document.querySelector(${JSON.stringify(countOf(calm))})),tip:b.title,lands:b.dataset.lands??null,reach:{up:on(x,y-21),down:on(x,y+21),left:on(r.right-43,y),right:on(r.right-1,y)}}})()`);
+      assert.equal(badge.calm, false, `${device}: a topic with nothing unread, its one message to someone else by name, shows no count`);
+      assert.equal(badge.tip, 'Show the oldest unread message', `${device}: the count says where it leads`);
+      if (touch) assert.deepEqual(badge.reach, { up: true, down: true, left: true, right: true }, `${device}: the count answers a finger 44px each way`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-count-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      if (touch) await tap(p, countOf(deep)); else await p.point(countOf(deep));
+      await becomes(() => landed(p, deep, ids.target), want(deep), `${device}: one press opens the topic on the waiting message, plainly on screen in its open dossier`);
+      observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target) });
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        assert.deepEqual(await landed(p, deep, ids.target), want(deep), `${device} ${theme}: still there`);
+        await shot(p, `unread-landed-${device}-${theme}`);
+      }
+      // On screen, the page reports it read: Core settles the message, and the count goes.
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, `${device}: read on screen, Core settles it`);
+      if (touch) { await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens again`); }
+      await until(() => p.evaluate(`Boolean(document.querySelector('#outline a.nav-item[data-topic-id="${deep}"]'))&&!document.querySelector(${JSON.stringify(countOf(deep))})`), `${device}: the count is gone`);
+      await shot(p, `unread-gone-${device}-light`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Pressed on the open topic's own row, on a laptop: it lands in place.
+    const own = 'unread-deep-own', made = await control({ method: 'navigation_topics', topics: [{ id: own, title: 'Spring beds here' }] });
+    const ids = await control({ method: 'dossier_deep', topic_id: own, words: 'The beans go by the gate.' });
+    const p = await open(own, 'laptop', own, ids.newest);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(own))})?.textContent==='1'`), 'the open topic counts its one waiting message');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.target))}))`), false, 'opened at its newest, the waiting message is not on the page');
+    await p.point(countOf(own));
+    await becomes(() => landed(p, own, ids.target), want(own), 'pressed on the open topic\'s own row, it lands on the waiting message in place');
+    assert.ok(made.length === 1);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
 }

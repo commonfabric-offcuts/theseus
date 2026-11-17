@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicPages, TopicNavigation, topicPosition, routeHref, parseRoute } from '../web/topic-navigation.mjs';
+import { TopicPages, TopicNavigation, topicPosition, routeHref, parseRoute, topicTarget } from '../web/topic-navigation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { AttemptError, unreached } from '../web/api.mjs';
 
@@ -261,6 +261,18 @@ test('a new Notebook page opens its empty card editor through an exact cards rou
   assert.equal(routeHref(route), '?cards=n-first&write=new');
   assert.deepEqual(parseRoute(new URL('https://example.test/?cards=n-first&write=new')), route);
   assert.throws(() => parseRoute(new URL('https://example.test/?cards=n-first&write=anything')), /incomplete|ambiguous/);
+});
+
+// Item 613: a topic's unread count opens the topic at its oldest unread message: its own address, alone.
+test('a topic opened at its oldest unread message has an address of its own, and it names no message or page beside it', () => {
+  const route = { kind: 'topic', id: 't-kitchen', at: 'unread' };
+  assert.equal(routeHref(route), '?topic=t-kitchen&at=unread');
+  assert.deepEqual(parseRoute(new URL('https://example.test/?topic=t-kitchen&at=unread')), route);
+  assert.deepEqual(topicTarget('t-kitchen', null, 'unread'), route);
+  assert.deepEqual(topicTarget('t-kitchen'), { kind: 'topic', id: 't-kitchen' }, 'a topic named alone opens as it always has');
+  for (const address of ['?topic=t-kitchen&at=newest', '?topic=t-kitchen&at=unread&message=m-1', '?topic=t-kitchen&at=unread&page=n-1'])
+    assert.throws(() => parseRoute(new URL('https://example.test/' + address)), /incomplete|ambiguous/, address);
+  assert.throws(() => routeHref({ kind: 'topic', id: 't-kitchen', at: 'unread', message: 'm-1' }), /incomplete|ambiguous/);
 });
 
 test('Notebook writing links name Text or Cards without changing the page identity',()=>{

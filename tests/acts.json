@@ -6230,8 +6230,8 @@
    "break": [
     [
      "web/outline-rail.mjs",
-     "open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });",
-     "open: (topicId, topicTitle) => this.open(topicTarget(topicId), topicTitle) });"
+     "open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });",
+     "open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, null, at), topicTitle) });"
     ]
    ],
    "check": {
@@ -6376,8 +6376,8 @@
    "break": [
     [
      "web/app.mjs",
-     "open:(id,title,message)=>openDestination(topicTarget(id,message),title),\n        updated:",
-     "open:(id,title)=>openDestination(topicTarget(id),title),\n        updated:"
+     "open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),\n        updated:",
+     "open:(id,title,message,at)=>openDestination(topicTarget(id,null,at),title),\n        updated:"
     ]
    ],
    "check": {
@@ -26322,6 +26322,122 @@
    ],
    "check": {
     "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a topic's unread count opens the topic at its oldest unread message, read in however far up it is, with its dossier open, its earlier row expanded as far as it and the message whole on screen with the keys on it",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (atUnread) run(landOnUnread);\n",
+     "  if (false) run(landOnUnread);\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Pressed on the open topic's own row, the count lands on its oldest unread message in place",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (target.kind === 'topic' && target.at === 'unread' && topic && views && target.id === topic.id) return run(landOnUnread);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Landing on a message draws its dossier open, whatever its level, so its earlier row expands as far as the message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section && open && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "On a phone the unread count answers a finger 44px each way",
+   "break": [
+    [
+     "web/aim.css",
+     "width:max(100%,44px);height:44px;",
+     "width:100%;height:100%;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a topic row's unread count opens the topic at its oldest unread message; the rest of the row opens it as before",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "      if (landsOnUnread(event.target)) return this.open(item.id, this.title(item.id), null, 'unread');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic row's unread count says in its tooltip that it shows the oldest unread message",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  if (count) { count.dataset.lands = 'unread'; count.title = UNREAD_TIP; }",
+     "  if (count) { count.dataset.lands = 'unread'; }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic opened at its oldest unread message has the address ?topic=…&at=unread, which names no message or page beside it",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  else if (keys.length===2 && p.has('topic') && p.has('at')) route={kind:'topic',id:p.get('topic'),at:p.get('at')};\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic's unread count counts only what a press on it reaches: while above nought, the oldest unread message is one the reader's pages of the topic reach, and a topic left, a whisper between others or another reader's delivery counts nothing",
+   "break": [
+    [
+     "aim_next/delivery.py",
+     "\"WHERE g.recipient_id=? AND g.kind='subscription' AND g.active=1 AND g.pending_count>0\" + scope + \" GROUP BY g.topic_id\"",
+     "\"WHERE g.recipient_id=? AND g.kind='subscription' AND g.pending_count>0\" + scope + \" GROUP BY g.topic_id\""
+    ]
+   ],
+   "check": {
+    "python": "test_new_line.py"
    }
   }
  ]

@@ -22,7 +22,7 @@
 // the page when there is room; it reads only while it shows. What it shows
 // is drawn for one place and one scope: when either changes, what was shown
 // goes at once, and a read for a place or scope left behind draws nothing.
-import { paintChanged, paintMarks, questionOf } from './topic-navigation.mjs';
+import { paintChanged, paintMarks, questionOf, landsOnUnread } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
@@ -674,6 +674,9 @@ export class ThingsRail {
     link.onclick = event => {
       if (!plainClick(event) || !this.handles) return;
       event.preventDefault();
+      // A press on a topic's unread count opens it at its oldest unread message (item 613).
+      const unread = target.kind === 'topic' && landsOnUnread(event.target);
+      if (unread) { if (!this.wide?.matches) this.close(false); return this.handles.open({ kind: 'topic', id: target.id, at: 'unread' }, title, link); }
       if (!this.wide?.matches) this.close(false);
       this.handles.open(target, title || 'that page', link);
     };
