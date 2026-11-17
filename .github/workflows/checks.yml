@@ -50,8 +50,9 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Browser shards keep their existing deal; unit jobs have independent limits (docs/unit-shards.md).
-  BROWSER_SHARDS: 3
+  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
+  # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
+  BROWSER_SHARDS: 4
 
 jobs:
   plan:
@@ -74,11 +75,11 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # Browser/replay limits retain their existing measurements. Unit limits are
+    # Browser limits use ceil(longest dealt minutes * 1.5); replay keeps 45. Unit limits are
     # ceil((measured file/step minutes + measured setup) * 1.5), from
     # .github/check-weights.json: file timings 44112970996, Node/setup
     # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
@@ -197,12 +198,54 @@ jobs:
     needs: [plan, check]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: check-*
           path: shards
+      - name: Recover cancelled browser jobs
+        uses: actions/github-script@v7
+        env:
+          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = JSON.parse(process.env.PLAN_SHARDS || '[]');
+            const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+              ...context.repo, run_id: context.runId, attempt_number: attempt, per_page: 100
+            });
+            const cancelled = [];
+            for (const job of jobs) {
+              if (!['cancelled', 'timed_out'].includes(job.conclusion) ||
+                  !plan.some(s => s.name === job.name && s.name.startsWith('browser '))) continue;
+              const eventHead = context.payload.pull_request?.head.sha || context.sha;
+              if (Number(job.run_id) !== context.runId || job.head_sha !== eventHead) {
+                throw new Error('cancelled job does not name this run and commit');
+              }
+              const record = {id: job.id, run_id: String(job.run_id), attempt: String(attempt),
+                head_sha: job.head_sha, commit: context.sha, name: job.name, conclusion: job.conclusion,
+                started_at: job.started_at, completed_at: job.completed_at, log: ''};
+              try {
+                const response = await github.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', {
+                  ...context.repo, job_id: job.id
+                });
+                const text = typeof response.data === 'string' ? response.data : Buffer.from(response.data).toString('utf8');
+                // Keep only the producer's completed-step records and cancellation line, never a runtime profile.
+                record.log = text.split(/\r?\n/).filter(line =>
+                  /\S+ \{"name": .*"exit":/.test(line) || line.includes('##[error]The operation was canceled.')).join('\n') + '\n';
+              } catch (error) {
+                record.log_error = 'job logs unavailable';
+                core.warning(`Could not recover job ${job.id}; its unrecovered steps stay missing`);
+              }
+              cancelled.push(record);
+            }
+            fs.mkdirSync('shards', {recursive: true});
+            fs.writeFileSync('shards/cancelled.json', JSON.stringify(cancelled));
       - name: Fold the shards' summaries into one
         shell: bash
         env:
@@ -244,6 +287,7 @@ jobs:
           merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
           if len(merges) > 1:
               sys.exit("the shards name different merges: %s" % sorted(merges))
+          # With no receipts, retain only the event commit for diagnostics. No checkout, tree or PR parent is proven.
           merge = (receipts[0].get("merge") or {}) if receipts else {"sha": env.get("GITHUB_SHA")}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
@@ -264,7 +308,7 @@ jobs:
                   sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
-          # Even total cancellation produces a diagnostic summary naming every job.
+          # Recovery and the missing-step inventory must not depend on any sibling finishing.
           commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
           if len(commits) > 1:
               sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
@@ -273,11 +317,56 @@ jobs:
               steps, required, jobs, missing_jobs, missing = check.combine_unit_results(docs, plan, receipts)
           except check.Refused as error:
               sys.exit(str(error))
+          # A timed-out job may never upload its summary. Its job log still holds completed run_step records.
+          # These are diagnostic evidence, not a substitute for a finished shard or its checked-out-tree proof.
+          cancel_path = os.path.join(shards_dir, "cancelled.json")
+          cancelled = json.load(open(cancel_path)) if os.path.exists(cancel_path) else []
+          plan_by_name = {s.get("name", s["steps"]): s["steps"].split(",") for s in json.loads(env.get("PLAN_SHARDS") or "[]")}
+          cancelled_shards = []
+          stamp = r"(\d{4}-\d\d-\d\dT\S+Z) "
+          for job in cancelled:
+              if ((str(job.get("run_id")), str(job.get("attempt"))) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT"))
+                      or job.get("commit") != env.get("GITHUB_SHA") or job.get("name") not in plan_by_name
+                      or job.get("conclusion") not in ("cancelled", "timed_out")):
+                  sys.exit("cancelled job does not belong to this run, attempt and plan")
+              cancel_times = re.findall(stamp + r"##\[error\]The operation was canceled\.", job.get("log") or "")
+              cancelled_at = cancel_times[0] if cancel_times else job["completed_at"]
+              recovered = []
+              for line in (job.get("log") or "").splitlines():
+                  match = re.fullmatch(stamp + r"(\{.*\})", line)
+                  if not match:
+                      continue
+                  try:
+                      result = json.loads(match[2])
+                  except ValueError:
+                      continue
+                  if (set(result) != {"name", "exit", "passed", "counts"} or result["name"] not in plan_by_name[job["name"]]
+                          or type(result["passed"]) is not bool or type(result["exit"]) is not int):
+                      continue
+                  if result["name"] in recovered:
+                      sys.exit("a cancelled job logged a step twice")
+                  recovered.append(result["name"])
+                  present = [s for s in steps if s["name"] == result["name"]]
+                  if present:
+                      if any(s.get(k) != v for s in present for k, v in result.items()):
+                          sys.exit("cancelled job log differs from its uploaded result")
+                      step = present[0]
+                  else:
+                      step = result
+                      steps.append(step)
+                  step.update(shard=job["name"], cancelled_at=cancelled_at, result_source="github-job-log",
+                              github_job=job["id"], logged_at=match[1])
+              cancelled_shards.append({"shard": job["name"], "job": job["id"], "cancelled_at": cancelled_at,
+                                       "conclusion": job["conclusion"], "recovered": recovered, "log_error": job.get("log_error")})
+          names = [step["name"] for step in steps]
+          if len(names) != len(set(names)):
+              sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
           # Keep the full required inventory, but only omitted browser modes
           # are covered by the plan's explicit scope. Units and replay remain required.
           scoped = json.loads(env.get("PLAN_SCOPE") or "null")
           covered = set()
           if scoped is not None:
+              required = sorted(set(required) | set(check.REQUIRED))
               native = {name for name in required if name.startswith("native-")}
               if (env.get("GITHUB_EVENT_NAME") != "pull_request" or not isinstance(scoped, dict)
                       or scoped.get("live") != env.get("BASE_SHA") or not isinstance(scoped.get("steps"), list)
@@ -286,20 +375,22 @@ jobs:
               covered = native - set(scoped["steps"])
               if set(scoped.get("not_run") or []) != covered or covered.intersection(names):
                   sys.exit("scoped plan disagrees with its omitted browser steps")
-          missing = [name for name in missing if name not in covered]
+          missing = [name for name in missing if name not in names and name not in covered]
           first = timed[0] if timed else {'tool': check.TOOL, 'commit': env.get('GITHUB_SHA')}
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
-              "started_at": min((d["started_at"] for d in timed), default=None),
-              "finished_at": max((d["finished_at"] for d in timed), default=None),
-              "steps": steps, "required": required,
+              "required": required,
+              "started_at": min([d["started_at"] for d in timed] + [j["started_at"] for j in cancelled], default=None),
+              "finished_at": max([d["finished_at"] for d in timed] + [j["cancelled_at"] for j in cancelled_shards], default=None),
+              "steps": steps,
               "jobs": jobs, "missing_jobs": missing_jobs, "missing": missing,
-              "tree_unchanged": bool(timed) and all(d.get("tree_unchanged") is True for d in docs),
+              "tree_unchanged": bool(timed) and not cancelled_shards and all(d.get("tree_unchanged") is True for d in docs),
               "tree_after": first.get("tree_after"),
               "skipped": None,
-              "passed": bool(timed) and all(d.get("tree_unchanged") is True for d in docs) and all(step["passed"] for step in steps) and not missing and not missing_jobs,
+              "passed": bool(timed) and all(step["passed"] for step in steps) and not missing and not cancelled_shards and not missing_jobs and all(d.get("tree_unchanged") is True for d in docs),
+              "cancelled_shards": cancelled_shards,
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
@@ -323,6 +414,8 @@ jobs:
                         and all(step["passed"] is True or held(step) for step in steps)),
           }
           json.dump(combined, open(out, "w"), indent=1)
+          if cancelled:
+              json.dump(cancelled, open(os.path.join(os.path.dirname(out), "cancelled-jobs.json"), "w"), indent=1)
           # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
           # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
           profiles = [r.get("profile") for r in receipts]
@@ -337,6 +430,7 @@ jobs:
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
               "plan": plan,
+              "cancelled_shards": cancelled_shards,
               "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
                           "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused"),
                           "receipt": r}

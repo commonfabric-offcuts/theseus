@@ -9,8 +9,11 @@ unreadable/refused scope get every required step.
 
 The plan contains `shards`, `scoped` (the release-check scope record, or null)
 and `why`. Browser shards contain only chosen native modes, dealt longest first
-by the measured weights; empty browser shards are omitted. The units and deploy
-refusals remain together and the wake replay remains separate, beside them.
+by the measured weights over four shards; empty browser shards are omitted.
+Python uses four measured whole-file partitions, Node units and deploy refusals
+each have their own job, and wake replay remains separate beside them. Each
+job carries its measured limit ([unit-shards.md](unit-shards.md) and the browser
+measurements in [tools.md](tools.md#browser-shard-minutes-item-666)).
 `release_check.judge_summary` requires the replay even for scoped summaries.
 Nothing depends on the replay finishing before the units or browser shards.
 

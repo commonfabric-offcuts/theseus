@@ -76,7 +76,9 @@ class ChecksBaseAtRunCase(unittest.TestCase):
                 (folder / 'run.json').write_text(json.dumps(receipt))
         out = self.root / 'release-check'
         out.mkdir()
-        env = dict(self.env, GITHUB_EVENT_NAME=event, PLAN_SHARDS=json.dumps([{'steps': 'python-units'}, {'steps': 'node-units'}]))
+        # The plan names each shard so cancelled jobs can be matched to it.
+        env = dict(self.env, GITHUB_EVENT_NAME=event,
+                   PLAN_SHARDS=json.dumps([{'name': name, 'steps': name} for name in ('python-units', 'node-units')]))
         result = subprocess.run([sys.executable, '-I', '-S', '-c', script("Fold the shards' summaries into one"),
                                  str(shards), str(out / 'summary.json')], cwd=WORKFLOW.parents[2], env=env, capture_output=True, text=True)
         return result, out
