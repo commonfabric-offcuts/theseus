@@ -1344,15 +1344,30 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const said = [['root', say(other, 'Which boat takes the regatta marks out on Saturday?', { join: true })]];
     for (let n = 1; n <= 34; n++) said.push(['o' + n, say(n % 2 ? 'aim-ux' : other, `Mark ${n}: its buoy is painted and its line coiled.`, { reply_to: 'root', ...(n === 1 ? { join: true } : {}) })]);
     said.push(['x', say(other, 'The slipway gate sticks; oil it before the weekend.')]);
-    for (let n = 1; n <= 5; n++) said.push(['a' + n, say(n % 2 ? other : 'aim-ux', `Launch ${n} is fuelled and its crew named.`, { reply_to: 'root' })]);
+    for (let n = 1; n <= 5; n++) said.push(['a' + n, say(n === 5 ? facts.actor : n % 2 ? other : 'aim-ux', `Launch ${n} is fuelled and its crew named.`, { reply_to: n === 5 ? 'a4' : 'root' })]);
     for (let n = 1; n <= 24; n++) said.push(['n' + n, say(other, `Harbour board note ${n}, a message of its own.`)]);
     const ids = await seed(topic, said);
+    // Merge B3: the original sheet must not multiply into payload/waiting pills on apart cards.
+    const cover = { stands: 'The regatta is ready', waiting: [{ text: 'Launch on Saturday?', default: 'launch at dawn' }],
+      payload: { text: 'The marks are ready', message_id: ids.a4, kind: 'answer' } };
+    const written = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+      operation_id: topic + '-b3-cover', args: cover });
+    assert.equal(written.status, 'committed', JSON.stringify(written));
     const older = Array.from({ length: 30 }, (_, n) => 'o' + (34 - n));
     const key = `(id=>{const m=${JSON.stringify(ids)};return Object.keys(m).find(k=>m[k]===id)??id})`;
     for (const [name, device] of [['laptop', 'laptop'], ['phone', 'phone'], ['phone-375', 'phone'], ['phone-320', 'phone']]) {
       const p = await open(`${topic}-${name}`, name, topic, ids.n24);
       const width = await p.evaluate('innerWidth');
       await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), `${name}: Earlier messages is offered`);
+      const coverCounts = () => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll('#messages .dossier-cover')];return {
+        sheets:sheets.length,pills:document.querySelectorAll('#messages .row-pills').length,
+        stands:sheets[0]?.querySelector('.cover-stands')?.textContent??null,
+        payload:sheets[0]?.querySelector('.pill-payload')?.dataset.state??null,
+        waits:sheets[0]?.querySelectorAll('.cover-wait').length??0,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const expectCover = async (phase, expected = { sheets: 1, pills: 0, stands: cover.stands, payload: 'proposed', waits: 1, sideways: false }) => {
+        assert.deepEqual(await coverCounts(), expected, `${name}: B3 ${phase}: one cover, no repeated pills on apart cards`);
+      };
+      await expectCover('before More');
       const shots = async at => { for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-apart-${name}-${width}-${at}-${theme}`); } await dossierTheme(p, 'light'); };
       await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
       await shots(0);
@@ -1373,6 +1388,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           into:[...new Set(old.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],first:Math.round(box(old[0]).top),gaps:[...new Set(runs)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
       await p.evaluate(`document.querySelector('#messages [data-id="${ids.x}"]').scrollIntoView({block:'start'})`);
       await shots(1);
+      await expectCover('after first More');
       const seen = JSON.stringify({ before, after });
       assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1 && Math.abs(after.aTop - before.aTop) <= 1, `${name}: the cards already shown hold still: ${seen}`);
       assert.deepEqual([after.head, after.count], ['a1', before.count], `${name}: the stack higher up keeps its head and its count: ${seen}`);
@@ -1400,6 +1416,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const twice = await again();
       await p.evaluate(`document.querySelector('#messages [data-id="${ids[last]}"]').scrollIntoView({block:'start'})`);
       await shots(2);
+      await expectCover('after second More, including the root');
       const seen2 = JSON.stringify({ pressed, twice });
       assert.ok([['lastTop'], ['xTop'], ['aTop']].every(([k]) => Math.abs(twice[k] - pressed[k]) <= 1), `${name}: pressed again, the cards already shown hold still: ${seen2}`);
       assert.deepEqual([twice.head, twice.count], ['a1', before.count], `${name}: pressed again, the stack higher up keeps its head and its count: ${seen2}`);
@@ -1407,6 +1424,42 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(twice.into, [null], `${name}: pressed again, none goes into the stack higher up, or into a stack of its own: ${seen2}`);
       assert.deepEqual(twice.gaps, after.gaps, `${name}: pressed again, they follow o5 as the first press's cards follow one another: ${seen2}`);
       assert.equal(twice.sideways, false, `${name}: pressed again, nothing runs off the side`);
+      // Same element's branches: folded/open sheet; no cover; stands only; waiting only;
+      // payload proposed, accepted by the owner's thumb or named reply, and restored after clearing.
+      // Read-only/no-save/error controls do not exist on this derived cover display.
+      const toggle = `#messages .reply-stack[data-stack="${ids.a1}"] > .stack-toggle`;
+      for (const level of ['open', 'folded']) {
+        await centre(p, toggle); await press(p, device, toggle);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state === '${level}'`), `${name}: ${level} cover`);
+        await expectCover(level);
+      }
+      for (const [state, args, payload, waits] of [
+        ['empty', { stands: null, waiting: [], payload: null }, null, 0],
+        ['stands', { stands: cover.stands, waiting: [], payload: null }, null, 0],
+        ['waiting', { stands: cover.stands, waiting: cover.waiting, payload: null }, null, 1],
+        ['proposed', cover, 'proposed', 1],
+        ['thumb', cover, 'done', 1],
+        ['word', { ...cover, payload: { ...cover.payload, done_by: ids.a5 } }, 'done', 1],
+      ]) {
+        if (state === 'thumb') {
+          const thumb = await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.a4, operation_id: `${topic}-${name}-thumb` });
+          assert.equal(thumb.status, 'committed', JSON.stringify(thumb));
+        }
+        if (state === 'word') {
+          await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.a4, thumbed: false, operation_id: `${topic}-${name}-unthumb` });
+        }
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+          operation_id: `${topic}-${name}-${state}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        const expected = { sheets: state === 'empty' ? 0 : 1, pills: 0, stands: state === 'empty' ? null : cover.stands, payload, waits, sideways: false };
+        await until(async () => JSON.stringify(await coverCounts()) === JSON.stringify(expected), `${name}: B3 ${state} cover arrives without duplicate pills`);
+        await expectCover(state, expected);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-apart-${name}-${width}-b3-${state}-${theme}`); }
+        await dossierTheme(p, 'light');
+        observations.push({ name: 'B3 cover state', engine, device: name, state, ...await coverCounts() });
+      }
+      // Restore the fixture's proposed payload before the next independent device visit.
+      await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, args: cover, operation_id: `${topic}-${name}-restore` });
       observations.push({ name: 'Earlier messages shows a dossier\'s older replies where the button was', engine, device: name, before, after, pressed, twice });
       assert.deepEqual(p.errors, []); await p.close();
     }

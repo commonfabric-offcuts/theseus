@@ -3448,6 +3448,44 @@ test('More messages shows every older message it loads where its button was, tho
     'pressed again, the stack higher up still keeps its head and its messages alone');
 });
 
+// Merge B3: an older card kept apart by More is not the dossier's lone loaded message.
+test('B3 More keeps one cover per dossier, never pills on older cards kept apart, including its root on a second press', async () => {
+  for (const folder of [false, true]) for (const state of ['empty', 'stands', 'waiting', 'proposed', 'thumb', 'word']) {
+    const { f } = await readingPage();
+    f.document.createElementNS = (_ns, tag) => f.document.createElement(tag);
+    const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+    f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+    const cover = state === 'empty' ? null : { stands: 'Answered', owner: 'fixture-person', by: 'fable', at_ms: 1,
+      waiting: state === 'waiting' || state === 'proposed' ? [{ text: 'Launch?', default: 'Friday' }] : [],
+      payload: ['proposed', 'thumb', 'word'].includes(state) ? { text: 'Ready', message_id: 'm1', seq: 1, kind: 'answer',
+        done: state === 'proposed' ? null : { how: state, by: 'fixture-person', at_ms: 1700000000000 } } : null };
+    const item = (seq, root = 'm1') => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1',
+      reply_to: seq === Number(root.slice(1)) ? null : root, acts: { cover: seq === 1 ? cover : null, cover_revision: seq === 1 ? 1 : 0 },
+      stack_position: { root_id: root, cover: root === 'm1' ? cover : null, cover_revision: 1, through: null, below: false, aside_revision: 0, at: { acts: 1, messages: 7 } } });
+    const page = (items, next) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: 1 } });
+    views.messagesPage(page([item(4, 'm4'), item(5), ...(folder ? [item(6)] : []), item(7, 'm7')], 4), { initial: true }); await settle();
+    const walk = node => (node.children ?? []).filter(e => e && typeof e === 'object').flatMap(e => [e, ...walk(e)]);
+    const descendants = () => walk(f.get('messages'));
+    const pills = () => descendants().filter(e => e.classList?.contains('row-pills'));
+    const sheets = () => descendants().filter(e => e.classList?.contains('dossier-cover'));
+    const hasPills = !folder && ['waiting', 'proposed', 'thumb', 'word'].includes(state);
+    assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: a genuinely lone reply keeps its pills`);
+    assert.equal(sheets().length, folder && cover ? 1 : 0);
+    const view = f.api.view;
+    for (const [items, next] of [[[item(2), item(3)], 2], [[item(1)], null]]) {
+      f.api.view = async (name, args) => name === 'topic_messages' ? page(items, next)
+        : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+      await f.get('more-messages').onclick(); await settle(); await settle();
+      assert.equal(pills().length, hasPills ? 1 : 0, `${folder}/${state}: More never duplicates the dossier cover as pills`);
+      assert.equal(sheets().length, folder && cover ? 1 : 0, 'the original sheet stays');
+      for (const older of [1, 2, 3]) {
+        const entry = entryIn(f, 'm' + older);
+        if (entry) assert.equal(walk(entry).some(e => e.classList?.contains('row-pills')), false, 'an apart reply or root has no cover pills');
+      }
+    }
+  }
+});
+
 // Item 550, its fix round's B2: in a stack gathered under a first message the page has not loaded (m1), the message
 // at its head is a reply, a card of its own before 550, and its words show, as each reply kept in view shows, while
 // the stack is folded: unread or read. The negative: a stack headed by its own first message (m40) folds it to its
