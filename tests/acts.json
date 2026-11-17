@@ -27097,6 +27097,50 @@
   },
   {
    "item": 550,
+   "act": "More messages pressed again, where the last card above it is a card of its own that the first press showed, shows the next older messages of that card's dossier below it as cards of their own, never at the end of that dossier's stack higher up",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages pressed again shows the next older replies of a dossier drawn higher up below the card of its own the first press showed, newest first, the stack higher up keeping its count, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages pressed again shows the next older replies of a dossier drawn higher up below the card of its own the first press showed, newest first, the stack higher up keeping its count, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
    "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, never its tab alone",
    "break": [
     [

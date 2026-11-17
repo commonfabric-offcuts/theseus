@@ -126,19 +126,23 @@ export function stackState(list) {
 // (docs/experience-guidelines.md, "Your place holds"). Of the older messages
 // it loads, each of a dossier the page draws (stack-order.mjs, dossiersOf)
 // shows there whole: at the end of the stack shown last above the button where
-// it is of that stack's dossier (filled), and as a card of its own otherwise
-// (apart), so no stack drawn higher up takes it or another head, and nothing
-// shown moves (gather). Older messages of a dossier the page does not draw
-// are its stack there, as ever. Records the dossier of that last stack, the
-// dossiers drawn, what was loaded when it was pressed and the oldest of it;
-// arrangeStacks sorts the older page as it draws it (fill).
+// it is of that stack's dossier and that stack is the dossier's own (filled),
+// and as a card of its own otherwise (apart), so no stack drawn higher up
+// takes it or another head, and nothing shown moves (gather). A card of its
+// own that an earlier press showed (apart) is no dossier's stack: its
+// dossier's stack sits higher up, so what the next press loads of that
+// dossier shows as cards of their own below it, never at that stack's end.
+// Older messages of a dossier the page does not draw are its stack there, as
+// ever. Records the dossier whose own stack is that last one (null for a card
+// of its own), the dossiers drawn, what was loaded when it was pressed and the
+// oldest of it; arrangeStacks sorts the older page as it draws it (fill).
 export function fillFrom(list) {
   const state = stackState(list), view = shownView(state);
   const known = new Set();
   let below = Infinity;
   for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { known.add(item.id); below = Math.min(below, item.seq); }
   const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
-  state.filling = { into: last?.dossier ?? null, drawn: new Set(state.stacks.map(stack => stack.dossier)), known, below };
+  state.filling = { into: last && !state.apart.has(last.id) ? last.dossier : null, drawn: new Set(state.stacks.map(stack => stack.dossier)), known, below };
 }
 
 // Each message this drawing is the first to hold, older than everything
