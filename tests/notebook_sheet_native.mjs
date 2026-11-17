@@ -237,9 +237,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   })()`);
   for (const [stateName, changes, expectedWords] of statusStates642) {
     await check(`notebook item 642 ${stateName}: Text Cards and Draft keep their boxes while the saving words change, at 320 375 390 and laptop in light and dark`, async () => {
-      const failures=[];
+      const id=await topicPage('Steady card buttons',cardsBody),failures=[];
       for(const width of [320,375,390,1440]) {
-      const id=await topicPage('Steady card buttons',cardsBody);
       const p=await page(`item-642-${stateName}-${width}`,null,true,{beforeNavigate:async q=>{
         await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
         if(width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
@@ -280,8 +279,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     });
   }
   await check('notebook item 642 typing: every painted save status keeps all three button boxes and exact card writing, at 320 375 390 and laptop in light and dark',async()=>{
+    const id=await topicPage('Typing with steady buttons',cardsBody);
     for(const width of [320,375,390,1440])for(const theme of ['light','dark']) {
-      const id=await topicPage('Typing with steady buttons',cardsBody);
       const p=await page(`item-642-typing-${width}-${theme}`,null,true,{beforeNavigate:async q=>{
         await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
         if(width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
@@ -313,6 +312,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         assert.ok((await view('memory_current',{item_id:id})).body.includes(' Typed.'),'item 642 actual autosave kept the typed words');
         assert.deepEqual(p.errors,[]);
       } finally {await p.close();}
+      const current=await view('memory_current',{item_id:id});
+      assert.equal((await control({method:'memory_revise',operation_id:`item-642-reset-${width}-${theme}`,item_id:id,expected_revision:current.source_ref.revision,title:current.title,body:cardsBody})).status,'committed');
     }
   });
 
