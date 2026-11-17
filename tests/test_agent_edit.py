@@ -401,12 +401,13 @@ class EditVerbCase(test_agent_verbs.AgentVerbCase):
     def test_edit_counts_only_the_people_it_made_unread_again(self):
         message = self.posted()
         seq = self.sql("SELECT seq FROM messages WHERE id=?", (message,))[0][0]
-        read = lambda: self.committed(self.command("topic.read_through", {"seq": seq}, target={"topic_id": "t1"}, actor="owner"))
-        read()
+        def caught_up():
+            self.committed(self.command("topic.read_through", {"seq": seq}, target={"topic_id": "t1"}, actor="owner"))
+        caught_up()
         code, out, err = self.run_cli("edit", message, "--expected", "1", FIXED)
         self.assertEqual((code, err, out), (0, "", "edited %s to revision 2 (corrections: 0; unread again: 1)\n" % message))
         # owner reads it again and leaves t1: still the outcome's owner, but nothing counts for them in t1 now.
-        read()
+        caught_up()
         self.participation("owner", False)
         code, out, err = self.run_cli("edit", message, "--expected", "2", "Built on release 87, the checks are green.")
         self.assertEqual((code, err, out), (0, "", "edited %s to revision 3 (corrections: 0; unread again: 0)\n" % message))
