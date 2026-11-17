@@ -1,0 +1,8 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading covers a dossier whose first message is more than a page behind"
+ ],
+ "label": "fix1-nmut1-1",
+ "snapshot": "4b1e04d88dd0dd945612b73377462dab45b74040"
+}
