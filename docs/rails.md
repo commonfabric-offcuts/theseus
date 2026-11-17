@@ -242,7 +242,9 @@ yet.
   Conversation and its six most recently active topics, the newest 50
   messages of each. Core records no pull request's state, so the section says
   so and does not guess.
-- **Images** come from `topic_images`.
+- **Images** come from `topic_images`. Clicking a displayed thumbnail opens
+  its image in a new tab (item 651, docs/images.md). Return on the containing
+  message link still opens that message in place.
 - **Skills and tools** come from `topic_tools` on a topic (the tools linked to
   it) and from `tools` on a Conversation (the outcome's own and those it says
   it uses), each opening its page; one linked to a topic whose record is gone

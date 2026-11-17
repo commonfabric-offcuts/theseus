@@ -1855,7 +1855,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail at 390 a picture in the outcome's things opens its message in place"
+    "case": "rail at 390 a picture link in the outcome's things opens its message with Return"
    }
   },
   {
@@ -1870,7 +1870,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail at 390 a picture in the outcome's things opens its message in place"
+    "case": "rail at 390 a picture link in the outcome's things opens its message with Return"
    }
   },
   {
@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -28428,6 +28428,81 @@
    ],
    "check": {
     "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 651,
+   "act": "Clicking or tapping an available thumbnail opens its exact displayed image in a new tab",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "window.open(image.src, '_blank', 'noopener');",
+     "void image.src;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 651 phone-320 light: topic and dossier"
+   }
+  },
+  {
+   "item": 651,
+   "act": "Return on a focused thumbnail opens the image without opening its message",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "if (event.key === 'Enter') openThumbnail(image, event);",
+     "if (false) openThumbnail(image, event);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 651 stacked light: topic and dossier"
+   }
+  },
+  {
+   "item": 651,
+   "act": "The first touch on a message thumbnail reaches the image rather than lighting its card alone",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!event.target.closest?.('a, .fold-line, .image-thumb')",
+     "!event.target.closest?.('a, .fold-line')"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 651 phone-320 light: topic and dossier"
+   }
+  },
+  {
+   "item": 651,
+   "act": "A thumbnail press does not also edit its Notebook card",
+   "break": [
+    [
+     "web/image-pick.mjs",
+     "event?.preventDefault(); event?.stopPropagation();",
+     "event?.preventDefault();"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 651 stacked light: Notebook cards"
+   }
+  },
+  {
+   "item": 651,
+   "act": "The composer thumbnail opener opens its image and keeps the existing choices available",
+   "break": [
+    [
+     "web/image-rows.mjs",
+     "openThumbnail(row.querySelector(':scope > img.image-thumb'), event);",
+     "void event;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 651 phone-320 light: Reader chosen"
    }
   }
  ]

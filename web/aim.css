@@ -1200,3 +1200,6 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
+
+/* A displayed thumbnail opens its image (651), with visible keyboard focus. */
+.image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}

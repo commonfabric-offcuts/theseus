@@ -6,7 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-export async function thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine }) {
+export async function thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence }) {
   const hash = text => createHash('sha256').update(text).digest('hex');
   const shapes = ['phone-320', 'phone-375', 'phone-390', 'stacked'];
   const png = await readFile(path.join(root, 'tests/fixtures/media/screen.png'));
@@ -24,8 +24,11 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
   };
   const openImage = async (p, selector, key = false) => {
     const src = await p.locator(selector).first().evaluate(el => (el.matches('img') ? el : el.parentElement.querySelector('img.image-thumb')).src);
+    const TOUCH_PX_TOLERANCE = .5;
+    const box = await p.locator(selector).first().boundingBox();
+    if (p.touch) assert.ok(box && box.width >= 44 - TOUCH_PX_TOLERANCE && box.height >= 44 - TOUCH_PX_TOLERANCE, 'the thumbnail target is at least 44px, within TOUCH_PX_TOLERANCE');
     const before = p.url(), tabs = p.ctx.pages().length;
-    const popup = p.waitForEvent('popup', { timeout: 2500 });
+    const popup = p.ctx.waitForEvent('page', { timeout: 5000 });
     // Handle rejection immediately while a native action is pending.
     const received = popup.then(value => ({ value }), error => ({ error }));
     if (key) {
@@ -45,16 +48,30 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     const tab = outcome.value;
     await tab.waitForLoadState('domcontentloaded');
     assert.equal(tab.url(), src, 'the tab opens exactly the displayed image');
-    const bytes = await tab.evaluate(async () => [...new Uint8Array(await (await fetch(location.href)).arrayBuffer())]);
-    assert.equal(hash(Buffer.from(bytes)), hash(png), 'the opened image has the exact verified bytes');
+    // Image documents inherit connect-src, which deliberately admits no blob
+    // fetch. Compare the decoded pixels without weakening the page's CSP.
+    const pixelsMatch = await tab.evaluate(async png => {
+      const actual = document.images[0]; await actual.decode();
+      const expected = await createImageBitmap(new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], { type: 'image/png' }));
+      const pixels = image => {
+        const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth ?? image.width; canvas.height = image.naturalHeight ?? image.height;
+        const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+        return context.getImageData(0, 0, canvas.width, canvas.height).data;
+      };
+      const a = pixels(actual), b = pixels(expected); expected.close();
+      return a.length === b.length && a.every((value, index) => value === b[index]);
+    }, png.toString('base64'));
+    assert.equal(pixelsMatch, true, 'the opened image shows the exact verified pixels');
+    assert.ok(!(await tab.content()).includes('Exact writing'), 'no writing or private note is copied into the image tab');
     assert.equal(p.url(), before, 'the original destination stays put');
     assert.equal(p.ctx.pages().length, tabs + 1, 'one gesture opens exactly one tab');
     assert.equal(await tab.evaluate(() => window.opener === null), true, 'the image has no opener');
     await tab.close();
   };
 
+  const runCases = async (phase = '') => {
   for (const shape of shapes) for (const scheme of ['light', 'dark']) {
-    const label = `${shape} ${scheme}`;
+    const label = `${phase ? phase + ' ' : ''}${shape} ${scheme}`;
     await check(`item 651 ${label}: topic and dossier thumbnails open their exact image, never the Reader`, async () => {
       const p = await page(shape, scheme, `/?topic=${topic}`);
       const selector = `.message-card[data-id="${reply}"] .image-thumb`;
@@ -182,4 +199,64 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
       });
     }
   }
+  };
+  const inputs = {};
+  for (const name of ['web/aim.css', 'web/image-pick.mjs', 'web/image-rows.mjs', 'web/message-menu.mjs', 'web/card-images.mjs', 'tests/reader_compose_native.mjs', 'tests/thumbnail_open_native.mjs']) inputs[name] = hash(await readFile(path.join(root, name)));
+  const mutations = [];
+  await runCases();
+  const breaks = [
+    { name: 'no-new-tab', file: 'web/image-pick.mjs', from: "window.open(image.src, '_blank', 'noopener');", to: 'void image.src;', expected: /thumbnail opens a new tab/, target: 'card' },
+    { name: 'strip-not-forwarded', file: 'web/image-rows.mjs', from: "openThumbnail(row.querySelector(':scope > img.image-thumb'), event);", to: 'void event;', expected: /thumbnail opens a new tab/, target: 'strip' },
+    { name: 'no-keyboard-open', file: 'web/image-pick.mjs', from: "if (event.key === 'Enter') openThumbnail(image, event);", to: "if (false) openThumbnail(image, event);", expected: /thumbnail opens a new tab/, target: 'key' },
+    { name: 'first-touch-intercepted', file: 'web/message-menu.mjs', from: "!event.target.closest?.('a, .fold-line, .image-thumb')", to: "!event.target.closest?.('a, .fold-line')", expected: /thumbnail opens a new tab/, target: 'card' },
+    { name: 'thumbnail-edits-card', file: 'web/image-pick.mjs', from: 'event?.preventDefault(); event?.stopPropagation();', to: 'event?.preventDefault();', expected: /the thumbnail does not edit its card/, target: 'parent' },
+  ];
+  for (const mutation of breaks) await check(`item 651 applied mutant ${mutation.name} and restored source`, async () => {
+    const file = path.join(root, mutation.file), original = await readFile(file, 'utf8');
+    assert.equal(original.split(mutation.from).length, 2, 'one actual source mutation site');
+    const changed = original.replace(mutation.from, mutation.to);
+    let failure = null, p;
+    try {
+      await writeFile(file, changed);
+      assert.equal(await readFile(file, 'utf8'), changed, 'the mutation was actually written');
+      await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+      p = await page('phone-320', 'light', mutation.target === 'parent' ? `/?cards=${note}` : `/?topic=${topic}`);
+      const served = await p.request.get(facts.origin + '/' + mutation.file.slice(4));
+      assert.equal(hash(await served.body()), hash(changed), 'the browser server snapshots the applied mutation');
+      try {
+        if (mutation.target === 'strip') {
+          await press(p, '#new-message'); await p.locator('#inline-writing-body').fill('Mutant writing kept.');
+          await press(p, '#inline-plus-button');
+          const chooser = p.waitForEvent('filechooser'); await press(p, '#inline-add-image');
+          await (await chooser).setFiles({ name: 'landscape.png', mimeType: 'image/png', buffer: png });
+          await ready(p, '#inline-attachments .image-thumb');
+          await openImage(p, '#inline-attachments .image-open');
+        } else if (mutation.target === 'parent') {
+          const selector = '.deck-image .image-thumb'; await ready(p, selector);
+          const popup = p.ctx.waitForEvent('page'); await press(p, selector); const tab = await popup;
+          assert.equal(await p.locator('.deck-writing').count(), 0, 'the thumbnail does not edit its card');
+          await tab.close();
+        } else {
+          const selector = `.message-card[data-id="${reply}"] .image-thumb`; await ready(p, selector);
+          await openImage(p, selector, mutation.target === 'key');
+        }
+      } catch (error) { failure = error; }
+      assert.ok(failure, 'the applied mutation must fail its behavioral check');
+      assert.match(failure.message, mutation.expected, 'the mutation fails at its intended assertion');
+      assert.deepEqual(p.errors, [], 'no page error is accepted as a caught mutation');
+      mutations.push({ name: mutation.name, file: mutation.file, original: hash(original), applied: hash(changed), caught: true, failure: failure.message });
+      console.log(`CAUGHT item 651 ${engine} ${mutation.name}: ${failure.message.split('\n')[0]}`);
+    } finally {
+      try { if (p) await close(p); } finally {
+        await writeFile(file, original);
+        assert.equal(await readFile(file, 'utf8'), original, 'original source restored exactly');
+        await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+      }
+    }
+  });
+  // Fixing or mutating any thumbnail state reruns every state of the element.
+  await runCases('restored');
+  for (const [name, digest] of Object.entries(inputs)) assert.equal(hash(await readFile(path.join(root, name))), digest, 'source restored: ' + name);
+  await writeFile(path.join(evidence, engine, 'item-651-source-and-mutants.json'), JSON.stringify({ engine, inputs, mutations, restored: true }, null, 2));
+
 }

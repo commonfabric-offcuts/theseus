@@ -188,7 +188,9 @@ images; once Core has it, it is attached to the page. Its name stays with it
 for screen readers; it shows beside the picture while the image uploads or after
 its upload failed, and in the picture's place while the picture does not show:
 before it loads, or when the page holds no such image ("· not on this page").
-An image smaller than a thumbnail shows at a thumbnail's size. The page's list of
+Clicking a displayed image opens it in a new tab, leaving the card and its
+writing in place (item 651, docs/images.md). An image smaller than a thumbnail
+shows at a thumbnail's size. The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
 Undo, bringing back the card's line, puts the image back on the page (and so
