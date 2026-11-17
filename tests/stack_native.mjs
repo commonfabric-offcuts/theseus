@@ -1134,10 +1134,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await press(p, device, '#things-open');
         }
         const section = '#things .things-sec[data-key=starred]';
-        await until(() => p.evaluate(`Boolean(document.querySelector('${section}'))`), 'Starred is listed');
+        await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy') !== 'true' && Boolean(document.querySelector('${section}:not([hidden])')?.getClientRects().length)`), 'the rail has read and drawn Starred');
         if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
         const link = `${section} .things-starred a[href*="message=${ids.star}"]`;
-        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'Starred lists the exact reply');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length)`), 'the open Starred section draws the exact reply');
         await centre(p, link); await press(p, device, link);
         await until(async () => (await readerOn(p))?.startsWith('The starred reply in the second dossier.'), 'Starred opens the exact reply in the composer');
         assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`), topic, 'the reply belongs to its own topic');
