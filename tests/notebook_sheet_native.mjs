@@ -98,7 +98,16 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   // A pointer on a control in view; the topic's own Notebook is at the end of the feed, scrolled to as a reader would.
   // The sidebar scrolls smoothly: brought into view at once, so the pointer aims where it stays.
   const press = async (p, selector) => {
-    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
+    const geometryTolerance = 2; // CSS pixels; a repaint moving More offscreen still fails.
+    let last = null, stable = 0;
+    await until(async () => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'}); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+      const now = await p.box(selector);
+      const visible = now && now.width > 0 && now.height > 0 && now.x >= -geometryTolerance && now.y >= -geometryTolerance && now.x + now.width <= now.viewportWidth + geometryTolerance && now.y + now.height <= now.viewportHeight + geometryTolerance;
+      const same = last && now && ['x', 'y', 'width', 'height'].every(key => Math.abs(now[key] - last[key]) <= geometryTolerance);
+      stable = visible && same ? stable + 1 : 0; last = now;
+      return stable >= 2;
+    }, `${selector} settles on screen within ${geometryTolerance}px over three samples`);
     await p.point(selector);
   };
   // A finger, once its target holds its place.
@@ -424,7 +433,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await closed(p);
     // The right rail's Notebook, which lists the topic's own pages.
     const rail = `#things .things-sec[data-key="notebook"]`, link = `${rail} a.row[href*="page=${notes}"]`;
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)}))`), 'the right rail lists the page');
+    await listed(p, link, 'the right rail lists the page');
     if (!await p.evaluate(`document.querySelector(${JSON.stringify(rail)}).open`)) await p.point(`${rail} > summary`);
     await press(p, link);
     await opened(p, 'Sheet notes', ['First', 'Second']);
