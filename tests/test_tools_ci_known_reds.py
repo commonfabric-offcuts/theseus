@@ -37,7 +37,7 @@ class Evidence(unittest.TestCase):
         paths = set(release_check.harnesses()) | {'tests/reader_inline_native.mjs', 'tools/ci_known_reds.py',
                                                 'tools/known_reds.py', 'tools/release_check.py',
                                                 'tests/test_example.py', 'tests/fixtures/at_names.json', 'docs/tools.md',
-                                                'tools/ci_input_reads.py', 'tools/ci-input-reads.json', ci.PRODUCER_WORKFLOW}
+                                                'tools/ci_input_reads.py', 'tools/ci-input-reads.json', 'tools/steps_for.py', ci.PRODUCER_WORKFLOW}
         for path in paths:
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -1239,9 +1239,14 @@ class Evidence(unittest.TestCase):
     def test_scoped_pr_validates_only_after_rechoosing_its_steps_from_the_event_base(self):
         basis = self.scoped_evidence()
         with mock.patch.object(release_check, 'scope', return_value=basis[1:]) as choose:
-            result = self.validate()
+            try:
+                result = self.validate()
+            except ci.Refused as error:
+                self.fail('complete scoped PR refused: %s' % error)
         self.assertTrue(result['passed'])
         choose.assert_called_once_with(self.repo, self.base_sha, self.sha)
+        self.assertEqual(result['healed'], [])
+        self.assertEqual([r['step'] for r in result['not_run']], ['native-inline'])
 
     def test_scoped_pr_missing_chosen_step_or_full_run_claim_is_refused(self):
         basis = self.scoped_evidence()
@@ -1252,14 +1257,28 @@ class Evidence(unittest.TestCase):
             self.summary.pop('scoped')
             self.refused('missing required step')
 
+    def test_scoped_native_modes_run_whole_and_all_non_browser_steps_remain_required(self):
+        basis = self.scoped_evidence()
+        with mock.patch.object(release_check, 'scope', return_value=basis[1:]):
+            for missing in ('python-units', 'node-units', 'deploy-refusals', 'wake-replay'):
+                original = list(self.steps)
+                self.steps[:] = [s for s in self.steps if s['name'] != missing]
+                self.refused('missing required step')
+                self.steps[:] = original
+            native = next(s for s in self.steps if s['name'] == 'native-colors')
+            native['argv'].append('one case')
+            self.refused('scoped native step did not run whole')
+
     def test_scoped_push_and_unreadable_or_non_small_scope_are_refused(self):
         basis = self.scoped_evidence()
         with mock.patch.object(release_check, 'scope', side_effect=release_check.Refused('rules refused')):
             self.refused('cannot choose scoped steps')
         with mock.patch.object(release_check, 'scope', return_value=(['tools/checks.py'], ['native-colors'], [])):
             self.refused('not a small fix')
+        with self.assertRaisesRegex(ci.Refused, 'scoped summary requires a pull request'):
+            ci.scoped_required(self.summary, {'event': 'push'}, self.base_receipt, self.repo, self.sha, release_check.REQUIRED)
         self.env['GITHUB_EVENT_NAME'] = self.run['event'] = 'push'
-        self.refused('scoped summary requires a pull request')
+        self.refused('validator requires pull_request event')
 
 
 class TheRepositorysOwnChecks(unittest.TestCase):

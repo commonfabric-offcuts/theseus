@@ -59,35 +59,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
+      scoped: ${{ steps.plan.outputs.scoped }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: plan
         shell: bash
         run: |
           set -euo pipefail
-          python3 - "$BROWSER_SHARDS" <<'PY' >> "$GITHUB_OUTPUT"
-          import json, sys
-          sys.path.insert(0, ".")
-          from tools import release_check as check
-          shards_wanted = int(sys.argv[1])
-          native = ["native-" + step.name for step in check.NATIVE_STEPS]
-          # Deal the modes longest first into the least loaded shard, by the minutes each took on a runner
-          # (.github/check-weights.json); a mode not measured yet takes the median, so a new mode is dealt, not dropped.
-          measured = json.load(open(".github/check-weights.json"))["minutes"]
-          known = sorted(measured.values())
-          median = known[len(known) // 2] if known else 1.0
-          loads = [[0.0, []] for _ in range(shards_wanted)]
-          for name in sorted(native, key=lambda n: -measured.get(n, median)):
-              lightest = min(loads, key=lambda b: b[0])
-              lightest[0] += measured.get(name, median)
-              lightest[1].append(name)
-          shards = [{"name": "browser %d of %d (about %.0f min)" % (i + 1, shards_wanted, load), "steps": ",".join(names)}
-                    for i, (load, names) in enumerate(loads)]
-          shards.append({"name": "units and deploy refusals", "steps": ",".join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,))})
-          shards.append({"name": "wake replay", "steps": check.WAKE_REPLAY})
-          assert sorted(s for shard in shards for s in shard["steps"].split(",")) == sorted(check.REQUIRED), "every required step runs in exactly one shard"
-          print("shards=" + json.dumps(shards))
-          PY
+          python3 -I tools/check_plan.py --github-output >> "$GITHUB_OUTPUT"
 
   check:
     name: ${{ matrix.name }}
@@ -228,6 +209,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}
         run: |
           set -euo pipefail
           mkdir -p release-check
@@ -289,7 +271,20 @@ jobs:
           if len(names) != len(set(names)):
               sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
           required = sorted(set().union(*[set(d.get("required") or []) for d in docs]))
-          missing = [name for name in required if name not in names]
+          # Keep the full required inventory, but only omitted browser modes
+          # are covered by the plan's explicit scope. Units and replay remain required.
+          scoped = json.loads(env.get("PLAN_SCOPE") or "null")
+          covered = set()
+          if scoped is not None:
+              native = {name for name in required if name.startswith("native-")}
+              if (env.get("GITHUB_EVENT_NAME") != "pull_request" or not isinstance(scoped, dict)
+                      or scoped.get("live") != env.get("BASE_SHA") or not isinstance(scoped.get("steps"), list)
+                      or not set(scoped["steps"]) <= native):
+                  sys.exit("invalid scoped shard plan")
+              covered = native - set(scoped["steps"])
+              if set(scoped.get("not_run") or []) != covered or covered.intersection(names):
+                  sys.exit("scoped plan disagrees with its omitted browser steps")
+          missing = [name for name in required if name not in names and name not in covered]
           first = timed[0]
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
@@ -305,6 +300,8 @@ jobs:
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
+          if scoped is not None:
+              combined["scoped"] = scoped
           # The quarantine (item 549): raw verdicts above stay as the shards ran them. A step that failed is green only when
           # its quarantine record is green, not refused, holds exactly its failed cases (at least one) and names no case it
           # does not hold; and the run is green only when every required step is present (a shard cancelled at its limit or

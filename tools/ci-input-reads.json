@@ -4169,5 +4169,29 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/test_tools_check_plan.py": {
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "0a77164d8414220455858a9d5bb6f545af16bf7f7bf859727898d348a563934b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7:1": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7:2": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    }
   }
 }

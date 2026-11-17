@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import textwrap
 import unittest
@@ -44,6 +45,7 @@ class Plan(unittest.TestCase):
         self.base = fixtures.scoped_repository(self.root)
 
     def change(self, files):
+        subprocess.run(['git', '-C', str(self.root), 'checkout', '-q', '--detach', self.base], check=True, capture_output=True)
         self.head = fixtures.commit_files(self.root, files)
         self.event = {'pull_request': {'base': {'sha': self.base}, 'head': {'sha': self.head}}}
 
@@ -83,11 +85,25 @@ class Plan(unittest.TestCase):
 
     def test_refused_scope_on_an_otherwise_small_fix_falls_closed(self):
         self.change({'web/aim.css': fixtures.HEALTH_FIX['web/aim.css']})
-        with mock.patch.object(release_check, 'scope', side_effect=release_check.Refused('rules refused')):
+        with mock.patch.object(release_check, 'scope', side_effect=release_check.Refused('rules refused')) as choose:
             result = plan(self.root, 'pull_request', self.event, self.head)
         self.assertCountEqual(names(result), release_check.REQUIRED)
         self.assertIsNone(result['scoped'])
+        choose.assert_called_once()
 
+
+    def test_a_merge_from_another_base_gets_a_full_run(self):
+        self.change({'web/aim.css': fixtures.HEALTH_FIX['web/aim.css']})
+        result = plan(self.root, 'pull_request', self.event, self.base)
+        self.assertCountEqual(names(result), release_check.REQUIRED)
+        self.assertIsNone(result['scoped'])
+
+    def test_workflow_calls_the_planner_and_transports_its_scope(self):
+        workflow = WORKFLOW.read_text()
+        section = workflow.split('  plan:', 1)[1].split('  check:', 1)[0]
+        self.assertIn('python3 -I tools/check_plan.py --github-output', section)
+        self.assertIn('fetch-depth: 0', section)
+        self.assertIn('PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}', workflow)
 
 class Fold(unittest.TestCase):
     def test_workflow_combines_a_scoped_run_and_deploy_accepts_only_its_complete_scope(self):
