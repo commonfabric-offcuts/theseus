@@ -29,7 +29,7 @@ export async function composerWidthCases(h) {
     await writeFile(path.join(evidence, 'item-650-base-source', name), bytes);
   }
   await writeFile(path.join(evidence, 'item-650-base-inputs.json'), JSON.stringify({ commit: BASE, hashes: baseHashes }, null, 2));
-  const invalidImage = { name: 'item650-invalid.png', mimeType: 'image/png', buffer: Buffer.from('invalid PNG: server must refuse this image') };
+  const refusedName = 'item650-refused.heic';
   const receipts = [];
   const surfaces = ['Reader', 'New message', 'Wide Reader'];
   const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error', 'permission unavailable', 'private note'];
@@ -51,7 +51,7 @@ export async function composerWidthCases(h) {
   const kept = (p, a) => p.evaluate(a => {
     const adapter = window[a.ref], e = adapter.editor, f = document.querySelector(a.field);
     return { text: f.value, start: f.selectionStart, end: f.selectionEnd, readOnly: f.readOnly, disabled: f.disabled,
-      draft: JSON.stringify(e.draft), context: JSON.stringify(e.context), mode: adapter.mode ?? 'new',
+      draft: JSON.stringify(e?.draft), context: JSON.stringify(e?.context), mode: adapter.mode ?? 'new',
       source: document.querySelector('#source-body').textContent, sendDisabled: document.querySelector(a.send).disabled,
       sendDim: document.querySelector(a.send).getAttribute('aria-disabled'), images: document.querySelector(a.strip).textContent };
   }, a);
@@ -68,6 +68,17 @@ export async function composerWidthCases(h) {
     let applied = null;
     const prepare = async p => {
       await instrument(p, baseline);
+      if (surface === 'New message' && state === 'error') {
+        let refused = false;
+        await p.route('**/api/view', route => {
+          const request = route.request().postDataJSON();
+          if (!refused && request?.name === 'editor_state' && request.args?.source_ref?.kind === 'topic') {
+            refused = true;
+            return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'SERVER_BUSY', message: 'Composer temporarily unavailable', retryable: true } }) });
+          }
+          return route.continue();
+        });
+      }
       if (baseline) await p.route(/\/aim\.css(?:\?.*)?$/, async route => {
         const response = await route.fetch();
         await route.fulfill({ response, body: execFileSync('git', ['show', `${BASE}:web/aim.css`], { cwd: root, encoding: 'utf8' }) });
@@ -89,7 +100,7 @@ export async function composerWidthCases(h) {
       await until(p, () => document.querySelector('#new-message-sheet').open, 'the new-message sheet');
     } else await open(p, second);
     let release = () => {}, held = null;
-    if (state !== 'empty') {
+    if (state !== 'empty' && !(state === 'error' && surface === 'New message')) {
       await press(p, a.field);
       await p.keyboard.insertText(`Exact item 650 writing — ${surface}.`);
       await until(p, a => document.querySelector(a.sign).dataset.save === 'saved', 'the exact writing saved', a, 15000);
@@ -109,26 +120,39 @@ export async function composerWidthCases(h) {
       else await until(p, a => window[a.ref].editor.submissions.some(s => s.status === 'preparing'), 'the preparing state', a);
     }
     if (state === 'refused with recovery') {
-      await press(p, a.plus);
-      const chooser = p.waitForEvent('filechooser');
-      await press(p, a.add);
-      await (await chooser).setFiles(invalidImage);
-      await until(p, a => Boolean(document.querySelector(`${a.strip} [data-method=asDownload]:not([disabled])`)), 'the refused image offers Attach as download', a, 20000);
+      // Seed the actual upload owner's refused branch. This is a geometry
+      // check, independent of engine-specific file chooser/Blob capture.
+      // No fake DOM or resize event is used; all recovery controls are painted
+      // by imageChoices/paintImageRows, and opening them is a native press.
+      await p.evaluate(([a, name]) => {
+        const adapter = window[a.ref], editor = adapter.editor;
+        const uploads = adapter.callbacks.uploads(editor), state = uploads.initialize();
+        state.entries.push({ selection_id: 'item-650-refused', origin: 'file',
+          binding: { instance_id: editor.context.instanceId, actor_id: editor.context.actor,
+            editor_key: editor.key, source_ref: structuredClone(editor.context.sourceRef),
+            topic_id: editor.context.topicId, captured_cycle_id: editor.clientCycleId,
+            authority: structuredClone(uploads.session.authority) },
+          owner: { kind: 'cycle', id: editor.clientCycleId }, version: 1, selected: true,
+          file: { name, size: 12, type: 'image/heic', last_modified: 0 },
+          bytes_ref: null, bytes_state: 'durable', choice: 0,
+          attempts: [{ role: 'image', phase: 'refused', publish_response: { error: { code: 'MEDIA_INVALID' } } }],
+          ready_descriptor: null, association: null, local_error: null });
+        state.revision++; editor.passiveImages = false; adapter.paintStatus();
+      }, [a, refusedName]);
+      await until(p, a => Boolean(document.querySelector(`${a.strip} [data-method=asDownload]:not([disabled])`)), 'the refused image offers Attach as download', a);
       if (surface === 'New message') await press(p, `${a.strip} .image-open`);
       else await press(p, a.send, true);
       await until(p, a => document.querySelector(`${a.strip} .image-choice`)?.hasAttribute('data-open'), 'both recovery controls open', a);
       assert.equal(await p.locator(a.strip).getByRole('button', { name: 'Attach as download', exact: true }).count(), 1);
-      assert.equal(await p.locator(a.strip).getByRole('button', { name: `Remove ${invalidImage.name}`, exact: true }).count(), 1);
+      assert.equal(await p.locator(a.strip).getByRole('button', { name: `Remove ${refusedName}`, exact: true }).count(), 1);
     }
     // These branches are seeded through the actual adapter/state objects,
     // rather than imitating their DOM. No synthetic resize handler is called.
     if (state === 'read-only') await p.evaluate(a => {
       const adapter = window[a.ref]; adapter.editor.adopting = true; adapter.paintStatus();
     }, a);
-    if (state === 'error') await p.evaluate(a => {
-      const adapter = window[a.ref];
-      if (a.ref === 'item650Inline') adapter.fail('Composer temporarily unavailable');
-      else adapter.notice('Composer temporarily unavailable. Your writing is kept.');
+    if (state === 'error' && surface !== 'New message') await p.evaluate(a => {
+      window[a.ref].notice('Composer temporarily unavailable. Your writing is kept.');
     }, a);
     if (state === 'permission unavailable') await p.evaluate(a => {
       const adapter = window[a.ref]; adapter.presentation.sourceUnavailable = true;
@@ -210,12 +234,12 @@ export async function composerWidthCases(h) {
       await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
   }
-  for (const surface of surfaces) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
-    await check(`item 650 base reproof ${surface} refused with recovery ${shape} ${scheme}`, async () => {
-      const { p, a } = await setup(surface, 'refused with recovery', shape, scheme, { baseline: true });
-      await picture(p, `item-650-base-${surface.replaceAll(' ', '-')}-refused-with-recovery`);
+  for (const surface of surfaces) for (const state of surface === 'New message' ? ['refused with recovery', 'error'] : ['refused with recovery']) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
+    await check(`item 650 base reproof ${surface} ${state} ${shape} ${scheme}`, async () => {
+      const { p, a } = await setup(surface, state, shape, scheme, { baseline: true });
+      await picture(p, `item-650-base-${surface.replaceAll(' ', '-')}-${state.replaceAll(' ', '-')}`);
       await assert.rejects(() => proof(p, a, 'base'), error => error.code === 'ERR_ASSERTION' && /either edge offers width adjustment/.test(error.message), 'base application fails because width edges are absent');
-      console.log(`RED-PROVED ${engine} ${surface} refused with recovery ${shape} ${scheme} at ${BASE}: missing width edges`);
+      console.log(`RED-PROVED ${engine} ${surface} ${state} ${shape} ${scheme} at ${BASE}: missing width edges`);
       await close(p);
     });
   }
@@ -231,7 +255,7 @@ export async function composerWidthCases(h) {
         } finally { release(); if (held) await held; }
         // Seeded states are reversed before ordinary owned-page cleanup.
         await p.evaluate(a => {
-          const adapter = window[a.ref]; adapter.editor.adopting = false;
+          const adapter = window[a.ref]; if (adapter.editor) adapter.editor.adopting = false;
           if (a.ref === 'item650Reader') adapter.presentation.sourceUnavailable = false;
         }, a);
         await close(p);

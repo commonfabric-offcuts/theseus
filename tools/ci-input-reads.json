@@ -5,6 +5,25 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/composer_width_native.mjs": {
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "web/reader.mjs",
+        "web/inline-composer.mjs",
+        "web/composer-width.mjs",
+        "web/aim.css",
+        "web/writing-helpers.mjs",
+        "web/compose-bar.mjs",
+        "web/app.mjs",
+        "web/index.html",
+        "tests/reader_compose_native.mjs",
+        "tests/composer_width_native.mjs",
+        "tests/ui_composer_width.test.mjs",
+        "tests/fixtures/ui_http.py"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/conversation_native.mjs": {
     "fb4f4f72ba814b6bda44bf1a29a21516920c56464ef152149ddbc0ee8d8aa7e2": {
       "inputs": [],

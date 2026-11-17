@@ -30,8 +30,11 @@ States are derived from the adapters and `writingState`: empty, writing,
 saving a draft, preparing a send, refused image with Attach as download and
 Remove, adopting/read-only, error notice, unavailable source with Retry
 access, and a private note. New message has no source access or private note.
-Busy and saving use held real requests, image refusal uses a corrupt PNG file;
-adopting, source unavailability and error are seeded on the real adapters.
+Busy and saving use held real requests. Image refusal, adopting and source
+unavailability are seeded on the real owner/state objects, and their actual
+DOM adapters paint the controls; the image refusal does not claim to test file
+selection or durable Blob capture. New message startup error uses a refused
+editor-state read, with no owner or writing; a Reader error is its notice.
 The gesture under test always comes from native input, never a handler call.
 Chromium narrow cases use native CDP touch; WebKit's public touchscreen API
 only offers taps, so its narrow drags use native mouse input, with the same
@@ -40,7 +43,7 @@ only offers taps, so its narrow drags use native mouse input, with the same
 Applied served-source mutants break each side, symmetry, centring, height,
 keyboard adjustment and preservation of writing. Each is caught by the same
 native gesture proof, then a fresh page receives the original source and passes.
-The revised refused-image setup also proves the missing-edge red on the base
+The revised refused-image and startup-error setup also proves the missing-edge red on the base
 application sources in the same hosted call, with source bytes read from the
 named base commit, not from another checkout.
 
