@@ -236,7 +236,11 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   for (const [stateName, changes, expectedWords] of statusStates642) {
     await check(`notebook item 642 ${stateName}: Text Cards and Draft keep their boxes while the saving words change, at 320 375 390 and laptop in light and dark`, async () => {
       const id=await topicPage('Steady card buttons',cardsBody), failures=[];
-      const p=await page(`item-642-${stateName}`,null,true);
+      for(const width of [320,375,390,1440]) {
+      const p=await page(`item-642-${stateName}-${width}`,null,true,{beforeNavigate:async q=>{
+        await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
+        if(width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+      }});
       try {
         await observePage642(p);
         await listed(p,card(id),'item 642 page is listed');await press(p,card(id));
@@ -245,9 +249,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         await p.point(`${PAGE} .deck-card .deck-words`);
         await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card is open for writing');
         const writing=await state(p);
-        for(const width of [320,375,390,1440])for(const theme of ['light','dark']) {
-          await p.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
-          await p.send('Emulation.setTouchEmulationEnabled',{enabled:width<760,maxTouchPoints:1});
+        for(const theme of ['light','dark']) {
           await p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
           await until(()=>p.evaluate(`innerWidth===${width}&&matchMedia('(prefers-color-scheme: ${theme})').matches`),'item 642 viewport and theme applied');
           // Compare every state against the same controls in their quiet form. A read-only
@@ -265,9 +267,10 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
           assert.deepEqual(now.box.at,writing.box.at,'item 642 status changes never move its cursor');
           assert.equal(now.box.focused,true,'item 642 status changes never take focus');
         }
-        assert.deepEqual(failures,[],`${stateName}: item 642 buttons never move and the status has its own place`);
         assert.deepEqual(p.errors,[]);
       } finally { await p.close(); }
+      }
+      assert.deepEqual(failures,[],`${stateName}: item 642 buttons never move and the status has its own place`);
     });
   }
   await check('notebook item 642 typing: every painted save status keeps all three button boxes and exact card writing, at 320 375 390 and laptop in light and dark',async()=>{
@@ -275,7 +278,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
       const id=await topicPage('Typing with steady buttons',cardsBody);
       const p=await page(`item-642-typing-${width}-${theme}`,null,true,{beforeNavigate:async q=>{
         await q.send('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width<760});
-        await q.send('Emulation.setTouchEmulationEnabled',{enabled:width<760,maxTouchPoints:1});
+        if(width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
         await q.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]});
         await q.send('Page.addScriptToEvaluateOnNewDocument',{source:`const own=fetch.bind(globalThis);globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
           if(e?.kind==='memory.revise')await new Promise(resolve=>globalThis.release642=resolve);return own(...args)};`});
