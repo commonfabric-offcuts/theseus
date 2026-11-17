@@ -30,6 +30,7 @@ function reader(t, { noteBody = '' } = {}) {
   field.setSelectionRange = (start, end) => { field.selection = [start, end]; };
   const acts = [];
   const r = Object.assign(Object.create(Reader.prototype), {
+    narrow: {matches: true}, // Data-only Reader fixture uses the phone's fixed layout.
     sessions: { reply, note }, mode: 'reply', presentation: {}, dialog: { open: true }, positions: new Map(), sourceBody: { scrollTop: 0 },
     source: { source_ref: context.sourceRef, topic_id: 't1', body: 'Quoted passage' }, field, $: id => elements[id],
     selectedPassage: () => 'Quoted passage', disarm() {}, input: { readOnly: () => false, terminalKey: () => false, writingKey: () => false },
@@ -152,4 +153,22 @@ test('the page: + holds Add image, the note and Quote, the message keeps no row 
   assert.match(reader, /<div id="reader-stepping"><button id="next-message"[^>]*aria-label="Previous message \(above\)"[^>]*>↑<\/button><button id="previous-message"[^>]*aria-label="Next message \(below\)"[^>]*>↓<\/button><\/div>/,
     'up (newer) comes first, then down (older)');
   assert.ok(reader.indexOf('id="reader-stepping"') < reader.indexOf('id="reader-menu"') && reader.indexOf('id="reader-menu"') < reader.indexOf('id="reader-close"'), 'the header holds ↑ ↓, then ⋯, then ✕');
+});
+
+// Item 668's layout act happens only after the quote can be written.
+test('item 644 quoting opens a laptop reply wide; a phone, empty selection and refused writing keep their layout', t => {
+  for (const state of ['laptop', 'wide', 'phone', 'empty', 'read-only', 'adopting', 'recovery']) {
+    const f = reader(t), layouts = [];
+    f.r.narrow = {matches: state === 'phone'};
+    f.r.layout = {mode: state === 'wide' ? 'wide' : 'stacked', setMode(mode) { this.mode=mode; layouts.push(mode); }};
+    f.r.applyLayout = () => layouts.push('painted');
+    if (state === 'empty') f.r.selectedPassage=()=>'';
+    if (state === 'read-only') f.r.callbacks.writes=()=>false;
+    if (state === 'adopting') f.reply.adopting=true;
+    if (state === 'recovery') {f.reply.recoveryDiscovery=true; f.reply.localVersion=0;}
+    f.r.quote();
+    assert.deepEqual(layouts, state === 'laptop' ? ['wide','painted'] : [], state);
+    assert.equal(f.r.layout.mode, ['laptop','wide'].includes(state) ? 'wide' : 'stacked', state);
+    assert.equal(f.field.value, ['laptop','wide','phone'].includes(state) ? '> Quoted passage\n\n' : '', state);
+  }
 });

@@ -7126,7 +7126,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    if (this.keyed) revealSelection(row);",
      "    row.scrollIntoView({ block: 'nearest' });"
     ]
    ],
@@ -7171,7 +7171,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    if (this.keyed) revealSelection(row);",
      "    revealSelection(row);"
     ]
    ],
@@ -31822,6 +31822,49 @@
    "check": {
     "native": "notebook",
     "case": "notebook item 642 device-saved"
+   }
+  },
+  {
+   "item": 644,
+   "act": "Opening, using and closing a card composer keeps the page at its place",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "return () => { for (const [node, top] of places) if (node.scrollTop !== top) node.scrollTop = top; };",
+     "return () => {};"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_composer_place.test.mjs"
+   }
+  },
+  {
+   "item": 668,
+   "act": "Quoting on a laptop opens a stacked reply wide and a phone stays stacked",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (!this.narrow.matches && this.layout.mode !== 'wide') {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 644 quote"
+   }
+  },
+  {
+   "item": 644,
+   "act": "The every-frame card composer instrument rejects a transient jump in the sheet's actual scroll owner",
+   "break": [
+    [
+     "tests/card_scroll_probe.mjs",
+     ",\n    document.querySelector('.notebook-sheet-page:not([hidden])')?.scrollTop ?? 0",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_scroll_probe.test.mjs"
    }
   }
  ]

@@ -37,9 +37,24 @@ Whatever card a key leaves picked comes into view by the one rule for what
 the keys select (docs/interaction.md, "What the keys select comes into view"):
 one picked by ↑ ↓ ← →, moved by ⌘↑ ⌘↓, merged by ⇧⌘↑ ⇧⌘↓, moved in or out by
 Tab or ⇧Tab, put back by ⌘Z, left picked by ⌘⌫ or Escape, and a card being
-written that Return opens or ⌘↑ ⌘↓ move. A click on a card leaves the page
-where it is. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
+written that Return opens or ⌘↑ ⌘↓ move. Opening a card by click or touch, writing in it, and closing it with
+Escape or Done keep the page where it is (item 644). Rendering, saving and
+setting the caret do not reveal the whole card; only navigation between cards
+asks for a new place. If permission is refused while writing, the full page
+keeps its height while the writing controls are away, so closing the retained
+card cannot pull the page up from its end. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
 act a key starts reads the rule, whichever path paints the card.
+
+The item 644 cases in `tests/notebook_pages_native.mjs` sample scroll positions
+on every animation frame: the document, the sheet wrapper, the dialog and the
+visible `.notebook-sheet-page` (the sheet's actual overflow owner). Each sheet
+case first applies and restores a 350px jump to that owner and requires the
+same predicate to reject the trace, even after the owner returns to its start.
+This control covers normal, saving, refused, read-only, empty and error states
+at 320, 375, 390 and 1280px in both themes. The shared sampler and predicate
+also have a browser-free instrument control in
+`tests/ui_card_scroll_probe.test.mjs`; removing the sheet-owner sample must
+fail that check. This unit control alone does not establish native behavior.
 
 | act | laptop | phone |
 | --- | --- | --- |

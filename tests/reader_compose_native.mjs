@@ -285,6 +285,94 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  // Items 644 and 668: observe every frame, including focus and layout changes during the act.
+  for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
+    await check(`item 644 ${shape} ${scheme}: opening, using and closing the card composer holds the page`, async () => {
+      const p = await page(shape, scheme);
+      await until(p, () => !document.querySelector('#inline-composer').hidden, 'the composer is ready');
+      // Put the quiet line in view before starting the act, leaving room below the page to detect a jump.
+      await p.locator('#inline-writing-body').scrollIntoViewIfNeeded();
+      await p.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      await picture(p, 'item-644-card-before');
+      await p.evaluate(() => {
+        window.item644 = { start: scrollY, frames: [], running: true };
+        const read = () => { const t = window.item644; t.frames.push(scrollY); if (t.running) requestAnimationFrame(read); };
+        read();
+      });
+      await press(p, '#inline-writing-body');
+      await until(p, () => document.activeElement.id === 'inline-writing-body' && document.querySelector('#inline-composer').dataset.compose === 'writing', 'the card composer opens');
+      await p.keyboard.insertText('Item 644 keeps these words.');
+      await until(p, () => document.querySelector('#inline-writing-body').value === 'Item 644 keeps these words.', 'the words are written');
+      await picture(p, 'item-644-card-writing');
+      // Leaving writing by Tab is navigation and can reveal its destination. Finish
+      // measuring the inline act first, then start a separate hold for the sheet.
+      const inlineTrail = await p.evaluate(() => { item644.running = false; return item644; });
+      assert.ok(inlineTrail.frames.every(y => Math.abs(y-inlineTrail.start) <= 1), `inline writing holds the page: ${JSON.stringify(inlineTrail)}`);
+      for (let n = 0; n < 16 && await p.evaluate(() => Boolean(document.activeElement.closest('input,textarea,select,dialog,.composer,[contenteditable],[role=menu]'))); n++) {
+        const old = await p.evaluate(() => { window.item644Focus = document.activeElement; return document.activeElement.id; });
+        await p.keyboard.press(engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab');
+        await until(p, () => document.activeElement !== window.item644Focus, `Tab leaves ${old}`);
+      }
+      assert.equal(await p.evaluate(() => Boolean(document.activeElement.closest('input,textarea,select,dialog,.composer,[contenteditable],[role=menu]'))), false, 'Tab left writing for the page shortcut');
+      await p.evaluate(() => {
+        window.item644 = { start: scrollY, frames: [], running: true };
+        const read = () => { const t = window.item644; t.frames.push(scrollY); if (t.running) requestAnimationFrame(read); };
+        read();
+      });
+      await p.keyboard.press('Meta+Enter');
+      await until(p, () => document.querySelector('#new-message-sheet').open, 'the same composer opens over the page');
+      await picture(p, 'item-644-card-sheet');
+      await p.keyboard.insertText(' Still held.');
+      await press(p, '#new-message-close');
+      await until(p, () => !document.querySelector('#new-message-sheet').open, 'the composer closes');
+      await p.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      await picture(p, 'item-644-card-after');
+      const trail = await p.evaluate(() => { item644.running = false; return item644; });
+      assert.ok(trail.frames.every(y => Math.abs(y - trail.start) <= 1), `the page never scrolls while the composer opens, is used and closes: ${JSON.stringify(trail)}`);
+      assert.equal(await p.locator('#inline-writing-body').inputValue(), 'Item 644 keeps these words. Still held.', 'closing keeps the exact writing');
+      await close(p);
+    });
+    for (const mode of shape === 'stacked' ? ['stacked', 'wide'] : ['stacked']) await check(`item 644 quote ${shape} ${scheme} ${mode}: quoting opens a laptop reply wide and keeps a phone stacked`, async () => {
+      const p = await page(mode === 'wide' ? 'wide' : shape, scheme);
+      await open(p, second);
+      const geometry = () => p.evaluate(() => {
+        const r = document.querySelector('#reader'), a = document.querySelector('#source-body').getBoundingClientRect(), b = document.querySelector('#reader-composer').getBoundingClientRect();
+        return { mode: r.dataset.layout, stacked: b.top >= a.bottom - 1, wide: b.left >= a.right - 1, page: scrollY };
+      });
+      const before = await geometry();
+      assert.equal(before.mode, mode);
+      await picture(p, `item-644-quote-${mode}-before`);
+      for (const how of ['Enter', 'pill', 'menu']) {
+        if (shape === 'stacked' && mode === 'stacked' && (await geometry()).mode === 'wide') {
+          await press(p, '#reader-menu');
+          await p.getByRole('menuitem', { name: 'Stacked layout', exact: true }).click();
+          await until(p, () => document.querySelector('#reader').dataset.layout === 'stacked', 'stacked before each way of quoting');
+        }
+        const passage = '#source-body > :nth-child(2)';
+        await p.locator(passage).scrollIntoViewIfNeeded();
+        if (p.touch) {
+          // Native touch cannot drag selection in this harness; use the same selection setup as existing quote cases.
+          await p.evaluate(s => { const r = document.createRange(); r.selectNodeContents(document.querySelector(s)); getSelection().removeAllRanges(); getSelection().addRange(r); }, passage);
+        } else {
+          const b = await p.locator(passage).boundingBox();
+          await p.mouse.move(b.x + 3, b.y + 8); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 8, { steps: 5 }); await p.mouse.up();
+        }
+        const selected = await p.evaluate(() => getSelection().toString().trim());
+        assert.ok(selected, 'words selected for the quote');
+        await until(p, () => !document.querySelector('#quote-selection').hidden, 'Quote is offered');
+        if (how === 'Enter') await p.keyboard.press('Enter');
+        else if (how === 'pill') await press(p, '#quote-selection');
+        else { await press(p, '#reader-menu'); await p.getByRole('menuitem', { name: 'Quote selection', exact: true }).click(); }
+        await until(p, text => document.activeElement.id === 'writing-body' && document.querySelector('#writing-body').value.includes(text), 'the quote is in the reply', selected);
+        const after = await geometry();
+        await picture(p, `item-644-quote-${mode}-${how}`);
+        assert.equal(after.mode, shape === 'stacked' ? 'wide' : 'stacked', `${how}: a laptop quote opens wide; a phone stays stacked`);
+        assert.equal(after.page, before.page, `${how} never moves the page behind the Reader`);
+        assert.equal(shape === 'stacked' ? after.wide : after.stacked, true, `${how}: the panes have the promised arrangement`);
+      }
+      await close(p);
+    });
+  }
   // Items 602 and 601 (tests/menu_glyphs.mjs): each item of the Reader's ⋯ shows its glyph before its words, in each
   // state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each width and theme
   // reads in a topic of its own, so what its acts change (a mark, a fold) is no other case's.
@@ -657,7 +745,7 @@ async function run() {
       await close(p);
     });
 
-    await check(`${shape}: + holds Add image, the note and Quote${engine === 'chromium' ? ', and Add image says Paste image when the clipboard holds one' : ''}; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks`, async () => {
+    await check(`item 644 ${shape}: + holds Add image, the note and Quote${engine === 'chromium' ? ', and Add image says Paste image when the clipboard holds one' : ''}; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks`, async () => {
       const p = await page(shape);
       await open(p, second);
       await type(p, 'With an image.');
@@ -685,19 +773,11 @@ async function run() {
       const kept = await p.evaluate(measureKept);
       assert.ok(kept.gap >= -2 && kept.gap <= kept.lineHeight, `the quoted words sit just above the reply (${kept.gap}px above it)`);
       await shot(p, 'quoted');
-      // On a laptop the reply changing its height changes the message's room;
-      // growing room covers nothing, so the passage stays where it is on
-      // screen (a phone's field is shorter than what the quote put in it, so
-      // it holds its height).
       if (shape === 'stacked') {
-        const before = await p.evaluate(() => document.querySelector('#reader-composer').getBoundingClientRect().height);
-        const was = await p.evaluate(() => document.querySelector('#source-body').children[45].getBoundingClientRect().top);
+        assert.equal(await p.evaluate(() => document.querySelector('#reader').dataset.layout), 'wide', 'a laptop quote opens wide');
+        const before = await p.locator('#reader-composer').boundingBox();
         await p.locator('#writing-body').fill('Short.');
-        await until(p, h => document.querySelector('#reader-composer').getBoundingClientRect().height < h - 20 && document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'the reply shorter', before);
-        // A resize is told to its observers at the next frame's rendering, after its animation callbacks.
-        await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-        const now = await p.evaluate(() => document.querySelector('#source-body').children[45].getBoundingClientRect().top);
-        assert.ok(Math.abs(now - was) <= 2, `as the reply shrinks the quoted passage stays where it was on screen (its top at ${Math.round(was)}px, then ${Math.round(now)}px)`);
+        assert.equal((await p.locator('#reader-composer').boundingBox()).height, before.height, 'a wide reply keeps the column height as writing shrinks');
       }
       if (engine === 'chromium') {
         await p.evaluate(async () => {
@@ -1067,7 +1147,8 @@ async function run() {
   // nothing chosen does what it did: nothing on the message, a new line in the
   // writing. Words the opening reply would cover are the one thing that
   // moves: the least that shows them just above the reply.
-  for (const shape of ['phone', 'stacked', 'wide']) await check(`${shape}: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing`, async () => {
+  // Laptop quotes now open wide (item 668); the item 644 cases hold that transition.
+  for (const shape of ['phone', 'wide']) await check(`item 644 ${shape}: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing`, async () => {
     const p = await page(shape);
     await open(p, second);
     const settled = () => p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -1206,7 +1287,8 @@ async function run() {
   // lit whole by a press. Words quoted from above what shows come into sight
   // the least way: a line at the top, words taller than the room with their
   // end at the bottom.
-  for (const shape of ['phone', 'stacked', 'wide']) await check(`${shape}: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way`, async () => {
+  // Laptop quotes now open wide (item 668); the item 644 cases hold that transition.
+  for (const shape of ['phone', 'wide']) await check(`item 644 ${shape}: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way`, async () => {
     const p = await page(shape, 'light', '/?topic=compose-log');
     await open(p, log, 'The build log');
     const settled = () => p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -1359,6 +1441,9 @@ async function run() {
     const before = await p.evaluate(() => document.querySelector('#writing-body').value);
     await p.keyboard.press('Enter');
     await until(p, v => document.querySelector('#writing-body').value !== v && document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the words quoted', before);
+    await press(p, '#reader-menu');
+    await p.getByRole('menuitem', {name:'Stacked layout',exact:true}).click();
+    await until(p, () => document.querySelector('#reader').dataset.layout === 'stacked', 'Stacked chosen again after quoting');
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   };
   const wordsAt = (p, n) => p.evaluate(n => {
@@ -1400,7 +1485,7 @@ async function run() {
   // One who has not scrolled keeps the words quoted in sight as the reply
   // grows; a scroll the person makes, however made, lets them go, so the
   // reply's next change of size leaves the message where they put it.
-  await check('stacked: quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar\'s drag among them, lets them go', async () => {
+  await check('item 644 stacked chosen again after quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar\'s drag among them, lets them go', async () => {
     // Headless Chrome hides scrollbars unless told not to; this case's Chrome
     // shows them, so the message's own scrollbar is there to drag.
     const barred = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true, ignoreDefaultArgs: ['--hide-scrollbars'] }) : null;
@@ -1519,8 +1604,8 @@ async function run() {
   // line of its own, the reply then opening over them: what is kept in sight
   // above the reply is the words chosen, in the passage that holds them, not
   // the line the next sentence starts on.
-  await check('stacked: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence\'s line', async () => {
-    const q = await page('stacked', 'light', '/?topic=compose-wrap');
+  await check('item 644 phone: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence\'s line', async () => {
+    const q = await page('phone', 'light', '/?topic=compose-wrap');
     await open(q, wrap, 'A plan in one item');
     const set = await q.evaluate(() => {
       const body = document.querySelector('#source-body'), parts = [...body.children];
