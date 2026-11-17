@@ -7397,7 +7397,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(look, closed('Cover Answered: the second weekend, with the lake open payload proposed'), `${at}: the line, closed`);
       await opens('A');
       await write(ids.root, { stands: 'Answered again: the second weekend' }, 'again');
-      await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet, c.stands, c.line]; }, [true, true, 'Answered again: the second weekend', 'Cover Answered again: the second weekend'],
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet, c.stands, c.line]; }, [true, true, 'Answered again: the second weekend', A],
         `${at}: a rewrite keeps the sheet open, saying the new words`);
       // The same message opened again: the line, closed.
       await closeReader(p, device);
