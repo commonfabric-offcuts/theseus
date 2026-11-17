@@ -1,0 +1,11 @@
+{
+ "step": "webkit-reading",
+ "cases": [
+  "reading stacks star brings back",
+  "reading stacks star hold",
+  "reading stacks star refused by Core",
+  "reading stacks star title bar"
+ ],
+ "label": "takeover-head-webkit-1a1ea6df-1",
+ "snapshot": "1a1ea6df3ed26afdd8a03b16be970dc5dc05cca4"
+}
