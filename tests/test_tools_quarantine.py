@@ -436,7 +436,9 @@ class Combine(unittest.TestCase):
         self.env = dict(os.environ, GITHUB_EVENT_NAME="push", GITHUB_RUN_ID="7", GITHUB_RUN_ATTEMPT="1", GITHUB_WORKFLOW="Checks",
                         GITHUB_JOB="check", GITHUB_REPOSITORY="org/repo", GITHUB_SHA=self.sha, GITHUB_WORKFLOW_SHA=self.sha,
                         GITHUB_WORKFLOW_REF="workflow", BASE_REF="", BASE_SHA="", HEAD_REF="", HEAD_SHA="",
-                        PLAN_SHARDS=json.dumps([{"steps": "native-colors"}, {"steps": "python-units"}]))
+                        # Match the producer's named shard plan, including its cancellation recovery input.
+                        PLAN_SHARDS=json.dumps([{"name": "browser 1 of 1", "steps": "native-colors"},
+                                                {"name": "units", "steps": "python-units"}]))
 
     def combine(self, colors, at=("b" * 40, "b" * 40), units="ran", unchanged=(True, True), edit=lambda summary: summary):
         """units: "ran" (python-units passed in the second shard), "refused" (that shard's release check refused before
