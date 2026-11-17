@@ -1,0 +1,127 @@
+// Item 651. Native clicks/taps/Return, using production renderers and the real
+// isolated HTTP page. Component states use imageChoices' actual branches;
+// full-page cases cover feed, dossier, rail, picking, and Notebook consumers.
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+
+export async function thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine }) {
+  const hash = text => createHash('sha256').update(text).digest('hex');
+  const shapes = ['phone-320', 'phone-375', 'phone-390', 'stacked'];
+  const png = await readFile(path.join(root, 'tests/fixtures/media/screen.png'));
+  const topic = `thumb-651-${engine}`;
+  await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Thumbnail images' }] });
+  const message = (await control({ method: 'agent_message', operation_id: topic, topic_id: topic, join: true, source: 'topic', body: 'The picture stays with these words.', attachments: [{ name: 'landscape.png', image: 'screen.png' }] })).result.message_id;
+  const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, reply_to: message, body: 'A second picture in the dossier.', attachments: [{ name: 'detail.png', image: 'screen.png' }] })).result.message_id;
+  await control({ method: 'stack_act', sender: facts.agent, kind: 'stack.name', message_id: message, operation_id: topic + '-name', args: { name: 'Picture dossier' } });
+  const note = topic + '-note';
+  await control({ method: 'outcome_reference', operation_id: note, item_id: note, title: 'Picture Notebook', body: `## Picture\nWords stay as written.\n![landscape.png](attachment:${note}-media-0)`, attachments: [{ name: 'landscape.png', image: 'screen.png' }] });
+
+  const ready = async (p, selector) => {
+    await p.locator(selector).first().scrollIntoViewIfNeeded();
+    await until(p, s => { const i = document.querySelector(s); return i && !i.hidden && i.complete && i.naturalWidth > 0; }, 'the thumbnail decoded', selector, 15000);
+  };
+  const openImage = async (p, selector, key = false) => {
+    const src = await p.locator(selector).first().getAttribute('src');
+    const before = p.url(), tabs = p.ctx.pages().length;
+    const popup = p.waitForEvent('popup', { timeout: 2500 });
+    // Handle rejection immediately while a native action is pending.
+    const received = popup.then(value => ({ value }), error => ({ error }));
+    if (key) {
+      await p.locator(selector).first().focus();
+      await p.keyboard.press('Enter');
+    } else await press(p, selector);
+    const outcome = await received;
+    assert.ok(outcome.value, `thumbnail opens a new tab: ${outcome.error?.message ?? ''}`);
+    const tab = outcome.value;
+    await tab.waitForLoadState('domcontentloaded');
+    assert.equal(tab.url(), src, 'the tab opens exactly the displayed image');
+    const bytes = await tab.evaluate(async () => [...new Uint8Array(await (await fetch(location.href)).arrayBuffer())]);
+    assert.equal(hash(Buffer.from(bytes)), hash(png), 'the opened image has the exact verified bytes');
+    assert.equal(p.url(), before, 'the original destination stays put');
+    assert.equal(p.ctx.pages().length, tabs + 1, 'one gesture opens exactly one tab');
+    assert.equal(await tab.evaluate(() => window.opener === null), true, 'the image has no opener');
+    await tab.close();
+  };
+
+  for (const shape of shapes) for (const scheme of ['light', 'dark']) {
+    const label = `${shape} ${scheme}`;
+    await check(`item 651 ${label}: topic and dossier thumbnails open their exact image, never the Reader`, async () => {
+      const p = await page(shape, scheme, `/?topic=${topic}`);
+      const selector = `.message-card[data-id="${reply}"] .image-thumb`;
+      await ready(p, selector);
+      await picture(p, 'item-651-dossier-before-press');
+      await openImage(p, selector);
+      assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'the thumbnail does not open the Reader');
+      await openImage(p, selector, true);
+      assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'Return on the thumbnail does not open the Reader');
+      await close(p);
+    });
+    for (const [surface, route, scope] of [
+      ['Notebook cards', `/?cards=${note}`, '.deck-image'],
+      ['Notebook read', `/?workspace=w1&page=${note}&revision=1`, '.page-image'],
+    ]) await check(`item 651 ${label}: ${surface} thumbnail opens without editing or changing words`, async () => {
+      const p = await page(shape, scheme, route), selector = `${scope} .image-thumb`;
+      await ready(p, selector);
+      const words = await p.locator(scope).first().textContent();
+      await picture(p, 'item-651-' + surface.replaceAll(' ', '-'));
+      await openImage(p, selector);
+      assert.equal(await p.locator(scope).first().textContent(), words, 'the picture caption and words stay exact');
+      assert.equal(await p.locator('.deck-writing').count(), 0, 'opening the image does not edit its card');
+      await close(p);
+    });
+
+    // The same production row renderer receives every imageChoices branch.
+    // This isolates thumbnail activation from upload transport, without
+    // invoking a handler or pretending these states are a server receipt.
+    for (const state of ['ready', 'uploading', 'device-refused', 'confirmation', 'retry', 'download', 'read-only', 'empty', 'read-refused', 'read-error']) {
+      await check(`item 651 ${label}: composer ${state} thumbnail preserves writing and recovery`, async () => {
+        const p = await page(shape, scheme);
+        await p.evaluate(async ({ state, png }) => {
+          const { paintImageRows } = await import('/image-rows.mjs');
+          const { imageChoices } = await import('/writing-helpers.mjs');
+          const host = document.createElement('section'); host.id = 'thumbnail-case';
+          host.style.cssText = 'position:fixed;inset:90px 8px auto;z-index:9999;padding:12px;background:var(--panel);border:1px solid var(--line)';
+          const writing = document.createElement('textarea'); writing.value = 'Exact writing — private to this isolated case.';
+          writing.id = 'thumbnail-writing';
+          const strip = document.createElement('div'); strip.className = 'image-strip'; strip.id = 'thumbnail-strip';
+          host.append(strip, writing); document.body.append(host);
+          window.thumbnailActions = [];
+          const e = { selection_id: 'thumb-state', file: { name: 'landscape.png' }, version: 1, choice: 0,
+            bytes_state: state === 'device-refused' ? 'memory-only' : 'durable', origin: state === 'confirmation' ? 'retained-ref' : 'capture',
+            attempts: state === 'retry' ? [{ phase: 'failed', retry_allowed: true }] : state === 'ready' ? [{ phase: 'confirmed' }] : [], ready_descriptor: {} };
+          const uploads = { current: () => state === 'empty' ? [] : [e], running: new Set(state === 'uploading' ? [e.selection_id] : []), status: () => state };
+          const choices = imageChoices(uploads, state !== 'read-only');
+          window.thumbnailChoices = choices;
+          paintImageRows(strip, choices, state !== 'read-only', action => thumbnailActions.push(action.method),
+            () => state === 'read-refused' ? null : state === 'read-error' ? Promise.reject(Error('isolated read error')) : new Blob([Uint8Array.from(atob(png), c => c.charCodeAt(0))], { type: 'image/png' }));
+        }, { state, png: png.toString('base64') });
+        const selector = '#thumbnail-strip .image-thumb';
+        if (['empty', 'read-refused', 'read-error'].includes(state)) {
+          await until(p, () => !document.querySelector('#thumbnail-strip .image-thumb'), 'no image available to open');
+          assert.equal(p.ctx.pages().length, 1, 'no image read opens a tab');
+          await picture(p, 'item-651-composer-' + state);
+        } else {
+          await ready(p, selector);
+          await picture(p, 'item-651-composer-' + state);
+          // The row's transparent opener lies above its thumbnail until its
+          // choices open. Press the actual surface the person sees there.
+          await openImage(p, '#thumbnail-strip .image-open');
+          assert.equal(await p.locator('#thumbnail-writing').inputValue(), 'Exact writing — private to this isolated case.');
+          assert.deepEqual(await p.evaluate(() => thumbnailActions), [], 'opening never removes, retries, downloads or sends');
+          await until(p, () => document.querySelector('#thumbnail-strip .image-choice').hasAttribute('data-open'), 'the existing choices remain available');
+          const methods = await p.evaluate(() => [...document.querySelectorAll('#thumbnail-strip [data-method]')].map(b => ({ method: b.dataset.method, disabled: b.disabled, visible: b.getClientRects().length > 0 })));
+          assert.ok(methods.every(m => m.visible && m.disabled === (state === 'read-only')), 'every existing recovery action keeps its enabled state');
+          if (state !== 'read-only') {
+            const method = methods[0].method;
+            await press(p, `#thumbnail-strip [data-method="${method}"]`);
+            assert.deepEqual(await p.evaluate(() => thumbnailActions), [method], 'the existing recovery or Remove control acts once');
+          }
+        }
+        assert.deepEqual(p.errors, [], 'no page errors');
+        await close(p);
+      });
+    }
+  }
+}

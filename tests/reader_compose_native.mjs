@@ -21,6 +21,7 @@
 // AIM_PLAYWRIGHT_CORE names a playwright-core directory. The release check runs
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
+import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -285,6 +286,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine });
   // Items 602 and 601 (tests/menu_glyphs.mjs): each item of the Reader's ⋯ shows its glyph before its words, in each
   // state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each width and theme
   // reads in a topic of its own, so what its acts change (a mark, a fold) is no other case's.
