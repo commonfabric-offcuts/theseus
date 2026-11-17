@@ -302,7 +302,7 @@ export class PeoplePanel {
         if (!outsidePress || event.pointerId !== outsidePress.pointerId) return;
         // A drag's click targets the common ancestor of its endpoints. Touch
         // may also capture pointerup to the start node: hit-test the release.
-        outsidePress.releasedOutside = !inside(doc.elementFromPoint(event.clientX, event.clientY));
+        outsidePress.releasedOutside = true;
       }, true);
       doc.addEventListener('pointercancel', event => {
         if (event.pointerId === outsidePress?.pointerId) outsidePress = null;
