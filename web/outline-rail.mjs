@@ -360,10 +360,9 @@ export class OutlineRail {
       event.preventDefault();
       if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
       if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
-        if (false) {
+        if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
           // must not close it. The tree has already selected the pressed row.
-          event.stopPropagation();
           this.setOpen(outcome, true);
           return;
         }
