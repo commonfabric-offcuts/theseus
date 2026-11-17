@@ -1387,8 +1387,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(shown, true, `${device} ${width}: More shows it`);
       await menuAgain(p, device, ids.root, ids.mine); await moveItem(p, device, 'Bring back above More');
       await until(async () => !(await positionIn(topic, ids.root)).below, `${device} ${width}: brought back, in Core`);
-      await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Star for me');
-      await until(async () => (await actsOf(topic, ids.root))?.starred === true, `${device} ${width}: starred, in Core`);
+      const offered = await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Star for me');
+      // What the page and Core said, where the star is not taken: the menu it was chosen from, the status line and the words said.
+      await until(async () => (await actsOf(topic, ids.root))?.starred === true, `${device} ${width}: starred, in Core`).catch(async error => {
+        throw new Error(`${error.message}: menu ${JSON.stringify(offered)}, status ${JSON.stringify(await status())}, said ${JSON.stringify(await said(p))}, Core ${JSON.stringify(await actsOf(topic, ids.root))}`);
+      });
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
       // Show agent coordination off: the dossier is not drawn.
       await centre(p, filter); await press(p, device, filter);
