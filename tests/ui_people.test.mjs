@@ -618,6 +618,7 @@ test('item 643 the topic Team closes by Done, Escape and an outside click, prese
   panel.paint(people(['tony']), true);
   const press = (from, to = from, more = {}) => {
     document.emit('pointerdown', { target: from, button: 0, isPrimary: true, ...more });
+    document.emit('pointerup', { target: to, button: 0, isPrimary: true, ...more });
     document.emit('click', { target: to });
   };
   panel.opener.onclick();
@@ -647,4 +648,38 @@ test('item 643 the topic Team closes by Done, Escape and an outside click, prese
   assert.equal(panel.opener.title, 'Add to topic');
   assert.equal(panel.opener.getAttribute('aria-expanded'), 'false');
   assert.deepEqual(sent, [], 'neither closing nor losing permission submits the filter');
+});
+
+test('item 643 B1 Team dismissal uses both pointer endpoints, not the common-ancestor click target', t => {
+  dom(t);
+  const host = new Element('div'), label = new Element('h2'), team = new Element('section'), sent = [];
+  team.append(label, host);
+  const panel = new PeoplePanel({ host, label: 'Add to topic', dismissible: true, add: id => sent.push(id) });
+  panel.paint(people(['tony']), true); panel.toggle(true); panel.input.value = 'keep this filter';
+  // Touch implicitly captures to the start node. The release's coordinates,
+  // rather than that captured target, say where the finger actually ended.
+  let landed;
+  document.elementFromPoint = () => landed;
+  const press = (from, to, { captured = false, cancel = false, otherPointer = false } = {}) => {
+    document.emit('pointerdown', { target: from, pointerId: 7, button: 0, isPrimary: true });
+    landed = to;
+    document.emit(cancel ? 'pointercancel' : 'pointerup', { target: captured ? from : to, pointerId: otherPointer ? 8 : 7, clientX: 10, clientY: 10 });
+    document.emit('click', { target: team });
+  };
+  for (const more of [{}, { captured: true }]) {
+    press(label, panel.input, more);
+    assert.equal(panel.row.hidden, false, 'drag from Team into the field keeps the picker open');
+    press(label, panel.choices, more);
+    assert.equal(panel.row.hidden, false, 'drag into the choices keeps the picker open');
+    press(panel.input, label, more);
+    assert.equal(panel.row.hidden, false, 'drag out of the field keeps the picker open');
+  }
+  press(label, label, { cancel: true });
+  assert.equal(panel.row.hidden, false, 'a cancelled press cannot dismiss on a later click');
+  press(label, label, { otherPointer: true });
+  assert.equal(panel.row.hidden, false, 'another pointer cannot complete the outside press');
+  press(label, label);
+  assert.equal(panel.row.hidden, true, 'a completed outside press still closes');
+  assert.equal(panel.input.value, 'keep this filter');
+  assert.deepEqual(sent, [], 'no endpoint gesture submits the filter');
 });

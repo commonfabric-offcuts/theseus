@@ -34,6 +34,30 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
     };
     const open = async p => { await press(p, opener); await until(() => shown(p), 'Add shows the choices and field');
       if (!await p.evaluate(`document.querySelector('${field}').value`)) await until(() => p.evaluate(`Boolean(document.querySelector('#participants .people-chips button[data-id="${candidate}"]'))`), 'available agent pill shows'); };
+    const keepOnDrag = async (p, state) => {
+      const typed = await p.evaluate(`document.querySelector('${field}').value`);
+      // Native pointer gestures even at phone widths: click.target for a drag
+      // is the common ancestor, not necessarily the node under pointerup.
+      for (const [from, to, direction] of [['#people-heading', field, 'in'], [field, '#people-heading', 'out'], ['#people-heading', '#participants .people-chips', 'choices']]) {
+        await p.evaluate(`(()=>{window.item643Gesture={};for(const type of ['pointerup','click'])document.addEventListener(type,event=>{window.item643Gesture[type]={tag:event.target.tagName,id:event.target.id,landed:document.elementFromPoint(event.clientX,event.clientY)?.tagName}},{once:true,capture:true})})()`);
+        const a = await p.box(from), b = await p.box(to);
+        const start = { x: a.x + a.width - 4, y: a.y + a.height / 2 }, end = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+        await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1 });
+        for (let n = 1; n <= 8; n++) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x + (end.x - start.x) * n / 8, y: start.y + (end.y - start.y) * n / 8, button: 'left', buttons: 1 });
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...end, button: 'left', buttons: 0, clickCount: 1 });
+        await until(() => p.evaluate('Boolean(window.item643Gesture.click)'), 'the native drag click is delivered');
+        const gesture = await p.evaluate('window.item643Gesture');
+        if (direction === 'in') {
+          assert.equal(gesture.pointerup.tag, 'INPUT', 'the press actually releases in the name field');
+          assert.equal(gesture.click.id, 'topic-people', 'the browser retargets the click to the Team ancestor');
+        }
+        await shot(p, `item-643-${tag}-${state}-drag-${direction}`);
+        assert.equal(await shown(p), true, `${state}: a drag ${direction} keeps the picker open despite its common-ancestor click`);
+        assert.equal(await p.evaluate(`document.querySelector('${field}').value`), typed, 'dragging preserves the exact filter');
+        assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
+      }
+    };
     await check(`${prefix} item 643 Team spelling ${tag}`, async () => {
       const p = await openPage('spelling');
       await shot(p, `item-643-${tag}-closed`);
@@ -92,6 +116,18 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       await until(async () => !(await membership()).includes(candidate), 'this case restores its added member');
       await p.close();
     });
+    await check(`${prefix} item 643 B1 drag endpoints keep picker open ${tag}`, async () => {
+      const p = await openPage('drag'), before = await membership(); await open(p);
+      await p.send('Input.insertText', { text: 'fixture' });
+      await until(() => p.evaluate(`Boolean(document.querySelector('#participants .people-chips button[data-id="${candidate}"]'))`), 'the filter still offers an agent');
+      await keepOnDrag(p, 'available');
+      assert.deepEqual(await membership(), before, 'dragging submits no name');
+      await press(p, '#people-heading');
+      await until(async () => !await shown(p), 'a subsequent outside press still closes');
+      await open(p); await press(p, opener);
+      await until(async () => !await shown(p), 'Done still closes after dragging');
+      await p.close();
+    });
     await check(`${prefix} item 643 read-only Team ${tag}`, async () => {
       const elsewhere = await control({ method: 'elsewhere_ask', operation_id: `item-643-readonly-${tag}`, body: 'Read-only Team fixture' });
       const p = await page(`item-643-${tag}-readonly`, null, true, { url: `${facts.origin}/?topic=${elsewhere.topic_id}`, beforeNavigate: setup });
@@ -119,6 +155,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       }
       await shot(p, `item-643-${tag}-${state}`);
       assert.equal(await word(p), 'Done'); assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
+      await keepOnDrag(p, state);
       await press(p, state === 'refused' ? opener : '#topic-title');
       await until(async () => !await shown(p), `${state} picker closed`);
       if (state === 'busy') {
