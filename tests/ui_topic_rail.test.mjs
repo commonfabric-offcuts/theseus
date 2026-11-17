@@ -17,10 +17,10 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
     focus() { document.activeElement = this; }
     append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
-    // Enough of a browser's closest for '.name' and '.name[data-key=value]'.
+    // Enough of a browser's closest for '.name' and '.name[data-key]'.
     closest(selector) {
-      const [, name, key, value] = selector.match(/^\.([\w-]+)(?:\[data-([\w-]+)=([\w-]+)\])?$/);
-      for (let at = this; at; at = at.parent) if (String(at.className ?? '').split(' ').includes(name) && (!key || at.dataset[key] === value)) return at;
+      const [, name, key] = selector.match(/^\.([\w-]+)(?:\[data-([\w-]+)\])?$/);
+      for (let at = this; at; at = at.parent) if (String(at.className ?? '').split(' ').includes(name) && (!key || Object.hasOwn(at.dataset, key))) return at;
       return null;
     }
   }

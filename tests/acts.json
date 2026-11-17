@@ -1849,7 +1849,7 @@
    "break": [
     [
      "web/things-rail.mjs",
-     "      if (!this.wide?.matches) this.close(false);\n      this.handles.open(target, title || 'that page', link);\n",
+     "      if (!this.wide?.matches) this.close(false);\n      this.handles.open(to, title || 'that page', link);\n",
      ""
     ]
    ],
@@ -26438,6 +26438,20 @@
    ],
    "check": {
     "python": "test_new_line.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a Build row's unread count on the right rail opens its topic at the oldest unread message",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      const to = target.kind === 'topic' && landsOnUnread(event.target) ? { kind: 'topic', id: target.id, at: 'unread' } : target;\n",
+     "      const to = target;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
    }
   }
  ]

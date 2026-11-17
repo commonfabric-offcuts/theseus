@@ -506,7 +506,7 @@ export const questionOf = (item, reader) => (Array.isArray(item?.asks) ? item.as
 // rule the topic's oldest unread message is found by (docs/attention.md), so
 // it counts nothing the press cannot reach.
 export const UNREAD_TIP = 'Show the oldest unread message';
-export const landsOnUnread = target => Boolean(target?.closest?.('.unread-count[data-lands=unread]'));
+export const landsOnUnread = target => Boolean(target?.closest?.('.unread-count[data-lands]'));
 export function paintMarks(host, item, reader) {
   const count = paintUnread(host, item);
   if (count) { count.dataset.lands = 'unread'; count.title = UNREAD_TIP; }

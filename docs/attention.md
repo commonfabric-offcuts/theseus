@@ -638,6 +638,25 @@ outcome and topic lists after each commit, on topic pages as on outcome pages
 and beside a new topic or outcome, keeping the rows loaded with More; a hidden
 one reloads them when shown again.
 
+A topic row's count leads to what it counts (item 613). A press on the count,
+in the outline, the outcome page's topic list or the right rail's Build rows,
+opens the topic at the oldest message still unread for the reader
+(`?topic=T&at=unread`, docs/links.md), where the rest of the row opens the topic
+as before. The page reads in older pages of the topic as far as that message,
+however far up it is, opens the dossier it is in, expands the dossier's earlier
+row as far as it (docs/reply-stacks.md, "Earlier messages"), and brings it whole
+into view with the keys on it; on a phone the drawer closes first. Reading it on
+screen settles it, and the count goes. The count's tooltip says "Show the oldest
+unread message", and on a phone it answers a finger 44px each way. The count and
+the message it leads to are one rule: both are Core's unread (`_unread` counts
+it, `_oldest_unread` names it), a delivery pending in an active group or a mark,
+so while a topic's count is above nought its oldest unread message is one the
+reader's own pages of the topic reach, and what the reader cannot reach (a
+topic they left, a whisper between others, another reader's delivery) is never
+counted. `tests/test_new_line.py`, `CountLeadsThereCase`, holds the two
+together, and `tests/stack_native.mjs`, "reading unread count one press lands",
+presses it.
+
 Outcome pages list the newest messages sent to the reader by name. One in a
 topic they can open links there, where reading it settles it; one in a topic
 they have lost shows its words and a "Mark read" button. A Mark read that is

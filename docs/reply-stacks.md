@@ -313,6 +313,10 @@ their acts.
   such a message as a whole card with no row in it, a press on it acts as on
   any card. A link, search or Starred
   that lands on an earlier message opens the row and shows that message whole.
+  A topic's unread count lands the same way (item 613, docs/attention.md, "In
+  the browser"), and draws the dossier open first whatever its level
+  (`reveal`'s `open`), so a message waiting deep in a dossier at latest and
+  unread, or at its first message alone, is shown whole in its open folder.
   All of this is the page's own for this visit: nothing is sent, nothing
   moves below More, and a reload, changing the dossier's state, or coming back
   to it off screen closes the row again (`earlierOf` and `rowsOf` in
