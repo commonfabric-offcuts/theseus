@@ -275,9 +275,11 @@ class OpenCase(StartLineCase):
         racer = self.writer.parent / "racer.py"
         racer.write_text(RACING_WRITER)
         inner = [sys.executable, "-I", "-B", str(TOOL), "open", "w1", str(number), "--cli", str(CLI), "--profile", str(self.profiles["agent-a"]),
-                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--", sys.executable, "-I", "-c",
+                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--now", T0, "--", sys.executable, "-I", "-c",
                  "import sys; sys.stdin.read(); sys.stdout.write('The racing line.')"]
-        code, result, err = self.tool("open", "w1", str(number), "--topic", "t1", "--surface", str(self.surface),
+        # Both racing opens use the fixture clock, as cut_ok does: the real date
+        # must not move this line's window past the fixed LATE used for its cut.
+        code, result, err = self.tool("open", "w1", str(number), "--topic", "t1", "--surface", str(self.surface), "--now", T0,
                                       "--", sys.executable, "-I", str(racer), *inner)
         self.assertEqual((code, err), (0, ""), result)
         self.assertEqual((result["brief"], result["posted"], self.count()), ("The racing line.", False, before + 1))

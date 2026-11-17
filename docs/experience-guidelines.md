@@ -199,6 +199,12 @@ page shorter under what is being read.
   claimed only after a pass of reads has run to its end
   ([scoped-updates-followups.md](scoped-updates-followups.md)).
 
+- `tests/notebook_sheet_native.mjs` (`native-notebook`,
+  `native-webkit-notebook`): the "notebook item 642" cases keep Text, Cards and
+  Draft in the same boxes while a card is written and its saving sign changes;
+  every status branch at 320, 375, 390 and laptop, light and dark, with the
+  status in a row of its own ([decks.md](decks.md#where-it-opens)).
+
 ## Actions are where you look for them
 
 An action sits on the surface where its work happens.
