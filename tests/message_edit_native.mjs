@@ -807,6 +807,50 @@ export async function editChecks({ check, until, view, control, facts, shot = as
     }
   });
 
+  // A long correction: the agent's report runs past what a card shows, and its edit changes words in the excerpt and
+  // past it. The card strikes what its excerpt shows; read on in place (lit) or shown full, it holds the whole message,
+  // and strikes everything the person had read that the edit took away. A reader who had not read it sees none.
+  await check('reading edit agent long correction: a card cut off at its excerpt strikes what it shows, and lit or shown full strikes everything the edit took away; nothing for a topic not yet read; at 320, 375 and 390 wide by touch, and on a laptop, light and dark', async () => {
+    const report = n => `Built on release ${n}, and the checks are green.\n\n` + Array.from({ length: 24 }, (_, i) => `Step ${i + 1} of the glossary rebuild ran in order and wrote its lamp file.`).join('\n\n') + `\n\nSigned off on build ${n}.`;
+    const LONG = report(85), LONG_FIXED = report(86);
+    assert.ok(new TextEncoder().encode(LONG.slice(0, LONG.indexOf('Signed off'))).length > 1024, 'the last line is past what a card shows');
+    const shape = (p, id) => strikeOf(p, words(id)).then(seen => seen && { struck: seen.struck, signed: seen.text.includes('Signed off') ? seen.text.slice(seen.text.indexOf('Signed off')) : '' });
+    for (const [device, width] of WIDTHS) {
+      const read = `edit-agent-long-${width}`, fresh = `edit-agent-long-fresh-${width}`;
+      const a = await seed(read, [['line', { sender: 'aim-core', join: true, body: LONG, read: true }]]);
+      const b = await seed(fresh, [['line', { sender: 'aim-core', join: true, body: LONG }]]);
+      for (const [topic, id] of [[read, a.line], [fresh, b.line]]) {
+        const receipt = await control({ method: 'agent_edit', operation_id: `${topic}-edit`, sender: 'aim-core', message_id: id, body: LONG_FIXED });
+        assert.deepEqual([receipt.status, receipt.result?.revision ?? null], ['committed', 2], `${width}: Core takes the agent's edit`);
+      }
+      for (const [topic, id, struck] of [[read, a.line, ['85', '85']], [fresh, b.line, []]]) {
+        const said = `${width} ${topic === read ? 'read before' : 'not read before'}`;
+        const p = await open(topic, device, topic, id, 'window.holdReads = true');
+        if (device === 'phone' && width !== 390) await p.send('Emulation.setDeviceMetricsOverride', { width, height: 740, deviceScaleFactor: 1, mobile: true });
+        // The excerpt: the first change struck, the last line not shown.
+        assert.deepEqual(await shape(p, id), { struck: struck.slice(0, 1), signed: '' }, `${said}: the excerpt strikes what it shows`);
+        // Lit, the card is a box holding the whole message, and strikes both changes.
+        await light(p, device, id);
+        await until(() => p.evaluate(`(c=>c.dataset.whole==='shown'&&c.classList.contains('scroll-in-place'))(document.querySelector(${JSON.stringify(card(id))}))`), `${said}: lit, the card holds the whole message`);
+        await becomes(() => shape(p, id), { struck, signed: struck.length ? 'Signed off on build 85 86.' : 'Signed off on build 86.' }, `${said}: lit, the whole message's changes are struck`);
+        assert.ok(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), `${said}: nothing beyond the window`);
+        for (const scheme of ['light', 'dark']) {
+          await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+          await p.evaluate(`(c=>{c.scrollTop=c.scrollHeight})(document.querySelector(${JSON.stringify(card(id))}))`);
+          await shot(p, `edit-agent-long-lit-${topic === read ? 'read' : 'fresh'}-${width}-${scheme}`);
+        }
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+        // Show full: the card grows to the whole message, struck the same.
+        assert.ok((await menuOf(p, device, id)).includes('Show full message'), `${said}: the cut-off card offers Show full message`);
+        await choose(p, device, 'Show full message');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.full==='shown'`), `${said}: shown full`);
+        assert.deepEqual(await shape(p, id), { struck, signed: struck.length ? 'Signed off on build 85 86.' : 'Signed off on build 86.' }, `${said}: shown full, the same changes are struck`);
+        assert.deepEqual(p.errors, []);
+        await p.close();
+      }
+    }
+  });
+
   await check('reading edit hold: Edit sends edit_open before the field shows, an agent then reads the message without its words, and Cancel closes once and gives them back', async () => {
     const topic = 'edit-hold-laptop', ids = await edited(topic);
     const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);

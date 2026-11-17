@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import * as format from '../web/message-format.mjs';
 import { nameTopicsWith, openLinksWith, wordNodes } from '../web/links.mjs';
 import { routeHref } from '../web/topic-navigation.mjs';
+import { CardScroll } from '../web/card-scroll.mjs';
 
 // A document whose elements hold child nodes and know their parent, as the browser's do.
 class Text {
@@ -934,4 +935,43 @@ test('a quote over struck words takes the new words only', () => {
     assert.equal(body.slice(format.sourcePosition(...range.start), format.sourcePosition(...range.end, true)), body);
     assert.ok(!byClass(card, 'struck-words')[0].childNodes.includes(range.start[0]), 'the range starts in the new words');
   } finally { delete doc.createTreeWalker; delete doc.createRange; }
+});
+
+// A card cut off at its excerpt reads on in place (web/card-scroll.mjs): lit, it becomes a box holding the whole
+// message, and Show full grows it to the whole. Either way the words drawn are the whole message's, so the struck
+// words are the whole message's too, from its source (docs/message-edit.md, "Words struck through"): the excerpt's
+// struck words alone would leave a change past the excerpt drawn whole.
+test('a card read on in place, or shown full, strikes what the whole message took away, and nothing for a reader who had not read it', async () => {
+  const excerpt = 'Built on release 86, the checks', whole = 'Built on release 86, the checks are green. Ends on 86.';
+  const cuts = [{ at: 17, words: '85' }, { at: whole.length - 3, words: '85' }], struckWhole = 'Built on release 85 86, the checks are green. Ends on 85 86.';
+  const cardOf = () => {
+    const card = new Element('div'), preview = new Element('span'), cue = new Element('span');
+    preview.className = 'message-preview'; cue.className = 'message-preview-cue';
+    card.append(preview, cue);
+    format.formatWords(preview, excerpt, { partial: true, copyFences: 'feed', revision: 2, struck: [cuts[0]] });
+    Object.assign(card, { scrollTop: 0, scrollHeight: 300, clientHeight: 150, getBoundingClientRect: () => ({ top: 0, height: 150 }),
+      querySelector: selector => ({ ':scope > .message-preview': preview, ':scope > .message-preview-cue': cue })[selector] ?? null });
+    preview.getBoundingClientRect = () => ({ top: 10, height: 100 });
+    return { card, preview };
+  };
+  const struckOf = host => byClass(host, 'struck-words').map(node => node.textContent);
+  const sourceFor = struck => ({ source_ref: { kind: 'message', id: 'm' }, body: whole, revision: 2, struck });
+  const cut = { id: 'm', preview: true, body: excerpt, revision: 2, struck: { revision: 1, cuts: [cuts[0]] } };
+  for (const [name, struck, shown, words] of [['had read it', { revision: 1, cuts }, struckWhole, ['85', '85']], ['had not read it', null, whole, []]]) {
+    // Lit: the whole message, read from its source, in a box that scrolls in place.
+    const lit = cardOf();
+    assert.equal(await new CardScroll({ read: async () => sourceFor(struck) }).expand(lit.card, cut), true, name);
+    assert.equal(lit.card.dataset.whole, 'shown', name);
+    assert.deepEqual([lit.preview.textContent, struckOf(lit.preview)], [shown, words], `lit, ${name}`);
+    assert.equal(format.drawnText(lit.preview), whole, `lit, ${name}: the new words are what is drawn`);
+    // Show full on the cut-off card: the same.
+    const full = cardOf();
+    assert.equal(await new CardScroll({ read: async () => sourceFor(struck) }).showFull(full.card, cut), true, name);
+    assert.deepEqual([full.preview.textContent, struckOf(full.preview)], [shown, words], `shown full, ${name}`);
+    // Show full on a card that holds its whole message (no excerpt): its own item's struck words, with no read.
+    const tall = cardOf();
+    const own = new CardScroll({ read: async () => { throw Error('a whole card is not read again'); } });
+    assert.equal(await own.showFull(tall.card, { id: 'm', preview: false, body: whole, revision: 2, struck }), true, name);
+    assert.deepEqual([tall.preview.textContent, struckOf(tall.preview)], [shown, words], `a whole card shown full, ${name}`);
+  }
 });

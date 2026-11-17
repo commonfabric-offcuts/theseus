@@ -15,8 +15,10 @@ only, through indexes keyed by message. The first three come from
   the same deliveries the counts and the New line read. The reader's own
   messages are never unread. Marks are not folded in: the page has its own
   (`web/marks.mjs`). An agent's edit of its own message makes it unread again
-  for each person who had read it, and their item then carries `struck`, the
-  words they had read that the edit took away
+  for each person who had read it where their delivery of it counts (not a
+  message between others, nor a topic they left), and every person who had
+  read it gets `struck` in their item, the words they had read that the edit
+  took away
   ([message-edit.md](message-edit.md), "An agent's edit, for the people who
   had read it").
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or

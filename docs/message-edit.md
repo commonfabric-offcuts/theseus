@@ -78,8 +78,8 @@ The receipt's result is `{message_id, revision, edited_ms, session_closed,
 corrections}` (`corrections` is how many agents were sent one;
 `session_closed` is true when this Save was the holder's and ended the
 session, and then `session_revision` gives the session's new revision;
-`unread_again` is how many people had read it, for an agent's edit, and 0 for
-a person's), and
+`unread_again` is how many people an agent's edit made it unread for again,
+and 0 for a person's), and
 `affected` is
 `{kind: "message", id, version: revision}`. A retry under the same operation id
 returns the same receipt and adds nothing; the same id with other words is
@@ -107,22 +107,27 @@ the old words.
 A person **had read** an agent's message when, at the moment of the edit,
 their own delivery of it (revision 1, in their `direct` or `subscription`
 group) is settled: reading it on screen, a read-through past it, a reply, a 👍
-or an ack all settle it. For each such person, other than the editor, an
-agent's edit:
+or an ack all settle it, and a message between others (sent by name to
+others, not answering theirs) was settled for them when it was sent. For each
+such person an agent's edit:
 
 - keeps the revision they had read: a row of `message_exposures` for that
   person and message, at the revision the edit replaced (it only grows, so a
-  second edit before they read the first keeps the first words they read); and
-- makes that same delivery pending again, as an arrival, with the counts it
-  moves (`pending_count`, `first_pending_seq`, the recipient's schedule) and a
-  `delivery` change, so the message is unread for them and the New line finds
-  it.
+  second edit before they read the first keeps the first words they read), so
+  they see the words it took away struck through; and
+- where that delivery counts, makes it pending again, as an arrival, with the
+  counts it moves (`pending_count`, `first_pending_seq` kept at the group's
+  first pending delivery, the recipient's schedule) and a `delivery` change,
+  so the message is unread for them and the New line finds it.
 
-A message between others (sent by name to others, not answering theirs) was
-settled for them when it was sent, not read, and is left as it is. A delivery
-left in a subscription since closed counts nowhere and stays settled, though
-the revision they had read is kept. A person who had not read it gets neither:
-their delivery was pending, and stays so. A person's edit does neither for
+A delivery counts nowhere in two cases, and stays settled: a message between
+others (counted for nobody but the people it names and the author of the
+message it answers), and a delivery left in a subscription since closed (the
+person left the topic). Those people see the struck words, and the edit's
+`unread_again` does not count them. A person who had not read it gets
+neither: their delivery was pending, and stays so. Agents' own deliveries of
+the message are their work and are never made pending again by an edit; an
+agent handed the old words gets a correction instead, never `struck`. A person's edit does neither for
 anyone, as before item 614. An edit that leaves the words as they were is
 refused (check 7), so it changes nothing.
 
@@ -529,8 +534,11 @@ read before the author changed them", with a space either side where a word
 would touch them. Their text maps to that one place in the new words, so a
 selection, a lit passage or a quote over them takes only the new words, and
 every other position the drawn words know is as it was. A card cut to its
-first words strikes what it shows, and strikes the whole message's cuts once it
-reads on in place (`card-scroll.mjs`, from the `source` view).
+first words strikes what it shows. Once it reads on in place, lit as a box
+holding the whole message or grown by Show full, it draws the whole message's
+words and strikes all its cuts, read with them from the `source` view
+(`card-scroll.mjs`); a card that held its whole message already strikes its
+own item's cuts.
 
 ### How an open page learns of an edit
 
@@ -625,9 +633,12 @@ always has, and its quote names no revision.
 - **`edit_draft`'s size refusal is recorded before access**, as a Save's is:
   someone who is not the author can get a recorded `BODY_TOO_LARGE`.
 - **Unread again only where it counts.** An agent's edit makes a message
-  unread again only through the person's own delivery of it. A person who read
-  it without one (a message between others, or one in a subscription since
-  closed) sees the struck words but nothing new is counted for them.
+  unread again only through a delivery that counts for the person. A person
+  whose delivery counts nowhere (a message between others, or one in a
+  subscription since closed) sees the struck words but nothing new is counted
+  for them. A message between others was settled for each person it reached
+  when it was sent, so each of them is taken to have read it and sees the
+  struck words, whether or not they had opened the topic.
 - **Struck words are compared as tokens, bounded.** A rewrite of more than
   400 tokens, or of a message whose differing part is over 20,000 tokens, is
   struck as one run where the differing part began; past 50 runs the rest are

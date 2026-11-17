@@ -213,13 +213,6 @@ class AgentEditRefusalCase(AgentEditCase):
         self.assertIsNone(self.item(message, actor="other-reader")["struck"])
         self.assertEqual(self.people_rows(message), [])
 
-    def test_a_message_between_others_is_never_unread_again(self):
-        # agent-a tells agent-b: each person's delivery was settled when it was sent, never read.
-        message = self.posted(addressees=["agent-b"], intent="tell")
-        self.assertEqual(self.state("owner", message), "acknowledged")
-        self.committed(self.edit(message, FIXED, actor="agent-a"))
-        self.assertEqual((self.state("owner", message), self.item(message, actor="owner")["struck"], self.people_rows(message)),
-                         ("acknowledged", None, []))
 
     def test_a_card_excerpt_strikes_only_what_it_shows_and_the_whole_message_strikes_all(self):
         tail = " More detail follows." * 80
@@ -231,6 +224,115 @@ class AgentEditRefusalCase(AgentEditCase):
         self.assertEqual(item["struck"]["cuts"], [{"at": AT, "words": "85"}], "the change past the excerpt is not drawn there")
         whole = self.source({"kind": "message", "id": message}, actor="owner")["struck"]["cuts"]
         self.assertEqual(whole, [{"at": AT, "words": "85"}, {"at": len(FIXED + tail + " Ends on "), "words": "85"}])
+
+
+class UnreadAgainWhereItCountsCase(AgentEditCase):
+    """Who an agent's edit makes the message unread again for, and who it only shows the struck words to: a person whose
+    own delivery of it was settled had read it (docs/message-edit.md, "An agent's edit, for the people who had read
+    it"), and it is unread again only where that delivery counts. Agents' own deliveries are their work, never touched."""
+
+    LAMPS = "Deployed the glossary build 41, all lamps lit."
+    LAMPS_FIXED = "Deployed the glossary build 42, all lamps lit."
+    LAMPS_STRUCK = {"revision": 1, "cuts": [{"at": len("Deployed the glossary build "), "words": "41"}]}
+
+    def groups_hold_their_rows(self, actor):
+        """Each of the actor's delivery groups counts exactly its pending rows, and its head is the first of them."""
+        rows = self.sql("SELECT g.id,g.pending_count,g.first_pending_seq,(SELECT count(*) FROM deliveries d WHERE d.group_id=g.id AND d.state='pending'),"
+                        "(SELECT min(d.seq) FROM deliveries d WHERE d.group_id=g.id AND d.state='pending') FROM delivery_groups g WHERE g.recipient_id=?",
+                        (actor,))
+        self.assertEqual([row[1:3] for row in rows], [row[3:5] for row in rows], "each group's counts are its pending rows")
+
+    def test_a_message_between_others_shows_the_struck_words_and_is_never_unread_again(self):
+        # agent-a tells agent-b in t1: each person's delivery was settled when it was sent, so each had read it. owner
+        # also reads t1. The edit strikes "41" for both people, and counts nothing new for either.
+        message = self.posted(self.LAMPS, addressees=["agent-b"], intent="tell")
+        self.read_through("owner", message)
+        self.assertEqual((self.state("owner", message), self.state("other-reader", message)), ("acknowledged", "acknowledged"))
+        before = {actor: self.unread(actor) for actor in ("owner", "other-reader")}
+        result = self.committed(self.edit(message, self.LAMPS_FIXED, actor="agent-a"))
+        self.assertEqual(result["unread_again"], 0, "nobody has it unread again")
+        for actor in ("owner", "other-reader"):
+            with self.subTest(actor=actor):
+                item = self.item(message, actor=actor)
+                self.assertEqual((item["body"], item["struck"], item["unread"]), (self.LAMPS_FIXED, self.LAMPS_STRUCK, False))
+                self.assertEqual(self.source({"kind": "message", "id": message}, actor=actor)["struck"], self.LAMPS_STRUCK)
+                self.assertEqual(self.state(actor, message), "acknowledged")
+                self.assertEqual(self.unread(actor), before[actor])
+                self.groups_hold_their_rows(actor)
+        self.assertEqual(self.people_rows(message), [("other-reader", 1), ("owner", 1)])
+
+    def test_an_agents_reply_to_a_persons_message_sent_to_others_is_unread_again_for_that_person(self):
+        # owner asks; agent-a answers owner's message while telling agent-b. owner's delivery counts (it answers theirs),
+        # so once read, the edit makes it unread for owner again; other-reader's was settled when it was sent.
+        asked = self.post("Which glossary build is out?")
+        message = self.posted(self.LAMPS, addressees=["agent-b"], intent="tell", reply_to=asked)
+        self.assertEqual((self.state("owner", message), self.state("other-reader", message)), ("pending", "acknowledged"))
+        self.read_through("owner", message)
+        result = self.committed(self.edit(message, self.LAMPS_FIXED, actor="agent-a"))
+        self.assertEqual(result["unread_again"], 1)
+        self.assertEqual((self.state("owner", message), self.item(message, actor="owner")["unread"]), ("pending", True))
+        self.assertEqual(self.state("other-reader", message), "acknowledged")
+        self.assertEqual(self.item(message, actor="owner")["struck"], self.LAMPS_STRUCK)
+        self.groups_hold_their_rows("owner")
+
+    def test_a_person_who_left_the_topic_sees_the_struck_words_and_nothing_is_counted_for_them(self):
+        message = self.posted()
+        self.read_through("owner", message)
+        # owner leaves t1 and is still the outcome's owner, so still reads it; their delivery sits in a closed group.
+        self.participation("owner", False)
+        schedule = self.schedule("owner")
+        result = self.committed(self.edit(message, FIXED, actor="agent-a"))
+        self.assertEqual(result["unread_again"], 0, "the person who left does not have it unread again")
+        self.assertEqual(self.state("owner", message), "acknowledged")
+        item = self.item(message, actor="owner")
+        self.assertEqual((item["unread"], item["struck"]), (False, {"revision": 1, "cuts": [{"at": AT, "words": "85"}]}))
+        self.assertEqual(self.schedule("owner"), schedule, "no count that no read could settle")
+        self.groups_hold_their_rows("owner")
+
+    def test_an_agents_own_delivery_is_never_made_unread_again(self):
+        # agent-b takes part in t1, so it is sent agent-a's message as its work, and acknowledges it.
+        self.participation("agent-b", True)
+        message = self.posted()
+        delivery = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b' AND revision=1", (message,))[0][0]
+        self.committed(self.command("delivery.ack", {}, target={"delivery_id": delivery}, actor="agent-b"))
+        self.read_through("owner", message)
+        schedule = self.schedule("agent-b")
+        self.committed(self.edit(message, FIXED, actor="agent-a"))
+        self.assertEqual(self.state("agent-b", message), "acknowledged", "an agent acknowledges its own work; an edit never re-opens it")
+        self.assertEqual(self.schedule("agent-b"), schedule, "agent-b is not woken")
+        self.assertEqual(self.sql("SELECT count(*) FROM message_exposures WHERE actor_id='agent-b'"), [(0,)])
+        self.groups_hold_their_rows("agent-b")
+
+    def test_an_agent_handed_the_old_words_gets_a_correction_and_never_the_struck_words(self):
+        message = self.posted()
+        self.saw("agent-b", message)
+        self.committed(self.edit(message, FIXED, actor="agent-a"))
+        self.assertEqual(self.item(message, actor="agent-b")["struck"], None)
+        self.assertEqual(self.source({"kind": "message", "id": message}, actor="agent-b")["struck"], None)
+
+    def test_the_message_made_unread_again_keeps_an_earlier_unread_one_first(self):
+        # owner has the earlier message still unread and reads only the later one on screen; the later one's edit puts
+        # it back behind the earlier one, so the New line stays at the earlier.
+        earlier = self.posted("An earlier line from agent-a.")
+        message = self.posted()
+        mine = self.sql("SELECT id,seq FROM deliveries WHERE recipient_id='owner' AND message_id IN (?,?) ORDER BY seq", (earlier, message))
+        self.committed(self.command("delivery.ack", {}, target={"delivery_id": mine[1][0]}, actor="owner"))
+        self.committed(self.edit(message, FIXED, actor="agent-a"))
+        self.assertEqual((self.state("owner", earlier), self.state("owner", message)), ("pending", "pending"))
+        group = self.sql("SELECT pending_count,first_pending_seq FROM delivery_groups g JOIN deliveries d ON d.group_id=g.id WHERE d.id=?", (mine[0][0],))
+        self.assertEqual(group, [(2, mine[0][1])], "the earlier unread message is still the first")
+        self.groups_hold_their_rows("owner")
+
+    def test_a_team_member_with_no_delivery_of_it_gets_nothing(self):
+        # other-reader leaves t1 before the message: still on the team, so still a reader, but never sent it.
+        self.participation("other-reader", False)
+        message = self.posted()
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE message_id=? AND recipient_id='other-reader'", (message,)), [(0,)])
+        self.read_through("owner", message)
+        result = self.committed(self.edit(message, FIXED, actor="agent-a"))
+        self.assertEqual(result["unread_again"], 1, "owner only")
+        self.assertIsNone(self.item(message, actor="other-reader")["struck"])
+        self.assertEqual(self.people_rows(message), [("owner", 1)])
 
 
 class StruckWordsCase(unittest.TestCase):
@@ -295,6 +397,20 @@ class EditVerbCase(test_agent_verbs.AgentVerbCase):
         code, out, err = self.run_cli("edit", message, "--expected", "2", "-", stdin="Built on release 87.".encode("utf-8"))
         self.assertEqual((code, err), (0, ""))
         self.assertIn("to revision 3", out)
+
+    def test_edit_counts_only_the_people_it_made_unread_again(self):
+        message = self.posted()
+        seq = self.sql("SELECT seq FROM messages WHERE id=?", (message,))[0][0]
+        read = lambda: self.committed(self.command("topic.read_through", {"seq": seq}, target={"topic_id": "t1"}, actor="owner"))
+        read()
+        code, out, err = self.run_cli("edit", message, "--expected", "1", FIXED)
+        self.assertEqual((code, err, out), (0, "", "edited %s to revision 2 (corrections: 0; unread again: 1)\n" % message))
+        # owner reads it again and leaves t1: still the outcome's owner, but nothing counts for them in t1 now.
+        read()
+        self.participation("owner", False)
+        code, out, err = self.run_cli("edit", message, "--expected", "2", "Built on release 87, the checks are green.")
+        self.assertEqual((code, err, out), (0, "", "edited %s to revision 3 (corrections: 0; unread again: 0)\n" % message))
+        self.assertEqual(self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='owner' AND revision=1", (message,)), [("acknowledged",)])
 
     def test_edit_refuses_a_stale_revision_anothers_message_and_no_revision(self):
         message = self.posted()

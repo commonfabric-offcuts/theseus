@@ -26286,6 +26286,174 @@
     "native": "reading",
     "case": "reading edit agent"
    }
+  },
+  {
+   "item": 614,
+   "act": "A person sent a message between others sees the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n            if bool(addressees) and reader not in addressees and reader != row[\"answers\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A message between others is never unread again for a person",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if not delivery[\"active\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A delivery in a subscription closed since is not made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if between:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The edit's unread again counts only the people it made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if between or not delivery[\"active\"]:\n                continue\n",
+     "            count += between or not delivery[\"active\"]\n            if between or not delivery[\"active\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person whose message an agent answers while addressing others has it unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     " and reader != row[\"answers\"]\n            if between",
+     "\n            if between"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's own delivery is never made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if self._actor_kind(db, reader) != \"human\":\n                continue\n            delivery = db.execute(",
+     "            delivery = db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Only people are given the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "JOIN actors a ON a.id=e.actor_id AND a.kind='human' ",
+     "JOIN actors a ON a.id=e.actor_id "
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The message made unread again keeps an earlier unread one first",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "first_pending_seq=min(coalesce(first_pending_seq,?),?) WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"seq\"], delivery[\"group_id\"]))",
+     "first_pending_seq=? WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"group_id\"]))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card read on in place strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "revision: this.revisions.get(item.id), struck: this.strikes.get(item.id) });",
+     "revision: this.revisions.get(item.id) });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a cut-off card strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? null : item.struck?.cuts"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a whole card strikes its own item's words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? this.strikes.get(item.id) : null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The whole message read for a card keeps its struck words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "this.strikes.set(id, source.struck?.cuts ?? null);",
+     "this.strikes.set(id, null);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
   }
  ]
 }

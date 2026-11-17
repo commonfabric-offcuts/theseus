@@ -24,7 +24,8 @@ the message at its new revision.
 An agent's edit (item 614) also keeps, for each person who had read the
 message (their delivery of it settled), the revision they had read, in the
 same table (message_exposures, a person's row), and makes the message unread
-for them again. A view then gives that person, and nobody else, the words they
+for them again where their delivery counts (not a message between others, nor
+a subscription closed since). A view then gives that person, and nobody else, the words they
 had read and no longer stand (`struck`), so their page shows them struck
 through beside the new words. A person's edit does neither.
 
@@ -613,28 +614,27 @@ class MessageEdit:
                 self._settle_held_corrections(db, row[0], message["id"])
         # An agent's edit makes the message unread again for each person who had read it, and keeps what they had
         # read, so their page shows it struck through beside the new words (item 614). A person's edit does neither.
-        unread_again = self._unread_again(db, message, readers, actor, current) if self._actor_kind(db, actor) == "agent" else 0
+        unread_again = self._unread_again(db, message, readers, current) if self._actor_kind(db, actor) == "agent" else 0
         for reader in readers:
             self._change(db, "actor", reader, "edit", message["id"], number)
         return (dict(result, corrections=len(exposed), unread_again=unread_again),
                 [{"kind": "message", "id": message["id"], "version": number}])
 
-    def _unread_again(self, db, message, readers, editor, revision):
+    def _unread_again(self, db, message, readers, revision):
         """For each person among the readers who had read the message when its agent author edited it (item 614):
-        their record of it is their delivery of its first revision, settled (by reading it on screen, a read-through,
-        a reply, a 👍 or an ack). Keeps the revision they had read (a person's row of message_exposures, which only
-        grows), and makes that same delivery pending again where it counts, as an arrival, so the message is unread
-        for them and the New line finds it. A message between others (sent by name to others, not answering theirs)
-        was settled for them when it was sent, not read, and is never unread for them: it is left as it is. Returns
-        how many people had read it."""
+        their delivery of its first revision is settled (by reading it on screen, a read-through, a reply, a 👍 or an
+        ack; a message between others, sent by name to others and not answering theirs, was settled for them when it
+        was sent). Keeps the revision they had read (a person's row of message_exposures, which only grows), so they
+        see the words it took away struck through. Where that delivery counts, it is made pending again, as an
+        arrival, so the message is unread for them and the New line finds it; a message between others counts nowhere
+        for them, nor does a delivery in a subscription closed since, so those stay settled. The editor is an agent,
+        and agents are never among them. Returns how many people it made unread again."""
         row = db.execute("SELECT m.addressees,p.author_id AS answers FROM messages m LEFT JOIN messages p ON p.id=m.reply_to WHERE m.id=?",
                          (message["id"],)).fetchone()
         addressees = json.loads(row["addressees"])
         count = 0
         for reader in readers:
-            if reader == editor or self._actor_kind(db, reader) != "human":
-                continue
-            if addressees and reader not in addressees and reader != row["answers"]:
+            if self._actor_kind(db, reader) != "human":
                 continue
             delivery = db.execute("SELECT d.id,d.seq,d.group_id,d.state,g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id "
                                   "WHERE d.message_id=? AND d.recipient_id=? AND d.revision=1", (message["id"], reader)).fetchone()
@@ -642,15 +642,15 @@ class MessageEdit:
                 continue
             db.execute("INSERT INTO message_exposures(actor_id,message_id,revision) VALUES (?,?,?) "
                        "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)", (reader, message["id"], revision))
-            count += 1
-            if not delivery["active"]:
-                # Left with a subscription since closed: nothing counts there, so it is not unread again.
+            between = bool(addressees) and reader not in addressees and reader != row["answers"]
+            if between or not delivery["active"]:
                 continue
             db.execute("UPDATE deliveries SET state='pending' WHERE id=?", (delivery["id"],))
             db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=min(coalesce(first_pending_seq,?),?) WHERE id=?",
                        (delivery["seq"], delivery["seq"], delivery["group_id"]))
             self._eligibility_changed(db, reader, 1)
             self._change(db, "actor", reader, "delivery", delivery["id"], 1)
+            count += 1
         return count
 
     def _settle_held_corrections(self, db, agent, message_id):
