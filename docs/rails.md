@@ -32,7 +32,10 @@ says the outcome has no Conversation, it opens the outcome's page instead. There
 triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
-while something in them is unread, and Done (N) and Archived (N) below.
+while something in them is unread, and Done (N) and Archived (N) below. A
+press on a topic's unread count opens it at its oldest unread message, here
+and on the right rail's Build rows alike (item 613; docs/attention.md, "In the
+browser").
 
 - **Pencils.** A pencil means "new", the same glyph as New message and a new
   Notebook page (item 305). A quiet pencil beside an outcome's name starts a

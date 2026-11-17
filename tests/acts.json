@@ -1849,7 +1849,7 @@
    "break": [
     [
      "web/things-rail.mjs",
-     "      if (!this.wide?.matches) this.close(false);\n      this.handles.open(target, title || 'that page', link);\n",
+     "      if (!this.wide?.matches) this.close(false);\n      this.handles.open(to, title || 'that page', link);\n",
      ""
     ]
    ],
@@ -6230,8 +6230,8 @@
    "break": [
     [
      "web/outline-rail.mjs",
-     "open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });",
-     "open: (topicId, topicTitle) => this.open(topicTarget(topicId), topicTitle) });"
+     "open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });",
+     "open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, null, at), topicTitle) });"
     ]
    ],
    "check": {
@@ -6376,8 +6376,8 @@
    "break": [
     [
      "web/app.mjs",
-     "open:(id,title,message)=>openDestination(topicTarget(id,message),title),\n        updated:",
-     "open:(id,title)=>openDestination(topicTarget(id),title),\n        updated:"
+     "open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),\n        updated:",
+     "open:(id,title,message,at)=>openDestination(topicTarget(id,null,at),title),\n        updated:"
     ]
    ],
    "check": {
@@ -31534,6 +31534,249 @@
    ],
    "check": {
     "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a topic's unread count opens the topic at its oldest unread message, read in however far up it is, with its dossier open, its earlier row expanded as far as it and the message whole on screen with the keys on it",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (atUnread) run(() => firstReading.then(landOnUnread));\n",
+     "  if (false) run(() => firstReading.then(landOnUnread));\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Landing on the oldest unread message reads in its dossier's first message too, so the dossier is drawn whole and the message shows in its place behind the earlier row, expanded as far as it",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (root) await loadUntil(() => ({ id: root }));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Landing on a message draws its dossier open, whatever its level, so its earlier row expands as far as the message",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (section && open && state.levels.get(id) !== 'open') { state.levels.set(id, 'open'); changed = true; }\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "On a phone the unread count answers a finger 44px each way",
+   "break": [
+    [
+     "web/aim.css",
+     "width:max(100%,44px);height:44px;",
+     "width:100%;height:100%;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a topic row's unread count opens the topic at its oldest unread message; the rest of the row opens it as before",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic row's unread count says in its tooltip that it shows the oldest unread message",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "    count.dataset.lands = 'unread'; count.title = UNREAD_TIP;",
+     "    count.dataset.lands = 'unread';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_rail.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic opened at its oldest unread message has the address ?topic=…&at=unread, which names no message or page beside it",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "  else if (keys.length===2 && p.has('topic') && p.has('at')) route={kind:'topic',id:p.get('topic'),at:p.get('at')};\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A topic's unread count counts only what a press on it reaches: while above nought, the oldest unread message is one the reader's pages of the topic reach, and a topic left, a whisper between others or another reader's delivery counts nothing",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "SUBSCRIBED = \"g.recipient_id=? AND g.kind='subscription' AND g.active=1\"",
+     "SUBSCRIBED = \"g.recipient_id=? AND g.kind='subscription'\""
+    ]
+   ],
+   "check": {
+    "python": "test_new_line.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "The count and the oldest unread message it leads to read one rule: a delivery waiting by name, counted, is the message the count leads to",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "        \"UNION ALL SELECT g.id FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 WHERE \" + ADDRESSED,\n        (actor, topic_id, actor))]",
+     "        \"\", (actor, topic_id))]"
+    ]
+   ],
+   "check": {
+    "python": "test_new_line.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A press on a Build row's unread count on the right rail opens its topic at the oldest unread message",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "      const to = target.kind === 'topic' && landsOnUnread(event.target, event) ? { kind: 'topic', id: target.id, at: 'unread' } : target;\n",
+     "      const to = target;\n"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_rails.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A tap on a topic's count lands with the keys on its message: the page keeps how its last press was made across the move, so WebKit's mouse move after the landing's scroll only places the pointer and lights no card under the finger",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "    this.lit = null; this.touch = pressOf(doc).touch; this.before = null;\n",
+     "    this.lit = null; this.touch = false; this.before = null;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "An explicit unread landing clears its captured unread mark after showing the card",
+   "break": [
+    [
+     "web/app.mjs",
+     "  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A mark renewed while an unread landing loads survives its earlier reading act",
+   "break": [
+    [
+     "web/app.mjs",
+     "  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));",
+     "  marks.read(marks.capture(id), () => current() && card.isConnected && document.activeElement === card && onScreen(card));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Return on an unread topic row reaches the same landing as its count, in either rail",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "event?.detail === 0 && target?.querySelector?.('.unread-count[data-lands]')",
+     "false && target?.querySelector?.('.unread-count[data-lands]')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "More new below shows the message whole in its open dossier, never only a collapsed row",
+   "break": [
+    [
+     "web/app.mjs",
+     "  reveal(entry, { full: true, open: true });",
+     "  reveal(entry);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Pagination toward an unread mark reports only the final reading place, leaving a newer unread delivery for the next press",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (unreadLandingBusy) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A phone topic covered by its outline drawer reports no reading behind the drawer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if ($('main').inert) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
    }
   }
  ]

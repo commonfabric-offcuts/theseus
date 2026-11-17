@@ -244,8 +244,17 @@ page shorter under what is being read.
 
 ## Actions are where you look for them
 
-An action sits on the surface where its work happens.
+An action sits on the surface where its work happens. A count leads to what
+it counts: a press on a topic's unread count shows the oldest message still
+unread, plainly on screen, however deep it is, and the count counts nothing a
+press cannot reach.
 
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading unread count one press lands on the oldest unread message deep in a
+  dossier behind its earlier row, on screen, and the count goes once it is
+  read", at a laptop's width and at 390, 375 and 320 on a phone, light and
+  dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
+  message it leads to are one rule ([attention.md](attention.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
   review shows ✅ Done beside its state; a click marks it Done, into the Done
   group, and the button goes; an active topic shows none", "header ✅ Done is

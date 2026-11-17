@@ -657,7 +657,7 @@ class Conversation:
         self._item_fields(db, actor, topic, items)
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
-        reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
+        reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)
         # What the reader and the topic recorded about each message in its stack (stacks.py).

@@ -5,8 +5,8 @@
 // current_versions. Nothing here reads a delivery or writes anything but
 // message.mark.
 //
-// Clearing is the person's act of reading: a card's click or keypress, or the
-// topic's Read it. The revision that act may clear is the one the page knew
+// Clearing is the person's act of reading: a card's click or keypress, the
+// topic's Read it, or an explicit unread landing. The revision that act may clear is the one the page knew
 // for that message at the act (capture), never one an answer brings later, so
 // a mark renewed while the open is under way survives: the clear is refused.
 // The clear is sent only for an open that succeeded and is still the one shown,
@@ -150,8 +150,16 @@ export class Marks {
     if (!presentation || !registry.isSourceCurrent(presentation)) return;
     this.deferred = null;
     if (presentation.sourceUnavailable || presentation.mark?.marked !== true) return;
+    this.read(act, () => registry.isSourceCurrent(presentation));
+  }
+  // An explicit reading act earns a clear only while its message is still
+  // shown. The Reader and an unread landing supply their own lifetime check.
+  read(act, current) {
+    if (!current()) return;
+    this.deferred = null;
+    if (!act) return;
     const attempt = () => {
-      if (!registry.isSourceCurrent(presentation)) return;
+      if (!current()) return;
       if (!this.shown()) { this.deferred = attempt; return; }
       this.send(act.messageId, false, act.revision).catch(() => {});
     };

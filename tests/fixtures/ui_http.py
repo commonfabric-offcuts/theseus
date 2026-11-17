@@ -691,6 +691,43 @@ def main():
                                 {"topic_id": topic_id}, {"draft_revision": 1})
                             created.append(command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}))
                         answer = created
+                    elif freshness and request["method"] == "dossier_deep":
+                        # Item 613: a topic of the shape a person met (invented words): a dossier whose first message
+                        # is far up the topic, the one message waiting for the person 19 replies down it, by name,
+                        # and 118 messages after it, every other one read. Agents and the person post through
+                        # message.post as they do; the person reads around that one message by topic.read_through.
+                        topic_id, prefix, posted = request["topic_id"], "deep-" + request["topic_id"], []
+                        for agent in ("aim-core", "aim-ux"):
+                            revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
+                            command("participation.set", "%s-join-%s" % (prefix, agent), {"actor_id": agent, "present": True},
+                                    {"topic_id": topic_id}, {"topic_revision": revision})
+
+                        def post(sender, body, reply_to=None, to=None):
+                            args = dict({"body": body}, **({"reply_to": reply_to} if reply_to else {}),
+                                        **({"addressees": [to], "intent": "tell"} if to else {}))
+                            posted.append(command("message.post", "%s-%d" % (prefix, len(posted)), args, {"topic_id": topic_id},
+                                                  sender=sender)["result"]["message_id"])
+                            return posted[-1]
+                        post("aim-ux", "The seed trays went out this morning.", to="aim-core")
+                        root = previous = post("aim-core", "A plan for the spring beds", to=actor)
+                        for depth in range(1, 19):
+                            mine = depth % 2 == 1
+                            previous = post(actor if mine else "aim-core", "Bed %d: more compost and a row of beans" % depth, previous, None if mine else actor)
+                            post("aim-ux", "Watering rota note %d" % depth, to="aim-core")
+                        target = post("aim-core", request.get("words", "The tomatoes go in the south bed, by the fence."), previous, actor)
+                        previous = target
+                        for n in range(118):
+                            if n % 2:
+                                post("aim-ux", "Rota line %d for the greenhouse" % n, to="aim-core")
+                            else:
+                                # The person's replies answer the agent's, never the waiting message itself, which a reply would settle.
+                                mine = n % 4 == 2
+                                previous = post(actor if mine else "aim-core", "Later reply %d about the beds" % n, previous, None if mine else actor)
+                        with sqlite3.connect(str(path)) as db:
+                            seq = db.execute("SELECT seq FROM messages WHERE id=?", (target,)).fetchone()[0]
+                        for n, (start, through) in enumerate(((0, seq - 1), (seq + 1, 9223372036854775807))):
+                            command("topic.read_through", "%s-read-%d" % (prefix, n), {"from_seq": start, "seq": through}, {"topic_id": topic_id})
+                        answer = {"root": root, "target": target, "newest": posted[-1], "seq": seq}
                     elif freshness and request["method"] == "older_outcome":
                         # An outcome of the person's as version 27 left it, with no conversation
                         # (workspace.create starts one now), and one topic made through real commands.

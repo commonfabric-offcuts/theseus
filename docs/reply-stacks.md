@@ -372,6 +372,10 @@ their acts.
   such a message as a whole card with no row in it, a press on it acts as on
   any card. A link, search or Starred
   that lands on an earlier message opens the row and shows that message whole.
+  A topic's unread count lands the same way (item 613, docs/attention.md, "In
+  the browser"), and draws the dossier open first whatever its level
+  (`reveal`'s `open`), so a message waiting deep in a dossier at latest and
+  unread, or at its first message alone, is shown whole in its open folder.
   All of this is the page's own for this visit: nothing is sent, nothing
   moves below More, and a reload, changing the dossier's state, or coming back
   to it off screen closes the row again (`earlierOf` and `rowsOf` in
@@ -458,7 +462,11 @@ their acts.
   finger tapped keeps its light and bar while the page scrolls: the first
   mouse move after a tap only places the pointer (WebKit sends one after a
   scroll that follows a tap), and the moves after it light what they pass
-  over, or let the light go over nothing, as a pointer's moves do.
+  over, or let the light go over nothing, as a pointer's moves do. That holds
+  on the page a tap moved to as well: the page keeps how its last press was
+  made across its moves, so a tap on a topic's count, which lands on its
+  message (item 613), leaves the keys on that message, not on a card the
+  landing's scroll brought under the finger.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's

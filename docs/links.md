@@ -92,6 +92,15 @@ bootstrap's `links.origin`), so a link copied on the Mac opens on a phone. A
 link naming either that origin or the page's own is one of this Theseus's
 places.
 
+## A topic's oldest unread message
+
+`?topic=T&at=unread` opens topic T at the oldest message still unread for the
+reader (item 613): a press on a topic row's unread count goes there, in place
+(docs/attention.md, "In the browser"). It names nothing beside the topic and
+`at`: with `message` or `page` too, or any `at` but `unread`, the address is
+refused as incomplete or ambiguous. A topic with nothing unread opens as it
+always does.
+
 ## A Notebook page's link
 
 A Notebook page has a link of the same family, naming its Notebook's place

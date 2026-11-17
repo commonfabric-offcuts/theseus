@@ -17,6 +17,12 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
     focus() { document.activeElement = this; }
     append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
+    // Enough of a browser's closest for '.name' and '.name[data-key]'.
+    closest(selector) {
+      const [, name, key] = selector.match(/^\.([\w-]+)(?:\[data-([\w-]+)\])?$/);
+      for (let at = this; at; at = at.parent) if (String(at.className ?? '').split(' ').includes(name) && (!key || Object.hasOwn(at.dataset, key))) return at;
+      return null;
+    }
   }
   globalThis.document = { createElement: () => new Element(), activeElement: null }; t.after(() => { globalThis.document = previous; });
   // Ids in letter order have newest stable positions first; the open topic z
@@ -452,4 +458,34 @@ test('item 641 activity updates a topic row without changing its stable position
   f.queue.push({ instance_id: 'i1', items: ['a', 'b', 'c'].map((id, n) => ({ ...f.item(id), activity_ms: 1000 * n, unread: n })), next_cursor: null });
   await f.rail.load();
   assert.deepEqual(shown(f.host), before, 'current and other topics keep their positions while activity and counts change');
+});
+
+// Item 613: a press on a topic row's unread count opens the topic at its oldest
+// unread message, with a tooltip saying so; the rest of the row opens the topic
+// as it did (at the question, for one waiting on the reader), and a row with
+// nothing unread has no count to press.
+test('a press on a topic row\'s unread count opens it at its oldest unread message; the rest of the row, and a row with nothing unread, open the topic as before', async t => {
+  const f = fixture(t), at = f.item('a').activity_ms;
+  const unread = (id, count, ask = null) => ({ ...f.item(id), unread: count, addressed: 0, ...(ask ? { asks: [{ actor_id: 'tony', message_id: ask, by: 'fable', since_ms: at }] } : {}) });
+  f.queue.push({ instance_id: 'i1', items: [unread('a', 2), unread('b', 1, 'm-ask-b'), unread('c', 0)], next_cursor: null });
+  await f.rail.load();
+  const row = id => f.host.children.find(x => x.dataset.topicId === id);
+  const count = id => row(id).children.find(x => String(x.className).split(' ').includes('unread-count')) ?? null;
+  const opened = [];
+  f.rail.open = (...args) => opened.push(args);
+  for (const id of ['a', 'b']) {
+    assert.equal(count(id).dataset.lands, 'unread', `${id}'s count leads to its oldest unread message`);
+    assert.equal(count(id).title, 'Show the oldest unread message', `${id}'s count says so in its tooltip`);
+    row(id).onclick({ button: 0, target: count(id), preventDefault() {} });
+    row(id).onclick({ button: 0, target: row(id), preventDefault() {} });
+  }
+  assert.deepEqual(opened, [['a', 'a', null, 'unread'], ['a', 'a', null], ['b', 'b', null, 'unread'], ['b', 'b', 'm-ask-b']],
+    'the count lands on the oldest unread message, even where the row would open the question; the row itself opens as before');
+  assert.equal(count('c'), null, 'a topic with nothing unread shows no count');
+  opened.length = 0; row('c').onclick({ button: 0, target: row('c'), preventDefault() {} });
+  assert.deepEqual(opened, [['c', 'c', null]]);
+  // A modified press is the browser's own: the row's link, which opens the topic.
+  let prevented = 0; opened.length = 0;
+  row('a').onclick({ button: 0, metaKey: true, target: count('a'), preventDefault() { prevented++; } });
+  assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a']);
 });
