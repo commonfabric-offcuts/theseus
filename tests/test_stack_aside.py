@@ -137,6 +137,92 @@ class AsideCase(StackCase):
         self.assertEqual(answer['error']['code'], 'INVALID_ARGUMENT')
 
 
+class StarHoldCase(StackCase):
+    """A dossier holding a message the reader starred stays above More for that reader (item 635,
+    docs/dossier-below-more.md, "A star holds it above More"): Move below More is refused with its reason, and a star
+    made in a dossier below More brings it back. A star and the move are each the reader's own, so the hold is too."""
+
+    position, aside, latest = AsideCase.position, AsideCase.aside, AsideCase.latest
+
+    def dossier(self):
+        root = self.post('A plan for the shed roof')
+        first = self.post('Tin or felt?', reply_to=root)
+        later = self.post('Felt, two layers', reply_to=first)
+        return root, first, later
+
+    def test_a_star_on_a_later_message_holds_the_dossier_above_more_with_its_reason(self):
+        root, _, later = self.dossier()
+        self.committed(self.star(later))
+        refused = self.aside(root, self.latest())
+        self.rejected(refused, 'STARRED_IN_DOSSIER')
+        self.assertIn('has a message you starred', refused['error']['message'])
+        self.assertEqual(self.rows('aside'), [], 'nothing moved')
+        self.assertFalse(self.position(root)['below'])
+        self.assertEqual(self.position(root).get('starred'), [later], 'the position names the star the title bar shows')
+        # Its first message's star holds it the same way.
+        alone = self.post('A dossier of one')
+        self.committed(self.star(alone))
+        self.rejected(self.aside(alone, self.latest()), 'STARRED_IN_DOSSIER')
+
+    def test_another_readers_star_never_holds_and_unstarring_frees_it(self):
+        root, first, later = self.dossier()
+        self.committed(self.star(first, actor='agent-b'))
+        self.committed(self.aside(root, self.latest()))
+        self.assertTrue(self.position(root)['below'], "another reader's star does not hold yours")
+        self.rejected(self.aside(root, self.latest(), actor='agent-b'), 'STARRED_IN_DOSSIER')
+        self.assertEqual(self.position(root).get('starred'), [], "another reader's star is never on yours")
+        self.assertEqual(self.position(root, 'agent-b').get('starred'), [first])
+        self.committed(self.star(later, actor='agent-b'))
+        self.committed(self.star(first, on=False, revision=1, actor='agent-b'))
+        self.rejected(self.aside(root, self.latest(), actor='agent-b'), 'STARRED_IN_DOSSIER')
+        self.committed(self.star(later, on=False, revision=1, actor='agent-b'))
+        self.assertEqual(self.position(root, 'agent-b').get('starred'), [])
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.assertTrue(self.position(root, 'agent-b')['below'], 'unstarring the last star frees it')
+
+    def test_a_star_outside_the_dossier_does_not_hold_it(self):
+        root, _, _ = self.dossier()
+        elsewhere = self.post('Another dossier altogether')
+        self.post('Its reply', reply_to=elsewhere)
+        self.committed(self.star(elsewhere))
+        self.committed(self.aside(root, self.latest()))
+        self.assertTrue(self.position(root)['below'])
+        self.assertEqual(self.position(root).get('starred'), [])
+        self.rejected(self.aside(elsewhere, self.latest()), 'STARRED_IN_DOSSIER')
+
+    def test_starring_a_message_in_a_dossier_below_more_brings_it_back_for_that_reader_alone(self):
+        root, _, later = self.dossier()
+        self.committed(self.aside(root, self.latest()))
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.sql("DELETE FROM changes")
+        starred = self.committed(self.star(later))
+        self.assertEqual({key: self.position(root)[key] for key in ('below', 'through', 'aside_revision')},
+                         {'below': False, 'through': None, 'aside_revision': 2}, 'back above More, in the same act')
+        self.assertEqual(starred.get('brought_back'), {'root_id': root, 'aside_revision': 2})
+        self.assertTrue(self.position(root, 'agent-b')['below'], "another reader's move stands")
+        self.assertEqual(self.told(), [('actor', 'owner')])
+        self.assertEqual(starred['acts_version'], max(row[0] for row in self.sql("SELECT id FROM message_acts")))
+        # Unstarring later leaves it above More: the star brought it back, it does not hold it there alone.
+        self.committed(self.star(later, on=False, revision=1))
+        self.assertFalse(self.position(root)['below'])
+        # A star on a dossier above More writes no move.
+        other, _, other_later = self.dossier()
+        self.assertNotIn('brought_back', self.committed(self.star(other_later)))
+        self.assertEqual(len(self.rows('aside')), 3)
+
+    def test_a_starred_message_joined_into_a_dossier_below_more_keeps_it_above_more(self):
+        root, _, _ = self.dossier()
+        # Posted before the moves, so no newer message by someone else brings the dossier back once it joins.
+        kept = self.post('A note to keep')
+        self.committed(self.star(kept))
+        self.committed(self.aside(root, self.latest()))
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.committed(self.join(kept, root, actor='agent-a'))
+        self.assertFalse(self.position(root)['below'], 'your star keeps the dossier it joined above More')
+        self.assertTrue(self.position(root, 'agent-b')['below'], 'for you, not for others')
+        self.assertEqual(self.position(root).get('starred'), [kept])
+
+
 class AsideMigrationCase(StackCase):
     def test_upgrade_and_back_preserve_schema_records_and_sequence_then_refuse_to_drop_any_aside(self):
         from aim_next.migrations import migrate, MigrationError
@@ -144,6 +230,8 @@ class AsideMigrationCase(StackCase):
         root = self.post('Migration root')
         self.committed(self.star(root))
         self.committed(self.fold(root))
+        # A star holds its dossier above More (item 635): the move is made on a dossier with none.
+        moved = self.post('Migration dossier moved below More')
         schema = self.sql("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")
         rows = self.sql('SELECT * FROM message_acts ORDER BY id')
         with sqlite3.connect(str(self.path)) as db:
@@ -155,9 +243,9 @@ class AsideMigrationCase(StackCase):
         self.assertEqual(self.sql("SELECT seq FROM sqlite_sequence WHERE name='message_acts'"), [(17,)])
         self.store = Store(self.path, 'test-instance', expected_binding=self.binding)
         receipt = self.command('stack.aside', {'through': self.sql('SELECT max(seq) FROM messages')[0][0]},
-                               target={'message_id': root}, expected={'aside_revision': 0})
+                               target={'message_id': moved}, expected={'aside_revision': 0})
         self.assertEqual(self.committed(receipt)['acts_version'], 18)
-        self.committed(self.command('stack.aside', {'through': None}, target={'message_id': root}, expected={'aside_revision': 1}))
+        self.committed(self.command('stack.aside', {'through': None}, target={'message_id': moved}, expected={'aside_revision': 1}))
         before = self.sql('SELECT * FROM message_acts ORDER BY id')
         with self.assertRaises(MigrationError) as caught:
             migrate(self.path, 'test-instance', self.binding, '37')
