@@ -4431,7 +4431,7 @@ for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B
   source.source_ref.id = 'old-reply';
   const view = f.api.view;
   f.api.view = async (name, ...args) => { if (name === failedRead) throw Error('Transient lookup refusal'); return view(name, ...args); };
-  await f.present(p);
+  await assert.doesNotReject(f.present(p), 'metadata failure must not reject presentation');
   assert.equal(f.reader.dialog.open, true, 'metadata failure must not hide the source');
   assert.equal(f.reader.presentation.source, source);
   assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
