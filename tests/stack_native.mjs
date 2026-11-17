@@ -7266,12 +7266,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // they need, and no more (B3: it reaches as far as at rest, or to ⋯'s room, its curved corner from ⋯). Each way a
   // touch shows them is its own state, each read at every width (B4, the release-70 states rule): a reply selected (the
   // focus in the dossier, its first message not lit), the dossier selected (its first message lit, the focus there),
-  // the dossier selected with the focus gone from it (lit alone), and ⋯'s menu open. On a laptop under the pointer, at
+  // the dossier selected with the focus gone from it (lit alone), and ⋯'s menu opened by the keys (open alone, the
+  // focus in the menu and nothing lit). On a laptop under the pointer, at
   // 1280 (three glyphs) and 760 (⋯ alone), they are inside it as before.
   const faceFacts = (p, id) => p.evaluate(`(s=>{const f=s.getBoundingClientRect(),tab=s.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(),t=s.querySelector(':scope > .stack-tools'),
     corner=parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize);
     return {folder:{left:f.left,right:f.right},tab:{left:tab.left,right:tab.right},corner,overflow:document.documentElement.scrollWidth>innerWidth,
-      shown:Number(getComputedStyle(t).opacity)===1,headLit:Boolean(s.querySelector(':scope > [data-id] .stack-head-card.lit')),focusWithin:s.matches(':focus-within'),
+      shown:Number(getComputedStyle(t).opacity)===1,headLit:Boolean(s.querySelector('.stack-head-card.lit')),focusWithin:s.matches(':focus-within'),
       menuOpen:Boolean(t.querySelector('[aria-expanded=true]')),
       tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();
         return {tool:b.dataset.tool,left:r.left,right:r.right,width:r.width,height:r.height,hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})}})(document.querySelector('#messages .reply-stack[data-stack="${id}"]'))`);
@@ -7324,9 +7325,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await p.evaluate('document.activeElement?.blur()');
           await until(async () => { const f = await faceFacts(p, ids.root); return f.headLit && !f.focusWithin; }, `phone ${width}: the dossier lit, the focus gone from it`);
           await pictured(p, device, width, 'the dossier selected, the focus gone', { id: ids.root, rest: rest[width] });
-          // ⋯'s menu open.
-          await tap(p, toolOf(ids.root, 'menu'));
-          await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `phone ${width}: ⋯ opens its menu`);
+          // ⋯'s menu open by the keys, nothing lit: the keys on the chevron (which puts out the light), Tab to ⋯ (alone
+          // on a phone), Return opens its menu and the focus goes into the menu, out of the dossier.
+          await p.evaluate(`document.querySelector(${JSON.stringify(stack(ids.root) + ' > .stack-toggle')}).focus()`);
+          await until(async () => !(await faceFacts(p, ids.root)).headLit, `phone ${width}: the keys on the chevron, nothing lit`);
+          await p.key('Tab');
+          await until(() => p.evaluate(`document.activeElement?.matches(${JSON.stringify(toolOf(ids.root, 'menu'))}) ?? false`), `phone ${width}: Tab from the chevron reaches ⋯`);
+          await p.key('Enter');
+          await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list')?.contains(document.activeElement))`), `phone ${width}: Return opens ⋯'s menu, the focus in it`);
           await pictured(p, device, width, 'its menu open', { id: ids.root, rest: rest[width] });
           await p.key('Escape');
           await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `phone ${width}: the menu is put away`);
@@ -7351,13 +7357,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       }
       assert.equal(f.overflow, false, `${where}: nothing scrolls sideways`);
     }
-    // Each touch state is the one it names: a reply selected holds the focus in the dossier with its first message
-    // unlit, and the dossier selected with the focus gone lights its first message with no focus in the dossier.
+    // Each touch state is the one it names, so each way of showing is read alone: a reply selected holds the focus in the
+    // dossier with its first message unlit; the dossier selected with the focus gone lights its first message with no
+    // focus in the dossier; and ⋯'s menu open holds neither.
     for (const f of seen.filter(s => s.device === 'phone')) {
       const where = `phone ${f.width} ${f.state} ${f.theme}`;
       if (f.state === 'a reply selected') assert.ok(f.focusWithin && !f.headLit && !f.menuOpen, `${where}: the focus in the dossier alone: ${JSON.stringify(f)}`);
       if (f.state === 'the dossier selected, the focus gone') assert.ok(f.headLit && !f.focusWithin && !f.menuOpen, `${where}: its first message lit alone: ${JSON.stringify(f)}`);
-      if (f.state === 'its menu open') assert.ok(f.menuOpen, `${where}: ⋯'s menu open: ${JSON.stringify(f)}`);
+      if (f.state === 'its menu open') assert.ok(f.menuOpen && !f.headLit && !f.focusWithin, `${where}: ⋯'s menu open alone: ${JSON.stringify(f)}`);
     }
   });
 
