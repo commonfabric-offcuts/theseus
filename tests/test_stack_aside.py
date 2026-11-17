@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from test_stacks import StackCase
+from test_agent_cli import AgentCLIBase
 from aim_next.store import Store
 
 
@@ -221,6 +222,34 @@ class StarHoldCase(StackCase):
         self.assertFalse(self.position(root)['below'], 'your star keeps the dossier it joined above More')
         self.assertTrue(self.position(root, 'agent-b')['below'], 'for you, not for others')
         self.assertEqual(self.position(root).get('starred'), [kept])
+
+
+class StarHoldCLICase(AgentCLIBase):
+    """The CLI has no verb of its own for Move below More, but its `command` verb sends any command, stack.aside among
+    them, through the same Core: an agent's star holds its dossier above More there too (item 635)."""
+
+    post, act, star, rows, latest = StackCase.post, StackCase.act, StackCase.star, StackCase.rows, AsideCase.latest
+
+    def aside_cli(self, root, actor='agent-a'):
+        command = self.envelope('stack.aside', {'message_id': root}, {'through': self.latest()}, {'aside_revision': 0})
+        return self.invoke('command', command, actor=actor, binding=self.captured_for(actor))
+
+    def test_the_cli_command_verb_is_refused_for_the_agents_own_star_and_not_for_anothers(self):
+        root = self.post('Gravel or pavers for the path?', actor='owner')
+        later = self.post('Pavers, laid on sand', actor='owner', reply_to=root)
+        # Another reader's star does not hold this agent's move.
+        self.committed(self.star(later))
+        self.committed(self.star(later, actor='agent-a'))
+        before = self.rows('aside')
+        code, result, _ = self.aside_cli(root)
+        self.assertEqual((code, result['status'], result['error']['code']), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
+        self.assertIn('has a message you starred', result['error']['message'])
+        self.assertEqual(self.rows('aside'), before, 'nothing moved')
+        # Unstarred, the same command moves it.
+        self.committed(self.star(later, on=False, revision=1, actor='agent-a'))
+        code, result, _ = self.aside_cli(root)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.committed(result)['through'], self.latest())
 
 
 class AsideMigrationCase(StackCase):

@@ -88,8 +88,8 @@ the star off later leaves it above More.
 Core holds this for every way a dossier goes below More, since each sends
 `stack.aside`: the menu item, the swipe on the title bar, the Reader's archive
 button, Command-Z after a Bring back, and any client or agent sending the
-command itself. No key moves a dossier below More, and the CLI has no verb
-for it:
+command itself, as the CLI's `command` verb does (it has no verb of its own
+for the move). No key moves a dossier below More:
 
 - `stack.aside` below More is refused as `STARRED_IN_DOSSIER`, with that
   sentence, when the dossier holds a message the reader starred and can see;
