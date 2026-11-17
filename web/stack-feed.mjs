@@ -677,7 +677,7 @@ export class StackFeed {
   // holds, and a dossier with no cover.
   dossierCover(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
-    const cover = stack ? stackCover(stack) : null;
+    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;
     return cover ? { cover, topicId: stack.head.topic_id } : null;
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
