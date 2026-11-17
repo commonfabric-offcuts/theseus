@@ -82,7 +82,16 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       assert.equal((await held()).title, renamed);
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-settings #topic-rename"))'), true, 'settings keeps its rename field after a header save');
       assert.deepEqual(updates(p).map(c => [c.args, c.expected.topic_fields]), [[{ title: renamed }, { title: original }]], 'only the title changes');
+      const networkFrom = p.network?.length ?? 0;
       await p.send('Page.reload');
+      // CDP answers reload before the old execution context has gone. Wait on
+      // this reload's document response completing before reading its DOM.
+      // WebKit's Page.reload adapter already awaits the document's load event.
+      if (p.network) await until(() => {
+        const events = p.network.slice(networkFrom);
+        const document = events.find(e => e.method === 'Network.responseReceived' && e.params.type === 'Document');
+        return document && events.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === document.params.requestId);
+      }, 'the reloaded document response finished');
       await until(async () => await title(p) === renamed && await p.evaluate('document.body.dataset.ready === "true"'), 'reload shows the saved title');
       if (width < 760) await press(p, '#rail-open');
       await until(() => p.evaluate(`document.querySelector('#outline a[data-topic-id="t1"]')?.textContent.includes(${JSON.stringify(renamed)})`), 'the rail shows the same saved title');
