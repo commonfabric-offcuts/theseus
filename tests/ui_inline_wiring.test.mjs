@@ -16,6 +16,7 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
+import { revealSelection } from '../web/reveal.mjs';
 import { cardClass, paintCardColor, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
@@ -65,7 +66,8 @@ function loadPageScope(context, root) {
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
-    constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
+    constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
+      this.style = {}; this.scrollTop = 0; this.scrollHeight = 600; this.clientHeight = 600; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     get classList() {
       const names = () => String(this.className ?? '').split(' ').filter(Boolean), set = list => { this.className = list.join(' '); };
@@ -88,6 +90,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
+    toggleAttribute(name, force = !this.hasAttribute(name)) { if (force) this.setAttribute(name, ''); else this.removeAttribute(name); return force; }
     // A bare tag name finds the first such element inside, a :scope chain the first it reaches; any other selector names an element by id.
     querySelector(selector) {
       if (selector.startsWith(':scope')) return this.querySelectorAll(selector)[0] ?? null;
@@ -112,11 +115,17 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
+    scrollBy(options) { this.scrollTop += options.top; events.push(['scroll', this.id, options]); }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
     closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
     // Where it is on screen: wholly in view, unless a check places it (box).
-    getBoundingClientRect() { return this.box ?? { top: 0, bottom: 40, height: 40 }; }
+    getBoundingClientRect() {
+      const box = this.box ?? { top: 80, bottom: 120, height: 40, left: 0, right: 300, width: 300 };
+      let offset = context.window.scrollY ?? 0;
+      for (let at = this.parentElement; at; at = at.parentElement) offset += at.scrollTop;
+      return { ...box, top: box.top - offset, bottom: box.bottom - offset };
+    }
     // Shown unless it or what holds it is hidden.
     getClientRects() { for (let at = this; at; at = at.parent) if (at.hidden) return []; return [this.getBoundingClientRect()]; }
     replaceWith(next) { if (this.parent) { this.parent.insertBefore(next, this); this.remove(); } }
@@ -130,7 +139,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   };
   // Whether el is reached from root through these child steps.
   const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
-  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
+  const document = { body: get('body'), documentElement: get('html'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
     // The bars' glyphs (glyphs.mjs) are svg elements.
     createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
@@ -185,7 +194,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   }
   const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} }, innerHeight: 600, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    window: { innerHeight: 600, scrollY: 0,
+      getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style }),
+      scrollBy(options) { scope.window.scrollY += options.top; events.push(['scroll', 'window', options]); },
+      addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }), get location() { return scope.location; }, get history() { return scope.history; } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     // A page that loads another asks Theseus nothing more until it stays (api.mjs depart, stay); here each fixture's page says
     // so in its events, and the module every fixture shares goes on answering.
     depart: () => events.push(['depart']), stay: () => events.push(['stay']),
@@ -219,6 +231,25 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
   return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
+
+test('the inline fixture reveals an offscreen card through real window and scroller geometry', () => {
+  const geometryTolerance = .5;
+  for (const scroller of [false, true]) {
+    const f = fixture(), host = f.get('messages'), card = f.document.createElement('article');
+    host.append(card); card.box = { top: 950, bottom: 990, height: 40 };
+    host.box = { top: 0, bottom: 600, height: 600 };
+    const area = scroller ? host : f.document.documentElement;
+    area.style = { scrollPaddingTop: '20px', scrollPaddingBottom: '40px' };
+    if (scroller) { host.style.overflowY = 'auto'; host.scrollHeight = 1200; }
+    revealSelection(card); card.focus();
+    assert.equal(f.document.activeElement, card, 'the actual reveal leaves its landing card focusable');
+    const scrolls = f.events.filter(event => event[0] === 'scroll');
+    assert.equal(scrolls.length, 1);
+    assert.equal(scrolls[0][1], scroller ? 'messages' : 'window');
+    assert.equal(scrolls[0][2].behavior, 'instant');
+    assert.ok(Math.abs(card.getBoundingClientRect().bottom - 506) <= geometryTolerance, `the padded viewport reveals the card with its buffer within ${geometryTolerance}px`);
+  }
+});
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
   const f=fixture(), field=f.get('inline-writing-body');

@@ -8,6 +8,10 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
   const previous = globalThis.document;
   class Element {
     constructor() { this.children = []; this.dataset = {}; this.attributes = {}; this.hidden = false; this.disabled = false; this.handlers = {}; }
+    // Replacing a row's words removes its previous badges and descriptions,
+    // as textContent does in a browser; semantic lookup must see this draw.
+    set textContent(value) { this.words = value; this.children = []; }
+    get textContent() { return (this.words ?? '') + this.children.map(child => child.textContent).join(''); }
     addEventListener(name,fn) { this.handlers[name]=fn; }
     getBoundingClientRect() { return this.box; }
     setAttribute(k,v) { this.attributes[k] = v; } removeAttribute(k) { delete this.attributes[k]; }
@@ -144,9 +148,14 @@ test('a row drawn again with what it already shows is left alone, and one whose 
   assert.equal(drawn[0].textContent, '2');
   f.queue.push({ instance_id: 'i1', items: [counted('a', 2), f.item('z')], next_cursor: null }); await f.rail.load();
   assert.equal(f.host.children[1], link);
-  assert.deepEqual(link.children, drawn, 'the same badge, not a second one');
+  assert.ok(link.children.length === drawn.length && link.children.every((child, index) => child === drawn[index]), 'the same badge, not a second one');
   f.queue.push({ instance_id: 'i1', items: [counted('a', 3), f.item('z')], next_cursor: null }); await f.rail.load();
-  assert.equal(link.children.at(-2).textContent, '3');
+  const count = link.children.find(child => String(child.className).split(' ').includes('unread-count'));
+  assert.ok(count, 'the changed row still has its unread count');
+  assert.equal(link.children.filter(child => String(child.className).split(' ').includes('unread-count')).length, 1, 'only the current count remains');
+  assert.equal(count.textContent, '3');
+  assert.equal(count.attributes['aria-hidden'], 'true', 'the visual count is spoken by its description once');
+  assert.ok(link.children.some(child => child.className === 'sr-only' && child.textContent === ', 3 unread'), 'the actual accessible count is updated too');
   // Each thing a row shows, changed alone, draws it anew.
   const base = { ...counted('a', 3), state: 'waiting', waiting_on: ['x'] };
   for (const change of [{ state: 'review' }, { waiting_on: ['y'] }, { asks: [{ actor_id: 'y', message_id: 'm1', by: 'x', since_ms: 1 }] },
@@ -154,7 +163,7 @@ test('a row drawn again with what it already shows is left alone, and one whose 
     f.queue.push({ instance_id: 'i1', items: [base, f.item('z')], next_cursor: null }); await f.rail.load();
     const before = [...link.children];
     f.queue.push({ instance_id: 'i1', items: [{ ...base, ...change }, f.item('z')], next_cursor: null }); await f.rail.load();
-    assert.notDeepEqual(link.children, before, JSON.stringify(change));
+    assert.ok(link.children.length !== before.length || before.some((child, index) => child !== link.children[index]), JSON.stringify(change));
   }
 });
 

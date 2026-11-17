@@ -1546,10 +1546,13 @@ try {
       });
     }
     await check('connected quote, newline, private note, focus, autosave geometry and touch boundary', async () => {
+      // CSS-pixel rounding allowance, far below the 40px drag expansion.
+      const geometryTolerance = 2, minimumDragExpansion = 40, minimumWideHeightShare = .94;
       const p = await page('connected', null, true); await p.open(1);
       assert.ok((await p.evaluate('document.querySelector("#source-body").textContent')).length > 1024);
       await p.point('#source-body [data-start="0"]', 'move'); await p.key('Enter');
       assert.equal(await field(p), '> Source 1 exact passage. \n\n');
+      assert.equal(await p.evaluate('document.querySelector("#reader").dataset.layout'), 'wide', 'quoting on a laptop opens the wide Reader');
       await p.send('Input.insertText', { text: 'Connected response' }); await p.key('Enter');
       assert.equal(await field(p), '> Source 1 exact passage. \n\nConnected response\n');
       assert.equal(p.calls.filter(call => call.payload?.kind === 'message.send').length, 0);
@@ -1575,13 +1578,21 @@ try {
       await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
       assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[1].id);
       await p.open(1); assert.equal(await field(p), reply);
-      // Wide is an item in the Reader's ⋯ (docs/links.md).
+      // The earlier quote already made this laptop wide (644/668). Exercise
+      // both menu directions from that state, keeping the saved reply.
+      assert.equal(await p.evaluate('document.querySelector("#reader").dataset.layout'), 'wide', 'the quoted reply reopens wide');
+      await p.point('#reader-menu');
+      await until(() => p.evaluate(`document.querySelector('.message-menu-list [role=menuitem]:last-child')?.textContent === 'Stacked layout'`), "the wide Reader's menu offers Stacked");
+      await p.point('.message-menu-list [role=menuitem]:last-child');
+      await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'stacked'`), 'the Reader is stacked');
+      assert.equal(await field(p), reply, 'switching to stacked keeps the reply');
       await p.point('#reader-menu');
       await until(() => p.evaluate(`document.querySelector('.message-menu-list [role=menuitem]:last-child')?.textContent === 'Wide layout'`), "the Reader's menu offers Wide");
       await p.point('.message-menu-list [role=menuitem]:last-child');
       await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'wide'`), 'the Reader is wide');
+      assert.equal(await field(p), reply, 'switching back to wide keeps the reply');
       const wide = await p.box('.writing-pane'), dialog = await p.box('#reader');
-      assert.ok(wide.height > dialog.height * .94, 'writing keeps the full wide column');
+      assert.ok(wide.height + geometryTolerance >= dialog.height * minimumWideHeightShare, 'writing keeps the full wide column');
       await p.point('#writing-body'); await p.send('Input.insertText', { text: ' Undo tail' });
       const withTail = await field(p);
       await until(async () => (await privateState()).draft.body === withTail, 'autosave of native edit');
@@ -1590,15 +1601,16 @@ try {
       const before = await p.evaluate("(()=>{const e=document.querySelector('#source-body');const r=document.createRange();r.setStart(e.children[4].firstChild,0);r.setEnd(e.children[5].firstChild,8);const s=getSelection();s.removeAllRanges();s.addRange(r);return {text:s.toString(),scroll:e.scrollTop,caret:[document.querySelector('#writing-body').selectionStart,document.querySelector('#writing-body').selectionEnd]}})()");
       await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'undo saved');
       const after = await p.evaluate("({text:getSelection().toString(),scroll:document.querySelector('#source-body').scrollTop,caret:[document.querySelector('#writing-body').selectionStart,document.querySelector('#writing-body').selectionEnd]})");
-      assert.deepEqual(after, before, 'status repaint preserves source selection, place and caret');
+      assert.deepEqual({ text: after.text, caret: after.caret }, { text: before.text, caret: before.caret }, 'status repaint preserves source selection and caret');
+      assert.ok(Math.abs(after.scroll - before.scroll) <= geometryTolerance, `status repaint preserves source place within ${geometryTolerance}px`);
       const grip = await p.box('#reader-divider'), x = grip.x + grip.width / 2, y = grip.y + grip.height / 2;
       const writingBefore = await p.box('.writing-pane');
       await p.point('#reader-divider');
-      assert.ok(Math.abs((await p.box('.writing-pane')).width - writingBefore.width) < 2, 'divider near-action click does not resize');
+      assert.ok(Math.abs((await p.box('.writing-pane')).width - writingBefore.width) <= geometryTolerance, `divider near-action click does not resize within ${geometryTolerance}px`);
       await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
       for (let step = 1; step <= 6; step++) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x - step * 10, y, button: 'left', buttons: 1 });
       await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x - 60, y, button: 'left', buttons: 0, clickCount: 1 });
-      assert.ok((await p.box('.writing-pane')).width > writingBefore.width + 40, 'actual browser drag expands wide writing');
+      assert.ok((await p.box('.writing-pane')).width > writingBefore.width + minimumDragExpansion - geometryTolerance, 'actual browser drag expands wide writing');
       assert.equal(await field(p), reply); assert.equal(await p.evaluate('getSelection().toString()'), before.text);
       await p.key('Escape'); assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
       await p.key('Escape'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader escape');

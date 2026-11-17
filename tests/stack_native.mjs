@@ -9534,13 +9534,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // too. Where a press does not land, the page it left is kept as reading-unread-landed-* (the red at the base),
   // and the other devices still run, so each width has its picture.
   await check('reading unread count one press lands on the oldest unread message deep in a dossier behind its earlier row, on screen, and the count goes once it is read', async () => {
+    const geometryTolerance = 2; // CSS-pixel rounding; an offscreen row at y954 still fails.
     const countOf = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
     const landed = (p, topic, target, root) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))});
       const here=new URL(location.href).searchParams.get('topic'),drawer=document.getElementById('rail').classList.contains('open');if(!c)return {here,drawer,card:false};
       const s=c.closest('.reply-stack'),w=c.querySelector(':scope > .message-preview'),b=c.getBoundingClientRect(),r=w&&w.getClientRects().length?w.getBoundingClientRect():null;
       const plain=Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2)));
       const ids=[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>e.dataset.id),twice=ids.filter((id,i)=>ids.indexOf(id)!==i).length;
-      return {here,drawer,card:true,dossier:s?.dataset.stack===${JSON.stringify(root)},fold:s?.dataset.fold??null,rows:Boolean(s?.querySelector('.message-card[data-earlier="true"]')),whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=0&&b.bottom<=innerHeight,plain,focused:document.activeElement===c,twice,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      return {here,drawer,card:true,dossier:s?.dataset.stack===${JSON.stringify(root)},fold:s?.dataset.fold??null,rows:Boolean(s?.querySelector('.message-card[data-earlier="true"]')),whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=-${geometryTolerance}&&b.bottom<=innerHeight+${geometryTolerance},plain,focused:document.activeElement===c,twice,sideways:document.documentElement.scrollWidth>innerWidth+${geometryTolerance}}})()`);
     const want = topic => ({ here: topic, drawer: false, card: true, dossier: true, fold: 'open', rows: true, whole: true, onScreen: true, plain: true, focused: true, twice: 0, sideways: false });
     // Once the press has opened the topic: its message is read in (the pages before it, however many), then it is shown.
     const lands = async (p, device, topic, { target, root }) => {
@@ -9603,6 +9604,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const p = await open(own, 'laptop', own, ids.newest);
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(own))})?.textContent==='1'`), 'the open topic counts its one waiting message');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.target))}))`), false, 'opened at its newest, the waiting message is not on the page');
+    // The earlier device cases added rows above this one. Reveal the actual
+    // badge, settle layout, then let point measure and hit-test it afresh.
+    await centre(p, countOf(own));
+    await p.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
     await p.point(countOf(own));
     await lands(p, 'in place', own, ids);
     assert.ok(made.length === 1);
