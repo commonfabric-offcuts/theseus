@@ -85,8 +85,11 @@ yours, and yours never holds theirs. Starring a message in a dossier the reader
 moved below More brings it back above More for them, in the same act; taking
 the star off later leaves it above More.
 
-Core holds this for every entry point, the page's, an agent's and the CLI's,
-which all send `stack.aside`:
+Core holds this for every way a dossier goes below More, since each sends
+`stack.aside`: the menu item, the swipe on the title bar, the Reader's archive
+button, Command-Z after a Bring back, and any client or agent sending the
+command itself. No key moves a dossier below More, and the CLI has no verb
+for it:
 
 - `stack.aside` below More is refused as `STARRED_IN_DOSSIER`, with that
   sentence, when the dossier holds a message the reader starred and can see;
