@@ -375,6 +375,19 @@ def skip_basis(config, sha):
     return live, release_check.seen(config.live, sha, release_check.changed_paths(config.live, live, sha, git), git)
 
 
+def scope_basis(config, sha):
+    """For a scoped summary (item 608): the live commit, the paths changed since it, and the native steps those changes
+    touch at SHA, chosen again here by tools/steps_for.py from the live checkout's git, never taken from the summary."""
+    if config.outcome:
+        raise release_check.Refused("measuring %s reads every step, so run the whole release check" % config.outcome)
+    head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"])
+    if head.returncode != 0:
+        raise release_check.Refused("the live commit cannot be read: %s" % head.stderr.strip())
+    live, git = head.stdout.strip(), (lambda root, *args: run(["git", "-C", str(root)] + list(args)))
+    changed, chosen, _ = release_check.scope(config.live, live, sha, git)
+    return live, changed, chosen
+
+
 def live_policy(config, base):
     """.github/check-baseline.json at BASE, the live commit, read from the live checkout's git (never the candidate's
     copy); None when BASE keeps none. A read that fails is refused, not taken as no policy."""
@@ -660,10 +673,11 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # 0. A merged train (items 481, 482), or a summary of exactly this commit; otherwise nothing is touched.
     trained = take_train(config, sha, evidence, train, known_reds, github) if train is not None else None
     # A summary whose steps failed is still measured (7.2 step 1). One that skipped steps is taken only when what
-    # changed since the live commit, read here, lets them be skipped.
+    # changed since the live commit, read here, lets them be skipped; one scoped to a small fix only when the steps
+    # that change touches, chosen again here, all ran (item 608).
     # Item 588: a summary of another commit is taken when its tree, read here, is SHA's; the deploy records both.
     judged = []
-    foreign, unpassed = (release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha),
+    foreign, unpassed = (release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha), lambda: scope_basis(config, sha),
                                                      lambda commit: judged.append(judged_tree(config, sha, commit)))
                          if trained is None else ([], []))
     judged = judged[0] if judged and not foreign else None
@@ -678,7 +692,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
             known = {"file": str(known_reds), "refused": str(refusal)}
     if trained is None:
         record(evidence, "00-release-check", dict({"summary": str(summary), "commit": sha, "passed": not reasons,
-                                                   "reasons": reasons, "skipped": release_check.skipped_of(summary)},
+                                                   "reasons": reasons, "skipped": release_check.skipped_of(summary),
+                                                   "scoped": release_check.skipped_of(summary, "scoped")},
                                                   **({"judged": judged} if judged else {}),
                                                   **({"known_reds": known} if known_reds is not None else {})))
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
@@ -686,19 +701,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if known is not None and "refused" in known:
         raise Refused("known reds: %s; nothing was stopped" % known["refused"])
     accepted = known["accepted"] if known is not None else []
-    for red in accepted:
-        if red["taken_by"] == "policy":
-            print("known red: %s %r failed; %s at %s admits it (review %s): %s"
-                  % (red["step"], red["case"], known_reds_check.POLICY, known["live_commit"][:12], red["review"], red["why"]))
-        elif red["taken_by"] == "owner_acceptance":
-            acceptance = known["acceptances"][red["live_summary"]]
-            print("known red: %s %r failed; an owner's acceptance took it (%s, by %s in %s): %s"
-                  % (red["step"], red["case"], red["live_summary"], acceptance["by"], acceptance["message"], red["why"]))
-        else:
-            print("known red: %s %r failed, as it does on the live commit %s (%s): %s"
-                  % (red["step"], red["case"], red["live_commit"][:12], red["live_summary"], red["why"]))
-    for red in (known or {}).get("not_needed") or []:
-        print("known red not needed: %s %r did not fail" % (red["step"], red["case"]))
+    # Each red is recorded with the line the operator reads (known_reds.SAID), and that line is what is printed.
+    for line in known_reds_check.said(known or {}):
+        print(line)
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})

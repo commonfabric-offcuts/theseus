@@ -14,7 +14,7 @@
 // it back (targets_native.mjs), skipping the checks that hold a press across a commit,
 // which wait on the Chrome harness's network log.
 //
-// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite|--targets [case filter]
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device|--new-line|--reading|--invite|--health|--targets [case filter]
 // playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
@@ -36,11 +36,12 @@ import { deviceChecks } from './device_native.mjs';
 import { newLineStaysChecks } from './new_line_native.mjs';
 import { readingChecks } from './topic_reading_native.mjs';
 import { teamInviteChecks } from './team_invite_native.mjs';
+import { healthChecks } from './health_native.mjs';
 import { targetsChecks } from './targets_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
-assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite', '--targets'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device', '--new-line', '--reading', '--invite', '--health', '--targets'].includes(mode), `a WebKit mode, not ${mode}`);
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
 const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
 assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
@@ -64,6 +65,10 @@ const SKIPPED = {
     'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place': HELD,
     'rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts': 'reads the window\'s and the document\'s listeners through Chrome DevTools (DOMDebugger.getEventListeners) and picks a file through its chooser, which this harness does not offer',
     'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
+  },
+  '--health': {
+    'health wakes that fail light the link on another page and the page says why, live, from the view': 'puts the Health page in a tab behind (document.visibilityState hidden); each page here is a window of its own, which stays visible',
+    'health a wake that gets through clears the page and the link, live': 'clears the failing wakes the check above lights, which is skipped here, so it starts with nothing to clear',
   },
   '--targets': {
     'targets the owner reads No target yet and the kind as two chips, and one tap changes the kind': ACROSS,
@@ -229,6 +234,7 @@ for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.m
   'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
+  'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
   'tests/targets_native.mjs', 'web/targets.mjs', 'web/outcomes.mjs', 'web/outcome-end.mjs', 'web/outcome-light.mjs', 'web/outcome-light-words.mjs', 'aim_next/outcome_end.py',
   'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
   const source = await readFile(path.join(root, filename));
@@ -575,6 +581,8 @@ try {
     await readingChecks({ check, page, until, control, view, facts, shot, observations, windows, engine: 'webkit' });
   } else if (mode === '--invite') {
     await teamInviteChecks({ check, page, until, control, view, facts, shot });
+  } else if (mode === '--health') {
+    await healthChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--targets') {
     await targetsChecks({ check, page, until, control, view, facts, shot });
   } else {

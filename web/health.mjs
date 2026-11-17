@@ -170,7 +170,7 @@ export function healthLines(answer, { now, feed } = {}) {
   const release = answer.release;
   if (release) {
     const details = [];
-    const check = release.check, train = release.train;
+    const check = release.check, train = release.train, scoped = release.scoped;
     const native = check?.native ? `${count(check.native.pass)} of ${count(check.native.total)} browser` : null;
     const parts = check ? [check.python != null && `${count(check.python)} Python`, check.node != null && `${count(check.node)} Node`, native].filter(Boolean) : [];
     if (train) {
@@ -181,8 +181,11 @@ export function healthLines(answer, { now, feed } = {}) {
         ? `${first ? 'That' : 'Its hosted'} judgment: ${count(train.succeeded)} of ${count(train.total)} runs and checks succeeded.`
         : 'Its hosted judgment is still pending.');
     } else if (parts.length) {
+      // A small fix deployed on a scoped run (item 608) says which browser steps ran, and its full run: pending, or what it found.
+      if (scoped) details.push(`It deployed on a scoped run: ${count(scoped.ran)} of ${count(scoped.steps)} browser steps, the ones its files touch, beside the units, the deploy's refusals and the wake replay.`);
       // Only counts a release check kept are said to have passed; a check with none of them said nothing.
       details.push(`Its release check${Number.isInteger(check.finished_ms) ? ` finished at ${datedTime(check.finished_ms)}` : ''}: ${list(parts)} checks passed.`);
+      if (scoped) details.push(scoped.judgment === 'judged' ? `Its full run: ${count(scoped.succeeded)} of ${count(scoped.total)} runs and checks succeeded.` : 'Its full run is still pending.');
     } else {
       details.push('No release check summary was kept for it.');
     }

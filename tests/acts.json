@@ -16297,9 +16297,9 @@
    "act": "The deploy's line says an owner's acceptance took the red, by whom and in which message",
    "break": [
     [
-     "tools/deploy.py",
-     "        elif red[\"taken_by\"] == \"owner_acceptance\":",
-     "        elif False:"
+     "tools/known_reds.py",
+     "an owner's acceptance took it ({live_summary}, by {by} in \"",
+     "an owner's acceptance took it ({live_summary}, in \""
     ]
    ],
    "check": {
@@ -22812,8 +22812,8 @@
    "break": [
     [
      "tools/train.py",
-     "\"tools/ci-input-reads.json\",\n               \"tools/quarantine.py\")",
-     "\"tools/ci-input-reads.json\")"
+     "\"tools/ci-input-reads.json\",\n               \"tools/quarantine.py\", \"tools/steps_for.py\")",
+     "\"tools/ci-input-reads.json\",\n               \"tools/steps_for.py\")"
     ]
    ],
    "check": {
@@ -24714,8 +24714,8 @@
    "break": [
     [
      "aim_next/releases.py",
-     "            or (isinstance(judged, dict) and judged.get(\"judgment\") == \"pending\"))",
-     "            or False)"
+     "            or (isinstance(judged, dict) and judged.get(\"judgment\") == \"pending\")\n",
+     "            or False\n"
     ]
    ],
    "check": {
@@ -25971,6 +25971,357 @@
    ],
    "check": {
     "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy takes a small fix's scoped summary only on its own choice of the steps the change touches, never on the summary's",
+   "break": [
+    [
+     "tools/release_check.py",
+     "                live, changed, chosen = scope()",
+     "                live, changed, chosen = scoped.get(\"live\"), scoped.get(\"changed\") or [], scoped[\"steps\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy chooses a small fix's steps again from its own live checkout, and refuses a summary that did not run one it chose",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    changed, chosen, _ = release_check.scope(config.live, live, sha, git)",
+     "    changed, chosen = release_check.changed_paths(config.live, live, sha, git), []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped summary is refused when the change leaves the small-fix bound: tools/, .github/, bin/, the migrations, or more than six files",
+   "break": [
+    [
+     "tools/release_check.py",
+     "                    problems += [\"but %s\" % problem for problem in small_fix_problems(changed)]",
+     "                    problems += []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a change outside the small-fix bound before running anything",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        problems = small_fix_problems(changed)\n",
+     "        problems = []\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A step a small fix touches counts only when it ran whole, every case of its mode, never one named case",
+   "break": [
+    [
+     "tools/release_check.py",
+     "                    partial = [name for name in chosen if name in steps and not ran_whole(steps[name])]",
+     "                    partial = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The units, the deploy's refusals and the wake replay stay required beside a scoped run's browser steps",
+   "break": [
+    [
+     "tools/release_check.py",
+     "                    covered = {\"native-\" + step.name for step in NATIVE_STEPS} - set(chosen)",
+     "                    covered = set(REQUIRED) - set(chosen)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped release check runs the units, the deploy's refusals, the steps its files touch and the wake replay",
+   "break": [
+    [
+     "tools/release_check.py",
+     "name not in SKIPPABLE or name in chosen or name == WAKE_REPLAY]",
+     "name not in SKIPPABLE or name in chosen]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped release's record keeps the browser steps it did not run, with its full run pending",
+   "break": [
+    [
+     "tools/releases.py",
+     "            \"not_run\": [name for name in native if name not in ran], \"full_judgment\": \"pending\"}",
+     "            \"not_run\": [], \"full_judgment\": \"pending\"}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped release takes its full run's judgment beside its record, once, and attach-judgment attaches it",
+   "break": [
+    [
+     "aim_next/releases.py",
+     "            or (isinstance(scoped, dict) and scoped.get(\"full_judgment\") == \"pending\"))",
+     "            or False)"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "Health's view says a scoped release's browser steps and its full run as it stands",
+   "break": [
+    [
+     "aim_next/health.py",
+     "                       \"scoped\": _release_scoped(measured, attached)}",
+     "                       \"scoped\": None}"
+    ]
+   ],
+   "check": {
+    "python": "test_releases.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The Health page says a scoped release ran the browser steps its files touch and that its full run is pending, then what it found",
+   "break": [
+    [
+     "web/health.mjs",
+     "      if (scoped) details.push(scoped.judgment === 'judged'",
+     "      if (false) details.push(scoped.judgment === 'judged'"
+    ]
+   ],
+   "check": {
+    "native": "health",
+    "case": "health a release deployed on a scoped run"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The steps a change touches include each step whose case reads a selector the change adds, removes or changes",
+   "break": [
+    [
+     "tools/steps_for.py",
+     "                    choice.add(step, (\"selector\", label), \"[selector] %s (%s) is read\" % (label, changes.sense(key)), tests.where(path, pos))",
+     "                    pass"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_steps_for.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The step selection refuses a read git cannot make rather than choosing fewer steps",
+   "break": [
+    [
+     "tools/steps_for.py",
+     "            self.cache[key] = self.git(\"show\", \"%s:%s\" % (rev, path))",
+     "            self.cache[key] = self._git(self.root, \"show\", \"%s:%s\" % (rev, path)).stdout or None"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_steps_for.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "An ordinary train cannot change the step selection the deploy loads",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/quarantine.py\", \"tools/steps_for.py\")",
+     "\"tools/quarantine.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A small fix's scoped summary is taken with known reds: a browser step its confirmed scope did not run is not missing",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return [name for name in NATIVE if name not in ran]",
+     "    return []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "With known reds, a scoped summary's units, deploy refusals or wake replay that did not run stay missing",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "    return [name for name in NATIVE if name not in ran]",
+     "    return [name for name in release_check.REQUIRED if name not in ran]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A listed known red of a step a scoped run did not run is said not run, never not needed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "if step not in unrun and case not in failures.get(step, ())",
+     "if case not in failures.get(step, ())"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a live commit that is not the full 40-character commit, before running anything",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        if not re.fullmatch(r\"[0-9a-f]{40}\", scoped):",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a change whose step rules at the commit cannot be read, rather than choosing no step",
+   "break": [
+    [
+     "tools/release_check.py",
+     "        raise Refused(\"the browser steps the changes since %s touch cannot be chosen at %s: %s\" % (live[:12], commit[:12], error))",
+     "        chosen = {\"steps\": [], \"notes\": [str(error)]}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A scoped run refuses a chosen step this release check does not run",
+   "break": [
+    [
+     "tools/release_check.py",
+     "    if unknown:",
+     "    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_release_check.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy takes no scoped summary beside a live commit it cannot read",
+   "break": [
+    [
+     "tools/deploy.py",
+     "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if head.returncode != 0:",
+     "whole release check\" % config.outcome)\n    head = run([\"git\", \"-C\", str(config.live), \"rev-parse\", \"HEAD\"])\n    if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The deploy prints the line each known red is recorded with: taken, not needed or not run",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    for line in known_reds_check.said(known or {}):",
+     "    for line in []:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A known red of a step a scoped run did not run is recorded and printed as not run, never as not needed",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "\"not_run\": [_red(\"not_run\",",
+     "\"not_run\": [_red(\"not_needed\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "The not-run line says the scoped run did not run the step and that its full run follows",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "which no changed path touches; \"\n                   \"its full run follows\"",
+     "which no changed path touches\""
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 608,
+   "act": "A known red's printed line is the one recorded with it, whichever list keeps it",
+   "break": [
+    [
+     "tools/known_reds.py",
+     "for value in taken.values() if isinstance(value, list) for red in value]",
+     "for value in list(taken.values())[:3] if isinstance(value, list) for red in value]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy.py"
    }
   }
  ]
