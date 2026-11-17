@@ -30,7 +30,7 @@ function page() {
   const rail = el('nav', '', 'rail', body), main = el('main', 'main', '', body);
   rail.setAttribute('aria-label', 'Outcomes and topics');
   const brand = el('div', '', 'brand', rail), wordmark = el('a', '', 'wordmark', brand);
-  el('span', 'instance-label', '', brand); el('button', 'notify', '', brand);
+  el('button', 'notify', '', brand);
   // The page's notices, one group (index.html #page-notices), then "← Outcomes".
   const notices = el('div', 'page-notices', 'page-notices', rail);
   for (const id of ['app-status', 'wakes-status', 'updates-status', 'topic-navigation-status']) el('div', id, 'notice', notices);
@@ -39,7 +39,9 @@ function page() {
   const topics = el('section', 'topic-navigation', '', rail); el('button', 'new-topic', '', topics); el('div', 'topics', '', topics);
   // Sections the conversation, pipeline and skills pieces add, as nodes in the rail.
   const conversation = el('section', 'conversation-row', '', rail), pipeline = el('section', 'pipeline-row', '', rail), skills = el('section', 'skills-navigation', '', rail);
-  return { doc, rail, main, brand, wordmark, home, outcomes, topics, conversation, pipeline, skills, byId };
+  // The rail's foot (item 628): who you are on which instance and the Health link, last in the rail.
+  const foot = el('div', '', 'rail-foot', rail); el('span', 'instance-label', '', foot); el('a', 'health-link', 'health-link', foot);
+  return { doc, rail, main, brand, wordmark, home, outcomes, topics, conversation, pipeline, skills, foot, byId };
 }
 const ids = host => host.children.map(node => node.id || node.className);
 // lastHere: the outcome the last answer was read about (null: none).
@@ -57,7 +59,7 @@ test('inside an outcome the rail hides the outcomes list, says "This outcome", a
   // The outcome's Notebook is no section of the side rail (item 464): the right rail and the outcome's own page list it.
   assert.deepEqual(RAIL_ORDER, ['conversation', 'pipeline', 'topics', 'skills']);
   assert.deepEqual(ids(p.rail).filter(id => id !== 'outcome-navigation'),
-    ['brand', 'page-notices', 'outcomes-home', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation']);
+    ['brand', 'page-notices', 'outcomes-home', 'conversation-row', 'pipeline-row', 'topic-navigation', 'skills-navigation', 'rail-foot']);
   for (const control of [p.home, p.wordmark]) {
     assert.equal(typeof control.onclick, 'function', 'each opens the Outcomes home');
     let prevented = false;
@@ -234,17 +236,23 @@ test('"← Outcomes" counts only other outcomes: an answer read before the page 
   assert.deepEqual(shown(p), { light: true, words: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
 });
 
-test('the one logo block, then the page\'s notices, move to the top of the rail or of the main column', () => {
-  const p = page(), notify = p.byId.get('notify'), status = p.byId.get('app-status');
+test('the one logo block, then the page\'s notices, move to the top of the rail or of the main column, and the rail\'s foot to its end', () => {
+  const p = page(), notify = p.byId.get('notify'), status = p.byId.get('app-status'), health = p.byId.get('health-link');
   let pressed = 0; notify.onclick = () => pressed++;
   p.rail.prepend(p.home);
+  // A section placed after the foot (as the shell places the outline) goes above it.
+  const outline = new p.foot.constructor('section', 'outline', 'outline'); p.rail.append(outline);
   placeBrand(p.rail);
   assert.deepEqual(ids(p.rail).slice(0, 3), ['brand', 'page-notices', 'outcomes-home']);
+  assert.deepEqual(ids(p.rail).slice(-2), ['outline', 'rail-foot'], 'the rail\'s foot ends the rail, under its last section');
   assert.deepEqual(ids(p.byId.get('page-notices')), ['app-status', 'wakes-status', 'updates-status', 'topic-navigation-status'], 'the notices go as one group, in order');
-  // The outcome's own page: "← Outcomes" heads main, then the block goes above it.
-  p.main.prepend(p.home); placeBrand(p.main);
+  assert.deepEqual(ids(p.foot), ['instance-label', 'health-link'], 'the foot keeps its lines, in order');
+  // The outcome's own page: "← Outcomes" heads main, then the block goes above it, and the foot ends main.
+  p.main.prepend(p.home); p.main.append(new p.foot.constructor('section', 'outcome-page', 'selection-page')); placeBrand(p.main);
   assert.deepEqual(ids(p.main).slice(0, 3), ['brand', 'page-notices', 'outcomes-home']);
+  assert.equal(ids(p.main).at(-1), 'rail-foot', 'the foot ends the page with no rail');
   assert.equal(p.rail.querySelectorAll('.brand').length + p.main.querySelectorAll('.brand').length, 1, 'one block, moved, never copied');
-  assert.equal(p.main.querySelector('#notify'), notify); assert.equal(p.main.querySelector('#app-status'), status);
+  assert.equal(p.rail.querySelectorAll('.rail-foot').length + p.main.querySelectorAll('.rail-foot').length, 1, 'one foot, moved, never copied');
+  assert.equal(p.main.querySelector('#notify'), notify); assert.equal(p.main.querySelector('#app-status'), status); assert.equal(p.main.querySelector('#health-link'), health);
   p.main.querySelector('#notify').onclick(); assert.equal(pressed, 1, 'its handlers still fire');
 });
