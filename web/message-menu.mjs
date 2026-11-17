@@ -28,6 +28,21 @@ import { revealSelection } from './reveal.mjs';
 import { FeedPassages } from './feed-passages.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
+import { listen } from './in-place-navigation.mjs';
+
+// How the page's last press was made, kept for the whole page past its moves
+// (in-place-navigation.mjs): the light a move makes afresh knows that a
+// finger's tap began the move (item 613: a tap on a topic's count lands on
+// its message, and WebKit's mouse move after the landing's scroll then only
+// places the pointer, lighting no card that came under the finger).
+const presses = new WeakMap();
+function pressOf(doc) {
+  let press = presses.get(doc);
+  if (press) return press;
+  press = { touch: false }; presses.set(doc, press);
+  if (typeof EventTarget === 'function' && doc instanceof EventTarget) listen(doc, 'pointerdown', event => { press.touch = event.pointerType === 'touch'; }, true);
+  return press;
+}
 
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
@@ -71,7 +86,7 @@ export class MessageMenu {
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {}, mac = onMac(), doc = document }) {
     Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, mac, doc });
-    this.lit = null; this.touch = false; this.before = null;
+    this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     this.bar = this.buildBar();
     this.passages = new FeedPassages({ host, doc, lights: () => this.returns(), entryOf: target => this.entryOf(target) });
     // Scrolling or a repaint can put another card under a stationary pointer
@@ -99,14 +114,8 @@ export class MessageMenu {
       if (entry && entry === this.lit) this.passages.point(event, entry);
     });
     // What was lit when the press began: the press itself focuses the card,
-    // which lights it, before its click arrives. A finger's press leaves the
-    // pointer no place, so the mouse move WebKit sends after it only places
-    // it, however the pointer last stood (item 613: a tap on a topic's count
-    // lands on its message, and that move must not light the card under it).
-    doc.addEventListener('pointerdown', event => {
-      reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit;
-      if (this.touch) pointer = null;
-    }, true);
+    // which lights it, before its click arrives.
+    doc.addEventListener('pointerdown', event => { reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).

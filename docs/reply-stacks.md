@@ -398,12 +398,13 @@ their acts.
   message's bar does. A lit reply that its stack folds away loses its light
   and its bar, so no message bar is left over the stack's chevron. A card a
   finger tapped keeps its light and bar while the page scrolls: the first
-  mouse move after a tap only places the pointer, however the pointer last
-  stood (WebKit sends one after a scroll that follows a tap), and the moves
-  after it light what they pass over, or let the light go over nothing, as a
-  pointer's moves do. So a tap on a topic's count, which lands on its message
-  (item 613), leaves the light on that message, not on a card that the
-  landing brought under the finger.
+  mouse move after a tap only places the pointer (WebKit sends one after a
+  scroll that follows a tap), and the moves after it light what they pass
+  over, or let the light go over nothing, as a pointer's moves do. That holds
+  on the page a tap moved to as well: the page keeps how its last press was
+  made across its moves, so a tap on a topic's count, which lands on its
+  message (item 613), leaves the keys on that message, not on a card the
+  landing's scroll brought under the finger.
 - **One New line.** It goes under the lowest stack that holds the line's
   message or anything newer that is not the reader's own (`lineUnder`). It is
   never inside a stack, and nothing new sits below it. While the line's
