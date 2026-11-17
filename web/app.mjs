@@ -2087,7 +2087,7 @@ async function initialize() {
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   // Those who can be added: the outcome's team, or everyone when the team cannot be read.
-  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic',
+  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic', dismissible: true,
     candidates: () => outcomeMembers ? outcomeMembers.filter(person => person.enabled !== false).map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })) : directoryPeople,
     opened: () => { refreshMembers(); refreshDirectory(); },
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
