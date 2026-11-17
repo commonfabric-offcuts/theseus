@@ -208,7 +208,12 @@ An action sits on the surface where its work happens.
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
-- Otherwise no automated check. Held by Tony's preview of every new surface.
+- `tests/topic_reading_native.mjs` (`native-reading`, `native-webkit-reading`):
+  the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
+  the message's own note corner opens the composer to that private note by
+  pointer, keys and first tap; a slow or failed opening retains writing and
+  can be retried, an unavailable source keeps the note read-only, and empty
+  or other-reader notes show no corner.
 
 ## Quiet, not button land
 

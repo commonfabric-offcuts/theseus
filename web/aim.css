@@ -1200,3 +1200,12 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
+
+/* Item 649: a small note in the card's lower corner, with room for a finger.
+   The note glyph is the existing private-note drawing; no private words live here. */
+.message-card:has(>.note-corner){padding-bottom:2.75rem}
+.note-corner{position:absolute;right:0;bottom:0;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer}
+.note-corner:hover{color:var(--ink)}
+.note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
+.note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
+@media(forced-colors:active){.note-corner-glyph{background:CanvasText}}

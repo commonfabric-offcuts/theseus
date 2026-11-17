@@ -28429,6 +28429,66 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
+  },
+  {
+   "item": 649,
+   "act": "Only your saved private note offers a corner; emptying it removes the corner",
+   "break": [
+    [
+     "web/marks.mjs",
+     "if (item?.yours?.note !== true)",
+     "if (false)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*empty and other actor notes"
+   }
+  },
+  {
+   "item": 649,
+   "act": "Pressing the note corner opens the composer directly to your exact note, keeping the reply and destination",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "editors: { reply, note }, mode, opener, mark:",
+     "editors: { reply, note }, mode: 'reply', opener, mark:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "A first phone tap on the note corner opens the private note",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "'a, .fold-line, .note-corner'",
+     "'a, .fold-line'"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
+  },
+  {
+   "item": 649,
+   "act": "The note corner is a named 44px touch target",
+   "break": [
+    [
+     "web/aim.css",
+     "width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer",
+     "width:1rem;height:1rem;color:var(--muted);border-radius:.5rem;cursor:pointer"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 649.*normal corner"
+   }
   }
  ]
 }

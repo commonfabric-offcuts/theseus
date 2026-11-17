@@ -296,7 +296,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await closeReader(p, size==='laptop'?'laptop':'phone');
       // Close returns to the corner; a native Tab/Shift-Tab returns there too.
       await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`), 'focus returns to note corner');
-      await p.key('Tab'); await p.key('Tab',8);
+      await p.key('Tab',8); await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`),true,'corner is a native tab stop');
       await p.key('Enter'); await noteShown(state);
       // Existing reply remains exact and in the same topic; the corner must never overwrite it.
@@ -315,7 +315,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await p.evaluate('window.noteFault=null;window.releaseNote()');
         await noteShown(state);
       } else if(branch==='error') {
-        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 interrupted note read')"), 'read error is visible');
+        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('Connection interrupted')"), 'read error is visible');
         assert.equal(await readerOn(p),null,'a failed read exposes no note');
         await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-error');
         await p.evaluate('window.noteFault=null'); await pressCorner(state); await noteShown(state);

@@ -186,7 +186,7 @@ away. A reply written while the page is open moves the arrow at once
 ## Your note corner (649)
 
 A message with your private note shows a small note corner; pressing it opens
- the composer to that note. The shortcut is on the drawn message card, with the
+the composer to that note. The shortcut is on the drawn message card, with the
 existing note glyph and an “Open your private note” name and tooltip. Pointer,
 keyboard and a phone's first tap all open the Reader directly to the exact note.
 The reply and its destination stay as they were. The time's passive marks and
