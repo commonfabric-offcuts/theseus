@@ -1,10 +1,26 @@
 // Item 717: explicit records, native cover/source/owner gestures, both engines.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export async function promiseChecks(api, helpers) {
   const { check, until, view, control, shot, facts, observations, engine } = api;
+  // Both actual reading entrypoints take CHROME EVIDENCE MODE FILTER. Keep this family's
+  // supplemental sources here, without changing every step's shared harness or source list.
+  const evidence = process.argv[3], root = fileURLToPath(new URL('../', import.meta.url));
+  assert.ok(path.isAbsolute(evidence), 'the actual entrypoint supplies its absolute evidence folder');
+  const sources = {};
+  for (const name of ['tests/dossier_promises_native.mjs', 'web/dossier-cover.mjs', 'web/reader.mjs', 'web/stack-look.css',
+    'aim_next/cover_promises.py', 'aim_next/cover_values.py', 'aim_next/covers.py', 'aim_next/cli_covers.py']) {
+    const bytes = await readFile(path.join(root, name));
+    const target = path.join(evidence, 'source', name);
+    await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, bytes);
+    sources[name] = createHash('sha256').update(bytes).digest('hex');
+  }
+  await writeFile(path.join(evidence, '717-sources.json'), JSON.stringify(sources, null, 2));
+  observations.push({ name: 'item 717 supplemental source hashes before mutations', sources });
   const { seed, open, centre, press, openReader, closeReader, card } = helpers;
   const sizes = [['320', 'phone-320'], ['375', 'phone-375'], ['390', 'phone'], ['laptop', 'laptop']];
   const text = 'I will book the cabin.';
