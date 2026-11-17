@@ -1366,19 +1366,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const [device, width] of STAR_WIDTHS) {
       const topic = `stack-star-over-${device}-${width}`;
       // The dossier first, so the newer messages above it give the page room to show it at the window's bottom.
-      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which hose for the far beds?' }],
-        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The long green one.' }],
-        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'With the brass nozzle.' }],
-        ...Array.from({ length: 8 }, (_, i) => ['f' + i, { sender: other, addressees: [facts.actor], body: fillerWords(i) }])]);
+      // Read already, so nothing new draws the page to it once open.
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which hose for the far beds?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The long green one.', read: true }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'With the brass nozzle.', read: true }],
+        ...Array.from({ length: 8 }, (_, i) => ['f' + i, { sender: other, addressees: [facts.actor], body: fillerWords(i), read: true }])]);
       const p = await open(topic, device, topic, ids.root);
       await sizedTo(p, device, width);
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-star`, args: { starred: true } });
       await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
       const line = `${card(ids.two)} > .message-author`;
-      const fromBottom = () => p.evaluate(`(b=>Math.round(innerHeight-b.bottom))(document.querySelector(${JSON.stringify(line)}).getBoundingClientRect())`);
-      await p.evaluate(`(l=>scrollBy(0,l.getBoundingClientRect().bottom-(innerHeight-40)))(document.querySelector(${JSON.stringify(line)}))`);
-      await becomes(fromBottom, 40, `${device} ${width}: the message's line sits 40px above the window's bottom, too near it for the note below`);
+      // How far the line's bottom is above the window's, the same across two frames (null while it moves).
+      const fromBottom = () => p.evaluate(`new Promise(done=>{const l=document.querySelector(${JSON.stringify(line)}),gap=()=>innerHeight-l.getBoundingClientRect().bottom,first=gap();
+        requestAnimationFrame(()=>requestAnimationFrame(()=>done(Math.abs(gap()-first)<0.5?Math.round(first):null)))})`);
+      // 60px: under the line there is no room for the note (two lines or more at every width) with its 6px gap and 16px gutter.
+      await p.evaluate(`(l=>scrollBy(0,l.getBoundingClientRect().bottom-(innerHeight-60)))(document.querySelector(${JSON.stringify(line)}))`);
+      await becomes(async () => Math.abs((await fromBottom()) - 60) <= 2, true, `${device} ${width}: the message's line sits 60px above the window's bottom: ${await fromBottom()}`);
+      const placed = await fromBottom();
+      // Where a finger lands on its words, the page hit-tests them (else what is there, and the window's size, say why).
+      const aim = await p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(ids.two))}).getBoundingClientRect(),x=w.x+Math.min(12,w.width/2),y=w.y+Math.min(12,w.height/2),h=document.elementFromPoint(x,y);
+        return {hit:Boolean(h&&h.closest(${JSON.stringify(card(ids.two))})),x,y,innerHeight,viewport:visualViewport&&[visualViewport.height,visualViewport.scale,visualViewport.offsetTop],scrollWidth:document.documentElement.scrollWidth,at:h?h.tagName+'.'+h.className:null}})()`);
+      assert.equal(aim.hit, true, `${device} ${width}: the message's words are where a finger lands: ${JSON.stringify(aim)}`);
       if (device === 'phone') await tap(p, words(ids.two)); else await p.point(line, 'move');
       await until(async () => (await lit(p)).includes(ids.two) && (await bar(p)) !== null, `${device} ${width}: the message lights where it is, with its bar`);
       await press(p, device, '.message-bar [data-act=more]');
@@ -1388,7 +1397,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(async () => (await pressNote(p, line))?.text === HELD, `${device} ${width}: the press says why`);
       assert.deepEqual(await pressNote(p, line), { text: HELD, role: 'status', inside: true, side: 'over', inDialog: false, sideways: false },
         `${device} ${width}: said over the message whose ⋯ it was, inside the window`);
-      assert.equal(await fromBottom(), 40, `${device} ${width}: nothing scrolled`);
+      assert.equal(await fromBottom(), placed, `${device} ${width}: nothing scrolled`);
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-note-over-${device}-${width}-${theme}`); }
       await dossierTheme(p, 'light');
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: nothing is out`);
