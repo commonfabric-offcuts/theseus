@@ -770,6 +770,13 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       }
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
       await closeReader(p, device === 'laptop' ? 'laptop' : 'phone');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: opened in the Reader, the card reads as read`);
+      // A second correction that only adds words: nothing more is struck, and the card is new again, though this visit opened it.
+      const again = await control({ method: 'agent_edit', operation_id: `${read}-edit-2`, sender: 'aim-core', message_id: a.line, revision: 2, body: FIXED + ' Deployed.' });
+      assert.equal(again.status, 'committed', `${width}: the second edit commits`);
+      await becomes(() => strikeOf(p, words(a.line)).then(seen => seen && { text: seen.text, struck: seen.struck }), { text: STRUCK + ' Deployed.', struck: ['85'] },
+        `${width}: the added words show, and only what they had read and lost is struck`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as new again after the second edit`);
       assert.deepEqual(p.errors, []);
       await p.close();
       // The topic the person had not read: only the new words, once, nothing struck.

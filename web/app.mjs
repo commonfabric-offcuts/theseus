@@ -1602,8 +1602,8 @@ function repaintYours(ids) {
   paintCardReading(); menu?.paint();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
-// message's words, its excerpt cue, its folded line and its author line's
-// "Edited", and the reply line of each loaded reply to it; then the
+// message's words, its excerpt cue, its folded line, its author line's
+// "Edited" and whether it reads as read, and the reply line of each loaded reply to it; then the
 // conversation's own copy of each edited message (edits, loaded here or not)
 // and of each reply to one, and the stacks, whose rows read first lines.
 function repaintEdited(ids, edits) {
@@ -1629,8 +1629,11 @@ function repaintEdited(ids, edits) {
     paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
     cardScroll?.forget(id, card);
+    // An agent's edit of words the person had read makes the message new to them again (item 614): Core says so
+    // (unread), and opening it in the Reader earlier in this visit no longer reads it.
+    if (item.unread === true) openedIds.delete(id);
   }
-  stackMessages(); menu?.paint();
+  paintCardReading(); stackMessages(); menu?.paint();
   if (here?.page) paintConversationPage();
 }
 // The source a page's link names: that revision, or the page as it stands,
