@@ -1390,7 +1390,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const offered = await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Star for me');
       // What the page and Core said, where the star is not taken: the menu it was chosen from, the status line and the words said.
       await until(async () => (await actsOf(topic, ids.root))?.starred === true, `${device} ${width}: starred, in Core`).catch(async error => {
-        throw new Error(`${error.message}: menu ${JSON.stringify(offered)}, status ${JSON.stringify(await status())}, said ${JSON.stringify(await said(p))}, Core ${JSON.stringify(await actsOf(topic, ids.root))}`);
+        throw new Error(`${error.message}: menu ${JSON.stringify(offered)}, status ${JSON.stringify(await status())}, said ${JSON.stringify(await said(p))}, lit ${JSON.stringify(await lit(p))}, ids ${JSON.stringify(ids)}, Core ${JSON.stringify(await view('message_acts', { topic_id: topic }))}, stars ${JSON.stringify(await starsOf(facts.actor))}`);
       });
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
       // Show agent coordination off: the dossier is not drawn.
