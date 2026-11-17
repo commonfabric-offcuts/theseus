@@ -23,7 +23,7 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     await until(p, s => { const i = document.querySelector(s); return i && !i.hidden && i.complete && i.naturalWidth > 0; }, 'the thumbnail decoded', selector, 15000);
   };
   const openImage = async (p, selector, key = false) => {
-    const src = await p.locator(selector).first().getAttribute('src');
+    const src = await p.locator(selector).first().evaluate(el => (el.matches('img') ? el : el.parentElement.querySelector('img.image-thumb')).src);
     const before = p.url(), tabs = p.ctx.pages().length;
     const popup = p.waitForEvent('popup', { timeout: 2500 });
     // Handle rejection immediately while a native action is pending.
