@@ -651,7 +651,7 @@ class TrainDeployed(Repositories, deploys.Restarting):
         self.assertNotIn("release_check", written["measurements"])
         self.assertEqual(self.records(), ["00-plan", "00-train", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify", "11-release", "release-20"], "the live-instance steps still run")
+                                          "10-verify", "11-release", "12-release-branch", "release-20"], "the live-instance steps still run")
 
 
 if __name__ == "__main__":

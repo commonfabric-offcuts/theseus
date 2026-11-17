@@ -880,7 +880,7 @@ class FullDeploy(Restarting):
             self.fail("the deploy did not complete: %r" % error)
         self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify", "11-release", "release-20"])
+                                          "10-verify", "11-release", "12-release-branch", "release-20"])
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
         # The backup reads the server's profile, the one bound to the database.
         backup = host.ran("-c")[0][-1]

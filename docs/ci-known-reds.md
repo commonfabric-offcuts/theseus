@@ -317,3 +317,19 @@ native-inline and one of native-webkit-colors. The native-webkit-notebook case
 two different stages and is not on it, nor are the 82-only reds. Read over
 train 20's push run, the list holds exactly those 18 failures and leaves its
 other 9 red.
+
+## Scoped pull requests (item 664)
+
+The aggregate may carry a `scoped` record for a small-fix pull request. The
+validator recomputes the choice using `release_check.scope` from the exact
+event base to the tested commit, and applies the deploy's `small_fix_problems`.
+Only unchosen native modes may be absent. The chosen modes run whole, once;
+units, deploy refusals and wake replay remain mandatory. Both shard plan and
+executed coverage must equal that selection. The full required inventory stays
+in summary and provenance; a scoped aggregate cannot stand for a full run.
+Pushes cannot carry scope. Failed chosen modes retain their raw evidence and
+the existing policy classification. Unrun modes are neither passed nor healed.
+
+The release-89 tree contains Checks but no Verdict workflow. The protected
+controller must use this revised base validator before it judges scoped PRs;
+this change does not authorize candidate code as a trusted validator.
