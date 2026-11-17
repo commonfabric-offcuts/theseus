@@ -7,7 +7,7 @@ import { teamBarChecks } from './team_bar_native.mjs';
 // Tell, the Reader that starts no topic from a whisper, New message, a phone's
 // width, and light and dark.
 export async function whispersChecks({ check, page, until, control, view, facts, replace, shot }) {
-  await teamBarChecks({ check, page, until, shot, control, view, facts, prefix: 'whispers', onlySpelling: true });
+  await teamBarChecks({ check, page, until, shot, control, view, facts, prefix: 'whispers' });
   const agent = facts.agent;
   const quiet = async (p, expression) => { try { return await p.evaluate(expression); } catch { return false; } };
   // Each choice is a chip tapped once; aria-pressed says which is on.
