@@ -7152,6 +7152,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
       const deep = `unread-deep-${device}`, calm = `unread-calm-${device}`, touch = device !== 'laptop';
       const made = await control({ method: 'navigation_topics', topics: [{ id: calm, title: 'Greenhouse ' + device }, { id: deep, title: 'Spring beds ' + device }] });
+      // The calm topic: aim-ux's word to everyone, read by the person, then a message to aim-ux by name, waiting for aim-ux alone.
+      await control({ method: 'agent_message', operation_id: calm + '-ux', topic_id: calm, source: 'topic', sender: 'aim-ux', join: true, whole_topic: true, body: 'Hose parts ordered.', read: true });
       await control({ method: 'agent_message', operation_id: calm + '-theirs', topic_id: calm, source: 'topic', sender: other, join: true, addressees: ['aim-ux'], body: 'For aim-ux: the hose is fixed.' });
       const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The tomatoes go in the south bed, by the fence.' });
       const p = await open(`${deep}-press`, device, calm, made[0].result.message_id);
