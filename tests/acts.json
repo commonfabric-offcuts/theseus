@@ -7126,7 +7126,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    if (this.keyed) revealSelection(row);",
      "    row.scrollIntoView({ block: 'nearest' });"
     ]
    ],
@@ -7171,7 +7171,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });",
+     "    if (this.keyed) revealSelection(row);",
      "    revealSelection(row);"
     ]
    ],
@@ -26990,6 +26990,36 @@
    ],
    "check": {
     "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 644,
+   "act": "Opening, using and closing a card composer keeps the page at its place",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "return () => { for (const [node, top] of places) if (node.scrollTop !== top) node.scrollTop = top; };",
+     "return () => {};"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "item 644"
+   }
+  },
+  {
+   "item": 668,
+   "act": "Quoting on a laptop opens a stacked reply wide and a phone stays stacked",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (!this.narrow.matches && this.layout.mode !== 'wide') {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 644 quote"
    }
   }
  ]

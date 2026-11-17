@@ -223,7 +223,10 @@ sheet's), not measured in script.
   does not. There is no divider; the reply is as tall as its writing. The
   who and + panels are popovers over the bottom of the message, so the
   message does not move under them.
-- **Wide**: the reply is a column beside the message, with its divider and
+- **Wide**: quoting text on a laptop opens the reply in this layout, including
+  from Stacked (item 668). An already wide reply stays wide; a phone remains
+  stacked. With nothing to quote, or a reply that cannot be edited, the layout
+  stays as it was. The reply is a column beside the message, with its divider and
   share. The who panel opens inline in the column, and the hint (Return for a
   new line · ⌘ Return to send) has a line of its own under the field.
 - **Phone**: the Reader follows the visible part of the window
@@ -396,7 +399,7 @@ press. Each time what showed of the words moves only as far as the reply or
 keyboard covers it, within two pixels. A line quoted from above what shows
 comes into sight at its top, and words taller than the screen quoted from
 above it come into sight with their end at its bottom.
-"quoting: one who has not scrolled keeps the quoted words in sight as the
+"stacked chosen again after quoting: one who has not scrolled keeps the quoted words in sight as the
 reply grows, and a scroll the person makes …" (1280×800 stacked, both
 engines) quotes words wholly inside the message's room, just above where the
 reply opens, and types a line: they stay above the reply (a line the room's

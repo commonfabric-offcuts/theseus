@@ -905,38 +905,70 @@ export async function notebookChecks({ check, page, until, control, view, facts,
 
   // Item 644: a click is not a request to reveal the whole card. In particular a long
   // card may already extend above and below the viewport when its composer opens.
-  for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) {
-    await check(`notebook item 644 ${width} ${theme}: opening, using and closing a card composer holds the page`, async () => {
-      const id = `item-644-card-${width}-${theme}`;
-      const body = '## Long card\n\n' + Array.from({length: 36}, (_, i) => `Line ${i + 1} stays where it was.`).join('\n\n') + '\n\n## Next\n\nUntouched.\n';
+  for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) for (const state of ['normal', 'saving', 'refused', 'read-only', 'empty', 'error']) {
+    await check(`notebook item 644 ${width} ${theme} ${state}: opening, using and closing a card composer holds the page`, async () => {
+      const id = `item-644-card-${width}-${theme}-${state}`;
+      const body = state === 'empty' ? '## Empty\n' : '## Long card\n\n' + Array.from({length: 36}, (_, i) => `Line ${i + 1} stays where it was.`).join('\n\n') + '\n\n## Next\n\nUntouched.\n';
       assert.equal((await control({method: 'outcome_reference', operation_id: id, item_id: id, title: 'Card composer', body})).status, 'committed');
       const p = await page(id, null, true, {url: `${facts.origin}/?cards=${id}`, beforeNavigate: async q => {
+        await q.send('Page.addScriptToEvaluateOnNewDocument', {source: `
+          const state=${JSON.stringify(state)}, originalFetch=fetch.bind(globalThis);
+          globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
+            if(e?.kind==='memory.revise') {
+              if(state==='saving')await new Promise(done=>window.item644Release=done);
+              if(state==='error')throw Error('Item 644 isolated network refusal');
+              if(state==='refused')return new Response(JSON.stringify({instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',recorded:false,error:{code:'FORBIDDEN',message:'Item 644 isolated permission refusal'}}),{headers:{'content-type':'application/json'}});
+            }
+            const response=await originalFetch(...args);
+            if(state==='read-only'&&e?.name==='memory_current'){const value=await response.json();value.reader_may_write=false;return new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});}
+            return response;
+          };`});
         await q.send('Emulation.setDeviceMetricsOverride', {width, height: 800, deviceScaleFactor: 1, mobile: width < 760});
         await q.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: theme}]});
         if (width < 760) await q.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1});
       }});
-      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-words')?.textContent)"), 'the card shows');
+      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-card'))"), 'the card shows');
       // Preparation only: put the card's title just outside the viewport, its words still under the pointer.
-      await p.evaluate("(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+40,behavior:'instant'});return true})()");
-      await shot(p, `item-644-${width}-${theme}-card-before`);
+      await p.evaluate(`(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+${state === 'empty' ? -60 : 40},behavior:'instant'});return true})()`);
+      await shot(p, `item-644-${width}-${theme}-${state}-card-before`);
       await p.evaluate("(()=>{window.item644={start:scrollY,frames:[],running:true};const read=()=>{item644.frames.push(scrollY);if(item644.running)requestAnimationFrame(read)};read();return true})()");
-      const at = await p.evaluate("(()=>{const r=document.querySelector('#deck-page .deck-words').getBoundingClientRect();return {x:r.left+30,y:Math.max(60,r.top+20)}})()");
+      await p.evaluate("(document.addEventListener('click',()=>window.item644Pressed=true,{once:true}),true)");
+      const at = await p.evaluate("(()=>{const r=document.querySelector('#deck-page .deck-card').getBoundingClientRect();return {x:r.left+30,y:Math.max(60,r.top+20)}})()");
       if (width < 760) {
         await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[at]});
         await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
       } else for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', {type,...at,button:'left',clickCount:1});
+      await until(() => p.evaluate('window.item644Pressed===true'), 'the native press arrived');
+      if (state === 'read-only') {
+        assert.equal(await p.evaluate("Boolean(document.querySelector('#deck-page .deck-writing'))"), false, 'a read-only card opens no composer');
+        assert.equal((await view('memory_current', {item_id:id})).body, body, 'read-only makes no revision');
+        await shot(p, `item-644-${width}-${theme}-${state}-card-after`);
+        const trail = await p.evaluate('(item644.running=false,item644)');
+        assert.ok(trail.frames.every(y => Math.abs(y-trail.start)<=1), JSON.stringify(trail));
+        assert.deepEqual(p.errors, []); await p.close(); return;
+      }
       await until(() => p.evaluate("document.activeElement.matches('#deck-page .deck-writing textarea')"), 'the card opens under the native press');
-      await shot(p, `item-644-${width}-${theme}-card-writing`);
+      await shot(p, `item-644-${width}-${theme}-${state}-card-writing`);
       await p.send('Input.insertText', {text: 'Kept. '});
-      await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept. '), 'the words save without leaving the card');
-      await shot(p, `item-644-${width}-${theme}-card-saved`);
+      if (state === 'saving') {
+        await until(() => p.evaluate("typeof window.item644Release==='function' && document.querySelector('.deck-status').textContent.includes('Saving')"), 'saving is visibly busy');
+        await shot(p, `item-644-${width}-${theme}-${state}-card-busy`);
+        await p.evaluate('(item644Release(),true)');
+      }
+      if (state === 'refused' || state === 'error') {
+        await until(() => p.evaluate("Boolean(document.querySelector('.deck-status .deck-again'))"), 'the refusal offers recovery');
+        assert.equal((await view('memory_current', {item_id:id})).body, body, 'refused writing never becomes a recorded revision');
+        assert.ok(await p.evaluate("document.querySelector('#deck-page .deck-writing textarea').value.includes('Kept. ')"), 'refusal keeps the words');
+        if (state === 'refused') assert.equal(await p.evaluate("document.querySelectorAll('.deck-status button').length"), 2, 'both recovery controls show');
+      } else await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept. '), 'the words save without leaving the card');
+      await shot(p, `item-644-${width}-${theme}-${state}-card-saved`);
       // Escape folds this card, not the page, and keeps its exact writing.
       await p.key('Escape');
       await until(() => p.evaluate("!document.querySelector('#deck-page .deck-writing')"), 'the card composer closes');
-      await shot(p, `item-644-${width}-${theme}-card-after`);
+      await shot(p, `item-644-${width}-${theme}-${state}-card-after`);
       const trail = await p.evaluate('(item644.running=false,item644)');
       assert.ok(trail.frames.every(y => Math.abs(y-trail.start) <= 1), `the page holds on every frame: ${JSON.stringify(trail)}`);
-      assert.ok((await view('memory_current', {item_id:id})).body.includes('Untouched.'), 'another card never changes');
+      if (state !== 'empty') assert.ok((await view('memory_current', {item_id:id})).body.includes('Untouched.'), 'another card never changes');
       assert.deepEqual(p.errors, []); await p.close();
     });
   }

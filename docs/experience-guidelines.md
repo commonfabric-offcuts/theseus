@@ -154,6 +154,13 @@ Undo puts the reply back in doubt ([replies-in-doubt.md](replies-in-doubt.md)).
 
 ## Your place holds
 
+Opening, using and closing a card composer keeps the page at its place
+(item 644). Quoting on a laptop opens a stacked reply wide (item 668);
+a phone stays stacked. `tests/notebook_pages_native.mjs` (`native-notebook`,
+`native-webkit-notebook`) and `tests/reader_compose_native.mjs` (`native-compose`,
+both engines), the cases named "item 644", hold these acts at 320, 375 and
+390 pixels and on a laptop, light and dark.
+
 A message arriving never moves what is being read or written, and nor does
 quoting from it, nor typing in the reply. A quote keeps its words in sight
 until you scroll the message yourself, however you scroll it, and keeps the

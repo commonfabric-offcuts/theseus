@@ -630,6 +630,10 @@ export class Reader {
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
+    // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
+    if (!this.narrow.matches && this.layout.mode !== 'wide') {
+      this.layout.setMode('wide'); this.applyLayout();
+    }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
@@ -639,7 +643,7 @@ export class Reader {
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
     window.getSelection()?.removeAllRanges();
-    this.field.focus();
+    this.field.focus({ preventScroll: true });
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);
     // The cursor sits after the quote and its blank line, ready to type, and
