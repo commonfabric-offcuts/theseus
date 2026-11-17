@@ -971,18 +971,19 @@ export class Reader {
 
   // A message's heading names the dossier a reply there goes into (item 561),
   // as its tab does (callbacks.dossierName), or else its topic; a press on it
-  // goes back to that topic, as the arrow beside it does. Painted again when
+  // goes back to that dossier, as the arrow beside it does. Painted again when
   // the name changes, it keeps its button, so a focus on it stays.
   paintTitle(source, topics = this.topics ?? []) {
     const title = this.$('reader-title');
     const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
     if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
-    const words = this.callbacks.dossierName?.(source) || topic.title;
+    const dossier = this.callbacks.dossierName?.(source), words = dossier || topic.title;
     let open = title.firstElementChild;
     if (!open?.matches('.reader-topic') || title.childNodes.length !== 1) {
       open = node('button', words, 'reader-topic'); open.type = 'button'; open.title = 'Open this topic';
       title.replaceChildren(open);
     } else if (open.textContent !== words) open.textContent = words;
+    open.title = dossier ? 'Open this dossier' : 'Open this topic';
     open.onclick = () => this.close('parent');
   }
 

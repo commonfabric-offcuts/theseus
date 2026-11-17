@@ -171,8 +171,11 @@ yet.
 
 - **Starred** is the reader's own stars, shown to no one else: this topic's
   (on a Conversation, this outcome's) first, then the rest under Elsewhere.
-  A press lands on the message, opening its stack; Unstar beside each takes
-  the star off (docs/reply-stacks.md).
+  A press opens the message in the composer, titled with its dossier's name;
+  pressing that title returns to the dossier, as when the message is opened
+  from the dossier itself (item 655; docs/reader.md). Another topic on screen
+  does not change its name or its way back. Unstar beside each takes the star
+  off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view, and the outcome's Build topics, each once: under
   Now each topic a piece is being built in, one row for it however many

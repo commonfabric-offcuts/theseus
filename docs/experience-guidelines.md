@@ -396,3 +396,19 @@ tried. Tony tries a preview from the one link he is given.
 
 - No automated check. Held by the release and preview tools, which each hand out
   one address.
+
+## A starred reply keeps its dossier
+
+Opening a starred message shows its dossier name in the composer; pressing
+that title returns to that dossier. Opening the same message from its dossier
+agrees (item 655).
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): the
+  "reading item 655" cases use two differently named dossiers in one topic,
+  the starred reply in the second outside the loaded page, and another topic
+  on screen; at 320, 375, 390px and laptop, light and dark. The direct-link
+  cases isolate the title and return from rail navigation. A return changes
+  neither the star nor either dossier's position.
+- `tests/ui_starred_dossier.test.mjs`: a valid cross-topic Starred route and
+  a bounded return that preserves the paging gap, then merges an overlapping
+  older page without repeating messages.

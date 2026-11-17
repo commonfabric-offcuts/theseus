@@ -1,3 +1,4 @@
+import { messagePreview } from './message-preview.mjs';
 import { mountFeedFences } from './feed-fence-copy.mjs';
 import { keepLineRoom } from './line-room.mjs';
 import { Api, notAnswering, unreached, answeredSince, heard, follow, notTaken, NOT_TAKEN } from './api.mjs';
@@ -551,6 +552,21 @@ async function present(presentation) {
   else {
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
+    // A message opened alone still belongs to its dossier. Read only its position and, for an
+    // unnamed dossier, its first message; unrelated topic history stays unloaded (item 655).
+    if (!presentation.sourceUnavailable && presentation.source.source_ref.kind === 'message' &&
+        presentation.source.topic_id === topic.id && !views.messages.has(presentation.source.source_ref.id)) {
+      const source = presentation.source, id = source.source_ref.id;
+      const position = checkedView(await api.view('stack_positions', { topic_id: topic.id, message_ids: [id] }, { readClass: 'foreground' }), bootstrap.instance_id).items.find(item => item.message_id === id)?.stack_position;
+      if (!registry.isCurrent(presentation)) return;
+      let name = position?.name?.text || null;
+      if (!name && position?.root_id && position.root_id !== id) {
+        const root = checkedView(await api.view('topic_messages', { topic_id: topic.id, message_ids: [position.root_id] }, { readClass: 'foreground' }), bootstrap.instance_id).items.find(item => item.id === position.root_id);
+        if (!registry.isCurrent(presentation)) return;
+        if (root) name = messagePreview(root);
+      }
+      presentation.dossierName = name;
+    }
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
@@ -1283,12 +1299,13 @@ function paintReaderAside() {
   button.setAttribute('aria-label', words); button.title = words;
 }
 // The Reader's title names the dossier its message is in (item 561), as the
-// dossier's tab does (StackFeed.dossierName): only for a message of this topic
-// the page's stacks hold; another topic's message, a Notebook page and a message
-// opened alone keep their own titles. Painted again when the stacks are.
+// dossier's tab does (StackFeed.dossierName), including a message opened alone
+// from Starred. Its presentation keeps the scoped name read at opening.
+// A Notebook page keeps its own title. Painted again when the stacks are.
 function readerDossierName(source) {
   const ref = source?.source_ref;
-  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id
+    ? stackFeed.dossierName(ref.id) || (registry.current?.source === source ? registry.current.dossierName : null) : null;
 }
 function paintReaderTitle() {
   const p = registry?.current;
@@ -2165,7 +2182,25 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
+    close: async (_sessions, reason) => {
+      const p = reader.presentation;
+      try {
+        if (!await registry.close(p, { explicit: true })) return false;
+        if (reason === 'parent' && !p.sourceUnavailable && p.source.source_ref.kind === 'message' && p.source.topic_id === topic.id) {
+          const source = p.source, id = source.source_ref.id, accessEpoch = listAccessEpoch;
+          if (!views.messages.has(id)) {
+            const foreground = registry.cleanup.foreground();
+            try {
+              const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor: source.seq + 1, limit: 30 }, options)), bootstrap.instance_id);
+              if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
+              views.messagesPage(page, { anchored: true, cursor: source.seq + 1 });
+            } finally { foreground.release(); }
+          }
+          landOn(id, { full: true })?.focus({ preventScroll: true });
+        }
+        return true;
+      } catch (error) { if (reader.dialog.open) reader.notice(error); else status(error); return false; }
+    },
     step: async direction => {
       const presentation = registry.current, neighbors = onPage(presentation, presentation.core ?? await registry.neighbors(presentation));
       if (!registry.isCurrent(presentation)) return;

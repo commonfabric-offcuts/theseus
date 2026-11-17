@@ -23817,8 +23817,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "const words = this.callbacks.dossierName?.(source) || topic.title;",
-     "const words = topic.title;"
+     "const dossier = this.callbacks.dossierName?.(source), words = dossier || topic.title;",
+     "const dossier = this.callbacks.dossierName?.(source), words = topic.title;"
     ]
    ],
    "check": {
@@ -26990,6 +26990,64 @@
    ],
    "check": {
     "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Starred opens its message across topics with a valid message destination",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "message: star.message_id }, firstWords",
+     "message: star.message_id, land: true }, firstWords"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unloaded starred reply names its own dossier in the composer",
+   "break": [
+    [
+     "web/app.mjs",
+     "presentation.dossierName = name;",
+     "presentation.dossierName = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 .*name at"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Pressing the composer title reveals the dossier of the starred reply",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (reason === 'parent' && !p.sourceUnavailable",
+     "if (false && !p.sourceUnavailable"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 .*return at"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Returning to an old dossier preserves the frontier for unrelated unloaded history",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (!live && !anchored) this.olderCursor = answer.next_cursor;",
+     "if (!live) this.olderCursor = answer.next_cursor;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
    }
   }
  ]

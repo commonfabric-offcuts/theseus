@@ -19,8 +19,13 @@ nobody has named yet its first line, as its tab shows that. A message of its
 own, which nobody answered or named, has the topic's name. A name given while
 the Reader is open shows at once. However long, the title keeps one line, cut
 off with an ellipsis, so the star, the archive button and ✕ keep their place;
-a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
-`Reader.paintTitle`).
+a press on it goes back to that dossier, as ← does (`StackFeed.dossierName`,
+`Reader.paintTitle`). Opening a reply from Starred has the same title and way
+back, including when another topic was on screen and the dossier is older
+than the loaded messages (item 655). Its name is read by message ID; pressing
+the title loads one page around the reply and reveals it in its dossier.
+The ordinary More messages frontier stays where it was, so the messages
+between that page and the newest ones are still reachable.
 
 A star beside the message's title stars it for you, and pressed again
 unstars it: outline until starred, filled once starred, "Star for me" or
