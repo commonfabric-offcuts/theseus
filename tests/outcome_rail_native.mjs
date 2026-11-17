@@ -784,14 +784,21 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const p = await open(tag, '/?topic=' + b, size, theme);
       const ids = async () => (await outline(p)).outcomes[oid]?.topics.map(row => row.id);
       const show = async () => {
-        await settled(p, tag + ': reads landed');
+        await until(() => p.evaluate("document.body?.dataset.ready==='true'").catch(() => false), tag + ': page is ready');
         if (SIZES[size].mobile && !(await drawer(p)).open) {
           await tap(p, '#rail-open');
           await until(async () => (await drawer(p)).open, tag + ': drawer opens');
         }
+        await outlineAtRest(p, tag);
+      };
+      const reload = async why => {
+        const before = await loaded(p);
+        await p.send('Page.reload');
+        await until(async () => (await loaded(p).catch(() => before)) !== before, why + ': new document');
+        await show();
       };
       const expect = async (wanted, why) => {
-        await settled(p, tag + ': ' + why);
+        await outlineAtRest(p, tag + ': ' + why);
         assert.deepEqual(await ids(), wanted, why);
       };
       try {
@@ -815,7 +822,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
         await shot(p, tag + '-after-activity');
         await expect(wanted, 'a new message changes the count and never moves a topic');
-        await reloaded(p, tag + ': reopen the page');
+        await reload(tag + ': reopen the page');
         await show();
         await expect(wanted, 'the same topic order survives a reload');
         // Negative: the reader can still move a topic, with the native keys, on phones too.
@@ -825,7 +832,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await p.key('ArrowUp', 4);
         await until(async () => JSON.stringify(await ids()) === JSON.stringify(movedOrder), tag + ': own reorder moves the topic');
         await until(async () => JSON.stringify((await control({ method: 'order_as', workspace_id: oid })).ids) === JSON.stringify(movedOrder), tag + ': Core records the move');
-        await reloaded(p, tag + ': reopen after own move');
+        await reload(tag + ': reopen after own move');
         await show();
         await expect(movedOrder, 'the reader’s move holds after reload');
         await shot(p, tag + '-own-move');
