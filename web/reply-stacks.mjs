@@ -454,7 +454,7 @@ function paintFoldedNames(list, messages, state) {
       const card = cardIn(entry), author = card.querySelector(':scope > .message-folded > .folded-author');
       const item = messages.get(entry.dataset.id);
       const folded = item && !card.hidden && state.folded.has(item.id) && !state.earlierRows.has(item.id);
-      if (author) author.classList.toggle('sr-only', Boolean(folded && previous === item.author_id));
+      if (author) author.classList.toggle('sr-only', Boolean(folded && previous !== item.author_id));
       previous = folded ? item.author_id : null;
     }
   };
