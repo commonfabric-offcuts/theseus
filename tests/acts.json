@@ -26538,6 +26538,20 @@
    "check": {
     "node": "tests/ui_unread_landing.test.mjs"
    }
+  },
+  {
+   "item": 613,
+   "act": "Pagination toward an unread mark reports only the final reading place, leaving a newer unread delivery for the next press",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (unreadLandingBusy) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
   }
  ]
 }

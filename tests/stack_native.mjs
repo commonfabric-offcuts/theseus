@@ -7237,7 +7237,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));
       await becomes(() => unreadLook(p, reminder), unreadOn, 'the first press shows the older marked message whole and plain');
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-marked-${device}-${theme}`); }
-      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread?.id === ids.target, 'B1: reading the marked message clears it and advances to the pending delivery');
+      try {
+        await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread?.id === ids.target, 'B1: reading the marked message clears it and advances to the pending delivery');
+      } finally {
+        observations.push({ name: 'unread marked first result', engine, device, reminder, target: ids.target,
+          oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread,
+          count: (await view('workspace_topics', { workspace_id: 'w1' })).items.find(item => item.id === deep)?.unread });
+      }
       await unreadDrawer(p, device);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
       await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));

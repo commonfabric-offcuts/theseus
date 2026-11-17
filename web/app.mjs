@@ -509,6 +509,7 @@ function changed(editor) {
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
 function noteRead() {
+  if (unreadLandingBusy) return;
   if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
   const source = registry.current?.source;
@@ -1697,26 +1698,33 @@ async function landOnUnread() {
   if (shell.drawer?.isOpen()) shell.drawer.close();
   return landUnreadMessage(views.oldestUnread);
 }
-let unreadLanding = 0;
+let unreadLanding = 0, unreadLandingBusy = false;
 // Both explicit ways to read the oldest unread message earn the same view
 // and the same revision-fenced mark clear. Capture before any page loads:
 // another device renewing the mark while they run must keep its newer mark.
 async function landUnreadMessage(wanted) {
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
   const current = () => request === unreadLanding && !registry.disposed;
-  const found = await loadUntil(() => wanted);
-  if (!current()) return;
-  if (!found) return;
-  const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
-  if (root) await loadUntil(() => ({ id: root }));
-  if (!current()) return;
-  const entry = entries($('messages')).find(child => child.dataset.id === id);
-  if (!entry) return;
-  reveal(entry, { full: true, open: true });
-  const card = opened(entry);
-  revealSelection(card);
-  card.focus({ preventScroll: true });
-  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));
+  // Pagination can briefly put another unread card on screen on the way to
+  // this one. Those transient positions are not a person's reading place.
+  unreadLandingBusy = true;
+  try {
+    const found = await loadUntil(() => wanted);
+    if (!current()) return;
+    if (!found) return;
+    const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
+    if (root) await loadUntil(() => ({ id: root }));
+    if (!current()) return;
+    const entry = entries($('messages')).find(child => child.dataset.id === id);
+    if (!entry) return;
+    reveal(entry, { full: true, open: true });
+    const card = opened(entry);
+    revealSelection(card);
+    card.focus({ preventScroll: true });
+    marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));
+  } finally {
+    if (request === unreadLanding) { unreadLandingBusy = false; if (!registry.disposed) noteRead(); }
+  }
 }
 // Where the oldest unread message is, read again after each commit: reading,
 // marks and replies move it without changing the topic. During a visit the
