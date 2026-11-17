@@ -27003,8 +27003,7 @@
     ]
    ],
    "check": {
-    "native": "notebook",
-    "case": "item 644"
+    "node": "tests/ui_composer_place.test.mjs"
    }
   },
   {

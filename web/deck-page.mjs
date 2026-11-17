@@ -532,7 +532,7 @@ export class DeckPage {
     const row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
     if (!row) return;
     if (this.phone) { this.list.scrollTo({ left: [...this.list.querySelectorAll('.deck-card:not([hidden])')].indexOf(row) * this.list.clientWidth }); return; }
-    if (this.keyed) revealSelection(row);
+    if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });
     if (focus) row.focus({ preventScroll: true });
   }
 
@@ -599,7 +599,6 @@ export class DeckPage {
     this.open({ text: '', after: last >= 0 ? cardText(this.deck.cards[last]) : null, depth: card?.depth ?? 0, near: last, fresh: true });
   }
   open(editing) {
-    const putBack = !this.keyed ? this.holdPage() : () => {};
     if (this.editing) this.finish();
     this.selected = new Set(); this.anchor = null;
     const field = this.node('textarea', 'deck-editor');
@@ -625,7 +624,6 @@ export class DeckPage {
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
     if (keyed && !this.phone) revealSelection(field.closest('li'));
-    putBack();
   }
   // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
   // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
@@ -678,9 +676,6 @@ export class DeckPage {
   finish() {
     const editing = this.editing;
     if (!editing) return;
-    // Finishing writing is not navigation. Subsequent move/new-card acts keep their own key.
-    const keyed = this.keyed, putBack = this.holdPage();
-    this.keyed = false;
     this.editing = null;
     const to = this.boxText(editing);
     let made = false;
@@ -696,7 +691,6 @@ export class DeckPage {
     }
     if (!made) this.paint();
     this.show(true);
-    putBack(); this.keyed = keyed;
   }
   // A card's speech bubbles: one for each of its reply stacks, which opens it, saying Sent until its first reply
   // and then counting them, and marked only while one waits unread; or, on a card with none, one that asks an
@@ -852,17 +846,8 @@ export class DeckPage {
     if (field.scrollHeight > field.clientHeight) field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
   }
 
-  // A redraw can temporarily shrink the page or give WebKit a new caret. Keep
-  // every vertical scroll owner, including a sheet and the document, in place.
-  holdPage() {
-    const places = [];
-    for (let node = this.host; node; node = node.parentElement) places.push([node, node.scrollTop]);
-    return () => { for (const [node, top] of places) if (node.scrollTop !== top) node.scrollTop = top; };
-  }
-
   paint() {
     if (deferFencePaint(this.host, () => this.paint())) return;
-    const putBack = !this.keyed ? this.holdPage() : () => {};
     const { cards, opening } = this.deck, editing = this.editing, asking = this.asking;
     this.opening.hidden = !/\S/.test(opening);
     if (!this.opening.hidden) formatWords(this.opening, opening.trim(), { copyFences: true });
@@ -908,8 +893,6 @@ export class DeckPage {
       // The box stands in its card's place at its card's depth, wherever an act or a read of the page has put it.
       if (!editing.fresh && at >= 0) Object.assign(editing, { near: at, depth: cards[at].depth });
       holder.style.setProperty('--depth', String(editing.depth ?? 0));
-      // Replacing a phone card with its box must not shorten the document under it.
-      if (this.phone && editing.height) holder.style.minHeight = `${editing.height}px`;
       // A card with children keeps its chevron, laid out in a line of the title's own, so it stands where it showed
       // and the title starts after it; a card with words keeps them on the lines they showed on. A press around the
       // box leaves the writing its focus.
@@ -945,12 +928,11 @@ export class DeckPage {
       this.fit(editing.field);
       // The card being written, moved by a key on a laptop, keeps that room too (open() reveals a card a key opens).
       if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));
-      // Pointer opening and ordinary redraws hold their place; they reveal no card.
+      else editing.field.closest('li').scrollIntoView({ block: 'nearest', inline: 'center' });
     } else if (asking && asking.form.contains(focused)) {
       focused.focus({ preventScroll: true });
       if (focused === asking.field) asking.field.setSelectionRange(...asked);
       this.fit(asking.field);
     } else if (!asking) this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
-    putBack();
   }
 }

@@ -252,12 +252,6 @@ export class NotebookPage extends DeckPage {
   writingChanged() {
     const w=this.writing;
     if(!w)return;
-    const putBack = this.holdPage();
-    // A permission refusal can remove the writing controls above a card. Keep
-    // the page's extent while those controls are away, so its bottom cannot
-    // pull the person up as they finish the retained writing.
-    if (this.editing && !this.readOnly && (w.readOnly || w.reading) && !this.host.closest('dialog[open]')) this.host.style.minHeight = `${this.host.getBoundingClientRect().height}px`;
-    if (!w.readOnly && !w.reading) this.host.style.removeProperty('min-height');
     // A person Core does not let write the page reads it: no writing controls, and nothing to pause.
     this.readOnly=w.readOnly||w.reading; this.text.readOnly=this.readOnly;
     if(this.editing)this.editing.field.readOnly=this.readOnly;
@@ -301,7 +295,6 @@ export class NotebookPage extends DeckPage {
       this.status.append(discard);
     }
     this.revisionShown();
-    putBack();
   }
   async captureImage(file) {
     try {this.imageError=null;await this.images.capture(file);}

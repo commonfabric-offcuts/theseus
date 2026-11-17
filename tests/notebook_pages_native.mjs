@@ -951,7 +951,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       }
       await until(() => evaluate("document.activeElement.matches('#deck-page .deck-writing textarea')"), 'the card opens under the native press');
       await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-writing`);
-      await p.send('Input.insertText', {text: 'Kept. '});
+      await p.send('Input.insertText', {text: 'Kept words'});
       if (state === 'saving') {
         await until(() => evaluate("typeof window.item644Release==='function' && document.querySelector('.deck-status').textContent.includes('Saving')"), 'saving is visibly busy');
         await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-busy`);
@@ -960,9 +960,9 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       if (state === 'refused' || state === 'error') {
         await until(() => evaluate("Boolean(document.querySelector('.deck-status .deck-again'))"), 'the refusal offers recovery');
         assert.equal((await view('memory_current', {item_id:id})).body, body, 'refused writing never becomes a recorded revision');
-        assert.ok(await evaluate("document.querySelector('#deck-page .deck-writing textarea').value.includes('Kept. ')"), 'refusal keeps the words');
+        assert.ok(await evaluate("document.querySelector('#deck-page .deck-writing textarea').value.includes('Kept words')"), 'refusal keeps the words');
         if (state === 'refused') assert.equal(await evaluate("document.querySelectorAll('.deck-status button').length"), 2, 'both recovery controls show');
-      } else await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept. '), 'the words save without leaving the card');
+      } else await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept words'), 'the words save without leaving the card');
       await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-saved`);
       // Escape folds this card, not the page, and keeps its exact writing.
       await p.key('Escape');
