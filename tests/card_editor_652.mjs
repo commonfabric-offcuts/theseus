@@ -12,7 +12,7 @@ const BODY = '## Plan\n\nShip the exact words.\n\n### Child\n\nKeep these child 
 const EDIT = 'Plan\nShip the exact words. Edited on this device.';
 const EXPECTED = BODY.replace('Ship the exact words.', 'Ship the exact words. Edited on this device.');
 const STATES = ['normal', 'writing', 'empty', 'busy', 'refused retry', 'refused discard', 'read only', 'save error', 'read error', 'conflict mine', 'conflict saved', 'authority refusal', 'device error'];
-const INPUTS = ['web/aim.css', 'web/deck-page.mjs', 'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'tests/reader_compose_native.mjs', 'tests/card_editor_652.mjs'];
+const INPUTS = ['web/aim.css', 'web/deck-page.mjs', 'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'tests/reader_compose_native.mjs', 'tests/card_editor_652.mjs', 'tests/ui_card_editor_652.test.mjs', 'tests/notebook_sheet_native.mjs', 'tests/notebook_card_images_native.mjs', 'tests/fixtures/ui_http.py', 'aim_next/web_build.py'];
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export async function cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root }) {
@@ -50,8 +50,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         const q = route.request().postDataJSON();
         if (q.name === 'memory_current' && q.args?.item_id === id) {
           if (state === 'read error') return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: 'Page read unavailable' } } });
-          if (surface === 'sheet') await openingRead;
-      if (state === 'read only') {
+          if (state === 'read only') {
             const response = await route.fetch(), value = await response.json();
             return route.fulfill({ response, json: { ...value, reader_may_write: false } });
           }
@@ -86,7 +85,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         return;
       }
       await until(p, h => Boolean(document.querySelector(h)?.querySelector('.deck-card,.deck-empty')), 'cards or empty page', host);
-      if (surface === 'sheet') await openingRead;
+      if (surface === 'sheet') await Promise.race([openingRead, new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('The sheet never recorded its opening read')), 15000); timer.unref(); })]);
       if (state === 'read only') {
         await until(p, s => document.querySelector(s)?.textContent.includes('To read'), 'read-only sign', status);
         await press(p, `${host} .deck-card .deck-title`);
@@ -104,14 +103,16 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         else if (state === 'save error' || state.startsWith('conflict') || state === 'device error') await until(p, s => Boolean(document.querySelector(s)?.querySelector('.deck-again')), 'transport error offers Try again', status);
         else if (state === 'writing') await save(EXPECTED);
         if (state.startsWith('conflict')) {
+          fail = null;
           assert.equal((await control({ method: 'memory_revise', operation_id: id + '-remote', item_id: id, expected_revision: 1,
             title: 'Card editor', body: BODY.replace('Ship the exact words.', 'Remote words on the same card.') })).status, 'committed');
           fail = null;
-          await press(p, `${status} .deck-again`);
           await until(p, h => !document.querySelector(h).querySelector('.notebook-conflict').hidden, 'same-card conflict keeps both versions', host);
         }
       }
-      await picture(p, `item-652-${surface}-${state}`);
+      await picture(p, `item-652-${surface}-${state}${suffix}`);
+      const servedCss = sha(await (await p.request.get(facts.origin + '/aim.css')).body());
+      assert.equal(servedCss, sha(await readFile(cssPath)), 'the fixture serves the declared current CSS source, including a source mutant');
       const geometry = await p.evaluate(([h, f, st]) => {
         const list = document.querySelector(h).querySelector('.deck-cards'), rows = [...list.querySelectorAll('.deck-card:not([hidden])')];
         const rect = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
@@ -139,7 +140,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         require(Boolean(c.name), 'every touch control has an accessible name');
         if (c.glyph) require(Boolean(c.title), `${c.name} has a tooltip`);
       }
-      await writeFile(path.join(evidence, engine, `${shape}-${scheme}-item-652-${surface}-${state}-geometry.json`), JSON.stringify({ geometry, errors, GEOMETRY_PX, FONT_PX, TOUCH_PX }, null, 2));
+      await writeFile(path.join(evidence, engine, `${shape}-${scheme}-item-652-${surface}-${state}-geometry.json`), JSON.stringify({ geometry, errors, servedCss, GEOMETRY_PX, FONT_PX, TOUCH_PX }, null, 2));
       // Check recovery even on the red baseline, before reporting its layout failure.
       if (state === 'busy') { assert.ok(release && busyRequest, 'a real save is held'); release(); await save(EXPECTED); }
       if (state.startsWith('refused') || state === 'save error') {
@@ -179,27 +180,45 @@ export async function cardEditor652({ check, page, until, press, picture, contro
       assert.deepEqual(p.errors, [], 'no page errors');
       assert.deepEqual(errors, [], JSON.stringify({ geometry, GEOMETRY_PX, FONT_PX, TOUCH_PX }));
       return geometry;
-    } finally { release?.(); }
+    } finally { release?.(); await p.ctx.close(); }
   };
 
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) for (const surface of ['full', 'sheet']) for (const state of STATES) {
     await check(`item 652 ${surface} ${shape} ${scheme} ${state}`, () => scenario(shape, scheme, surface, state));
   }
   if (baseline) return;
-  // Applied source mutant, served by the real fixture, then restored byte-for-byte.
-  // Its native assertion is caught here rather than accepted as a passing UI.
-  await check('item 652 applied phone carousel mutant and restored control', async () => {
-    const mutated = css + '\n@media(max-width:760px){.deck-cards{display:flex}.deck-card{flex:0 0 100%}}\n';
-    const trail = { file: 'web/aim.css', before: sha(css), applied: sha(mutated), caught: null, restored: null };
+  // A fixture snapshots its web build at startup. Restart it after each source
+  // mutation and restoration, then verify the bytes actually served to the page.
+  const restart = async () => {
+    assert.equal((await control({ method: 'server_stop' })).stopped, true);
+    const started = await control({ method: 'server_start' });
+    assert.equal(started.origin, facts.origin, 'the isolated fixture keeps its origin');
+  };
+  const breaks = [
+    { name: 'carousel', old: '.deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}',
+      to: '.deck-cards{list-style:none;margin:0;padding:0;display:flex;gap:.45rem}.deck-card{flex:0 0 100%}', state: 'normal', caught: /laptop list/ },
+    { name: 'separate editor', old: '.deck-editor{min-height:var(--kept,0px);padding:0;border:0;',
+      to: '.deck-editor{min-height:var(--kept,0px);padding:0;border:3px solid var(--line);', state: 'writing', caught: /separate textarea border/ },
+    { name: 'small chevron', old: '@media(pointer:coarse){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}',
+      to: '@media(pointer:coarse){.deck-fold{width:1.75rem;height:1.75rem;min-height:1.75rem}', state: 'normal', caught: /44px touch target/ },
+  ];
+  for (const mutation of breaks) await check(`item 652 applied ${mutation.name} mutant and restored control`, async () => {
+    assert.equal(css.split(mutation.old).length, 2, 'one source mutation site');
+    const mutated = css.replace(mutation.old, mutation.to);
+    const trail = { file: 'web/aim.css', old: mutation.old, replacement: mutation.to, before: sha(css), applied: sha(mutated), caught: null, restored: null };
     try {
       await writeFile(cssPath, mutated);
       assert.equal(sha(await readFile(cssPath)), trail.applied, 'the source mutation actually applied');
-      try { await scenario('phone-320', 'light', 'full', 'normal', '-mutant'); }
-      catch (error) { assert.equal(error.code, 'ERR_ASSERTION'); assert.match(error.message, /laptop list/); trail.caught = error.stack; }
-      assert.ok(trail.caught, 'the native layout assertion catches the mutant');
-    } finally { await writeFile(cssPath, css); trail.restored = sha(await readFile(cssPath)); }
+      await restart();
+      try { await scenario('phone-320', 'light', 'full', mutation.state, '-mutant-' + mutation.name.replaceAll(' ', '-')); }
+      catch (error) { assert.equal(error.code, 'ERR_ASSERTION'); assert.match(error.message, mutation.caught); trail.caught = error.stack; }
+      assert.ok(trail.caught, 'the native assertion catches the source mutant');
+    } finally {
+      await writeFile(cssPath, css); trail.restored = sha(await readFile(cssPath));
+      await restart();
+    }
     assert.equal(trail.restored, trail.before, 'source restored byte-for-byte');
-    await scenario('phone-320', 'light', 'full', 'normal', '-restored');
-    await writeFile(path.join(evidence, engine, 'item-652-mutant.json'), JSON.stringify(trail, null, 2));
+    await scenario('phone-320', 'light', 'full', mutation.state, '-restored-' + mutation.name.replaceAll(' ', '-'));
+    await writeFile(path.join(evidence, engine, `item-652-mutant-${mutation.name.replaceAll(' ', '-')}.json`), JSON.stringify(trail, null, 2));
   });
 }

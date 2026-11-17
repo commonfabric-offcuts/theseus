@@ -13,6 +13,9 @@ composer's close keeps the page and its unfinished writing for its next
 opening; a page closed there goes on saving what is not yet confirmed but is
 not read again until it opens.
 
+Cards uses the laptop card editor on phones by default for now (item 652,
+[decks.md](decks.md#default-on-phones-item-652)), in both writing places.
+
 Both views save while writing, including an unfinished card. Each confirmed
 save is a normal `memory.revise` revision, immediately readable by agents.
 The saving sign distinguishes a device copy, an in-flight save, a confirmed
