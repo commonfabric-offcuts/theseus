@@ -1,8 +1,9 @@
 // A dossier's cover (item 624, docs/dossier-covers.md): the folder's first
 // sheet, right under its tab, saying where the dossier stands, what waits on
 // the outcome's owner (each with the default that holds if they say nothing),
-// and its payload, proposed until the owner's own 👍 on the payload's message
-// or their word in reply to it makes it done, said with how it was given.
+// and its payload, proposed until the owner's own 👍 on the payload's message,
+// or their reply to it that the cover names as the word, makes it done, said
+// with how it was given.
 // Core keeps the cover on the dossier's first message (acts.cover) and works
 // out Done; this module only draws what Core holds. A message on its own takes
 // no cover: what its cover says shows as small pills under who wrote it.
@@ -31,6 +32,8 @@ export function doneWords(done, context) {
   return `done · ${who} ${done.how === 'thumb' ? '👍' : 'word'}`;
 }
 
+const proposedTitle = ([whose, theirs]) => `Proposed: done by ${whose} thumbs up on its message, or a reply of ${theirs} to it named as the word`;
+
 // The payload's pill: a box while proposed, a tick once done, with how and when.
 export function payloadPill(doc, payload, context) {
   const done = payload.done ?? null;
@@ -40,7 +43,7 @@ export function payloadPill(doc, payload, context) {
   if (done && Number.isSafeInteger(done.at_ms)) words.append(' at ', timeNode(done.at_ms, doc));
   pill.append(glyph(done ? 'kept' : 'payload', doc, 15), words);
   pill.title = done ? (done.how === 'thumb' ? 'Done: the owner gave its message a thumbs up' : 'Done: the owner replied to its message')
-    : `Proposed: done when ${whom(context.owner, context) === 'you' ? 'you give' : `${context.nameOf(context.owner)} gives`} its message a thumbs up or replies to it`;
+    : proposedTitle(context.owner === context.viewer ? ['your', 'yours'] : Array(2).fill(`${context.nameOf(context.owner)}'s`));
   return pill;
 }
 

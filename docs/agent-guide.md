@@ -189,9 +189,15 @@ its revision. A write is fenced on the revision read just before it, or on
 (`REVISION_CONFLICT`); read it again and write what is still true.
 
 You never mark a payload done. It reads "payload proposed" until the owner gives
-the payload's message a 👍 or replies to it, and then shows done, with how they
-gave it. Point `--from` at the message that holds the payload itself, so their
-👍 lands on the thing they are judging. A whispered dossier's cover stays
+the payload's message a 👍, and then shows done, with how they gave it. Point
+`--from` at the message that holds the payload itself, so their 👍 lands on the
+thing they are judging; when they already approved it with a 👍 on another
+message, make that message the payload. When they accepted it in words instead,
+in their own reply to the payload's message, name that reply with
+`--done-by MESSAGE`. Name only a reply that says it is done: a question, or any
+other reply, is not their word, and Core refuses a `--done-by` that is not the
+owner's own reply to the payload's message (`DONE_BY_OWNER`). Who owes the next
+step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
 

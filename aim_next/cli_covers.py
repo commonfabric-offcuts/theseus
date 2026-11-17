@@ -5,7 +5,8 @@ from __future__ import annotations
 `cover MESSAGE` prints the cover of the dossier MESSAGE is in; with any of its options it sets or clears those fields
 (`stack.cover` on the dossier's first message, read through `dossier_cover`), fenced on --expected or else on the
 revision read now, and prints the cover as Core recorded it. Done is never an option: the outcome's owner gives it, by
-a 👍 on the payload's message or a word in reply to it. Times are absolute local times.
+a 👍 on the payload's message or by their own reply to it, which the writer names with --done-by; Core refuses a
+--done-by that is not the owner's reply to that message. Times are absolute local times.
 """
 
 import time
@@ -32,13 +33,15 @@ def register(verb):
     cover.add_argument("--from", dest="payload_from")
     cover.add_argument("--link")
     cover.add_argument("--kind", choices=PAYLOAD_KINDS)
+    # The owner's own reply to the payload's message that made it done, named by its id.
+    cover.add_argument("--done-by", dest="done_by")
     cover.add_argument("--no-payload", dest="no_payload", action="store_true")
 
 
 def done_words(done, owner):
     """How the payload was done, or that it is proposed, in the words the page says."""
     if not done:
-        return "payload proposed: Done when %s gives its message a 👍 or replies to it" % owner
+        return "payload proposed: Done when %s gives its message a 👍, or replies to it and the cover names that reply" % owner
     if done["how"] == "thumb":
         return "done: %s's 👍 at %s" % (done["by"], _at(done["at_ms"]))
     return "done: %s's word%s at %s" % (done["by"], " (%s)" % done["message_id"] if done.get("message_id") else "", _at(done["at_ms"]))
@@ -75,14 +78,16 @@ class CoverVerbs:
             args["waiting"] = [{"text": text, "default": default} for text, default in zip(options.waits, options.defaults)]
         elif options.no_waits:
             args["waiting"] = []
-        if options.no_payload and (options.payload is not None or options.payload_from or options.link or options.kind):
-            self.refuse("INVALID_ARGUMENT", "--no-payload clears the payload; it takes no --payload, --from, --link or --kind; nothing was sent")
-        if options.payload is not None or options.payload_from or options.link or options.kind:
+        named = options.payload is not None or options.payload_from or options.link or options.kind or options.done_by
+        if options.no_payload and named:
+            self.refuse("INVALID_ARGUMENT", "--no-payload clears the payload; it takes no --payload, --from, --link, --kind or --done-by; nothing was sent")
+        if named:
             if options.payload is None or not options.payload_from:
                 self.refuse("INVALID_ARGUMENT", "A payload is --payload TEXT --from MESSAGE (the message that delivered it), with "
-                            "--link and --kind as it has them; nothing was sent")
+                            "--link, --kind and --done-by as it has them; nothing was sent")
             args["payload"] = dict({"text": options.payload, "message_id": options.payload_from},
-                                   **({"link": options.link} if options.link else {}), **({"kind": options.kind} if options.kind else {}))
+                                   **({"link": options.link} if options.link else {}), **({"kind": options.kind} if options.kind else {}),
+                                   **({"done_by": options.done_by} if options.done_by else {}))
         elif options.no_payload:
             args["payload"] = None
         return args

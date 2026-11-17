@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { coverSheet, coverPills, doneWords, payloadPill, coverKey, coverOf } from '../web/dossier-cover.mjs';
-import { laterActs } from '../web/stack-order.mjs';
+import { laterActs, stackCover } from '../web/stack-order.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const NAMES = { owner: 'Ana', 'agent-a': 'Scout', 'agent-b': 'Pilot' };
@@ -71,7 +71,7 @@ test('the pill says proposed until Core says done, then how and by whom in the r
   assert.match(pill.text, /^done · your 👍 at /, 'with when');
   assert.equal([...pill.descendants()].filter(node => node.tag === 'time').length, 1, 'its time follows the day');
   const proposed = payloadPill(doc, COVER.payload, { ...context('agent-a'), owner: 'owner' });
-  assert.equal(proposed.title, 'Proposed: done when Ana gives its message a thumbs up or replies to it');
+  assert.equal(proposed.title, "Proposed: done by Ana's thumbs up on its message, or a reply of Ana's to it named as the word");
   // Done by a word the reader can open cites it; Core leaves a whisper's id out for a reader outside it, and nothing is cited.
   const word = coverSheet(doc, { ...COVER, payload: { ...COVER.payload, done: DONE_BY_WORD } }, context());
   assert.deepEqual(of(word, 'cover-src').map(node => node.text), ['#12', '#14']);
@@ -116,4 +116,25 @@ test('an act read late never puts back a cover Core has moved past, and a newer 
   const newer = { cover: { ...COVER, stands: 'Booked' }, cover_revision: 4 };
   assert.equal(laterActs(known, newer).cover.stands, 'Booked');
   assert.equal(laterActs(known, newer).cover_revision, 4);
+});
+
+// Item 624: the cover rides with the dossier's place (stack_position), as its name does, so a page whose first
+// message is above what is loaded shows it on the reply heading the dossier; where the first message is loaded, its
+// own acts say it; a message on its own takes pills, never a sheet.
+test('a dossier\'s cover comes with its place, so a stack of replies whose first message is not loaded shows it', () => {
+  const at = (acts, extra = {}) => ({ root_id: 'm-root', through: null, aside_revision: 0, below: false, name: null, name_revision: 0, at: { messages: 9, acts }, ...extra });
+  const placed = at(4, { cover: COVER, cover_revision: 2 });
+  const reply = (id, reply_to) => ({ id, reply_to, acts: { cover: null, cover_revision: 0 }, stack_position: placed });
+  // The first message is above the page: the stack is headed by a reply, and the place carries the cover.
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [reply('m-r2', 'm-r1')] }), COVER, 'the reply heading the dossier shows its cover');
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [] }), COVER, 'so does a lone reply of it');
+  // Loaded, the first message's own acts say it, and the place's older read never puts back what they moved past.
+  const newer = { ...COVER, stands: 'Booked' };
+  const root = { id: 'm-root', reply_to: null, acts: { cover: newer, cover_revision: 3 }, stack_position: placed };
+  assert.equal(stackCover({ head: root, replies: [reply('m-r1', 'm-root')] }), newer);
+  // A message on its own takes its cover as pills; a dossier with none, or a Core before covers, shows none.
+  const lone = { id: 'm-lone', reply_to: null, acts: { cover: COVER, cover_revision: 1 }, stack_position: at(4, { root_id: 'm-lone', cover: COVER, cover_revision: 1 }) };
+  assert.equal(stackCover({ head: lone, replies: [] }), null, 'a message on its own has no sheet');
+  assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
+  assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
 });

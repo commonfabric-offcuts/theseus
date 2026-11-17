@@ -10,9 +10,10 @@ and is fenced like any other act. It holds three fields, each set or cleared on 
 - `waiting`: what waits on the outcome's owner, each with the default that holds if they say nothing;
 - `payload`: what the dossier produced, in words, optionally a link and a kind, and the message that delivered it.
 
-Done is never written by anyone. It is read from the owner's record whenever a cover is written or the owner acts on
-the payload's message: their 👍 on it, or their word in reply to it (a reply that does not ask). Until then the
-cover's payload is proposed.
+Done is never written by anyone. It is read from the owner's record whenever a cover is written or the owner gives or
+takes back a 👍 on the payload's message: their 👍 on it, or a reply of theirs to it that the cover's writer names as
+the word that made it done (`done_by`). No reply counts unless it is named, and none is read for what its words mean:
+a named reply counts because it is the owner's own reply to that message. Until then the cover's payload is proposed.
 """
 
 import json
@@ -31,7 +32,7 @@ LINK_CHARS = 2000
 WAITS = 4
 # What a payload is, when its writer says: a closed set the page names in words.
 PAYLOAD_KINDS = ("answer", "decision", "preview", "page", "release")
-DONE_REFUSED = ("Done is the owner's to give: their 👍 on the payload's message, or their word in reply to it. "
+DONE_REFUSED = ("Done is the owner's to give: their 👍 on the payload's message, or their own reply to it, named as done_by. "
                 "A cover's writer proposes the payload; nothing was changed")
 
 
@@ -74,21 +75,23 @@ def _waiting(value):
 
 
 def _payload(value):
-    """The payload as written: its words, its message, and its link and kind or None. Core adds the message's
-    sequence and Done."""
+    """The payload as written: its words, its message, its link and kind or None, and done_by, the owner's reply its
+    writer names as the word that made it done, or None. Core checks done_by and adds the message's sequence and Done."""
     if value is None:
         return None
     if not isinstance(value, dict):
         raise Refusal("INVALID_ARGUMENT", "A payload names its text and the message that delivered it")
     if "done" in value:
         raise Refusal("DONE_BY_OWNER", DONE_REFUSED)
-    if not {"text", "message_id"} <= set(value) <= {"text", "message_id", "link", "kind"}:
-        raise Refusal("INVALID_ARGUMENT", "A payload names its text and the message that delivered it, and may name a link and a kind")
+    if not {"text", "message_id"} <= set(value) <= {"text", "message_id", "link", "kind", "done_by"}:
+        raise Refusal("INVALID_ARGUMENT", "A payload names its text and the message that delivered it, and may name a link, a kind "
+                      "and the owner's reply that made it done (done_by)")
     kind = value.get("kind")
     if kind is not None and kind not in PAYLOAD_KINDS:
         raise Refusal("INVALID_ARGUMENT", "A payload's kind is one of %s" % ", ".join(PAYLOAD_KINDS))
+    done_by = value.get("done_by")
     return {"text": _line(value["text"], "The payload", PAYLOAD_CHARS), "message_id": _identifier(value["message_id"], "message_id"),
-            "link": _link(value.get("link")), "kind": kind}
+            "link": _link(value.get("link")), "kind": kind, "done_by": None if done_by is None else _identifier(done_by, "done_by")}
 
 
 def written(args):
@@ -118,19 +121,24 @@ def stored_value(raw):
     return value
 
 
-def done_of(db, owner, message_id):
+def owners_word(db, owner, message_id, done_by):
+    """The owner's reply done_by names, when it is their own message in reply to message_id (on the record or a
+    whisper they wrote: a person's whisper counts as their Tell), or None. What it says is never read."""
+    if done_by is None:
+        return None
+    return db.execute("SELECT id,seq,sent_ms FROM messages WHERE id=? AND reply_to=? AND author_id=?", (done_by, message_id, owner)).fetchone()
+
+
+def done_of(db, owner, message_id, done_by=None):
     """Done as the owner's record gives it for the payload delivered by message_id, or None: the earlier of their 👍
-    on it (a thumb given and not taken back) and their first word in reply to it that does not ask. A word is the
-    owner's own message, on the record or a whisper they wrote (a person's whisper counts as their Tell), read under
-    the whisper rule as the owner reads."""
+    on it (a thumb given and not taken back) and their reply to it that the cover names as done_by. No other reply
+    counts, whatever it says."""
     found = []
     thumb = db.execute("SELECT revision,at_ms FROM message_reactions WHERE actor_id=? AND message_id=? AND kind='thumb'",
                        (owner, message_id)).fetchone()
     if thumb is not None and thumb["revision"] % 2 == 1:
         found.append((thumb["at_ms"], 0, {"how": "thumb", "by": owner, "at_ms": thumb["at_ms"]}))
-    word = db.execute("SELECT m.id,m.seq,m.sent_ms FROM messages m INDEXED BY message_reply_links WHERE m.reply_to=:payload "
-                      "AND m.author_id=:actor AND (m.intent IS NULL OR m.intent<>'ask') AND " + VISIBLE + " ORDER BY m.seq LIMIT 1",
-                      {"payload": message_id, "actor": owner}).fetchone()
+    word = owners_word(db, owner, message_id, done_by)
     if word is not None:
         found.append((word["sent_ms"] or 0, 1, {"how": "word", "by": owner, "at_ms": word["sent_ms"], "message_id": word["id"], "seq": word["seq"]}))
     return min(found, key=lambda each: each[:2])[2] if found else None
@@ -143,6 +151,9 @@ def shown(db, actor, value, by, at_ms, owner):
     if value == EMPTY_COVER or (not value["stands"] and not value["waiting"] and value["payload"] is None):
         return None
     payload = value["payload"]
+    # done_by is what the writer named; a reader is told Done, which carries the word when they can open it.
+    if payload is not None:
+        payload = {key: item for key, item in payload.items() if key != "done_by"}
     if payload is not None and payload.get("done") and payload["done"].get("message_id"):
         done = payload["done"]
         seen = db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE, {"id": done["message_id"], "actor": actor}).fetchone()

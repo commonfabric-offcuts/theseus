@@ -21,7 +21,7 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -571,8 +571,9 @@ function paintStack(section, stack, byId, context) {
   }
   // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
   // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
-  // shows its tab alone. Drawn again only when what it says changes. A message on its own takes pills instead.
-  const cover = single ? null : coverOf(stack.head), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
+  // shows its tab alone. Headed by a reply, its first message above the loaded page, the folder takes it from its
+  // place (stackCover). Drawn again only when what it says changes. A message on its own takes pills instead.
+  const cover = stackCover(stack), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
   const key = coverKey(cover, coverContext);
   if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
   // A cover stands between the first message and the replies, so the first reply overlaps no face of the head's.

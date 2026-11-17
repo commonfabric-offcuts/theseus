@@ -6944,8 +6944,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
-     "const PLACING = ['root_id', 'name_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -13699,8 +13699,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -26012,8 +26012,8 @@
    "break": [
     [
      "aim_next/covers.py",
-     "done=done_of(db, owner, payload[\"message_id\"])",
-     "done=done_of(db, actor, payload[\"message_id\"])"
+     "done=done_of(db, owner, payload[\"message_id\"], payload.get(\"done_by\"))",
+     "done=done_of(db, actor, payload[\"message_id\"], payload.get(\"done_by\"))"
     ]
    ],
    "check": {
@@ -26022,7 +26022,7 @@
   },
   {
    "item": 624,
-   "act": "Only the outcome owner's own thumbs-up or reply settles a payload's Done",
+   "act": "Only the outcome owner's own thumbs-up settles a payload's Done",
    "break": [
     [
      "aim_next/covers.py",
@@ -26050,40 +26050,12 @@
   },
   {
    "item": 624,
-   "act": "The owner's reply to the payload's message makes it Done in the same act",
-   "break": [
-    [
-     "aim_next/conversation.py",
-     "covered = self._cover_settle(db, actor, snapshot[\"reply_to\"]) if snapshot.get(\"reply_to\") else []",
-     "covered = []"
-    ]
-   ],
-   "check": {
-    "python": "test_dossier_covers.py"
-   }
-  },
-  {
-   "item": 624,
    "act": "A thumbs-up taken back proposes the payload again",
    "break": [
     [
      "aim_next/cover_values.py",
      "thumb[\"revision\"] % 2 == 1",
      "thumb[\"revision\"] > 0"
-    ]
-   ],
-   "check": {
-    "python": "test_dossier_covers.py"
-   }
-  },
-  {
-   "item": 624,
-   "act": "The owner asking back about the payload is not their word",
-   "break": [
-    [
-     "aim_next/cover_values.py",
-     "AND (m.intent IS NULL OR m.intent<>'ask') AND ",
-     "AND "
     ]
    ],
    "check": {
@@ -26289,6 +26261,148 @@
    "check": {
     "native": "reading",
     "case": "reading covers the Reader shows a dossier's cover as one line"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A reply of the owner's is their word only where the cover names it (done_by): a question, or any reply nobody named, settles nothing",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if done_by is None:\n        return None\n    return db.execute(\"SELECT id,seq,sent_ms FROM messages WHERE id=? AND reply_to=?",
+     "    return db.execute(\"SELECT id,seq,sent_ms FROM messages WHERE (id=? OR 1) AND reply_to=?"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a done_by that is not the owner's own reply to the payload's message",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if not seen:\n            raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "        if False:\n            raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by is the owner's own message",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "WHERE id=? AND reply_to=? AND author_id=?\", (done_by, message_id, owner)",
+     "WHERE id=? AND reply_to=? AND ?<>''\", (done_by, message_id, owner)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by replies to the payload's message",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "WHERE id=? AND reply_to=? AND author_id=?\", (done_by, message_id, owner)",
+     "WHERE id=? AND ?<>'' AND author_id=?\", (done_by, message_id, owner)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by is a reply its writer can see, so no refusal names a whisper",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        seen = word is not None and db.execute(",
+     "        seen = word is not None or db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A thumbs-up given and taken back leaves the reply the cover names standing",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            done = done_of(db, actor, message_id, value[\"payload\"].get(\"done_by\"))",
+     "            done = done_of(db, actor, message_id)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A dossier's place carries its cover, so a page holding only its replies has it, and a reader outside its first message never does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"cover\": acts[\"cover\"], \"cover_revision\": acts[\"cover_revision\"],",
+     "\"cover\": None, \"cover_revision\": 0,"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover rewritten reaches a page that holds its dossier's place: a changed cover is a change of place",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "'aside_revision', 'name_revision', 'cover_revision'];",
+     "'aside_revision', 'name_revision'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A stack of replies whose first message is above the loaded page shows its dossier's cover under its tab, from its place",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (position && position.root_id !== stack.head.id) return position.cover ?? null;",
+     "  if (position && position.root_id !== stack.head.id) return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The Reader shows the cover of a dossier whose first message is above the loaded page",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const cover = stack ? stackCover(stack) : null;",
+     "    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
    }
   }
  ]

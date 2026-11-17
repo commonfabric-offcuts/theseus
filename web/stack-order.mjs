@@ -204,6 +204,18 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
 }
 
+// A dossier's cover (item 624), on its name's terms: its first message's,
+// which Core sends with the position of every message in it, so a stack of
+// replies whose first message is above the loaded page shows it under its
+// tab too; where the page holds that message, its own acts say it. Null for a
+// message on its own, whose cover shows as pills (dossier-cover.mjs), and for a
+// dossier with none.
+export function stackCover(stack) {
+  const position = positionOf(stack);
+  if (position && position.root_id !== stack.head.id) return position.cover ?? null;
+  return stack.replies.length ? actsOf(stack.head).cover ?? null : null;
+}
+
 // The index, in the stacks as shown, of the lowest one holding anything new
 // since the line's message (lineSeq): the line goes under it, so it never
 // cuts a stack in two and never sits above something new. A message of the

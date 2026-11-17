@@ -6,8 +6,9 @@ read by everyone who reads its first message.
 `stack.cover` sets or clears the cover's fields on a dossier's first message, as a `cover` act (message_acts, the
 topic's), fenced on `cover_revision`, so a write sent on a revision someone has moved past is refused, never lost.
 Its payload names the message in the dossier that delivered it. Done is never written: it is read from the outcome
-owner's record (cover_values.done_of) when a cover is written, and settled again, as a new row of the owner's own,
-whenever the owner gives or takes back a 👍 on the payload's message or replies to it (_cover_settle). The cover is
+owner's record (cover_values.done_of) when a cover is written, from their 👍 on the payload's message or their own
+reply to it that the writer names as done_by, and settled again, as a new row of the owner's own, whenever the owner
+gives or takes back that 👍 (_cover_settle). A reply nobody names settles nothing. The cover is
 shown to whoever reads its first message and to nobody else, so a whispered dossier's cover stays between its two
 people, as its messages do.
 
@@ -16,7 +17,7 @@ fenced on.
 """
 
 from .contract import Refusal
-from .cover_values import done_of, shown, stored_value, written
+from .cover_values import DONE_REFUSED, done_of, owners_word, shown, stored_value, written
 from .stacks import EMPTY, MEMBERS, StackRoots, current_acts
 from .whispers import STAYS, VISIBLE
 
@@ -42,6 +43,18 @@ class Covers:
             raise Refusal(STAYS, "A whisper stays between the two people in it: it is never a cover's payload on the record; nothing was changed")
         return message
 
+    def _cover_done_by(self, db, actor, owner, payload):
+        """A payload's done_by, checked: the owner's own reply to the payload's message, as its writer reads it.
+        Anything else claims Done without the owner's record, and is refused as such; a whisper the writer is outside
+        is refused the same way, so no refusal names it."""
+        if payload["done_by"] is None:
+            return
+        word = owners_word(db, owner, payload["message_id"], payload["done_by"])
+        seen = word is not None and db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE,
+                                               {"id": word["id"], "actor": actor}).fetchone()
+        if not seen:
+            raise Refusal("DONE_BY_OWNER", DONE_REFUSED)
+
     def _command_stack_cover(self, db, actor, envelope):
         message, topic = self._acted_message(db, actor, envelope["target"])
         fields = written(envelope["args"])
@@ -61,8 +74,9 @@ class Covers:
             payload = value["payload"]
             if "payload" in fields:
                 payload = dict(payload, seq=self._cover_payload(db, actor, message, payload["message_id"])["seq"])
+                self._cover_done_by(db, actor, owner, payload)
             # Done is the owner's record, read now, whoever writes: never what the writer says.
-            value["payload"] = dict(payload, done=done_of(db, owner, payload["message_id"]))
+            value["payload"] = dict(payload, done=done_of(db, owner, payload["message_id"], payload.get("done_by")))
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if value == before:
             acts = current_acts(db, actor, [message["id"]]).get(message["id"], EMPTY)
@@ -73,9 +87,9 @@ class Covers:
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
     def _cover_settle(self, db, actor, message_id):
-        """The owner gave or took back a 👍 on message_id, or replied to it: each cover whose payload it delivered takes
-        Done as the owner's record now gives it, as a new row of the owner's own, in the same transaction, and everyone
-        who reads it is told. Anyone else's 👍 or reply settles nothing. Returns what it affected."""
+        """The owner gave or took back a 👍 on message_id: each cover whose payload it delivered takes Done as the
+        owner's record now gives it, as a new row of the owner's own, in the same transaction, and everyone who reads it
+        is told. Anyone else's 👍 settles nothing. Returns what it affected."""
         rows = db.execute(
             "SELECT a.message_id,a.topic_id,a.seq,a.value,a.revision FROM message_acts a INDEXED BY cover_payloads "
             "WHERE json_extract(a.value,'$.payload.message_id')=? AND a.kind='cover' AND a.owner='' "
@@ -86,7 +100,7 @@ class Covers:
             if self._cover_owner(db, row["topic_id"]) != actor:
                 continue
             value = stored_value(row["value"])
-            done = done_of(db, actor, message_id)
+            done = done_of(db, actor, message_id, value["payload"].get("done_by"))
             if value["payload"].get("done") == done:
                 continue
             value["payload"] = dict(value["payload"], done=done)

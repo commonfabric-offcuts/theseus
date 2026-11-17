@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf } from './stack-order.mjs';
+import { moveOf, joinShown, foldStep, laterActs, positionOf, sideOf, headOf, stackCover } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
@@ -672,11 +672,12 @@ export class StackFeed {
     const head = headOf(stack, { preview: messagePreview });
     return head.typed?.text || (stack.replies.length ? head.name : '') || null;
   }
-  // The cover of the dossier a message is in, as its folder shows it (item 624), with the topic its links go to; null
-  // for a message on its own, one no stack drawn holds, and a dossier with no cover.
+  // The cover of the dossier a message is in, as its folder shows it (item 624, stackCover: from its place when its
+  // first message is not loaded), with the topic its links go to; null for a message on its own, one no stack drawn
+  // holds, and a dossier with no cover.
   dossierCover(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
-    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;
+    const cover = stack ? stackCover(stack) : null;
     return cover ? { cover, topicId: stack.head.topic_id } : null;
   }
   // focus: false leaves the focus where it is, as on the Reader's archive

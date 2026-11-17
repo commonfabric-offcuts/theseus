@@ -2,8 +2,10 @@ from __future__ import annotations
 
 """A dossier's cover (item 624, docs/dossier-covers.md): where it stands, what waits on the outcome's owner and its
 payload, kept on the dossier's first message as the topic's act, every revision kept and fenced. Done is the owner's
-alone: their 👍 on the payload's message or their word in reply to it, read from the record; no writer sets it. A cover
-is read by whoever reads the dossier's first message, so a whispered dossier's cover stays between its two people.
+alone: their 👍 on the payload's message, or their own reply to it that the writer names as done_by, read from the
+record; no writer sets it, and no reply counts unnamed. A cover is read by whoever reads the dossier's first message,
+so a whispered dossier's cover stays between its two people; it rides with every message's place, so a page of replies
+alone has it too.
 
 The fixture outcome w1 is owner's, with agent-a and agent-b on its team; owner, agent-a and agent-b take part in t1.
 outsider is on no team, and other-reader is a person outside the outcome. The words are invented.
@@ -162,15 +164,51 @@ class DoneCase(CoverCase):
         self.assertIsNone(self.shown(root)["payload"]["done"])
         self.assertEqual([actor for _, actor, _ in self.rows()], ["agent-a", "owner", "owner"])
 
-    def test_the_owners_word_in_reply_makes_it_done_and_an_ask_back_does_not(self):
+    def test_a_reply_of_the_owners_is_their_word_only_where_the_cover_names_it(self):
         root, answer, _ = self.dossier()
         self.committed(self.cover(root, {"payload": self.payload(answer)}))
-        self.post("Which lake do you mean?", reply_to=answer, addressees=["agent-a"], intent="ask")
-        self.assertIsNone(self.shown(root)["payload"]["done"], "asking back answers nothing")
+        rows = len(self.rows())
         word = self.post("Good, the second weekend it is.", reply_to=answer)
-        done = self.shown(root, "agent-a")["payload"]["done"]
-        self.assertIsNotNone(done, "the owner's word makes it done")
-        self.assertEqual((done["how"], done["by"], done["message_id"]), ("word", "owner", word))
+        self.assertIsNone(self.shown(root)["payload"]["done"], "a reply named by no one settles nothing")
+        self.assertEqual(len(self.rows()), rows, "a reply records nothing on the cover")
+        named = self.committed(self.cover(root, {"payload": self.payload(answer, done_by=word)}, revision=1))
+        done = self.shown(root, "agent-b")["payload"]["done"]
+        sent = self.sql("SELECT sent_ms,seq FROM messages WHERE id=?", (word,))[0]
+        self.assertEqual(done, {"how": "word", "by": "owner", "at_ms": sent[0], "message_id": word, "seq": sent[1]}, "named, the owner's reply is their word")
+        self.assertEqual(named["cover"]["payload"]["done"]["message_id"], word)
+        self.assertNotIn("done_by", self.shown(root, "agent-b")["payload"], "a reader is told Done, not what the writer named")
+        # A 👍 given and taken back leaves the named word standing.
+        self.committed(self.thumb(answer))
+        self.committed(self.thumb(answer, on=False, revision=1))
+        self.assertEqual(self.shown(root)["payload"]["done"], done, "the named word stands")
+
+    def test_done_by_names_the_owners_own_reply_to_the_payloads_message_or_the_write_is_refused(self):
+        root, answer, note = self.dossier()
+        theirs = self.post("Agreed, the second weekend.", actor="agent-b", reply_to=answer)
+        elsewhere = self.post("Thanks for checking the road.", reply_to=note)
+        on_record = self.post("A word on its own, replying to nothing.")
+        for done_by in (theirs, elsewhere, on_record, root, "m-" + "0" * 32):
+            with self.subTest(done_by=done_by):
+                self.rejected(self.cover(root, {"payload": self.payload(answer, done_by=done_by)}), "DONE_BY_OWNER")
+        self.assertEqual(self.rows(), [], "no claim of Done without the owner's own record is kept")
+
+    def test_a_question_of_the_owners_is_never_done_and_their_thumb_on_the_design_message_is(self):
+        """Tony's case in fiction: the owner gave the design message a 👍; the agent missed it, asked again and said so;
+        later the owner asked whether the build had started, in reply to that message. The question settles nothing;
+        the cover whose payload is the design message reads Done from the 👍, at its time."""
+        design = self.post("The design page for the cabin booking, for your 👍: https://example.test/design", actor="agent-a")
+        self.committed(self.thumb(design))
+        thumbed = self.sql("SELECT at_ms FROM message_reactions WHERE actor_id='owner' AND message_id=?", (design,))[0][0]
+        asked = self.post("What are the next steps on this?", reply_to=design, addressees=["agent-a"], intent="ask")
+        missed = self.post("Nothing went wrong: you approved it with your 👍. I missed it.", actor="agent-a", reply_to=asked,
+                           addressees=["owner"], intent="tell")
+        self.post("Are you building it or ?", reply_to=missed, addressees=["agent-a"])
+        proposed = self.committed(self.cover(design, {"stands": "Approved by the owner's 👍; agent-a owes the build", "payload": self.payload(missed)}))
+        self.assertIsNone(proposed["cover"]["payload"]["done"], "a question in reply is not the owner's word")
+        self.assertIsNone(self.shown(design)["payload"]["done"])
+        approved = self.committed(self.cover(design, {"payload": dict(self.payload(design), link="https://example.test/design")}, revision=1))
+        self.assertEqual(approved["cover"]["payload"]["done"], {"how": "thumb", "by": "owner", "at_ms": thumbed}, "Done from the 👍, at its time")
+        self.assertEqual(self.shown(design, "agent-b")["payload"]["done"], {"how": "thumb", "by": "owner", "at_ms": thumbed})
 
     def test_nobody_but_the_owner_makes_it_done(self):
         root, answer, note = self.dossier()
@@ -235,16 +273,78 @@ class WhisperCase(CoverCase):
 
     def test_the_owners_whispered_word_makes_it_done_and_others_read_it_given_with_no_message_to_open(self):
         root, answer, _ = self.dossier()
-        self.committed(self.cover(root, {"payload": self.payload(answer)}))
         word = self.post("Yes, book it.", whisper=True, addressees=["agent-a"], reply_to=answer)
+        # agent-b cannot see the whisper, so to them it is a message that is not there.
+        self.rejected(self.cover(root, {"payload": self.payload(answer, done_by=word)}, actor="agent-b"), "DONE_BY_OWNER")
+        self.committed(self.cover(root, {"payload": self.payload(answer, done_by=word)}))
         for reader, expected in (("owner", word), ("agent-a", word), ("agent-b", None)):
-            done = self.shown(root, reader)["payload"]["done"]
-            self.assertIsNotNone(done, reader)
-            self.assertEqual((done["how"], done["by"], done.get("message_id"), "seq" in done), ("word", "owner", expected, expected is not None), reader)
+            placed = self.store.view(reader, "stack_positions", {"topic_id": "t1", "message_ids": [answer]})["items"][0]["stack_position"]["cover"]
+            self.assertIsNotNone(placed, reader)
+            # Read on the first message's acts and on a reply's place alike.
+            for done in (self.shown(root, reader)["payload"]["done"], placed["payload"]["done"]):
+                self.assertIsNotNone(done, reader)
+                self.assertEqual((done["how"], done["by"], done.get("message_id"), "seq" in done), ("word", "owner", expected, expected is not None), reader)
 
     def rejected_view(self, actor, name, args, code):
         answer = self.store.view(actor, name, args)
         self.assertEqual(answer.get("error", {}).get("code"), code, answer)
+
+
+class PositionCase(CoverCase):
+    """The cover rides with the dossier's place, which every message of it carries (topic_messages' stack_position and
+    the stack_positions view), so a page that holds only replies, its first message above it, shows the cover too."""
+
+    def placed(self, message, actor="owner", limit=100):
+        page = self.store.view(actor, "topic_messages", {"topic_id": "t1", "direction": "before", "limit": limit})["items"]
+        held = {item["id"]: item for item in page}
+        read = self.store.view(actor, "stack_positions", {"topic_id": "t1", "message_ids": [message]})["items"][0]["stack_position"]
+        return held, read
+
+    def test_every_message_of_a_dossier_carries_its_cover_so_a_page_of_replies_alone_shows_it(self):
+        root, answer, note = self.dossier()
+        newest = [self.post("Reply %d" % n, actor="agent-a", reply_to=root) for n in range(3)]
+        self.committed(self.cover(root, {"stands": "Answered: the second weekend", "payload": self.payload(answer)}))
+        for reader in ("owner", "agent-b"):
+            held, read = self.placed(newest[-1], reader, limit=2)
+            self.assertNotIn(root, held, "the first message is above the page")
+            self.assertEqual(set(held), set(newest[-2:]))
+            for position in [item["stack_position"] for item in held.values()] + [read]:
+                self.assertIsNotNone(position["cover"], reader)
+                self.assertEqual((position["root_id"], position["cover_revision"], position["cover"]["stands"], position["cover"]["owner"]),
+                                 (root, 1, "Answered: the second weekend", "owner"), reader)
+                self.assertEqual(position["cover"]["payload"]["message_id"], answer)
+            self.assertIsNone(held[newest[-1]]["acts"]["cover"], "a reply carries no cover of its own")
+        # It follows the cover: the owner's 👍 on the payload's message is read on a reply's place too.
+        self.committed(self.thumb(answer))
+        _, read = self.placed(newest[-1], "agent-b")
+        self.assertIsNotNone(read["cover"])
+        self.assertEqual((read["cover_revision"], read["cover"]["payload"]["done"]["how"]), (2, "thumb"))
+        # A dossier with no cover places its messages with none.
+        bare = self.post("Another subject altogether")
+        reply = self.post("Its one reply", actor="agent-a", reply_to=bare)
+        _, read = self.placed(reply)
+        self.assertEqual((read["root_id"], read["cover"], read["cover_revision"]), (bare, None, 0))
+
+    def test_a_reader_outside_the_dossiers_first_message_reads_no_cover_through_its_place(self):
+        root = self.post("Can you check the cabin's price quietly?", whisper=True, addressees=["agent-a"])
+        answer = self.committed(self.command("message.post", {"body": "It is within the budget.", "whisper": True, "addressees": ["owner"],
+                                                               "reply_to": root}, target={"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        self.committed(self.cover(root, {"stands": "Price checked", "payload": self.payload(answer)}))
+        public = self.post("The cabin's dates are open.", actor="agent-b")
+        reply = self.post("And the road to it is clear.", actor="agent-b", reply_to=public)
+        # The owner joins agent-b's stack into the whispered dossier: its two people read it there, under the cover.
+        self.committed(self.command("stack.join", {"into": root}, target={"message_id": public}, expected={"join_revision": 0}))
+        for reader in ("owner", "agent-a"):
+            held, read = self.placed(reply, reader)
+            for position in (held[reply]["stack_position"], read):
+                self.assertIsNotNone(position["cover"], reader)
+                self.assertEqual((position["root_id"], position["cover"]["stands"]), (root, "Price checked"), reader)
+        # agent-b reads the stack as its own dossier, with no cover: the whispered first message's cover never reaches them.
+        held, read = self.placed(reply, "agent-b")
+        self.assertNotIn(root, held)
+        for position in (held[reply]["stack_position"], held[public]["stack_position"], read):
+            self.assertEqual((position["root_id"], position["cover"], position["cover_revision"]), (public, None, 0))
+        self.assertNotIn("Price checked", json.dumps(self.store.view("agent-b", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 100})))
 
 
 class OutsiderCase(CoverCase):
@@ -268,7 +368,7 @@ class VerbCase(CoverCase):
         self.assertEqual(lines[0], "wrote the cover of the dossier of %s" % root)
         self.assertIn("  stands: Answered: the second weekend", lines)
         self.assertIn("  waits on owner: Book the cabin? (default: booked Friday)", lines)
-        self.assertIn("    payload proposed: Done when owner gives its message a 👍 or replies to it", lines)
+        self.assertIn("    payload proposed: Done when owner gives its message a 👍, or replies to it and the cover names that reply", lines)
         self.assertEqual(self.shown(root)["stands"], "Answered: the second weekend")
         self.committed(self.thumb(answer))
         code, out, _ = self.run_cli("cover", root)
@@ -295,6 +395,20 @@ class VerbCase(CoverCase):
         code, _, err = self.run_cli("cover", root, "--payload", "No message")
         self.assertEqual(code, 2)
         self.assertEqual(len(self.rows()), 1)
+
+    def test_the_verb_names_the_owners_reply_that_made_it_done(self):
+        root, answer, _ = self.dossier()
+        word = self.post("Good, the second weekend it is.", reply_to=answer)
+        theirs = self.post("Agreed.", actor="agent-b", reply_to=answer)
+        code, out, err = self.run_cli("cover", root, "--payload", "The second weekend", "--from", answer, "--done-by", theirs)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("DONE_BY_OWNER", err)
+        code, _, err = self.run_cli("cover", root, "--done-by", word)
+        self.assertEqual(code, 2, "--done-by belongs to a payload")
+        self.assertEqual(self.rows(), [])
+        code, out, err = self.run_cli("cover", root, "--payload", "The second weekend", "--from", answer, "--done-by", word)
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertTrue(any(line.startswith("    done: owner's word (%s) at " % word) for line in out.splitlines()), out)
 
 
 if __name__ == "__main__":

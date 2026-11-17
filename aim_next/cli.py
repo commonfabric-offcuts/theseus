@@ -187,7 +187,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- "
          "| cover MESSAGE [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
-         "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release]] [--no-payload] "
+         "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "

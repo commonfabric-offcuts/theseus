@@ -24,8 +24,9 @@ a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
 
 A message of a dossier with a cover (item 624, [dossier-covers.md](dossier-covers.md))
 shows the cover as one quiet line above the message: "Cover", where the dossier
-stands, and its payload's pill. A press opens the whole sheet, and the line
-follows the cover as the page's stacks do (`StackFeed.dossierCover`,
+stands, and its payload's pill, also when the dossier's first message is above
+the loaded page. A press opens the whole sheet, and the line follows the cover
+as the page's stacks do (`StackFeed.dossierCover`,
 `Reader.paintCover`). A message on its own, or one of a dossier with no cover,
 shows none. On a phone the line gives way while the reply is written, so with
 the keyboard up the message keeps its 7 lines.

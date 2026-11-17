@@ -430,8 +430,11 @@ def stack_positions(db, actor, items):
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
             through = acts["aside"]
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
+            # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
+            # replies shows them; read as this reader reads its first message, the root they can see.
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"],
+                               "cover": acts["cover"], "cover_revision": acts["cover_revision"],
                                "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
