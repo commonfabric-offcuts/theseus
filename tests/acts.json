@@ -26449,6 +26449,48 @@
    "check": {
     "python": "test_tools_ci_known_reds.py"
    }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command reads GitHub's event file to scope a docs-only PR",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "event = json.loads(Path(args.event).read_text()) if args.event else {}",
+     "event = {}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command emits the shard matrix GitHub schedules",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "print('shards=' + json.dumps(result['shards']))",
+     "pass # dropped matrix"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command emits the scope claim combine needs",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "print('scoped=' + json.dumps(result['scoped']))",
+     "pass # dropped scope"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
   }
  ]
 }

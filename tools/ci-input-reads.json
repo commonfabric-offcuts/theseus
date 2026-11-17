@@ -4171,6 +4171,31 @@
     }
   },
   "tests/test_tools_check_plan.py": {
+    "250766ef9167859fcd395067930d0e9b9c0d41d7a2728d4a777b91499fdc9388": {
+      "inputs": [
+        "tools/check_plan.py",
+        "tools/release_check.py",
+        "tools/steps_for.py",
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
+    },
+    "725395cfa21c072046b772fe134e5d3cccb39e5aad59f8b87f907e09f4d46954": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "2ca1793e9836537fadada5c83b3b278f7829ed60adfef91f5fc7cf45e8e9c153": {
+      "inputs": [
+        "tools/release_check.py"
+      ],
+      "scope": "repository"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7:3": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
     "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
       "inputs": [
         ".github/workflows/checks.yml"

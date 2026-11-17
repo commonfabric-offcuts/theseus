@@ -34,3 +34,14 @@ changes require a full train. Post-landing acceptance is Warp's next scoped
 train: its jobs show units, deploy refusals, the chosen native modes and the
 required parallel replay only, and elapsed time ends at the slowest shard.
 There is no changed page or browser acceptance case for this item.
+
+`tests/test_tools_check_plan.py` also executes the workflow's plan shell block
+in an isolated Git fixture, with the real planner and selector. It supplies
+GitHub's event file, event name and tested head through the environment and
+reads both `shards` and `scoped` from `GITHUB_OUTPUT`. Docs-only and CSS changes
+must produce their exact scoped coverage; missing or malformed events,
+non-PR events, forbidden paths, six files and unreadable committed rules must
+produce full coverage and a null scope. Explicit CLI arguments and plain JSON
+output are checked against the workflow output. The ledger has independent
+breaks for ignoring the event and dropping either workflow output, so these
+command-boundary regressions cannot pass on dealer-only coverage.

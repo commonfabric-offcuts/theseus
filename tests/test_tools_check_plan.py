@@ -157,5 +157,135 @@ class Fold(unittest.TestCase):
                 self.assertTrue(any(release_check.judge_summary(out / 'broken.json', head, scope=scope)), missing)
 
 
+class PlanCommand(unittest.TestCase):
+    """Exercise the workflow's process boundary, not just the dealer function."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.folder = Path(self.temp.name)
+        self.root = self.folder / 'repo'
+        fixtures.scoped_repository(self.root)
+        # Run the actual command and its dependencies in an isolated checkout.
+        # The committed harness is synthetic; planning never launches a browser.
+        sources = {path: (ROOT / path).read_text() for path in (
+            'tools/check_plan.py', 'tools/release_check.py', 'tools/steps_for.py',
+            '.github/check-weights.json')}
+        sources[release_check.PERSISTENCE] = """const [chromePath, evidencePath, mode] = process.argv.slice(2);
+const check = async (name, action) => {
+  if (mode !== '--health') return;
+  await action();
+};
+await check('health colour', async () => {
+  await page.evaluate(`document.querySelector('.release-line').textContent`);
+});
+"""
+        sources['.gitignore'] = '__pycache__/\n'
+        self.base = fixtures.commit_files(self.root, sources)
+        self.event_path = self.folder / 'event.json'
+        self.output = self.folder / 'github-output'
+        section = WORKFLOW.read_text().split('      - id: plan\n', 1)[1].split('\n  check:', 1)[0]
+        self.workflow_command = textwrap.dedent(section.split('        run: |\n', 1)[1])
+
+    def change(self, files):
+        subprocess.run(['git', '-C', str(self.root), 'checkout', '-q', '--detach', self.base],
+                       check=True, capture_output=True)
+        self.head = fixtures.commit_files(self.root, files)
+        self.event_path.write_text(json.dumps({
+            'pull_request': {'base': {'sha': self.base}, 'head': {'sha': self.head}}}))
+        # Supply only the environment this command needs; do not inherit a
+        # developer's GitHub event or credentials into the fixture process.
+        self.env = {'PATH': str(Path(sys.executable).parent) + os.pathsep + os.defpath,
+                    'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_EVENT_PATH': str(self.event_path),
+                    'GITHUB_SHA': self.head, 'BROWSER_SHARDS': '2', 'GITHUB_OUTPUT': str(self.output)}
+
+    def workflow(self):
+        self.output.write_text('')
+        ran = subprocess.run(['bash', '-c', self.workflow_command], cwd=self.root, env=self.env,
+                             capture_output=True, text=True)
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        self.assertEqual(ran.stdout, '', 'workflow output belongs in GITHUB_OUTPUT')
+        lines = self.output.read_text().splitlines()
+        self.assertEqual(len(lines), 2, 'both matrix and scope must reach GitHub')
+        fields = dict(line.split('=', 1) for line in lines)
+        self.assertEqual(set(fields), {'shards', 'scoped'})
+        result = {key: json.loads(value) for key, value in fields.items()}
+        return result, ran.stderr.strip()
+
+    def assert_scoped(self, result, chosen, changed):
+        self.assertCountEqual(names(result), list(release_check.UNIT_STEPS) +
+                              ['deploy-refusals', 'wake-replay'] + chosen)
+        self.assertEqual(len(names(result)), len(set(names(result))), 'no step runs twice')
+        scope = result['scoped']
+        self.assertIsInstance(scope, dict, 'the event must produce a scope, not a full run')
+        self.assertEqual(scope['live'], self.base)
+        self.assertEqual(scope['steps'], chosen)
+        self.assertCountEqual(scope['changed'], changed)
+        self.assertCountEqual(scope['not_run'], [name for name in release_check.REQUIRED
+                                               if name.startswith('native-') and name not in chosen])
+
+    def test_workflow_command_reads_github_event_and_emits_docs_only_matrix_and_scope(self):
+        self.change({'docs/note.md': 'documentation only\n'})
+        result, why = self.workflow()
+        self.assert_scoped(result, [], ['docs/note.md'])
+        self.assertEqual(len(result['shards']), 2, 'no empty browser job')
+        self.assertEqual(why, result['scoped']['why'])
+
+    def test_workflow_command_emits_only_chosen_css_steps_and_complete_scope(self):
+        self.change(fixtures.HEALTH_FIX)
+        result, why = self.workflow()
+        self.assert_scoped(result, ['native-health'], list(fixtures.HEALTH_FIX))
+        self.assertEqual(len(result['shards']), 3)
+        self.assertEqual(why, result['scoped']['why'])
+
+    def test_workflow_command_falls_closed_when_event_is_unavailable_or_not_a_pr(self):
+        self.change({'docs/note.md': 'documentation only\n'})
+        for event_name in ('push', 'workflow_dispatch'):
+            with self.subTest(event_name=event_name):
+                self.env['GITHUB_EVENT_NAME'] = event_name
+                result, why = self.workflow()
+                self.assertCountEqual(names(result), release_check.REQUIRED)
+                self.assertIsNone(result['scoped'])
+                self.assertIn('only pull requests', why)
+        self.env['GITHUB_EVENT_NAME'] = 'pull_request'
+        for event in (None, '{', '{}', '{"pull_request": {"base": {"sha": "bad"}}}'):
+            with self.subTest(event=event):
+                if event is None:
+                    self.event_path.unlink()
+                else:
+                    self.event_path.write_text(event)
+                result, why = self.workflow()
+                self.assertCountEqual(names(result), release_check.REQUIRED)
+                self.assertIsNone(result['scoped'])
+                self.assertIn('scope unavailable', why)
+
+    def test_workflow_command_falls_closed_for_forbidden_paths_six_files_and_refused_rules(self):
+        for files in ({'.github/probe.yml': '# controller\n'},
+                      {'docs/%d.md' % n: '# six\n' for n in range(6)},
+                      {'tools/release_check.py': '# rules unavailable\n'}):
+            with self.subTest(files=sorted(files)):
+                self.change(files)
+                # Keep the running command intact while the committed rules
+                # cannot be read: scope must inspect Git, not the working file.
+                if 'tools/release_check.py' in files:
+                    (self.root / 'tools/release_check.py').write_text((ROOT / 'tools/release_check.py').read_text())
+                result, why = self.workflow()
+                self.assertCountEqual(names(result), release_check.REQUIRED)
+                self.assertIsNone(result['scoped'])
+                self.assertIn('scope unavailable', why)
+
+    def test_command_flags_override_github_defaults_and_plain_json_matches_workflow(self):
+        self.change(fixtures.HEALTH_FIX)
+        expected, why = self.workflow()
+        self.env.update(GITHUB_EVENT_NAME='push', GITHUB_EVENT_PATH=str(self.folder / 'absent'), GITHUB_SHA='bad')
+        command = [sys.executable, '-I', '-B', 'tools/check_plan.py', '--event-name', 'pull_request',
+                   '--event', str(self.event_path), '--head', self.head, '--browser-shards', '2']
+        ran = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        actual = json.loads(ran.stdout)
+        self.assertEqual(actual, dict(expected, why=why))
+        self.assertEqual(ran.stderr, '')
+
+
 if __name__ == '__main__':
     unittest.main()
