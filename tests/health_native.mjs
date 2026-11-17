@@ -159,6 +159,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
       return {inRail:foot.parentElement===rail,last:foot.lastElementChild===a,afterName:Boolean(foot.querySelector('#instance-label ~ #health-link')),
         below:others.length>0&&others.every(e=>top>=e.getBoundingClientRect().bottom-0.5),order:[...rail.children].filter(shown).map(e=>e.id||e.classList[0])}})()`);
     await control({ method: 'health', action: 'fail', count: 3, reason: 'deadline' });
+    const seen = [];
     try {
       for (const [width, metrics] of sizes) {
         for (const theme of ['light', 'dark']) {
@@ -186,19 +187,29 @@ export async function healthChecks({ check, page, until, control, view, facts, s
           await p.evaluate("document.getElementById('health-link').scrollIntoView({block:'center'})");
           await shot(p, `health-foot-${width}-${theme}`);
           const at = await placed(p);
-          assert.deepEqual([lit.text, lit.label], ['Health · needs attention', 'Health: something needs attention'], `${where}: it says so in words`);
-          assert.equal(lit.color, lit.alert, `${where}: in the theme's alert colour`);
-          assert.deepEqual(lit.edges, ['0px', '0px'], `${where}: no edge or box of its own`);
-          assert.deepEqual([at.inRail, at.last, at.afterName, at.below], [true, true, true, true],
-            `${where}: the last line of the rail's foot, under the workspace name, below the rail's last section: ${at.order.join(' ')}`);
           await press('#health-link');
           await until(() => quiet(p, `location.search === '?health' && document.body.dataset.ready === 'true' && document.getElementById('health-link').getAttribute('aria-current') === 'page'`),
             `${where}: a press opens Health, which marks its link as the page`);
           const there = await until(async () => { const l = await readLink(p); return l.red && l; }, `${where}: lit on Health too`);
-          assert.equal(there.color, there.alert, `${where}: in the alert colour on Health`);
-          assert.deepEqual(p.errors, []);
+          // Health itself, a page with no rail: the foot at its end.
+          await p.evaluate('scrollTo(0, document.documentElement.scrollHeight)');
+          await shot(p, `health-page-${width}-${theme}`);
+          const end = await p.evaluate(`(()=>{const foot=document.getElementById('health-link').parentElement,main=document.querySelector('main'),shown=e=>e.getClientRects().length>0;
+            return {inMain:foot.parentElement===main,last:[...main.children].filter(shown).at(-1)===foot}})()`);
+          seen.push({ where, lit, at, there, end, errors: p.errors });
           await p.close();
         }
+      }
+      // Every width and theme is drawn and shot before anything is judged.
+      for (const { where, lit, at, there, end, errors } of seen) {
+        assert.deepEqual([lit.text, lit.label], ['Health · needs attention', 'Health: something needs attention'], `${where}: it says so in words`);
+        assert.equal(lit.color, lit.alert, `${where}: in the theme's alert colour`);
+        assert.deepEqual(lit.edges, ['0px', '0px'], `${where}: no edge or box of its own`);
+        assert.deepEqual([at.inRail, at.last, at.afterName, at.below], [true, true, true, true],
+          `${where}: the last line of the rail's foot, under the workspace name, below the rail's last section: ${at.order.join(' ')}`);
+        assert.equal(there.color, there.alert, `${where}: in the alert colour on Health`);
+        assert.deepEqual([end.inMain, end.last], [true, true], `${where}: on Health, a page with no rail, the foot ends the page`);
+        assert.deepEqual(errors, [], where);
       }
     } finally {
       await control({ method: 'health', action: 'through' });
