@@ -31,6 +31,14 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     if (key) {
       await p.locator(selector).first().focus();
       await p.keyboard.press('Enter');
+    } else if (selector.endsWith('.image-open')) {
+      // Remove overlaps the square's upper right on a phone. A finger can
+      // reach the thumbnail at its lower left; aim there, as a person does.
+      const box = await p.locator(selector).first().boundingBox();
+      assert.ok(box, 'the thumbnail opener is drawn');
+      const x = box.x + 6, y = box.y + box.height - 6;
+      assert.equal(await p.evaluate(({ x, y, selector }) => document.elementFromPoint(x, y)?.closest(selector) !== null, { x, y, selector }), true, 'the native press is on the thumbnail opener');
+      if (p.touch) await p.touchscreen.tap(x, y); else await p.mouse.click(x, y);
     } else await press(p, selector);
     const outcome = await received;
     assert.ok(outcome.value, `thumbnail opens a new tab: ${outcome.error?.message ?? ''}`);
