@@ -766,9 +766,10 @@ def main():
                         answer = command("message.thumb", request["operation_id"], {"thumbed": request.get("thumbed", True)},
                                          {"message_id": request["message_id"]}, {"thumb_revision": revision}, sender=request["sender"])
                     elif freshness and request["method"] == "stack_act":
-                        # A star, a stack's short name, a join or a place, as another person or an agent
-                        # makes it through Core (docs/reply-stacks.md), fenced on what they last read.
-                        field = STACK_KINDS[request["kind"]][1]
+                        # A star, a stack's short name, a join, a place or a dossier's cover, as another person or
+                        # an agent makes it through Core (docs/reply-stacks.md, docs/dossier-covers.md), fenced on
+                        # what they last read.
+                        field = "cover_revision" if request["kind"] == "stack.cover" else STACK_KINDS[request["kind"]][1]
                         with sqlite3.connect(str(path)) as db:
                             db.row_factory = sqlite3.Row
                             revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)

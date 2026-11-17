@@ -169,9 +169,11 @@ class Reactions:
         version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, _now_ms(), thumbed)
         # A thumbs-up given folds the message for its giver (Stacks._fold_answered); one taken back unfolds nothing.
         folded = self._fold_answered(db, actor, message["id"]) if thumbed else []
+        # The owner's 👍 on a cover's payload makes it Done, and taking it back takes Done back (Covers._cover_settle).
+        covered = self._cover_settle(db, actor, message["id"])
         return self._read_by(dict(result, thumbed=thumbed, thumb_revision=current + 1, reaction_version=version, answered=value == "yes",
                                   changed=True, settled=settled), waits + [
-            {"kind": "reaction", "id": message["id"], "version": version}] + folded, message, cleared)
+            {"kind": "reaction", "id": message["id"], "version": version}] + folded + covered, message, cleared)
 
     # A thumb that answers an ask (item 239) -----------------------------------
 

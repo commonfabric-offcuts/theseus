@@ -36,6 +36,7 @@ class UsageError(ValueError):
 from .cli_outcome import PipelineVerbs, _words as held_words, register as register_pipeline
 from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 from .cli_tools import ToolVerbs, register as register_tools
+from .cli_covers import CoverVerbs, register as register_covers
 
 
 class Parser(argparse.ArgumentParser):
@@ -185,6 +186,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | mint MESSAGE [--expected N] WORDS|- "
+         "| cover MESSAGE [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
+         "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
@@ -389,6 +392,7 @@ def _parser():
     register_pipeline(verb)
     register_targets(verb)
     register_tools(verb)
+    register_covers(verb)
     return parser
 
 
@@ -517,7 +521,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs):
+class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
