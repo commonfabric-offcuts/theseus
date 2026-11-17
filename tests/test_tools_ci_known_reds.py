@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from tools import ci_known_reds as ci, release_check
 
@@ -1217,6 +1218,48 @@ class Evidence(unittest.TestCase):
         self.assertTrue(result['passed'])
         self.assertFalse(result['raw_passed'])
         self.assertEqual([a['attempt'] for a in result['attempts']], [1, 2])
+
+
+    def scoped_evidence(self):
+        chosen = ['native-colors']
+        wanted = set(release_check.UNIT_STEPS + (release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY)) | set(chosen)
+        self.steps[:] = [s for s in self.steps if s['name'] in wanted]
+        native = ci.NATIVE['native-colors']
+        next(s for s in self.steps if s['name'] == 'native-colors')['argv'] = [
+            '/node', native.harness, '/chrome', '/out'] + list(native.flags)
+        self.summary.update(steps=self.steps, passed=True, failed=[], scoped={
+            'live': self.base_sha, 'steps': chosen, 'changed': ['web/aim.css'],
+            'not_run': [n for n in ci.NATIVE if n not in chosen]})
+        self.raw.update(steps=copy.deepcopy(self.steps), passed=True, failed=[], only=[s['name'] for s in self.steps])
+        self.provenance['plan'] = [{'name': 'scoped', 'steps': ','.join(self.raw['only'])}]
+        self.provenance['shards'][0]['steps'] = self.raw['only']
+        self.receipt['shard']['steps'] = self.raw['only']
+        return self.base_sha, ['web/aim.css'], chosen, []
+
+    def test_scoped_pr_validates_only_after_rechoosing_its_steps_from_the_event_base(self):
+        basis = self.scoped_evidence()
+        with mock.patch.object(release_check, 'scope', return_value=basis[1:]) as choose:
+            result = self.validate()
+        self.assertTrue(result['passed'])
+        choose.assert_called_once_with(self.repo, self.base_sha, self.sha)
+
+    def test_scoped_pr_missing_chosen_step_or_full_run_claim_is_refused(self):
+        basis = self.scoped_evidence()
+        with mock.patch.object(release_check, 'scope', return_value=basis[1:]):
+            chosen = self.steps.pop(next(i for i, s in enumerate(self.steps) if s['name'] == 'native-colors'))
+            self.refused('missing required step')
+            self.steps.append(chosen)
+            self.summary.pop('scoped')
+            self.refused('missing required step')
+
+    def test_scoped_push_and_unreadable_or_non_small_scope_are_refused(self):
+        basis = self.scoped_evidence()
+        with mock.patch.object(release_check, 'scope', side_effect=release_check.Refused('rules refused')):
+            self.refused('cannot choose scoped steps')
+        with mock.patch.object(release_check, 'scope', return_value=(['tools/checks.py'], ['native-colors'], [])):
+            self.refused('not a small fix')
+        self.env['GITHUB_EVENT_NAME'] = self.run['event'] = 'push'
+        self.refused('scoped summary requires a pull request')
 
 
 class TheRepositorysOwnChecks(unittest.TestCase):
