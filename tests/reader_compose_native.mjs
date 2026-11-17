@@ -114,9 +114,9 @@ const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
 // at: the fixture the page reads, the cases' own unless one says otherwise.
-async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts) {
+async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, optionsOverride = {}) {
   const options = SHAPES[shape];
-  const context = await browser.newContext({ ...options, colorScheme: scheme });
+  const context = await browser.newContext({ ...options, ...optionsOverride, colorScheme: scheme });
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
   const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
