@@ -28489,6 +28489,20 @@
     "native": "reading",
     "case": "item 649.*normal corner"
    }
+  },
+  {
+   "item": 649,
+   "act": "A saved note without a caret can be opened and returned from without losing writing",
+   "break": [
+    [
+     "web/reader.mjs",
+     "const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };",
+     "const caret = this.editor.draft.caret;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_marks.test.mjs"
+   }
   }
  ]
 }

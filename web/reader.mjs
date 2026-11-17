@@ -734,7 +734,7 @@ export class Reader {
     this.disarm();
     this.drawEditor();
     this.field.focus();
-    const caret = this.editor.draft.caret;
+    const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };
     this.field.setSelectionRange(caret.start, caret.end);
   }
 

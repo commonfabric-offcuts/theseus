@@ -189,7 +189,8 @@ A message with your private note shows a small note corner; pressing it opens
 the composer to that note. The shortcut is on the drawn message card, with the
 existing note glyph and an “Open your private note” name and tooltip. Pointer,
 keyboard and a phone's first tap all open the Reader directly to the exact note.
-The reply and its destination stay as they were. The time's passive marks and
+The reply and its destination stay as they were. A note saved without a caret
+opens at the end of its words and can return to the reply without an error. The time's passive marks and
 collapsed dossier rows keep their existing behavior.
 
 The corner follows Core's reader-scoped `yours.note`: no corner for an empty

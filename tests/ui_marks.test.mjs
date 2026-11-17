@@ -424,3 +424,22 @@ test('item 649: only your saved note offers a named corner and repaint keeps its
   paint({ id: 'm', yours: { note: false } });
   assert.equal(card.children.length, 0, 'emptying your note removes the shortcut');
 });
+
+test('item 649: switching to a saved note without a caret keeps its exact writing and can return to the reply', async () => {
+  const { Reader } = await import('../web/reader.mjs');
+  const reply = { draft: { body: 'Reply  unchanged.', caret: { start: 2, end: 2 } } };
+  const note = { draft: { body: 'Exact note\nkept privately.', caret: null } };
+  const ranges = [];
+  const r = Object.assign(Object.create(Reader.prototype), {
+    mode: 'reply', sessions: { reply, note }, viewToken: 0, callbacks: { edit() {} },
+    cancelImagePicker() {}, caret: () => ({ start: 2, end: 2 }), disarm() {},
+    drawEditor() { this.field.value = this.editor.draft.body; },
+    field: { value: '', focus() {}, setSelectionRange: (start, end) => ranges.push([start, end]) },
+  });
+  r.switchMode('note');
+  assert.equal(r.field.value, note.draft.body);
+  assert.deepEqual(ranges, [[note.draft.body.length, note.draft.body.length]]);
+  r.switchMode('reply');
+  assert.equal(r.field.value, 'Reply  unchanged.');
+  assert.deepEqual(ranges[1], [2, 2]);
+});
