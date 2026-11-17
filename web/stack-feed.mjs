@@ -719,14 +719,16 @@ export class StackFeed {
   // (item 378): Move below More, or Bring back once it is there, the same act
   // as ⋯'s (setAside), with how many of the page's messages go with it. The
   // act moves Core's whole dossier, which the page draws as one stack, its
-  // first message loaded or not (item 550), so the count is that stack's
-  // messages. Null where ⋯ offers neither: no stack drawn holds the message,
-  // or Core sent no position for it.
+  // first message loaded or not (item 550), and the older messages of it More
+  // messages showed where its button was as cards of their own, so the count is
+  // of every stack drawn from that dossier. Null where ⋯ offers neither: no
+  // stack drawn holds the message, or Core sent no position for it.
   asideOffer(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     const position = stack && positionOf(stack);
     if (!position) return null;
-    return { stack, below: position.below, count: 1 + stack.replies.length };
+    const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);
+    return { stack, below: position.below, count: dossier.reduce((count, each) => count + 1 + each.replies.length, 0) };
   }
   // The name of the dossier a message is in, as its tab shows it (item 561):
   // the name typed or minted, or, for a dossier nobody named, its first line.

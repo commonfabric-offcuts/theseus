@@ -21,7 +21,7 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
+import { gather, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -111,47 +111,48 @@ export function topOf(list, entry) {
 // among those earlier ones shown whole this visit (whole), the messages
 // last drawn as an earlier one's row (earlierRows), and, for each dossier drawn
 // open, the first message it showed then (held; stack-order.mjs, earlierOf),
-// so a message arriving hides nothing. Item 550: the dossier More messages
-// fills, with what was loaded when it was pressed (filling), and the older
-// messages it filled that dossier's stack with (filled; stack-order.mjs,
-// gather). None is ever recorded.
+// so a message arriving hides nothing. Item 550: what More messages was
+// pressed with (filling, fillFrom), the older messages it filled the stack
+// shown last above it with (filled), and those it showed as cards of their
+// own (apart; stack-order.mjs, gather). None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
-    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });
+    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set(), apart: new Set() });
   return states.get(list);
 }
 
-// Item 550: More messages, pressed, fills the stack shown last above it: the
-// older messages it loads that are of that stack's dossier show at that
-// stack's end, where the button was, each whole, and its head stays its head
-// (stack-order.mjs, gather and shown). Records that dossier, the messages
-// loaded now and the oldest of them; arrangeStacks fills the stack as the
-// older page is drawn. Nothing drawn above More: nothing is filled.
+// Item 550: More messages, pressed, shows what it loads where its button was
+// (docs/experience-guidelines.md, "Your place holds"). Of the older messages
+// it loads, each of a dossier the page draws (stack-order.mjs, dossiersOf)
+// shows there whole: at the end of the stack shown last above the button where
+// it is of that stack's dossier (filled), and as a card of its own otherwise
+// (apart), so no stack drawn higher up takes it or another head, and nothing
+// shown moves (gather). Older messages of a dossier the page does not draw
+// are its stack there, as ever. Records the dossier of that last stack, the
+// dossiers drawn, what was loaded when it was pressed and the oldest of it;
+// arrangeStacks sorts the older page as it draws it (fill).
 export function fillFrom(list) {
   const state = stackState(list), view = shownView(state);
-  const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
-  if (!last) { state.filling = null; return; }
   const known = new Set();
   let below = Infinity;
   for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { known.add(item.id); below = Math.min(below, item.seq); }
-  state.filling = { dossier: last.dossier, known, below };
+  const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
+  state.filling = { into: last?.dossier ?? null, drawn: new Set(state.stacks.map(stack => stack.dossier)), known, below };
 }
 
-// The messages of the dossier being filled (fillFrom) that this drawing is
-// the first to hold, older than everything loaded when More was pressed, its
-// first message among them, join state.filled. Answers whether any did.
-function fill(state, stacks, loaded) {
+// Each message this drawing is the first to hold, older than everything
+// loaded when More was pressed, of a dossier drawn then (fillFrom), joins
+// state.filled or state.apart.
+function fill(state, loaded) {
   const filling = state.filling;
-  if (!filling) return false;
-  const into = stacks.find(stack => stack.dossier === filling.dossier);
-  let added = false;
-  for (const item of into ? [into.head, ...into.replies] : []) {
-    if (filling.known.has(item.id) || item.seq >= filling.below || state.filled.has(item.id)) continue;
-    state.filled.add(item.id); added = true;
+  if (!filling) return;
+  const dossier = dossiersOf(loaded, { filled: state.filled, apart: state.apart });
+  for (const item of loaded) {
+    const of = dossier.get(item.id);
+    if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);
+    filling.known.add(item.id);
   }
-  for (const item of loaded) filling.known.add(item.id);
-  return added;
 }
 
 // Agent-only dossiers begin as one quiet title row; a person's explicit
@@ -299,7 +300,8 @@ export function foldedClick(list, entry, event) {
 // message, or hides it again. The row is the dossier's title whether its first
 // message is folded or not (item 471). Answers whether the click was the
 // row's; a click on the full message, its folded row included, is not, and
-// does what it does on any card.
+// does what it does on any card: so too on a head a folded stack shows whole
+// (a gathered stack's, item 550, paintStack).
 export function headClick(list, entry, event) {
   const found = stackOf(list, entry), state = stackState(list);
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
@@ -308,12 +310,12 @@ export function headClick(list, entry, event) {
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
   if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
-  const open = state.levels.get(stack.id) === 'open';
-  if (act === 'hide' || (open && event?.target?.closest?.('.stack-head'))) {
+  const open = state.levels.get(stack.id) === 'open', row = Boolean(event?.target?.closest?.('.stack-head'));
+  if (act === 'hide' || (open && row)) {
     setLevel(state, stack, 'folded'); state.again();
     return true;
   }
-  if (!open) { setLevel(state, stack, 'open'); state.again(); return true; }
+  if (!open && (row || found.section.dataset.headOpen !== 'true')) { setLevel(state, stack, 'open'); state.again(); return true; }
   return false;
 }
 
@@ -548,6 +550,11 @@ function paintStack(section, stack, byId, context) {
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen);
+  // Item 550: a stack gathered under a first message the page has not loaded
+  // (stack-order.mjs, gather) is headed by one of its replies, a card of its
+  // own before 550: folded, it shows whole, as each reply kept in view does,
+  // never as its tab alone.
+  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);
   if (open && headBefore && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
@@ -620,7 +627,7 @@ function paintStack(section, stack, byId, context) {
     entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
     entry.dataset.stackFilled = String(Boolean(stack.filled?.has(entry.dataset.id)));
   }
-  let previousFace = open ? head : null;
+  let previousFace = whole ? head : null;
   for (const entry of desired) {
     if (entry.hidden) continue;
     if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }
@@ -638,7 +645,7 @@ function paintStack(section, stack, byId, context) {
   reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
-  Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
+  Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(whole), placed: String(stack.placed !== null),
     single: String(single), renaming: String(state.renaming === stack.id) });
   section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
 }
@@ -662,8 +669,8 @@ export function arrangeStacks(list, messages, options = {}) {
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
-  let stacks = ordered(gather(loaded, { viewer, filled: state.filled }));
-  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { viewer, filled: state.filled }));
+  fill(state, loaded);
+  const stacks = ordered(gather(loaded, { viewer, filled: state.filled, apart: state.apart }));
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
   state.earlierRows = new Set();

@@ -43,7 +43,9 @@ message's whole dossier (item 378): the same act as the card's ⋯ Move below
 More (`StackFeed.setAside`), and the number is how many messages move below
 More with it, the message itself included. The act moves the whole dossier,
 which the page draws as one stack whether or not it has loaded its first
-message (item 550), so the count is that stack's messages ("Move below More: 3
+message (item 550), with any older message of it More messages showed where
+its button was as a card of its own, so the count is of every stack the page
+draws of the dossier ("Move below More: 3
 messages" by name and as its tooltip). Once the dossier is below More it shows
 pressed and brings it back ("Bring back above More: 3 messages"), as ⋯ does.
 The Reader stays open on the message and the focus stays on the button; the

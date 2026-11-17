@@ -3398,10 +3398,74 @@ test('More messages shows the older messages of the dossier it fills where its b
     'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
   assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
   // Where the button was: the filled cards a run of whole cards, none overlapping another or covering the face above
-  // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do.
+  // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do,
+  // the head m40 among them, which shows whole though the stack is folded (its first message is not loaded, fix round B2).
   const faces = Object.fromEntries(entries(f.get('messages')).map(entry => [entry.dataset.id, [entry.dataset.stackFilled, entry.dataset.stackOverlap, entry.dataset.stackCovered]]));
-  assert.deepEqual(faces, { m40: ['false', 'false', 'false'], m41: ['false', 'false', 'true'], m42: ['false', 'true', 'true'], m43: ['false', 'true', 'true'], m44: ['false', 'true', 'false'],
+  assert.deepEqual(faces, { m40: ['false', 'false', 'true'], m41: ['false', 'true', 'true'], m42: ['false', 'true', 'true'], m43: ['false', 'true', 'true'], m44: ['false', 'true', 'false'],
     m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'], m1: ['true', 'false', 'false'] });
+});
+
+// Item 550, its fix round's B1: More messages shows every older message it loads where its button was, of whichever
+// dossier. Here the last card above the button is a message of its own (m36), and the older page holds only replies of
+// a dossier whose first message (m1) is above the page and whose stack (m37..m41) sits higher up. Each older reply
+// shows below m36, newest first; the cards shown keep their order and how they show, and the stack higher up keeps
+// its head and its messages: none of the older replies goes into it.
+test('More messages shows every older message it loads where its button was, those of a dossier whose stack sits higher up too, and what was shown holds', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, root, reply_to = null) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1',
+    ...(reply_to ? { reply_to } : {}), stack_position: at(root) });
+  const run = (from, through, make) => Array.from({ length: through - from + 1 }, (_, n) => make(from + n));
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  // m2..m35 answer m1, older than the page; m36 is a message of its own; m37..m41 answer m1; m42..m65 are messages of their own.
+  views.messagesPage(page([item(36, 'm36'), ...run(37, 41, seq => item(seq, 'm1', 'm1')), ...run(42, 65, seq => item(seq, 'm' + seq))], 36, 1), { initial: true }); await settle();
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? page(run(6, 35, seq => item(seq, 'm1', 'm1')), 6, 1)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, !entry.hidden]);
+  const stackOf = id => entryIn(f, id)?.closest('.reply-stack')?.dataset.stack ?? null;
+  const before = drawn();
+  assert.deepEqual([before.at(-1), stackOf('m41'), ['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf)], [['m36', true], 'm37', Array(5).fill('m37')],
+    'm36 is the last card above More, and the dossier\'s five replies are one stack higher up, headed by m37');
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...before, ...run(6, 35, seq => ['m' + (41 - seq), true])],
+    'what was shown keeps its order and how it shows; below it, every older message, newest first, each shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
+    'the stack higher up keeps its head and its messages: no older reply goes into it, or into a stack of its own');
+});
+
+// Item 550, its fix round's B2: in a stack gathered under a first message the page has not loaded (m1), the message
+// at its head is a reply, a card of its own before 550, and its words show, as each reply kept in view shows, while
+// the stack is folded: unread or read. The negative: a stack headed by its own first message (m40) folds it to its
+// tab, as before.
+test('folded, a stack gathered under a first message not loaded shows its head\'s words, unread or read; a first message heading its stack folds to its tab', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, root, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Body ' + seq, topic_id: 't1', stack_position: at(root), ...extra });
+  // m2..m5 answer m1, above the page, all unread; m20..m22 answer m10, above the page, all read; m40 heads its own reply m41.
+  const items = [...[2, 3, 4, 5].map(seq => item(seq, 'm1', { reply_to: 'm1', unread: true })), ...[20, 21, 22].map(seq => item(seq, 'm10', { reply_to: 'm10' })),
+    item(40, 'm40'), item(41, 'm40', { reply_to: 'm40' })];
+  views.messagesPage({ instance_id: 'fixture', items, next_cursor: null, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  const section = id => entryIn(f, id)?.closest('.reply-stack') ?? null;
+  const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
+  assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
+    'folded, each gathered stack shows its head\'s card whole, unread or read; the stack headed by its own first message shows its tab alone');
+  assert.deepEqual([2, 3, 4, 5].map(seq => entryIn(f, 'm' + seq).hidden), [false, false, false, false], 'every unread reply in view, its head among them');
+  // A press on the head's words does what it does on any card (opens the Reader), as it did on that reply's own card
+  // before 550; a press on its tab opens the dossier. The negative: a head folded to its tab opens the dossier wherever
+  // it is pressed.
+  const part = (id, name) => entryIn(f, id).children.find(child => String(child.className).split(' ').includes(name));
+  const press = async (id, name) => { await entryIn(f, id).onclick({ target: part(id, name), button: 0, preventDefault() {} }); await settle(); };
+  await press('m2', 'message-preview');
+  assert.deepEqual(look('m2')[1], 'folded', 'the head\'s words are the card\'s, not the tab\'s');
+  await press('m40', 'message-preview');
+  assert.equal(look('m40')[1], 'open', 'a head folded to its tab opens its dossier wherever it is pressed');
+  await press('m2', 'stack-head');
+  assert.deepEqual([look('m2'), look('m40')], [['m2', 'open', 'true'], ['m40', 'open', 'true']], 'the tab opens the gathered dossier, its head still whole');
 });
 
 // Item 550's limit on the Reader's title (item 561): under a source it names the dossier, by its name, else its first

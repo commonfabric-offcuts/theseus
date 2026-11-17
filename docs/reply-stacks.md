@@ -182,48 +182,47 @@ their acts.
   that one is loaded. Otherwise it is the message it answers, when loaded.
   Otherwise it heads its own stack. A loop, which joins made by different
   people can form, is cut at its newest message.
-- **One dossier, one stack (item 550).** Where a dossier's fork sits above
-  what the page has loaded, each reply made under the fork (every reply
-  straight under the dossier's first message is one) heads a branch of its
-  own by the rule above. Core's position on each message names the
-  dossier's first message (docs/dossier-below-more.md), and the branches
-  that name one are one stack: one tab, one name, one count, every loaded
-  reply in it oldest first. They go into the stack that holds that first
-  message where the page has loaded it (two runs of the page with a gap
-  between them can hold it and not the fork), and otherwise gather under
-  the oldest of their heads. A dossier whose first message heads its stack
-  reads as it did, two dossiers are two stacks whatever is loaded of each,
-  and Earlier messages, loading the fork and then the first message, leaves
-  the dossier one stack under the oldest message loaded. A stack whose own
-  join or split the page has not had answered carries the positions Core
-  read before it, which name the dossier it left: it gathers nothing by
-  them and takes none of that dossier's name (`moving` in the page's shown
-  messages, `stack-feed.mjs`). A reader's own reply among the branches
-  leaves the stack where it was, as in any stack (The stacks, below).
-  The stack is the dossier's whichever message heads it: when Earlier
-  messages loads a reply older than its head made under the first message,
-  or the first message itself, that message heads it from then on, and the
-  stack stays as the reader left it, open or folded, its earlier-messages
-  row opened or not, the seven it shows held (`reheaded`,
+- **One dossier, one stack (item 550).** Core's position on each message
+  names its dossier's first message (`root_id`,
+  docs/dossier-below-more.md), and the page groups the messages it holds by
+  it, as Core says: one dossier, one stack, one tab, one name, one count,
+  every loaded message of it oldest first, whatever of the dossier is
+  loaded. The page never works a dossier out from what it holds, so loading
+  more of one moves no message into another. A message the page holds under
+  another (it answers it, or a join the page shows put it there) is in that
+  one's dossier, as Core places it, so a join or a split shows at once,
+  before Core's positions are read again; a message whose own join or split
+  the page has not had answered (`moving` in the page's shown messages,
+  `stack-feed.mjs`), and one from a Core that sends no position, is its own
+  dossier's first message (`dossiersOf`, `stack-order.mjs`). The stack's
+  head is the dossier's first message where the page holds it. Where it
+  does not, the stack is gathered: its head is the oldest of its messages
+  that hang under no message the page holds (each was a card of its own
+  before 550), not a reply of the reader's own while another can be, so
+  that reply stays a reply in the reader's own style; the others are its
+  branches. Two dossiers are two stacks whatever is loaded of each. A
+  dossier's stack takes another head only when the page is read again with
+  more of it, and then stays as the reader left it, open or folded, its
+  earlier-messages row opened or not, the seven it shows held (`reheaded`,
   `stack-order.mjs`), and where the reader placed it (The stacks, below).
 - **What one stack never loses.** Each way of showing a dossier loses
-  nothing in it, and every message stays reachable where it is. So the one
-  stack of a dossier whose first message the page has not loaded keeps,
-  folded, each branch's head in view (each was a stack of its own, its card
-  in view, before 550; a reply under one folds as any reply does); its head
-  is the oldest branch head that is not a reply of the reader's own, which
-  stays a reply, its card in the reader's own style (only a dossier all of
-  the reader's own has one as its head). More messages fills the stack shown
-  last above it: the older messages it loads that are of that stack's
-  dossier show at the stack's end, where the button was, newest first, each
-  whole at every level and never behind the earlier-messages row, as a run
-  of cards a sheet gap apart that neither overlap one another nor tuck under
-  the card above, so nothing already shown moves, and the
-  stack keeps the head it had (`fillFrom`, `reply-stacks.mjs`; `filled` in
-  `gather`). What More loaded gathers nothing the stack showed under it, the
-  dossier's first message among it, which joins the run and heads nothing
-  until the page is read again; older messages of another dossier go into its
-  stack, in time order.
+  nothing in it, and every message stays reachable where it is. So a
+  gathered stack keeps, folded, its head whole and each branch in view, as
+  each was a card of its own before 550, read or not; a reply under one
+  folds as any reply does, and a stack headed by its own first message folds
+  it to its tab as ever (`paintStack`, `reply-stacks.mjs`).
+  More messages shows what it loads where its button was
+  (docs/experience-guidelines.md, "Your place holds"): of the older
+  messages it loads, each of the dossier of the stack shown last above the
+  button shows at that stack's end, newest first, each whole at every level
+  and never behind the earlier-messages row, as a run of cards a sheet gap
+  apart that neither overlap one another nor tuck under the card above; each
+  of a dossier whose stack sits higher up shows there too, as a card of its
+  own, so that stack keeps its head, its count and its place, and no card
+  already shown moves (`fillFrom`, `reply-stacks.mjs`; `filled` and `apart`
+  in `gather`). The dossier's first message is no exception: loaded so, it
+  heads nothing until the page is read again. Older messages of a dossier
+  the page did not draw are that dossier's stack there, in time order.
 - **Inside a stack.** The head stays first. Every other message in the
   stack runs oldest first, by sequence, as one run: the head's replies, each
   joined stack's messages, the replies to those, and stacks joined to a

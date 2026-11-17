@@ -1328,6 +1328,110 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 550, its fix round's B1: Earlier messages shows every older message it loads where the button was, whichever
+  // dossier it is of. The last card above the button is a message of its own; the older page holds only replies of a
+  // dossier whose first message is above the page and whose stack, its five newer replies, sits higher up. Each older
+  // reply comes in below that last card, newest first, a whole card a gap below the one before; the cards shown hold
+  // still, and the stack higher up keeps its head and takes none of them. On a laptop and by a finger at 390, 375 and
+  // 320, light and dark, before (0) and after (1).
+  await check('reading stacks Earlier messages shows every older message it loads where the button was, those of a dossier whose stack sits higher up too: the cards shown hold still and that stack keeps its head (item 550)', async () => {
+    const topic = 'stack-more-apart';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Which boat takes the regatta marks out on Saturday?', { join: true })]];
+    for (let n = 1; n <= 34; n++) said.push(['o' + n, say(n % 2 ? 'aim-ux' : other, `Mark ${n}: its buoy is painted and its line coiled.`, { reply_to: 'root', ...(n === 1 ? { join: true } : {}) })]);
+    said.push(['x', say(other, 'The slipway gate sticks; oil it before the weekend.')]);
+    for (let n = 1; n <= 5; n++) said.push(['a' + n, say(n % 2 ? other : 'aim-ux', `Launch ${n} is fuelled and its crew named.`, { reply_to: 'root' })]);
+    for (let n = 1; n <= 24; n++) said.push(['n' + n, say(other, `Harbour board note ${n}, a message of its own.`)]);
+    const ids = await seed(topic, said);
+    const older = Array.from({ length: 30 }, (_, n) => 'o' + (34 - n));
+    const key = `(id=>{const m=${JSON.stringify(ids)};return Object.keys(m).find(k=>m[k]===id)??id})`;
+    for (const [name, device] of [['laptop', 'laptop'], ['phone', 'phone'], ['phone-375', 'phone'], ['phone-320', 'phone']]) {
+      const p = await open(`${topic}-${name}`, name, topic, ids.n24);
+      const width = await p.evaluate('innerWidth');
+      await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), `${name}: Earlier messages is offered`);
+      const shots = async at => { for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-apart-${name}-${width}-${at}-${theme}`); } await dossierTheme(p, 'light'); };
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      await shots(0);
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const before = await p.evaluate(`(()=>{const key=${key},cards=[...document.querySelectorAll('#messages .message-card[data-id]')].filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1),b=last.getBoundingClientRect();
+        const a=document.querySelector('#messages .message-card[data-id="${ids.a5}"]'),s=a.closest('.reply-stack');
+        return {last:key(last.dataset.id),lastTop:Math.round(b.top),lastBottom:Math.round(b.bottom),head:key(s?.dataset.stack??null),aTop:Math.round(a.getBoundingClientRect().top),
+          count:s?.querySelector('.stack-count')?.textContent??null,loaded:${JSON.stringify(older.map(k => ids[k]))}.filter(id=>document.querySelector('#messages [data-id="'+id+'"]')).length}})()`);
+      assert.deepEqual([before.last, before.head, before.loaded], ['x', 'a1', 0], `${name}: the last card above Earlier messages is a message of its own, the dossier's five replies one stack higher up under a1, and no older reply loaded: ${JSON.stringify(before)}`);
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`${JSON.stringify(older.map(k => ids[k]))}.every(id=>document.querySelector('#messages [data-id="'+id+'"]'))`), `${name}: Earlier messages loads the thirty older replies`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const after = await p.evaluate(`(()=>{const key=${key},box=e=>e.getBoundingClientRect(),card=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]');
+        const x=card(${JSON.stringify(ids.x)}),a=card(${JSON.stringify(ids.a5)}),s=a.closest('.reply-stack'),old=${JSON.stringify(older.map(k => ids[k]))}.map(card);
+        const runs=old.slice(1).map((e,i)=>Math.round(box(e).top-box(old[i]).bottom));
+        return {lastTop:Math.round(box(x).top),lastBottom:Math.round(box(x).bottom),aTop:Math.round(box(a).top),head:key(s?.dataset.stack??null),count:s?.querySelector('.stack-count')?.textContent??null,
+          shown:old.filter(e=>box(e).height>0).length,order:old.every((e,i)=>!i||box(e).top>box(old[i-1]).top),below:old.every(e=>box(e).top>=box(x).bottom),
+          into:[...new Set(old.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],first:Math.round(box(old[0]).top),gaps:[...new Set(runs)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await p.evaluate(`document.querySelector('#messages [data-id="${ids.x}"]').scrollIntoView({block:'start'})`);
+      await shots(1);
+      const seen = JSON.stringify({ before, after });
+      assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1 && Math.abs(after.aTop - before.aTop) <= 1, `${name}: the cards already shown hold still: ${seen}`);
+      assert.deepEqual([after.head, after.count], ['a1', before.count], `${name}: the stack higher up keeps its head and its count: ${seen}`);
+      assert.deepEqual([after.shown, after.order, after.below], [30, true, true], `${name}: every older reply shows below the last card shown, newest first: ${seen}`);
+      assert.deepEqual(after.into, [null], `${name}: none of them goes into the stack higher up, or into a stack of its own: ${seen}`);
+      assert.equal(after.gaps.length, 1, `${name}: the older cards are one even run: ${seen}`);
+      assert.ok(after.gaps[0] > 0 && Math.abs(after.first - (before.lastBottom + after.gaps[0])) <= 1, `${name}: the first older card follows the last shown as each follows the one before: ${seen}`);
+      assert.equal(after.sideways, false, `${name}: nothing runs off the side`);
+      observations.push({ name: 'Earlier messages shows a dossier\'s older replies where the button was', engine, device: name, before, after });
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550, its fix round's B2: a stack gathered under a first message the page has not loaded is headed by one of
+  // its replies, each a card of its own before 550. Folded, that reply's words show, as every reply kept in view shows:
+  // unread, read, and under the dossier's minted name on its tab; opened, too. The negative: a stack headed by its own
+  // first message folds that message to its tab, as before. On a laptop and by a finger at 390, 375 and 320, light and dark.
+  await check('reading stacks folded, a stack gathered under a first message above the page shows the words of the reply heading it, unread or read, named or not; a first message heading its stack folds to its tab (item 550)', async () => {
+    const topic = 'stack-gathered-head', minter = 'aim-ux', words = 'Net loft rota';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, ...more });
+    const said = [['unreadRoot', say(other, 'Who mends the herring nets this month?', { join: true, read: true })],
+      ['readRoot', say(other, 'Where do the spare oars hang?', { read: true })]];
+    for (let n = 0; n < 25; n++) said.push(['f' + n, say(other, `Pier note ${n}, a message of its own.`, { read: true })]);
+    said.push(['u1', say(minter, 'I can take the first week of the nets.', { join: true, reply_to: 'unreadRoot' })],
+      ['u2', say(other, 'I will take the second.', { reply_to: 'unreadRoot' })],
+      ['u3', say(minter, 'The twine arrives on Tuesday.', { reply_to: 'unreadRoot' })],
+      ['u4', say(other, 'Then the third week is mine.', { reply_to: 'unreadRoot' })],
+      ['r1', say(other, 'On the hooks by the boat shed door.', { reply_to: 'readRoot', read: true })],
+      ['r2', say(minter, 'Two of them are cracked.', { reply_to: 'readRoot', read: true })],
+      ['r3', say(other, 'I will glue them on Friday.', { reply_to: 'readRoot', read: true })],
+      ['lone', say(other, 'Is the tide table pinned up?', { read: true })],
+      ['lone1', say(minter, 'Pinned by the bell.', { reply_to: 'lone', read: true })]);
+    const ids = await seed(topic, said);
+    const minted = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.unreadRoot, operation_id: `${topic}-mint`, args: { name: words, minted: true } });
+    assert.equal(minted.status, 'committed', 'the namer mints the nets dossier\'s name');
+    const names = Object.fromEntries(Object.entries(ids).map(([k, id]) => [id, k]));
+    // Each stack by a reply in it: its head, fold, the tab's name and how much of each message's words show.
+    const seen = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},names=${JSON.stringify(names)},height=k=>{const c=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]');return Math.round(c?.querySelector(':scope > .message-preview')?.getBoundingClientRect().height??0)};
+      const stack=k=>{const s=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]').closest('.reply-stack');return {head:names[s.dataset.stack],fold:s.dataset.fold,name:s.querySelector('.stack-name')?.textContent??null}};
+      return {unread:{...stack('u4'),words:['u1','u2','u3','u4'].map(height).map(h=>h>0)},read:{...stack('r3'),words:['r1','r2','r3'].map(height).map(h=>h>0)},
+        loaded:{...stack('lone1'),words:['lone','lone1'].map(height).map(h=>h>0)},roots:['unreadRoot','readRoot'].filter(k=>document.querySelector('#messages [data-id="'+ids[k]+'"]')),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const want = fold => ({ unread: { head: 'u1', fold, name: words, words: [true, true, true, true] }, read: { head: 'r1', fold, name: 'On the hooks by the boat shed door.', words: [true, true, true] },
+      loaded: { head: 'lone', fold: 'folded', name: 'Is the tide table pinned up?', words: [false, true] }, roots: [], sideways: false });
+    for (const [name, device] of [['laptop', 'laptop'], ['phone', 'phone'], ['phone-375', 'phone'], ['phone-320', 'phone']]) {
+      const p = await open(`${topic}-${name}`, name, topic, ids.lone1);
+      const width = await p.evaluate('innerWidth');
+      await becomes(() => seen(p), want('folded'), `${name}: folded, each gathered stack shows its head reply's words, unread or read, the nets dossier under its minted name; the stack headed by its own first message shows it as its tab alone`);
+      await centre(p, card(ids.u1));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-gathered-head-${name}-${width}-folded-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Opened, the head reply still shows whole; folded again, as before.
+      const toggle = `#messages .reply-stack[data-stack="${ids.u1}"] > .stack-toggle`;
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(async () => (await seen(p)).unread, { ...want('folded').unread, fold: 'open' }, `${name}: opened, the nets dossier shows every message whole`);
+      await centre(p, card(ids.u1));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-gathered-head-${name}-${width}-open-${theme}`); }
+      await dossierTheme(p, 'light');
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(async () => (await seen(p)).unread, want('folded').unread, `${name}: folded again, its head reply's words still show`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 550: a dossier whose first message is above the page is one stack of its branches, and it joins as a whole,
   // as it is named and put aside: ⇧⌘↑ sends the join for that first message, every loaded message of it shows in the
   // stack above at once, while the join waits for its answer, and Core joins the whole dossier; ⌘Z puts it back as it
