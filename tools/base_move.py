@@ -7,9 +7,12 @@ of affected own cases remain human judgments, explicitly bound to exact bytes.
 """
 import hashlib
 import json
+import io
+import zipfile
 from pathlib import Path, PurePosixPath
 import re
 import tempfile
+import tarfile
 from collections import Counter
 
 from tools import ci_known_reds as ci, release_check
@@ -119,42 +122,232 @@ def safe_path(path):
             'unsafe source artifact path')
 
 
+# The existing App identity, read independently from GitHub; never supplied by
+# an untrusted manifest as an override.
+VERDICT_APP = {'id': 5763648, 'slug': 'theseus-verdict'}
+
+
+def controller_archive(ref, github, repository, controller, name):
+    fields(ref, 'id archive'); number(ref['id'])
+    raw = artifact(ref['archive'])
+    meta = github.get('repos/%s/actions/artifacts/%d' % (repository, ref['id']))
+    require(meta.get('id') == ref['id'] and meta.get('name') == name
+            and meta.get('digest') == 'sha256:' + digest(raw)
+            and meta.get('workflow_run', {}).get('id') == controller['id']
+            and meta['workflow_run'].get('head_sha') == controller['head_sha'], 'controller artifact provenance differs')
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        names = archive.namelist()
+        require(len(names) == len(set(names)), 'duplicate controller artifact member')
+        return {name: archive.read(name) for name in names}
+
+
+def controller_binding(source, judgment, github, repository, head):
+    data = fields(source['controller'], 'run attempt verdict_artifact published_artifact')
+    number(data['run']); number(data['attempt'])
+    require(data['run'] != source['run'], 'controller is not a separate run')
+    run = github.get('repos/%s/actions/runs/%d' % (repository, data['run']))
+    require(run.get('id') == data['run'] and run.get('run_attempt') == data['attempt']
+            and run.get('name') == 'Verdict' and run.get('path') == '.github/workflows/verdict.yml'
+            and run.get('event') == 'workflow_run' and run.get('status') == 'completed'
+            and run.get('conclusion') in ('success', 'failure'), 'controller run identity differs')
+    sha(run['head_sha'])
+    suffix = '%d-%d-c%d' % (source['run'], source['attempt'], data['attempt'])
+    verdict = controller_archive(data['verdict_artifact'], github, repository, run, 'verdict-' + suffix)
+    published = controller_archive(data['published_artifact'], github, repository, run, 'published-' + suffix)
+    binding = loads(verdict['producer.json']); check = loads(verdict['check-run.json'])
+    pub = loads(published['published.json'])
+    producer, controller = binding['producer'], binding['controller']
+    ci.same_run({'id': producer.get('run_id'), 'attempt': producer.get('run_attempt')},
+                {'id': source['run'], 'attempt': source['attempt']})
+    require(producer.get('head_sha') == head and producer.get('head_repository') == repository
+            and producer.get('event') == 'pull_request' and producer.get('workflow_name') == 'Checks'
+            and producer.get('workflow_path') == '.github/workflows/checks.yml'
+            and producer.get('conclusion') == judgment['producer_runs'][0]['conclusion'], 'controller producer binding differs')
+    pr = producer['pull_request']
+    require(pr.get('head_sha') == head and pr.get('base_sha') == source['base_at_run']['sha']
+            and pr.get('base_ref') == source['base_at_run']['ref'], 'controller original PR binding differs')
+    number(pr['number'])
+    url = 'https://github.com/%s/actions/runs/%d' % (repository, data['run'])
+    ci.same_run({'id': controller.get('run_id'), 'attempt': controller.get('run_attempt')},
+                {'id': data['run'], 'attempt': data['attempt']})
+    require(controller.get('repository') == repository and controller.get('url') == url
+            and controller.get('sha') == controller.get('workflow_sha') == run['head_sha']
+            and controller.get('ref', '').startswith('refs/heads/')
+            and controller.get('workflow_ref') == repository + '/.github/workflows/verdict.yml@' + controller['ref'],
+            'protected controller identity differs')
+    require(len(judgment['verdict_checks']) == 1, 'need exact published Verdict check')
+    listed = judgment['verdict_checks'][0]
+    raw = github.get('repos/%s/check-runs/%d' % (repository, listed['id']))
+    external = '%d-%d' % (source['run'], source['attempt'])
+    require(pub.get('check_run_id') == listed['id'] == raw.get('id')
+            and pub.get('head_sha') == head and pub.get('name') == 'Verdict'
+            and pub.get('external_id') == external, 'published Verdict binding differs')
+    for key, expected in (('controller_run', data['run']), ('controller_attempt', data['attempt']),
+                          ('producer_run', source['run']), ('producer_attempt', source['attempt'])):
+        require(str(pub.get(key)) == str(expected), 'published attempt binding differs')
+    require(raw.get('app', {}).get('id') == VERDICT_APP['id']
+            and raw.get('app', {}).get('slug') == VERDICT_APP['slug'], 'untrusted Verdict App')
+    expected = {'name': 'Verdict', 'head_sha': head, 'status': 'completed',
+                'conclusion': listed['conclusion'], 'details_url': url, 'external_id': external}
+    require(listed['conclusion'] in ('success', 'failure') and all(
+        raw.get(k) == check.get(k) == v for k, v in expected.items()), 'source check binding differs')
+    output = check['output']; api_output = raw.get('output') or {}
+    summary = output['summary']
+    appended = '\nPublished by controller run %d attempt %d.' % (data['run'], data['attempt'])
+    require(api_output.get('title') == output.get('title')
+            and api_output.get('summary') in (summary, summary + appended), 'Verdict output differs')
+    refusal = verdict['refusals'].decode()
+    if refusal.strip():
+        require(output.get('title') == 'refused' and check['conclusion'] == 'failure'
+                and summary.startswith('Refused:\n' + ''.join('- ' + line + '\n' for line in refusal.splitlines())),
+                'Verdict refusal ground differs')
+    return {'run': data['run'], 'attempt': data['attempt'], 'head': run['head_sha'],
+            'check': listed['id'], 'output': output, 'refusals': refusal,
+            'producer': {'head_ref': producer['head_branch'], 'pr': pr['number']}}
+
+
+def unit_results(step, out, expected):
+    """Complete raw units, including failures. Never classify a red as green."""
+    name = step['name']; text = (out / (name + '.log')).read_text()
+    node = name == 'node-units'
+    counts, good = release_check.node_counts(text) if node else release_check.python_counts(text)
+    require(canonical(step.get('counts')) == canonical(counts) and counts.get('tests', 0) > 0, 'source unit log/count mismatch')
+    require(type(step.get('exit')) is int and step['exit'] == (0 if good else 1)
+            and step.get('passed') is good, 'source unit exit/verdict differs')
+    require(not any(counts.get(k, 0) for k in ('skipped', 'todo', 'cancelled', 'expected failures', 'unexpected successes')),
+            'source unit incomplete checks')
+    # Tracebacks can contain lines such as "+ (0, '')"; these are not tests.
+    listing = text if node else text.split('\n======================================================================\n', 1)[0]
+    rows = ci.unit_records(listing, node=node)
+    require(len(rows) == counts['tests'] and all(status in (('ok', 'not ok') if node else ('ok', 'FAIL', 'ERROR'))
+                                               for _, status in rows), 'source unit missing individual outcomes')
+    require(Counter(ci.key(row) for row, _ in rows) == Counter(ci.key(row) for row in expected),
+            'source unit case inventory differs')
+    require(len({ci.key(r) for r, _ in rows}) == len(rows), 'duplicate source unit identity')
+    if node:
+        require(counts.get('pass') == sum(status == 'ok' for _, status in rows)
+                and counts.get('fail') == sum(status == 'not ok' for _, status in rows), 'source TAP outcomes differ')
+        return [(row, {'status': status, 'failure': text}) for row, status in rows if status != 'ok']
+    # Preserve the exact block, including the producer's separator length.
+    matches = list(re.finditer(r'^(FAIL|ERROR): (.+)\n-+\n(.*?)(?=\n[=-]{6,}\n)', text, re.M | re.S))
+    errors = {(m[2], m[1]): m[0] for m in matches}
+    failed = [(row, status) for row, status in rows if status != 'ok']
+    require(len(errors) == len(matches) == len(failed)
+            and set(errors) == {(row['name'], status) for row, status in failed}, 'source unit failure blocks differ')
+    require(counts.get('failures', 0) == sum(status == 'FAIL' for _, status in failed)
+            and counts.get('errors', 0) == sum(status == 'ERROR' for _, status in failed), 'source unittest outcomes differ')
+    require(good is (not failed), 'source unit raw verdict differs')
+    return [(row, {'status': status, 'failure': errors[(row['name'], status)]}) for row, status in failed]
+
+
+def report_hashes(reports, git, tested):
+    """Verify every hash actually claimed by an original native report.
+
+    Some original producers omit this optional field. The mandatory tool and
+    harness Git OIDs are checked separately; absent fields stay absent.
+    """
+    claims = {}
+    for report in reports:
+        if 'hashes' not in report:
+            continue
+        require(isinstance(report['hashes'], dict) and bool(report['hashes']), 'invalid native source hashes')
+        for path, value in report['hashes'].items():
+            safe_path(path); sha(value, 64)
+            require(path not in claims or claims[path] == value, 'conflicting native source hashes')
+            claims[path] = value
+    if not claims:
+        return
+    # Git writes binary bytes directly; text-mode adapters cannot normalize
+    # CRLF inside these inputs. No candidate code is imported or executed.
+    with tempfile.TemporaryDirectory(prefix='train-native-sources-') as temp:
+        path = Path(temp) / 'source.tar'
+        ask(git, 'archive', '--format=tar', '--output=' + str(path), tested, '--', *sorted(claims))
+        with tarfile.open(str(path)) as archive:
+            for name, expected in claims.items():
+                member = archive.getmember(name)
+                require(member.isfile(), 'native source hash names a non-file')
+                with archive.extractfile(member) as handle:
+                    require(digest(handle.read()) == expected, 'native source hash differs: ' + name)
+
+
+def teardown(report):
+    require(not report.get('teardown') and not report.get('fixtureErrors'), 'reported teardown failure')
+
+
+def replay_results(step, out, traffic):
+    routed = ci.unique(traffic.get('routed'), 'reviewed routed actors')
+    require(bool(routed) and isinstance(step.get('runs'), list) and bool(step['runs']), 'source replay missing runs')
+    runs, reds = [], []
+    for index, run in enumerate(step['runs'], 1):
+        counts, complete = release_check.replay_counts(out / 'replay' / ('candidate-%d' % index))
+        require(complete and set(counts) == routed, 'source replay missing actor results')
+        for values in counts.values():
+            require(isinstance(values, dict) and type(values.get('wakes')) is int and values['wakes'] > 0
+                    and isinstance(values.get('lost'), list) and isinstance(values.get('delays'), list)
+                    and len(values['delays']) == values['wakes'], 'source replay incomplete counts')
+        log = out / ('wake-replay-candidate-%d.log' % index)
+        require(log.is_file() and bool(log.read_text().strip()), 'source replay missing log')
+        require(type(run.get('exit')) is int and run['exit'] in (0, 1)
+                and run.get('passed') is (run['exit'] == 0), 'source replay abnormal exit')
+        runs.append(dict(run, counts=counts))
+        if not run['passed']:
+            reds.append({'step': 'wake-replay', 'case': ci.identity({'name': 'candidate-%d' % index}),
+                         'observed': {'exit': run['exit'], 'passed': run['passed'], 'counts': counts}})
+    recalculated = release_check.replay_step(runs, step.get('started_at'))
+    require(all(step.get(k) == recalculated[k] for k in ('counts', 'series', 'passed', 'exit')), 'source replay raw verdict differs')
+    return reds
+
+
+def audit_reds(source, judgment, head, reds):
+    audit = fields(document(source['audit']), 'version reviewer record run attempt source_head tested_merge inventory files_sha256 summary_sha256 reds')
+    require(type(audit['version']) is int and audit['version'] == 1, 'unknown source audit version')
+    words(audit['reviewer']); words(audit['record'])
+    require(audit['record'] == judgment['audit'] and type(audit['run']) is int and type(audit['attempt']) is int
+            and audit['run'] == source['run'] and audit['attempt'] == source['attempt']
+            and audit['source_head'] == head and audit['tested_merge'] == source['tested_merge']
+            and audit['inventory'] == source['inventory']
+            and audit['files_sha256'] == digest(canonical(source['files']))
+            and audit['summary_sha256'] == source['files']['release-check/summary.json']['sha256'], 'source audit binding differs')
+    require(isinstance(audit['reds'], list), 'source audit reds missing')
+    actual = {(r['step'], ci.key(r['case'])): r['observed'] for r in reds}
+    seen = set()
+    for row in audit['reds']:
+        fields(row, 'step case observed attribution ground evidence')
+        fields(row['case'], 'name phase engine expectedFailure')
+        key = (row['step'], ci.key(row['case']))
+        require(key in actual and key not in seen and canonical(row['observed']) == canonical(actual[key]), 'source audit red identity/failure differs')
+        seen.add(key); words(row['attribution']); words(row['ground'])
+        require(isinstance(row['evidence'], list) and bool(row['evidence']), 'source audit red evidence missing')
+        for ref in row['evidence']:
+            require(bool(artifact(ref)), 'empty source audit red evidence')
+    require(seen == set(actual), 'source audit missing original red')
+
+
 def full_source(source, judgment, git, github, repository, head):
-    fields(source, 'run attempt files inventory')
+    fields(source, 'run attempt tested_merge base_at_run files inventory audit controller')
     number(source['run']); number(source['attempt'])
+    fields(source['base_at_run'], 'ref sha'); words(source['base_at_run']['ref']); sha(source['base_at_run']['sha'])
+    merge = fields(source['tested_merge'], 'sha tree first_parent second_parent')
+    for value in merge.values():
+        sha(value)
+    tested = merge['sha']
+    require(merge['first_parent'] == source['base_at_run']['sha'] and merge['second_parent'] == head
+            and parents(git, tested) == [merge['first_parent'], head]
+            and tree(git, tested) == merge['tree'], 'source merge binding differs')
     require([r['id'] for r in judgment['producer_runs']] == [source['run']], 'source run binding differs')
     run = github.get('repos/%s/actions/runs/%d' % (repository, source['run']))
-    require(run.get('head_sha') == head and run.get('status') == 'completed'
+    require(run.get('id') == source['run'] and run.get('head_sha') == head and run.get('status') == 'completed'
             and run.get('conclusion') == judgment['producer_runs'][0]['conclusion']
             and run.get('run_attempt') == source['attempt'] and run.get('path') == '.github/workflows/checks.yml'
-            and run.get('name') == 'Checks' and run.get('conclusion') in ('success', 'failure'), 'source run identity differs')
-    url = 'https://github.com/%s/actions/runs/%d' % (repository, source['run'])
-    for check in judgment['verdict_checks']:
-        raw = github.get('repos/%s/check-runs/%d' % (repository, check['id']))
-        require(raw.get('head_sha') == head and raw.get('status') == 'completed'
-                and raw.get('conclusion') == check['conclusion']
-                and raw.get('conclusion') in ('success', 'failure'), 'incomplete source check verdict')
-        details = raw.get('details_url')
-        bound_urls = (url + '/attempts/%d' % source['attempt'],) + ((url,) if source['attempt'] == 1 else ())
-        if details not in bound_urls:
-            # GitHub job checks link to /job/ID. Bind those to the original
-            # attempt's actual jobs, rather than trusting a URL prefix alone.
-            job = re.fullmatch(re.escape(url) + r'/job/([1-9][0-9]*)(?:\?pr=[1-9][0-9]*)?', details or '')
-            require(job is not None, 'source check binding differs')
-            jobs, total, page = [], None, 1
-            while total is None or len(jobs) < total:
-                listed = github.get('repos/%s/actions/runs/%d/attempts/%d/jobs?per_page=100&page=%d' % (
-                    repository, source['run'], source['attempt'], page))
-                count, batch = listed.get('total_count'), listed.get('jobs')
-                require(type(count) is int and 0 < count <= 1000 and (total is None or total == count)
-                        and isinstance(batch, list) and 0 < len(batch) <= 100, 'source job inventory unreadable')
-                total = count; jobs.extend(batch); page += 1
-                require(len(jobs) <= total and len({j['id'] for j in jobs}) == len(jobs), 'source job inventory differs')
-            check_url = 'https://api.github.com/repos/%s/check-runs/%d' % (repository, check['id'])
-            require(any(j.get('id') == int(job[1]) and j.get('check_run_url') == check_url for j in jobs),
-                    'source check binding differs from run attempt jobs')
+            and run.get('event') == 'pull_request' and run.get('name') == 'Checks'
+            and run.get('conclusion') in ('success', 'failure'), 'source run identity differs')
+    controller = controller_binding(source, judgment, github, repository, head)
     inventory = document(source['inventory'])
     require(isinstance(inventory, dict) and set(inventory) == set(release_check.REQUIRED), 'incomplete source inventory')
+    for name, rows in inventory.items():
+        if name != 'wake-replay':
+            require(isinstance(rows, list) and bool(rows)
+                    and len({ci.key(row) for row in rows}) == len(rows), 'duplicate or empty source inventory')
     files = source['files']
     require(isinstance(files, dict) and bool(files), 'missing source artifacts')
     # Materialise only digest-verified named artifacts, to reuse the existing raw
@@ -176,14 +369,16 @@ def full_source(source, judgment, git, github, repository, head):
         provenance = read('release-check/provenance.json')
         expected_run = {'id': source['run'], 'attempt': source['attempt'], 'repository': repository, 'workflow': 'Checks'}
         ci.same_run(provenance.get('run'), expected_run)
-        source_parents = parents(git, head)
-        expected_merge = {'sha': head, 'tree': tree(git, head),
-                          'first_parent': source_parents[0] if source_parents else None,
-                          'second_parent': source_parents[1] if len(source_parents) > 1 else None}
-        require(len(source_parents) <= 2 and provenance.get('merge') == expected_merge, 'source merge binding differs')
-        require(summary.get('tool') == release_check.TOOL and summary.get('commit') == head
+        require(provenance.get('merge') == merge and provenance.get('base') == source['base_at_run']
+                and provenance.get('base_at_run') == source['base_at_run']
+                and provenance.get('head') == {'ref': controller['producer']['head_ref'], 'sha': head}
+                and provenance.get('checked') == {'commit': tested, 'tree_unchanged': True}, 'source merge binding differs')
+        workflow = repository + '/.github/workflows/checks.yml@refs/pull/%d/merge' % controller['producer']['pr']
+        expected_run.update(event='pull_request', workflow_sha=tested, workflow_ref=workflow)
+        ci.same_run(provenance.get('run'), expected_run)
+        require(summary.get('tool') == release_check.TOOL and summary.get('commit') == tested
                 and summary.get('tree_unchanged') is True
-                and summary.get('tree_after') == {'head': head, 'changes': ''}, 'dirty or wrong complete source')
+                and summary.get('tree_after') == {'head': tested, 'changes': ''}, 'dirty or wrong complete source')
         require('only' not in summary and summary.get('skipped') is None and summary.get('scoped') is None,
                 'partial complete source')
         required = list(release_check.REQUIRED)
@@ -199,55 +394,74 @@ def full_source(source, judgment, git, github, repository, head):
                 and all(re.fullmatch('check-[0-9]+', n) for n in names), 'invalid source shard inventory')
         require(Counter(summary.get('combined_from', [])) == Counter(n + '/summary.json' for n in names),
                 'source shard inventory differs')
-        ran = []
+        plan = ci.plan_steps(provenance['plan'])
+        require(Counter(s for shard in plan for s in shard) == Counter(required)
+                and set(names) == {'check-%d' % i for i in range(len(plan))}, 'source shard plan differs')
+        ran, reds, raw_steps, reports = [], [], [], []
         for shard in shards:
             name = shard['artifact']; out = root / name
             raw = read(name + '/summary.json'); receipt = read(name + '/run.json')
             ci.same_run(receipt.get('run'), expected_run)
             require(shard.get('receipt') == receipt and not shard.get('refused')
-                    and receipt.get('merge') == provenance['merge'], 'source shard binding differs')
+                    and receipt.get('merge') == merge and receipt.get('base') == source['base_at_run']
+                    and receipt.get('base_at_run') == source['base_at_run'] and receipt.get('head') == provenance['head'], 'source shard binding differs')
             require(receipt.get('summary_sha256') == files[name + '/summary.json']['sha256'], 'source summary digest differs')
             tools = raw.get('tools', {})
-            require(tools.get('release_check') == ask(git, 'rev-parse', '--verify', head + ':tools/release_check.py').strip(),
+            require(tools.get('release_check') == ask(git, 'rev-parse', '--verify', tested + ':tools/release_check.py').strip(),
                     'source release-check input hash differs')
             for path in release_check.harnesses():
-                require(tools.get('harnesses', {}).get(path) == ask(git, 'rev-parse', '--verify', head + ':' + path).strip(),
+                require(tools.get('harnesses', {}).get(path) == ask(git, 'rev-parse', '--verify', tested + ':' + path).strip(),
                         'source harness input hash differs: ' + path)
             steps = raw['steps']; selected = [s['name'] for s in steps]
-            require(raw.get('tool') == release_check.TOOL and raw.get('commit') == head
+            require(raw.get('tool') == release_check.TOOL and raw.get('commit') == tested
                     and raw.get('tree_unchanged') is True and raw.get('tree_after') == summary['tree_after']
                     and raw.get('only') == selected and not raw.get('skipped') and not raw.get('scoped')
                     and raw.get('required') == summary['required'], 'dirty or partial source shard')
-            require(receipt.get('shard', {}).get('steps') == selected, 'source shard assignment differs')
+            assignment = receipt.get('shard', {}).get('steps')
+            if isinstance(assignment, str):
+                assignment = assignment.split(',')
+            require(assignment == selected == plan[int(name.split('-')[1])], 'source shard assignment differs')
+            require(shard.get('commit') == tested and shard.get('tree_unchanged') is True
+                    and shard.get('tools') == tools and shard.get('steps') == selected, 'source shard provenance differs')
             for step in steps:
                 name = step['name']; ran.append(name)
                 require(by_name.get(name) == step, 'source aggregate step differs')
                 require(isinstance(inventory[name], (list, dict)) and bool(inventory[name]), 'empty source inventory')
                 if name in ci.NATIVE:
                     require(release_check.ran_whole(step), 'partial source browser mode')
-                    ci.cases(step, out, inventory[name])
+                    rows = ci.cases(step, out, inventory[name])
+                    for row in rows:
+                        if row['passed'] is False and not (row.get('expectedFailure') and row.get('mutationCaught') is True):
+                            words(row.get('error'))
+                            reds.append({'step': name, 'case': ci.identity(row), 'observed': row})
+                    report = read(shard['artifact'] + '/native/' + ci.NATIVE[name].name + '/' + ci.NATIVE[name].results)
+                    teardown(report); reports.append(report)
                     # Persistence also needs its ordered start/result log.
                     counts, good = release_check.native_counts(ci.NATIVE[name], out / 'native' / ci.NATIVE[name].name,
                                                                (out / (name + '.log')).read_text())
-                    require(counts == step['counts'] and good is step['passed'], 'source case log differs')
+                    require(canonical(counts) == canonical(step['counts']) and good is step['passed'], 'source case log differs')
                 else:
-                    require(step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0,
-                            'source non-browser step did not pass')
                     if name in ci.UNITS:
-                        ci.unit_evidence(step, out, inventory[name])
+                        reds.extend({'step': name, 'case': ci.identity(r), 'observed': observed}
+                                    for r, observed in unit_results(step, out, inventory[name]))
                     else:
-                        ci.replay_evidence(step, out, inventory[name])
+                        reds.extend(replay_results(step, out, inventory[name]))
+                if step['passed'] is not True:
+                    raw_steps.append({k: step[k] for k in ('name', 'passed', 'exit', 'counts')})
             require(raw.get('passed') is all(s['passed'] for s in steps), 'source raw verdict differs')
         require(Counter(ran) == Counter(required), 'incomplete source shard coverage')
         require(summary.get('passed') is all(s['passed'] for s in summary['steps']), 'source aggregate verdict differs')
-        return {'passed': summary['passed'], 'run': source['run'], 'attempt': source['attempt']}
+        report_hashes(reports, git, tested)
+        audit_reds(source, judgment, head, reds)
+        return {'passed': summary['passed'], 'run': source['run'], 'attempt': source['attempt'],
+                'failed': summary['failed'], 'steps': raw_steps, 'red_count': len(reds), 'controller': controller}
 
 
 def validate(ref, judgment, git, github, repository, live, merge, items):
     """The verified record, including all artifact references and review, or refusal."""
     try:
         data = fields(document(ref), 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review')
-        require(type(data['version']) is int and data['version'] == 1, 'unknown version')
+        require(type(data['version']) is int and data['version'] == 2, 'unknown version')
         for key in ('source_head', 'original_base', 'live_base', 'assembly_head', 'assembly_tree'):
             sha(data[key])
         number(data['live_release'])
@@ -313,6 +527,7 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
             measured_source = snapshot(receipt['snapshot'], git, assembly, data['assembly_tree'])
             step = document(receipt['step']); report = document(receipt['report']); log = artifact(receipt['log']).decode()
             name = step['name']; require(name in ci.NATIVE, 'unknown receipt step')
+            teardown(report)
             native = ci.NATIVE[name]
             argv = step.get('argv')
             require(isinstance(argv, list) and all(isinstance(arg, str) and bool(arg) for arg in argv)
@@ -346,20 +561,20 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
                 ci.cases(step, out, rows)
                 counts, good = release_check.native_counts(native, folder, log)
                 require(good and step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0
-                        and step.get('counts') == counts, 'own-case counts/status differ')
+                        and canonical(step.get('counts')) == canonical(counts), 'own-case counts/status differ')
             got.update(keys)
-        require(got == Counter({key: 3 for key in expected}), 'need three passing receipts for every own case and engine')
+        require(got == Counter({key: 1 for key in expected}), 'need one passing receipt for every own case and engine')
         # Keep the complete frozen manifest by digest, rather than exceeding
         # Core's release-measurement size bound with all downloaded file paths.
         result = {k: data[k] for k in ('version', 'source_head', 'original_base', 'live_base', 'live_release',
                                       'assembly_head', 'assembly_tree', 'review')}
         result.update(evidence=ref, source_observed=observed,
-                      source={k: data['source'][k] for k in ('run', 'attempt', 'inventory')},
+                      source={k: data['source'][k] for k in ('run', 'attempt', 'tested_merge', 'base_at_run', 'inventory', 'audit')},
                       receipts={'artifacts_sha256': digest(canonical(data['receipts'])),
                                 'count': len(data['receipts']), 'obligations': obligations})
         result['source'].update(summary=data['source']['files']['release-check/summary.json'],
                                 provenance=data['source']['files']['release-check/provenance.json'],
                                 artifacts_sha256=digest(canonical(data['source']['files'])))
         return result
-    except (ci.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError) as error:
+    except (ci.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise Refused('base move: invalid or incomplete evidence: %s' % error)

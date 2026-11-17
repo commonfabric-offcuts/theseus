@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import zipfile
 import json
 from pathlib import Path
 import subprocess
 
-from tools import deploy, release_check, ci_known_reds as ci
+from tools import deploy, release_check, ci_known_reds as ci, base_move
 from test_tools_train import TrainCase, listed, BRANCH, REPOSITORY
 
 
@@ -26,6 +28,8 @@ class BaseMoveFixture(TrainCase):
             self.write(path, '// frozen harness\n')
         self.old = self.L = self.commit('Harness input')
         self.head = self.branch('judged', self.old, [('tools/deploy.py', '# judged\n')])
+        self.tested = self.git(self.work, 'commit-tree', self.tree(self.head), '-p', self.old, '-p', self.head,
+                               '-m', 'GitHub PR test merge')
         base_changes = [('README', 'new live\n')]
         if getattr(self, 'OVERLAP', False):
             base_changes.append(('tools/deploy.py', '# base changed\n'))
@@ -44,11 +48,12 @@ class BaseMoveFixture(TrainCase):
             self.git(self.work, 'merge', '-q', '--no-ff', '-m', 'base move', self.L)
         self.assembly = self.git(self.work, 'rev-parse', 'HEAD')
         self.merged = self.merge(self.assembly)
+        self.git(self.live, 'fetch', '-q', str(self.work), self.tested)
         self.judgment = {'producer_runs': [101], 'verdict_checks': [201], 'audit': 'm-original-audit'}
         self.github = self.hub(runs=[dict(listed(101, self.head, conclusion='failure'), run_attempt=1,
-                                         path='.github/workflows/checks.yml', name='Checks')],
+                                         path='.github/workflows/checks.yml', name='Checks', event='pull_request')],
                                checks=[dict(listed(201, self.head, conclusion='failure'),
-                                            details_url='https://github.com/' + REPOSITORY + '/actions/runs/101')])
+                                            details_url='https://github.com/' + REPOSITORY + '/actions/runs/202')])
         self.files, self.inventory = {}, {}
         steps = []
         def put(name, value):
@@ -58,6 +63,8 @@ class BaseMoveFixture(TrainCase):
             if name in ci.NATIVE:
                 native = ci.NATIVE[name]
                 rows = [{'name': 'original ' + name, 'passed': name != 'native-journal'}]
+                if name == 'native-journal':
+                    rows[0]['error'] = 'AssertionError: original fixture failure'
                 self.inventory[name] = rows
                 report = self.report(rows)
                 counts = {'tests': 1, 'pass': int(rows[0]['passed']), 'fail': int(not rows[0]['passed']),
@@ -88,14 +95,19 @@ class BaseMoveFixture(TrainCase):
                 log = 'replay complete\n'
             put('check-0/' + name + '.log', log.encode())
             steps.append(step)
-        tools = {'release_check': self.git(self.work, 'rev-parse', self.head + ':tools/release_check.py'),
-                 'harnesses': {p: self.git(self.work, 'rev-parse', self.head + ':' + p) for p in release_check.harnesses()}}
-        raw = {'tools': tools, 'tool': release_check.TOOL, 'commit': self.head, 'tree_unchanged': True,
-               'tree_after': {'head': self.head, 'changes': ''}, 'required': list(release_check.REQUIRED),
+        tools = {'release_check': self.git(self.work, 'rev-parse', self.tested + ':tools/release_check.py'),
+                 'harnesses': {p: self.git(self.work, 'rev-parse', self.tested + ':' + p) for p in release_check.harnesses()}}
+        raw = {'tools': tools, 'tool': release_check.TOOL, 'commit': self.tested, 'tree_unchanged': True,
+               'tree_after': {'head': self.tested, 'changes': ''}, 'required': list(release_check.REQUIRED),
                'steps': steps, 'passed': False, 'only': list(release_check.REQUIRED)}
         put('check-0/summary.json', raw)
-        receipt = {'run': {'id': '101', 'attempt': '1', 'repository': REPOSITORY, 'workflow': 'Checks'},
-                   'merge': {'sha': self.head, 'tree': self.tree(self.head), 'first_parent': self.old, 'second_parent': None},
+        self.original_merge = {'sha': self.tested, 'tree': self.tree(self.tested), 'first_parent': self.old, 'second_parent': self.head}
+        self.original_base = {'ref': 'train/previous', 'sha': self.old}
+        receipt = {'run': {'id': '101', 'attempt': '1', 'repository': REPOSITORY, 'workflow': 'Checks',
+                           'event': 'pull_request', 'workflow_sha': self.tested,
+                           'workflow_ref': REPOSITORY + '/.github/workflows/checks.yml@refs/pull/31/merge'},
+                   'merge': self.original_merge, 'base': self.original_base, 'base_at_run': self.original_base,
+                   'head': {'ref': 'train/source', 'sha': self.head},
                    'summary_sha256': self.files['check-0/summary.json']['sha256'],
                    'shard': {'steps': list(release_check.REQUIRED)}}
         put('check-0/run.json', receipt)
@@ -103,13 +115,17 @@ class BaseMoveFixture(TrainCase):
         del combined['only']
         put('release-check/summary.json', combined)
         put('release-check/provenance.json', {'run': receipt['run'], 'merge': receipt['merge'],
-            'required': list(release_check.REQUIRED), 'shards': [{'artifact': 'check-0', 'receipt': receipt}]})
+            'required': list(release_check.REQUIRED), 'base': self.original_base, 'base_at_run': self.original_base,
+            'head': receipt['head'], 'checked': {'commit': self.tested, 'tree_unchanged': True},
+            'plan': [{'name': 'all source steps', 'steps': ','.join(release_check.REQUIRED)}],
+            'shards': [{'artifact': 'check-0', 'receipt': receipt, 'commit': self.tested, 'tools': tools,
+                        'tree_unchanged': True, 'steps': list(release_check.REQUIRED), 'refused': None}]})
         native = ci.NATIVE['native-compose']
         self.obligations = [{'step': 'native-compose', 'case': 'own case', 'phase': None, 'engine': engine}
                             for engine in ('chromium', 'webkit')]
         self.receipts = []
         for engine in ('chromium', 'webkit'):
-            for attempt in range(3):
+            for attempt in range(1):
                 rows = [{'name': 'own case', 'phase': None, 'engine': engine, 'passed': True}]
                 prefix = 'own/' + engine + str(attempt)
                 report = self.save(prefix + '/native.json', self.report(rows))
@@ -121,10 +137,15 @@ class BaseMoveFixture(TrainCase):
                             'inputs': {'tests/reader_compose_native.mjs': self.git(self.work, 'rev-parse', self.assembly + ':tests/reader_compose_native.mjs')}}
                 self.receipts.append({'step': self.save(prefix + '/step.json', step), 'report': report, 'log': log,
                                       'snapshot': self.save(prefix + '/snapshot.json', snapshot)})
-        self.evidence_body = {'version': 1, 'source_head': self.head, 'original_base': self.old,
+        self.evidence_body = {'version': 2, 'source_head': self.head, 'original_base': self.old,
             'live_base': self.L, 'live_release': 19, 'assembly_head': self.assembly, 'assembly_tree': self.tree(self.assembly),
-            'source': {'run': 101, 'attempt': 1, 'files': self.files,
+            'source': {'run': 101, 'attempt': 1, 'tested_merge': self.original_merge, 'base_at_run': self.original_base, 'files': self.files,
                        'inventory': self.save('inventory.json', self.inventory)}, 'receipts': self.receipts}
+        self.audit_reds = [{'step': 'native-journal', 'case': ci.identity({'name': 'original native-journal'}),
+                            'observed': {'name': 'original native-journal', 'passed': False, 'error': 'AssertionError: original fixture failure'},
+                            'attribution': 'known fixture defect', 'ground': 'same fixture assertion on original base',
+                            'evidence': [self.files['check-0/native/journal/native.json']]}]
+        self.bind_controller()
         self.diff = subprocess.run(['git', '-C', str(self.work), 'diff', '--binary', '--full-index',
                                    '--no-ext-diff', '--no-textconv', self.head, self.assembly], capture_output=True, check=True).stdout
         self.review = {'reviewer': 'independent auditor', 'record': 'm-resolution-review',
@@ -132,6 +153,102 @@ class BaseMoveFixture(TrainCase):
                        'diff': self.save('resolution.diff', self.diff),
                        'conflict_paths': ['tools/deploy.py'] if getattr(self, 'OVERLAP', False) else [],
                        'obligations': self.obligations}
+
+    def bind_controller(self):
+        """Producer API head, tested merge, controller head and App check are separate."""
+        self.controller_head = 'e' * 40
+        url = 'https://github.com/' + REPOSITORY + '/actions/runs/202'
+        self.github.answers['repos/' + REPOSITORY + '/actions/runs/202'] = dict(
+            listed(202, self.controller_head, conclusion='success'), name='Verdict',
+            path='.github/workflows/verdict.yml', run_attempt=1, event='workflow_run')
+        producer = {'run_id': '101', 'run_attempt': '1', 'event': 'pull_request', 'conclusion': 'failure',
+                    'workflow_id': 123, 'workflow_path': '.github/workflows/checks.yml', 'workflow_name': 'Checks',
+                    'head_sha': self.head, 'head_branch': 'train/source', 'head_repository': REPOSITORY,
+                    'created_at': '2026-11-17T17:00:00Z',
+                    'pull_request': {'number': 31, 'head_sha': self.head,
+                                     'base_ref': 'train/previous', 'base_sha': self.old}}
+        controller = {'run_id': '202', 'run_attempt': '1', 'workflow_sha': self.controller_head,
+                      'workflow_ref': REPOSITORY + '/.github/workflows/verdict.yml@refs/heads/main',
+                      'sha': self.controller_head, 'ref': 'refs/heads/main', 'repository': REPOSITORY, 'url': url}
+        self.controller_check = {'name': 'Verdict', 'head_sha': self.head, 'status': 'completed', 'conclusion': 'failure',
+                                'details_url': url, 'external_id': '101-1',
+                                'output': {'title': 'refused', 'summary': 'Refused:\n- the base is not judged here\nProducer: run 101 attempt 1'}}
+        self.published = {'check_run_id': 201, 'head_sha': self.head, 'name': 'Verdict', 'external_id': '101-1',
+                          'controller_run': '202', 'controller_attempt': '1', 'producer_run': '101', 'producer_attempt': '1'}
+        self.controller_producer = {'producer': producer, 'controller': controller}
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201'].update(
+            self.controller_check, id=201, app={'id': 5763648, 'slug': 'theseus-verdict'})
+        self.freeze_controller()
+
+    def freeze_controller(self):
+        refs = {}
+        for kind, id_, members in [
+            ('verdict', 301, {'producer.json': self.controller_producer, 'check-run.json': self.controller_check,
+                              'refusals': b'the base is not judged here\n'}),
+            ('published', 302, {'published.json': self.published})]:
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w') as archive:
+                for name, value in members.items():
+                    archive.writestr(zipfile.ZipInfo(name, date_time=(2026, 11, 17, 0, 0, 0)),
+                                     value if isinstance(value, bytes) else json.dumps(value).encode())
+            ref = self.save(kind + '.zip', stream.getvalue())
+            self.github.answers['repos/' + REPOSITORY + '/actions/artifacts/' + str(id_)] = {
+                'id': id_, 'name': kind + '-101-1-c1', 'digest': 'sha256:' + ref['sha256'],
+                'workflow_run': {'id': 202, 'head_sha': self.controller_head}}
+            refs[kind + '_artifact'] = {'id': id_, 'archive': ref}
+        self.evidence_body['source']['controller'] = dict(run=202, attempt=1, **refs)
+
+    def freeze_audit(self):
+        source = self.evidence_body['source']
+        audit = dict(version=1, reviewer='fixture independent auditor', record='m-original-audit', run=101, attempt=1,
+                     source_head=self.head, tested_merge=self.original_merge, inventory=source['inventory'],
+                     files_sha256=base_move.digest(base_move.canonical(self.files)),
+                     summary_sha256=self.files['release-check/summary.json']['sha256'], reds=self.audit_reds)
+        audit.update(getattr(self, 'audit_changes', {}))
+        source['audit'] = self.save('audit.json', audit)
+
+    def rewrite_source(self, update):
+        raw = json.loads(Path(self.files['check-0/summary.json']['path']).read_text())
+        receipt = json.loads(Path(self.files['check-0/run.json']['path']).read_text())
+        provenance = json.loads(Path(self.files['release-check/provenance.json']['path']).read_text())
+        combined = json.loads(Path(self.files['release-check/summary.json']['path']).read_text())
+        update(raw, receipt, provenance, combined)
+        self.files['check-0/summary.json'] = self.save('updated-source-summary.json', raw)
+        receipt['summary_sha256'] = self.files['check-0/summary.json']['sha256']
+        self.files['check-0/run.json'] = self.save('updated-source-run.json', receipt)
+        provenance['shards'][0]['receipt'] = receipt
+        if 'tools' in provenance['shards'][0]:
+            provenance['shards'][0]['tools'] = raw['tools']
+        self.files['release-check/provenance.json'] = self.save('updated-provenance.json', provenance)
+        self.files['release-check/summary.json'] = self.save('updated-combined.json', combined)
+
+    def distinct_tested_merge(self):
+        tested = self.git(self.work, 'commit-tree', self.tree(self.head), '-p', self.old, '-p', self.head,
+                          '-m', 'GitHub PR test merge')
+        def update(raw, receipt, provenance, combined):
+            for summary in (raw, combined):
+                summary.update(commit=tested, tree_after={'head': tested, 'changes': ''})
+            receipt['merge'] = dict(sha=tested, tree=self.tree(tested), first_parent=self.old, second_parent=self.head)
+            provenance['merge'] = receipt['merge']
+            provenance['checked'] = {'commit': tested, 'tree_unchanged': True}
+        self.rewrite_source(update)
+        return tested
+
+    def original_unit_red(self):
+        log = ('test_one (test_sample.Sample) ... FAIL\n\n'
+               '======================================================================\n'
+               'FAIL: test_one (test_sample.Sample)\n'
+               '----------------------------------------------------------------------\n'
+               'Traceback (most recent call last):\n  File "tests/test_sample.py", line 12, in test_one\n'
+               '    self.assertTrue(cut_ok)\nAssertionError: False is not true\n\n'
+               '----------------------------------------------------------------------\nRan 1 test in 0.01s\n\nFAILED (failures=1)\n')
+        self.files['check-0/python-units.log'] = self.save('unit-red.log', log.encode())
+        def update(raw, receipt, provenance, combined):
+            for summary in (raw, combined):
+                step = next(s for s in summary['steps'] if s['name'] == 'python-units')
+                step.update(passed=False, exit=1, counts=release_check.python_counts(log)[0])
+            combined['failed'].append('python-units')
+        self.rewrite_source(update)
 
     def report(self, rows):
         return {'results': rows, 'closed': True, 'browserClosed': True, 'fixtureExitCode': 0, 'fixtureExitSignal': None,
@@ -144,6 +261,7 @@ class BaseMoveFixture(TrainCase):
         return json.dumps({'closed': True, 'results': rows}, indent=2) + '\n'
 
     def candidate(self):
+        self.freeze_audit()
         self.review['evidence_sha256'] = digest(json.dumps(self.evidence_body, sort_keys=True, separators=(',', ':')).encode())
         body = dict(self.evidence_body, review=self.save('review.json', self.review))
         return self.train(self.merged, [self.head], kind='judged-first', judgment=self.judgment,
@@ -161,6 +279,14 @@ class BaseMove(BaseMoveFixture):
         self.assertEqual(record['base_move']['assembly_head'], self.assembly)
         self.assertEqual(record['base_move']['source']['run'], 101)
         self.assertEqual(self.evidence_of('00-train')['base_move'], record['base_move'])
+        observed = record['base_move']['source_observed']
+        self.assertEqual(observed['failed'], ['native-journal'])
+        self.assertEqual(observed['steps'][0]['passed'], False)
+        self.assertEqual(observed['steps'][0]['exit'], 1)
+        self.assertEqual(observed['steps'][0]['counts']['fail'], 1)
+        self.assertEqual(observed['controller']['head'], self.controller_head)
+        self.assertEqual(observed['controller']['refusals'], 'the base is not judged here\n')
+        self.assertIn('summary', record['base_move']['source'])
         self.assertIn('base move', out)
 
     def test_stale_base(self):
@@ -169,7 +295,7 @@ class BaseMove(BaseMoveFixture):
 
     def test_missing_engine_receipt(self):
         self.evidence_body['receipts'].pop()
-        self.refuse('three passing receipts')
+        self.refuse('one passing receipt')
 
     def test_damaged_receipt(self):
         Path(self.receipts[0]['report']['path']).write_text('{}')
@@ -206,19 +332,13 @@ class BaseMove(BaseMoveFixture):
         self.evidence_body['source']['run'] = 102
         self.refuse('source run')
 
-    def job_binding(self, check_id):
-        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['details_url'] += '/job/301?pr=31'
-        self.github.answers['repos/' + REPOSITORY + '/actions/runs/101/attempts/1/jobs?per_page=100&page=1'] = {
-            'total_count': 1, 'jobs': [{'id': 301, 'check_run_url':
-                'https://api.github.com/repos/' + REPOSITORY + '/check-runs/' + str(check_id)}]}
-
-    def test_github_job_check_binds_to_original_attempt(self):
-        self.job_binding(201)
+    def test_github_controller_archive_binds_to_original_attempt(self):
         self.trained(self.host(), self.candidate(), self.merged, self.github)
 
-    def test_github_job_check_of_another_attempt_refuses(self):
-        self.job_binding(999)
-        self.refuse('source check binding')
+    def test_github_controller_archive_of_another_attempt_refuses(self):
+        self.published['producer_attempt'] = '2'
+        self.freeze_controller()
+        self.refuse('published attempt binding')
 
     def test_invalid_check_binding(self):
         self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['details_url'] += '0'
@@ -357,12 +477,13 @@ class BaseMove(BaseMoveFixture):
             snap.update(head=assembled, tree=self.tree(assembled))
             receipt['snapshot'] = self.save('replacement-snapshot-%d.json' % index, snap)
         self.github = self.hub(runs=[dict(listed(101, self.head, conclusion='failure'), run_attempt=1,
-                                         path='.github/workflows/checks.yml', name='Checks')],
+                                         path='.github/workflows/checks.yml', name='Checks', event='pull_request')],
                                checks=[dict(listed(201, self.head, conclusion='failure'),
-                                            details_url='https://github.com/' + REPOSITORY + '/actions/runs/101')])
+                                            details_url='https://github.com/' + REPOSITORY + '/actions/runs/202')])
         diff = subprocess.run(['git', '-C', str(self.work), 'diff', '--binary', '--full-index', '--no-ext-diff',
                                '--no-textconv', self.head, assembled], capture_output=True, check=True).stdout
         self.review['diff'] = self.save('updated.diff', diff)
+        self.bind_controller()
 
     def test_scope_widening(self):
         self.replace_assembly([('feature.txt', 'new feature')])
@@ -385,7 +506,7 @@ class BaseMove(BaseMoveFixture):
     def test_retry_check_without_attempt_binding_refuses(self):
         self.evidence_body['source']['attempt'] = 2
         self.github.answers['repos/' + REPOSITORY + '/actions/runs/101']['run_attempt'] = 2
-        self.refuse('source check binding')
+        self.refuse('controller artifact provenance')
 
     def test_source_wrong_attempt(self):
         self.evidence_body['source']['attempt'] = 2
@@ -395,7 +516,7 @@ class BaseMove(BaseMoveFixture):
         path = self.candidate()
         raw = json.loads(path.read_text()); ref = raw['base_move']
         data = Path(ref['path']).read_bytes()
-        raw['base_move'] = self.save('duplicate.json', data[:-1] + b', "version": 1}')
+        raw['base_move'] = self.save('duplicate.json', data[:-1] + b', "version": 2}')
         path.write_text(json.dumps(raw))
         self.refused_train(path, self.merged, self.github, 'duplicate field')
 
@@ -432,3 +553,168 @@ class ResolvedBaseMove(BaseMoveFixture):
     def test_resolution_review_wrong_fields(self):
         self.review['override'] = True
         self.refuse('fields')
+
+
+class FourFaultControls(BaseMoveFixture):
+    """Hand-authored fact shapes; never copied from private operational files."""
+    def test_pr_source_head_differs_from_actually_tested_merge(self):
+        self.assertNotEqual(self.head, self.tested)
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+
+    def test_verdict_has_separate_controller_run(self):
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['details_url'] = (
+            'https://github.com/' + REPOSITORY + '/actions/runs/202')
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+
+    def test_complete_original_python_red_is_preserved(self):
+        self.original_unit_red()
+        text = Path(self.files['check-0/python-units.log']['path']).read_text()
+        failure = text[text.index('FAIL: '):text.index('\n----------------------------------------------------------------------\nRan')]
+        self.audit_reds.append({'step': 'python-units', 'case': ci.identity({'name': 'test_one (test_sample.Sample)'}),
+                               'observed': {'status': 'FAIL', 'failure': failure}, 'attribution': 'clock fixture',
+                               'ground': 'same final-cut assertion on original base',
+                               'evidence': [self.files['check-0/python-units.log']]})
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+
+    def test_one_passing_execution_per_engine_suffices(self):
+        self.assertEqual(len(self.receipts), 2)
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+
+
+class V2Refusals(BaseMoveFixture):
+    def test_tested_merge_cannot_be_replaced_by_pr_head(self):
+        self.evidence_body['source']['tested_merge'] = dict(self.original_merge, sha=self.head)
+        self.refuse('source merge binding')
+
+    def test_tested_merge_tree_must_match(self):
+        self.original_merge['tree'] = 'f' * 40
+        def update(raw, receipt, provenance, combined):
+            receipt['merge']['tree'] = 'f' * 40
+            provenance['merge']['tree'] = 'f' * 40
+        self.rewrite_source(update)
+        self.refuse('source merge binding')
+
+    def test_original_base_at_run_cannot_be_new_live(self):
+        self.evidence_body['source']['base_at_run'] = {'ref': 'train/new', 'sha': self.L}
+        self.refuse('source merge binding')
+
+    def test_controller_artifact_from_another_run(self):
+        self.github.answers['repos/' + REPOSITORY + '/actions/artifacts/301']['workflow_run']['id'] = 999
+        self.refuse('controller artifact provenance')
+
+    def test_controller_artifact_api_digest_must_match(self):
+        self.github.answers['repos/' + REPOSITORY + '/actions/artifacts/301']['digest'] = 'sha256:' + '0' * 64
+        self.refuse('controller artifact provenance')
+
+    def test_wrong_verdict_app(self):
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['app']['id'] = 1
+        self.refuse('untrusted Verdict App')
+
+    def test_controller_head_is_not_producer_head(self):
+        self.controller_producer['controller']['sha'] = self.head
+        self.freeze_controller()
+        self.refuse('protected controller identity')
+
+    def test_controller_attempt_cannot_be_mixed(self):
+        self.published['controller_attempt'] = '2'
+        self.freeze_controller()
+        self.refuse('published attempt binding')
+
+    def test_refusal_actual_ground_is_preserved(self):
+        self.controller_check['output']['summary'] = 'Refused:\n- another assertion\n'
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['output'] = self.controller_check['output']
+        self.freeze_controller()
+        self.refuse('refusal ground')
+
+    def test_api_refusal_cannot_be_rewritten(self):
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['output'] = {
+            'title': 'refused', 'summary': 'Refused: another ground'}
+        self.refuse('Verdict output')
+
+    def test_missing_original_red_audit(self):
+        self.audit_reds.clear()
+        self.refuse('audit missing original red')
+
+    def test_changed_red_failure_audit(self):
+        self.audit_reds[0]['observed'] = {'passed': False, 'error': 'different failure'}
+        self.refuse('audit red identity/failure')
+
+    def test_changed_red_identity_audit(self):
+        self.audit_reds[0]['case']['phase'] = 'other phase'
+        self.refuse('audit red identity/failure')
+
+    def test_duplicate_red_audit(self):
+        self.audit_reds.append(self.audit_reds[0])
+        self.refuse('audit red identity/failure')
+
+    def test_red_audit_requires_evidence(self):
+        self.audit_reds[0]['evidence'] = []
+        self.refuse('audit red evidence')
+
+    def test_red_audit_binds_complete_inventory(self):
+        self.audit_changes = {'inventory': self.save('wrong-inventory.json', {})}
+        self.refuse('audit binding')
+
+    def test_red_audit_binds_exact_attempt(self):
+        self.audit_changes = {'attempt': True}
+        self.refuse('audit binding')
+
+    def test_red_audit_binds_artifact_inventory(self):
+        self.audit_changes = {'files_sha256': '0' * 64}
+        self.refuse('audit binding')
+
+    def test_source_plan_cannot_omit_a_shard_step(self):
+        self.rewrite_source(lambda raw, receipt, provenance, combined: provenance['plan'][0].update(steps='python-units'))
+        self.refuse('source shard plan')
+
+    def test_source_original_receipt_head_must_bind(self):
+        self.rewrite_source(lambda raw, receipt, provenance, combined: receipt['head'].update(sha=self.old))
+        self.refuse('source shard binding')
+
+    def test_missing_python_result_cannot_be_audited_away(self):
+        self.files['check-0/python-units.log'] = self.save('missing-unit.log', b'Ran 1 test in 0.01s\n\nOK\n')
+        self.refuse('source unit missing individual outcomes')
+
+    def test_duplicate_inventory_identity(self):
+        self.inventory['native-journal'].append(self.inventory['native-journal'][0])
+        self.evidence_body['source']['inventory'] = self.save('duplicate-inventory.json', self.inventory)
+        self.refuse('duplicate or empty source inventory')
+
+    def test_reported_teardown_error_refuses(self):
+        self.rewrite_receipt_for_v2('report', lambda report: report.update(teardown=['page close failed']))
+        self.refuse('teardown failure')
+
+    def rewrite_receipt_for_v2(self, key, update):
+        ref = self.receipts[0][key]
+        raw = json.loads(Path(ref['path']).read_text()); update(raw)
+        self.receipts[0][key] = self.save('v2-altered-' + key + '.json', raw)
+
+    def test_boolean_receipt_count_is_not_an_integer_measurement(self):
+        self.rewrite_receipt_for_v2('step', lambda step: step['counts'].update(tests=True))
+        self.refuse('counts/status')
+
+    def test_boolean_red_observation_cannot_be_retyped_as_number(self):
+        self.audit_reds[0]['observed']['passed'] = 0
+        self.refuse('audit red identity/failure')
+
+    def test_extra_confidence_execution_refuses(self):
+        receipt = dict(self.receipts[0])
+        receipt['log'] = self.save('extra-run.log', Path(receipt['log']['path']).read_bytes() + b'extra run\n')
+        self.receipts.append(receipt)
+        self.refuse('one passing receipt')
+
+
+class NativeSourceHashes(BaseMoveFixture):
+    def source_hash(self, value):
+        name = 'check-0/native/journal/native.json'
+        raw = json.loads(Path(self.files[name]['path']).read_text())
+        raw['hashes'] = {'tests/reader_persistence_native.mjs': value}
+        self.files[name] = self.save('native-source-hashes.json', raw)
+
+    def test_actual_claimed_source_hash_matches_tested_merge(self):
+        self.source_hash(digest(b'// frozen harness\n'))
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+
+    def test_claimed_source_hash_must_not_be_invented(self):
+        self.source_hash('0' * 64)
+        self.refuse('native source hash differs')

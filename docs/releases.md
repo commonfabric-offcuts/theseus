@@ -264,4 +264,4 @@ ran before that tool kept a summary, so its measurements are `null`: the only
 count for it is a sentence written by hand on the pipeline page, and a record
 holds what a check measured, not what someone wrote down.
 
-For a reviewed base move, `measurements.train.base_move` keeps the compact evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment` and raw source verdict remain unchanged; the separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.
+For a reviewed base move, `measurements.train.base_move` v2 keeps the compact evidence record defined in [base-move-evidence.md](base-move-evidence.md). Its original `judgment`, raw failed-step flags/counts, controller refusal and source summary reference remain unchanged; a durable source audit binds every original red. The separate record names the new live base, assembly, resolution review and own-case artifacts, without claiming another full run.
