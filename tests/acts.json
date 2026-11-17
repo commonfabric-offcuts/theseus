@@ -9250,36 +9250,6 @@
   },
   {
    "item": 371,
-   "act": "On a phone a saving sign that says what needs the person (a refusal with Try again and Discard my writing) takes a line of its own below the chips, so a press on Cards reaches Cards",
-   "break": [
-    [
-     "web/aim.css",
-     "  .notebook-sheet-status:has(.deck-status>[data-save=attention]){flex-basis:100%}\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "a refused save takes a line"
-   }
-  },
-  {
-   "item": 371,
-   "act": "On a laptop a saving sign that says what needs the person takes a line of its own below the sheet's head",
-   "break": [
-    [
-     "web/aim.css",
-     ".notebook-sheet-head:has(.deck-status>[data-save=attention]){grid-template-areas:\"title views . full close\" \"status status status status status\"}\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "notebook",
-    "case": "a refused save takes a line"
-   }
-  },
-  {
-   "item": 371,
    "act": "A refusal's words in the sheet's head show whole, wrapping on their own line, never cut short or squeezed to nothing",
    "break": [
     [
@@ -31777,6 +31747,81 @@
    ],
    "check": {
     "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 371,
+   "act": "On a phone a saving sign that says what needs the person (a refusal with Try again and Discard my writing) takes a line of its own below the chips, so a press on Cards reaches Cards",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}",
+     ".notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook item 642 refused"
+   }
+  },
+  {
+   "item": 371,
+   "act": "On a laptop a saving sign that says what needs the person takes a line of its own below the sheet's head",
+   "break": [
+    [
+     "web/aim.css",
+     "grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:\"title views full close\" \"status status status status\";",
+     "grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:\"title views status full close\";"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook item 642 refused"
+   }
+  },
+  {
+   "item": 642,
+   "act": "On a laptop Text, Cards and Draft stay still while the saving words change in their own row",
+   "break": [
+    [
+     "web/aim.css",
+     "grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:\"title views full close\" \"status status status status\";",
+     "grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:\"title views status full close\";"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook item 642 saving"
+   }
+  },
+  {
+   "item": 642,
+   "act": "At every phone width the saving sign keeps its own row below Text, Cards and Draft",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}",
+     ".notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook item 642 saving"
+   }
+  },
+  {
+   "item": 642,
+   "act": "The saving sign in its own laptop row shows the whole device-saved status",
+   "break": [
+    [
+     "web/aim.css",
+     ".notebook-sheet-status{grid-area:status;min-width:0;max-width:none}",
+     ".notebook-sheet-status{grid-area:status;min-width:0;max-width:16rem}"
+    ]
+   ],
+   "check": {
+    "native": "notebook",
+    "case": "notebook item 642 device-saved"
    }
   }
  ]
