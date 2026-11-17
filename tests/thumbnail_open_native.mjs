@@ -69,6 +69,7 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     for (const [surface, route, scope] of [
       ['Notebook cards', `/?cards=${note}`, '.deck-image'],
       ['Notebook read', `/?workspace=w1&page=${note}&revision=1`, '.page-image'],
+      ['Notebook Reader', `/?topic=${topic}&page=${note}&revision=1`, '#source-body .page-image'],
     ]) await check(`item 651 ${label}: ${surface} thumbnail opens without editing or changing words`, async () => {
       const p = await page(shape, scheme, route), selector = `${scope} .image-thumb`;
       await ready(p, selector);
@@ -77,6 +78,52 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
       await openImage(p, selector);
       assert.equal(await p.locator(scope).first().textContent(), words, 'the picture caption and words stay exact');
       assert.equal(await p.locator('.deck-writing').count(), 0, 'opening the image does not edit its card');
+      await close(p);
+    });
+
+    await check(`item 651 ${label}: rail thumbnail opens its image and keeps the topic`, async () => {
+      const p = await page(shape, scheme, `/?topic=${topic}`);
+      if (p.touch) await press(p, '#things-open');
+      const selector = '.things-thumbs .image-thumb';
+      await ready(p, selector);
+      await picture(p, 'item-651-rail');
+      await openImage(p, selector);
+      assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'opening an image does not follow its message link');
+      await close(p);
+    });
+    for (const surface of ['Reader', 'New message']) await check(`item 651 ${label}: ${surface} chosen thumbnail keeps exact writing and destination`, async () => {
+      const reader = surface === 'Reader';
+      const p = await page(shape, scheme, reader ? `/?topic=${topic}&message=${reply}` : `/?topic=${topic}`);
+      if (!reader) await press(p, '#new-message');
+      const field = reader ? '#writing-body' : '#inline-writing-body';
+      await p.locator(field).fill('Exact writing — keep this destination.');
+      const chip = reader ? '#who-chip' : '#inline-who-chip';
+      const destination = await p.locator(chip).textContent();
+      await press(p, reader ? '#plus-button' : '#inline-plus-button');
+      const chooser = p.waitForEvent('filechooser');
+      await press(p, reader ? '#add-image' : '#inline-add-image');
+      await (await chooser).setFiles({ name: 'landscape.png', mimeType: 'image/png', buffer: png });
+      const strip = reader ? '#writing-attachments' : '#inline-attachments';
+      await ready(p, strip + ' .image-thumb');
+      await picture(p, 'item-651-' + surface.replaceAll(' ', '-'));
+      await openImage(p, strip + ' .image-open');
+      assert.equal(await p.locator(field).inputValue(), 'Exact writing — keep this destination.');
+      assert.equal(await p.locator(chip).textContent(), destination, 'the exact destination stays');
+      await close(p);
+    });
+    await check(`item 651 ${label}: picker thumbnail opens without choosing, text still chooses`, async () => {
+      const p = await page(shape, scheme, `/?topic=${topic}`);
+      await press(p, '#new-message');
+      const field = '#inline-writing-body';
+      await p.locator(field).fill('Keep this #img');
+      const selector = '.image-option .image-thumb';
+      await ready(p, selector);
+      await picture(p, 'item-651-picker');
+      await openImage(p, selector);
+      assert.equal(await p.locator(field).inputValue(), 'Keep this #img', 'the thumbnail does not pick or remove the query');
+      assert.equal(await p.locator('#inline-attachments .image-choice').count(), 0, 'the thumbnail adds nothing');
+      await press(p, '.image-option-words');
+      await until(p, () => document.querySelector('#inline-writing-body').value === 'Keep this ' && document.querySelectorAll('#inline-attachments .image-choice').length === 1, 'the words still choose the image');
       await close(p);
     });
 
