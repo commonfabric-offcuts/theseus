@@ -28599,6 +28599,21 @@
    "check": {
     "python": "test_cover_promises.py"
    }
+  },
+  {
+   "item": 717,
+   "act": "Promise source citations remain a 44px phone touch target within the named tolerance",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "  return node;\n}\n\nfunction promiseRow",
+     "  node.style.minWidth = '24px'; node.style.minHeight = '24px'; return node;\n}\n\nfunction promiseRow"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 717 promises carry exact words explicit times history kept and missed on the cover and Reader at 320 375 390 laptop light dark"
+   }
   }
  ]
 }

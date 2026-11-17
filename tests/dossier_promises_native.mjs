@@ -158,6 +158,15 @@ export async function promiseChecks(api, helpers) {
     await press(p, device, '#reader-cover > summary');
     await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'cover disclosure opens natively');
   };
+  const activate = async (p, device, selector) => {
+    await centre(p, selector);
+    if (device === 'phone') return press(p, device, selector);
+    let reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
+    for (let n = 0; n < 120 && !reached; n++) {
+      await p.key('Tab'); reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
+    }
+    assert.ok(reached, 'native Tab reaches acceptance'); await p.key('Enter');
+  };
   // Hold a real native thumb request before transport in both engines; no handler is called.
   const HOLD_THUMB = `(()=>{const f=window.fetch;window.promiseThumbQueue=[];window.promiseHold=true;
     window.fetch=function(input,init){let b;try{b=JSON.parse(init?.body)}catch{};
@@ -173,7 +182,7 @@ export async function promiseChecks(api, helpers) {
       try {
         await scheme(p, theme); await sourceOpen(p, device, ids.root);
         await p.evaluate('window.staleThumb=true');
-        await centre(p, '#thumb-source'); await press(p, device, '#thumb-source');
+        await activate(p, device, '#thumb-source');
         await until(() => p.evaluate('window.promiseThumbQueue.length===1'), 'the native thumb is queued before transport');
         assert.equal((await held(topic, ids.root)).payload.done, null, 'a pending acceptance is not Done');
         assert.equal((await measure(p, '#reader-cover .dossier-cover')).rows[0].state, 'kept');
@@ -185,7 +194,7 @@ export async function promiseChecks(api, helpers) {
         if (stage === 'refused') await shot(p, `717-owner-refused-${width}-${theme}`);
         if (stage === 'retried') {
           await until(() => p.evaluate('!document.querySelector("#thumb-source").disabled'), 'refused thumb is ready for a native retry');
-          await centre(p, '#thumb-source'); await press(p, device, '#thumb-source');
+          await activate(p, device, '#thumb-source');
           await until(async () => (await held(topic, ids.root)).payload.done?.by === facts.actor, 'the owner gives Done through the retry gesture');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'accepted thumb closes the Reader');
           await until(async () => (await measure(p, covers(ids.root)))?.words.includes('done · your'), 'owner acceptance arrives on the cover');
@@ -209,7 +218,7 @@ export async function promiseChecks(api, helpers) {
         try {
           await scheme(p, theme); await sourceOpen(p, device, ids.root);
           assert.ok((await measure(p, '#reader-cover .dossier-cover')).words.includes('Waits on'));
-          await centre(p, '#thumb-source'); await press(p, device, '#thumb-source');
+          await activate(p, device, '#thumb-source');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'the nonowner thumbs the source natively');
           assert.equal((await held(topic, ids.root)).payload.done, null, 'a nonowner thumb never accepts');
           await centre(p, covers(ids.root)); await shot(p, `717-nonowner-${width}-${theme}`);
@@ -277,6 +286,7 @@ export async function promiseChecks(api, helpers) {
       { name: 'promise omitted', from: 'for (const promise of cover.promises ?? []) sheet.append', to: 'for (const promise of []) sheet.append' },
       { name: 'prior time not struck', from: "element(doc, 's', 'promise-prior')", to: "element(doc, 'span', 'promise-prior')" },
       { name: 'missed credited kept', from: "row.dataset.state = promise.state;", to: "row.dataset.state = promise.state === 'missed' ? 'kept' : promise.state;" },
+      { name: 'source target too small', from: '  return node;\n}\n\nfunction promiseRow', to: "  node.style.minWidth = '24px'; node.style.minHeight = '24px'; return node;\n}\n\nfunction promiseRow" },
       { name: 'cover too wide', from: "sheet.setAttribute('role', 'note');", to: "sheet.style.width = 'calc(100% + 160px)'; sheet.setAttribute('role', 'note');" },
     ];
     for (const mutant of definitions) {
@@ -293,7 +303,7 @@ export async function promiseChecks(api, helpers) {
       finally { await writeFile(url, original); assert.equal(await readFile(url, 'utf8'), original, 'original bytes restored'); await restart();
         assert.equal(await (await fetch(facts.origin + '/dossier-cover.mjs')).text(), original, 'restored bytes are served too'); }
       assert.ok(failure, mutant.name + ' must fail');
-      const intended = { 'promise omitted': /recorded promised/, 'prior time not struck': /prior time is visibly struck/, 'missed credited kept': /recorded missed/, 'cover too wide': /cover fits within/ };
+      const intended = { 'promise omitted': /recorded promised/, 'prior time not struck': /prior time is visibly struck/, 'missed credited kept': /recorded missed/, 'cover too wide': /cover fits within/, 'source target too small': /44px touch target/ };
       assert.match(String(failure), intended[mutant.name], 'the mutation fails the intended product assertion');
       observations.push({ name: 'item 717 killed mutant', mutant: mutant.name, error: String(failure), original_sha256: createHash('sha256').update(original).digest('hex'), mutated_sha256: createHash('sha256').update(changed).digest('hex'), restored_sha256: createHash('sha256').update(await readFile(url)).digest('hex') });
       await scenario('restored-' + serial, false, false);
