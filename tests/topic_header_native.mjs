@@ -77,9 +77,11 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true], ['things-open', false]], 'the outcome\'s name, with "☰ Outcomes" before it shown only on a phone, and "Pipeline & pages" after it only below laptop width');
     // New message, a quiet ✎, ends the row (docs/reader.md).
     assert.deepEqual(top.row, ['topic-title', 'topic-title-edit', 'topic-title-rename', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
-    assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden, top.gear.size], ['Topic settings', 'Topic settings', 'dialog', false, [44, 44]]);
-    assert.ok(top.gear.middle >= top.line.top && top.gear.middle <= top.line.top + top.line.height, 'the gear\'s middle is level with the title\'s first line: ' + JSON.stringify(top));
-    assert.ok(top.gear.left >= top.line.right, 'the gear is at the upper right, beside the title');
+    assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden], ['Topic settings', 'Topic settings', 'dialog', false]);
+    const gearSizeTolerancePx = 0.5, gearAlignmentTolerancePx = 1;
+    assert.ok(top.gear.size.every(size => Math.abs(size - 44) <= gearSizeTolerancePx), `44px gear (size tolerance ${gearSizeTolerancePx}px): ${JSON.stringify(top.gear)}`);
+    assert.ok(top.gear.middle >= top.line.top - gearAlignmentTolerancePx && top.gear.middle <= top.line.top + top.line.height + gearAlignmentTolerancePx, `the gear's middle is level with the title's first line (alignment tolerance ${gearAlignmentTolerancePx}px): ${JSON.stringify(top)}`);
+    assert.ok(top.gear.left >= top.line.right - gearAlignmentTolerancePx, `the gear is at the upper right, beside the title (alignment tolerance ${gearAlignmentTolerancePx}px)`);
     assert.deepEqual([top.hint, top.thisTopic, top.stateInMain, top.stateInDialog], [false, false, false, true], 'no hint, no "This topic" row, and where it stands only inside Topic settings');
     assert.deepEqual((await subtitle(p)).states, [], 'a plainly Active topic shows no state word');
     await shot(p, 'header-top');

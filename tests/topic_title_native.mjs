@@ -25,18 +25,22 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'nearest'})`);
       if (width === 1440) return p.point(selector);
       const b = await p.box(selector);
-      assert.ok(b?.width && b?.height, `visible ${selector}`);
+      const visibleTolerancePx = 0.5;
+      assert.ok(b?.width > visibleTolerancePx && b?.height > visibleTolerancePx, `visible ${selector} (visibility tolerance ${visibleTolerancePx}px)`);
       await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
       await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
     const fits = async p => {
+      // DOM edges can round by a pixel; a target can round by half a pixel.
+      // The local evidence contract still rejects 2px overflow and a 40px target.
+      const edgeTolerancePx = 1, targetTolerancePx = 0.5;
       const boxes = await p.evaluate(`(()=>{const ids=['topic-title','topic-title-edit','topic-title-rename','settings-open','new-message'];
-        return {wide:document.documentElement.scrollWidth>innerWidth, boxes:ids.map(id=>document.getElementById(id)).filter(e=>e&&e.getClientRects().length).map(e=>{
+        return {scrollWidth:document.documentElement.scrollWidth, viewportWidth:innerWidth, boxes:ids.map(id=>document.getElementById(id)).filter(e=>e&&e.getClientRects().length).map(e=>{
           const b=e.getBoundingClientRect();return {id:e.id,x:b.x,right:b.right,width:b.width,height:b.height};})}})()`);
-      assert.equal(boxes.wide, false, JSON.stringify(boxes));
-      for (const b of boxes.boxes) assert.ok(b.x >= 0 && b.right <= width + 1, `in reach ${JSON.stringify(b)}`);
+      assert.ok(boxes.scrollWidth <= boxes.viewportWidth + edgeTolerancePx, `no sideways scroll (edge tolerance ${edgeTolerancePx}px): ${JSON.stringify(boxes)}`);
+      for (const b of boxes.boxes) assert.ok(b.x >= -edgeTolerancePx && b.right <= width + edgeTolerancePx, `in reach (edge tolerance ${edgeTolerancePx}px): ${JSON.stringify(b)}`);
       const pencil = boxes.boxes.find(b => b.id === 'topic-title-rename');
-      if (pencil) assert.ok(pencil.width >= 44 && pencil.height >= 44, 'the named pencil is a touch target');
+      if (pencil) assert.ok(pencil.width >= 44 - targetTolerancePx && pencil.height >= 44 - targetTolerancePx, `the named pencil is a touch target (target tolerance ${targetTolerancePx}px)`);
     };
     const start = async (state, url) => {
       const p = await page(`item-656-${phase}-${state}-${size}-${theme}`, null, true, { ...setup, ...(url ? { url } : {}) });
