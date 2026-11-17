@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 // Item 656 runs through the header step and both colour engines. Every act is
 // native input; waits name focus, a response, or the DOM state they consume.
@@ -52,6 +53,23 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
     const type = (p, text) => p.send('Input.insertText', { text });
     const snap = async (p, state) => { await fits(p); await shot(p, `item-656-${phase}-${state}-${size}-${theme}`); };
 
+    if (phase === 'base' || phase === 'compare') {
+      await check(`${mode} item 656 ${phase} screenshots at ${size} ${theme}`, async () => {
+        const p = await page(`item-656-${phase}-${size}-${theme}`, null, true, setup);
+        assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), phase === 'compare', 'only the current page has the title pencil');
+        await until(() => p.evaluate('[...document.images].filter(i=>i.getClientRects().length).every(i=>i.complete)'), 'visible images are ready for comparison');
+        await shot(p, `item-656-${phase}-normal-${size}-${theme}`);
+        if (width < 760) await press(p, '#rail-open');
+        await shot(p, `item-656-${phase}-rail-${size}-${theme}`);
+        if (width < 760) await p.key('Escape');
+        await press(p, '#settings-open');
+        await until(() => p.evaluate('document.querySelector("#topic-settings").open'), 'base settings open');
+        await shot(p, `item-656-${phase}-settings-${size}-${theme}`);
+        await p.close();
+      });
+      continue;
+    }
+
     await check(`${mode} item 656 normal: pencil renames in place; reload keeps header and rail; settings rename still works at ${size} ${theme}`, async () => {
       const original = (await held()).title;
       const p = await start('normal');
@@ -60,6 +78,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       const renamed = original === `A topic renamed at ${size} ${theme}` ? `Another title at ${size} ${theme}` : `A topic renamed at ${size} ${theme}`;
       await type(p, renamed); await p.key('Enter');
       await until(async () => await title(p) === renamed && await active(p) === 'topic-title-rename', 'saved title and focus back on pencil');
+      await snap(p, 'saved');
       assert.equal((await held()).title, renamed);
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-settings #topic-rename"))'), true, 'settings keeps its rename field after a header save');
       assert.deepEqual(updates(p).map(c => [c.args, c.expected.topic_fields]), [[{ title: renamed }, { title: original }]], 'only the title changes');
@@ -67,9 +86,11 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await until(async () => await title(p) === renamed && await p.evaluate('document.body.dataset.ready === "true"'), 'reload shows the saved title');
       if (width < 760) await press(p, '#rail-open');
       await until(() => p.evaluate(`document.querySelector('#outline a[data-topic-id="t1"]')?.textContent.includes(${JSON.stringify(renamed)})`), 'the rail shows the same saved title');
+      await shot(p, `item-656-${phase}-rail-${size}-${theme}`);
       if (width < 760) await p.key('Escape');
       await press(p, '#settings-open');
       await until(() => p.evaluate('document.querySelector("#topic-settings").open'), 'settings open');
+      await shot(p, `item-656-${phase}-settings-${size}-${theme}`);
       await press(p, '#topic-state .settings-actions button:first-of-type');
       await until(async () => await active(p) === 'topic-rename', 'settings rename focused');
       await type(p, original); await p.key('Enter');
@@ -111,12 +132,13 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
 
     await check(`${mode} item 656 refused: newer title stands, typed words stay beside the refusal, Return recovers at ${size} ${theme}`, async () => {
       const p = await start('refused'), original = await title(p);
+      const theirs = original === 'Their newer title' ? 'Another newer title' : 'Their newer title';
       await edit(p); await type(p, 'My kept title');
-      await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-${size}-${theme}`, topic_id: 't1', args: { title: 'Their newer title' } });
-      await until(async () => await title(p) === 'Their newer title', 'page learned the newer title');
+      await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-${size}-${theme}`, topic_id: 't1', args: { title: theirs } });
+      await until(async () => await title(p) === theirs, 'page learned the newer title');
       await p.key('Enter');
       await until(() => p.evaluate('document.querySelector("#topic-title-edit .notice")?.textContent.includes("Someone else renamed it first")'), 'refusal beside the kept title');
-      assert.equal((await held()).title, 'Their newer title', 'refusal overwrites nothing');
+      assert.equal((await held()).title, theirs, 'refusal overwrites nothing');
       assert.equal(await p.evaluate('document.querySelector("#topic-rename").value'), 'My kept title');
       assert.equal(await p.evaluate('document.querySelector("#topic-settings").open'), false);
       await snap(p, 'refused'); await p.key('Enter');
@@ -158,6 +180,30 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
     });
   }
   if (!mutations) return;
+  await check(`${mode} item 656 base comparison: header, rail and settings at every width and theme`, async () => {
+    const files = ['web/aim.css', 'web/app.mjs', 'web/index.html', 'web/topic-header.mjs', 'web/topic-state.mjs'];
+    const originals = [];
+    const restart = async () => {
+      await control({ method: 'server_stop' });
+      Object.assign(facts, await control({ method: 'server_start' }));
+    };
+    try {
+      await topicTitleChecks({ check: async (_, action) => action(), page, until, control, view, facts, shot }, mode, false, 'compare');
+      for (const file of files) {
+        const url = new URL('../' + file, import.meta.url), original = await readFile(url, 'utf8');
+        const base = execFileSync('git', ['show', '833d2a153f6fb98ff41c63f0736791f76a1188a8:' + file], { encoding: 'utf8' });
+        originals.push({ url, original });
+        await writeFile(url, base);
+      }
+      await restart();
+      await topicTitleChecks({ check: async (_, action) => action(), page, until, control, view, facts, shot }, mode, false, 'base');
+    } finally {
+      for (const { url, original } of originals) await writeFile(url, original);
+      await restart();
+    }
+    process.stdout.write(JSON.stringify({ item: 656, base_screenshots: '833d2a153f6fb98ff41c63f0736791f76a1188a8', restored: true }) + '\n');
+  });
+
   // Apply each ledger break to the served source on the hosted runner, prove
   // the real acceptance action fails, restore the bytes, then run its control.
   // These stay inside item 656's filtered pool cases; no separate suite runs.
