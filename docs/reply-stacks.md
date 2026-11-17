@@ -482,30 +482,43 @@ They show while a pointer is over the dossier, and are there to be found
 (invisible, never gone) as the pointer crosses to them; by touch, once the
 dossier or one of its messages is selected; by the keys, as soon as one of
 them holds the focus, or the dossier or one of its messages is selected. Their
-place is kept while they are hidden, so showing them moves nothing, and the
-tab's name leaves room for them. Hidden by touch they take no press: a tap
-where ⋯ sits lands on the page beneath it, not on ⋯, until the dossier is
+place is kept while they are hidden, so showing them moves nothing. Their
+room costs the tab nothing: the tab reaches as far as it does without them
+(70% of the folder in a wide window, 85% in a narrow one), its name and its
+marks as they were, and they stand on the paper past its curved corner, which
+holds no name and no mark. Where the folder's own paper there is narrower
+than they are (a phone's ⋯, 44px to touch, beside a tab of 85% of a
+288 to 358px folder), they reach on past the folder's edge into the page's
+margin beside it, as far as they need: 14px at 320, 6px at 375, 4px at 390.
+Hidden by touch they take no press: a tap where ⋯ sits lands on the page beneath it, not on ⋯, until the dossier is
 selected; the keys still reach them. A message on its own has no title bar and no
 glyphs; a dossier being renamed and Only new show none.
 
 Each glyph is a real button beside the first message's card, after its
-chevron, so Tab reaches them in order (Reply, Move below More, ⋯) and Shift-Tab
-comes back; each has its name as its accessible name and its tooltip, and by
-touch each is 44px square.
+chevron, so Tab reaches them in order (Reply, Move below More, ⋯), then the
+dossier's messages (an open dossier's earlier-messages row first), and
+Shift-Tab comes back; each has its name as its accessible name and its
+tooltip, and by touch each is 44px square. They stand in a row with the
+chevron, as a message bar's buttons stand with each other, so ← and → go along
+that row to the nearest control that way (from ⋯ to Move below More, Reply and
+the chevron) and past its end on to the pane beside, as from the messages;
+↑ and ↓ stay the messages' keys there.
 
-On a phone, in a window narrower than 404px, Reply and Move below More fold
-into ⋯, which then shows alone: three 44px glyphs beside the tab would leave
-its second line too little room for who began the dossier and who named it
-(item 479), which needs a 371px folder beside them. ⋯ keeps its name, its
+On a phone, and in any window 760px or narrower, Reply and Move below More
+fold into ⋯, which then shows alone: there the tab may reach 85% of the
+folder, and the paper past its corner holds one glyph, not three (three 44px
+glyphs and the corner need 146px of it, a 970px folder; three of a pointer's
+28px, 106px, a 704px folder). ⋯ keeps its name, its
 tooltip and its 44px, and its menu offers Reply to the first message and Move
 below More (or Bring back above More) first, by those names, before what the
 first message's own ⋯ offers. As every menu item (docs/links.md, "A message's
 menu"), each shows the glyph of the button that does the same: Reply the title
 bar's Reply, Move below More the Reader's archive tray and Bring back above
 More the tray with an arrow out. Each does what its glyph does, by touch and by
-the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab
-leaves room for ⋯ alone, at rest as once selected, so its name keeps the same
-words either way. A wider window keeps the three glyphs.
+the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab is
+as wide at rest as once selected, so its name keeps the same words either way.
+A wider window, where the tab reaches 70% of the folder, keeps the three
+glyphs.
 
 The bar over a lit message shows Reply as its glyph, named Reply (Return), and
 two more: Show full message (two arrows pointing out), only while the card
@@ -864,7 +877,9 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a busy 👍's line in the rail at a laptop's width and in the drawer at 320, 375 and 390, light and dark, and gone once its reactions read again land | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a thumbs-up Theseus was too busy to take …" |
 | a 👍 or an answer, and the Reader's mark, say what Theseus answered, never a lost connection unless none answered | node units, `tests/ui_reactions.test.mjs` and `tests/ui_inline_wiring.test.mjs` ("… item 547") |
 | a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
-| the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
+| the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab and past its curved corner at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
+| the title bar's room costs the tab nothing: head rows at 375 and 390 keep who began the dossier whole and an image mark where 88 showed it, and at 390 a dossier whose first message carries a picture alone, selected by touch, keeps its image mark and who began it whole beside its ⋯, light and dark | `tests/card_marks_native.mjs`, "head rows at …" and "picture-only head row at 390px …", in Chrome and Safari's engine |
+| ← and → on the title bar's glyphs go along its row (from ⋯ to Move below More, Reply and the chevron, and back, past ⋯ to the right rail) on a laptop, and from ⋯ to the chevron at 390, 375 and 320; ↓ from ⋯ goes on to the dossier's message below | `tests/stack_native.mjs`, "reading stacks ← and → on a dossier's title bar glyphs …", in Chrome and Safari's engine; `tests/outcome_rail_native.mjs`, "rail arrows on a topic and a Conversation …" (no arrow stays put where a control lies that way) |
 | the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |
 | on a 390px phone the title bar's ⋯ opens its menu, Reply to the first message with the title bar's Reply glyph and Move below More with the Reader's tray first, Bring back above More with the tray and its arrow out once below, light and dark | `tests/stack_native.mjs`, "reading menus a dossier's title bar ⋯ on a 390px phone …", in Chrome and Safari's engine |
 | the message bar's Reply glyph, Show full message only on a cut-off message, Fold and Unfold, none on a starred message | `tests/stack_native.mjs`, "reading stacks the message bar's Reply is a glyph …", in Chrome and Safari's engine |

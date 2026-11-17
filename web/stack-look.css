@@ -80,9 +80,10 @@
   --stack-read-ink:#56616a;
   --stack-name-inset:4px;
   --stack-gap:1.75rem;                    /* clear paper round a stack */
-  /* the title bar's glyphs (item 473): each a square this size, three in a row */
+  /* the title bar's glyphs (item 473): each a square this size, three in a row, and the row's width (gaps and its
+     end's padding included) */
   --stack-tool-size:1.75rem;
-  --stack-tools-w:calc(3 * var(--stack-tool-size) + .5rem);
+  --stack-tools-w:calc(3 * var(--stack-tool-size) + .6rem);
 }
 @media(prefers-color-scheme:dark){:root{
   --stack-folder:#1c2427; --stack-folder-deep:#2a3437; --stack-folder-ink:#d3dcd9; --stack-meta-ink:var(--muted);
@@ -147,7 +148,7 @@
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){position:absolute;top:calc(-1 * var(--stack-tab-h));left:0;
-  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));
+  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -167,8 +168,15 @@
    of the title bar, on the paper beside the tab, where the tab never reaches. Their place is kept while they are
    hidden, so showing them moves nothing. Under a pointer that hovers they show while the dossier is under it, and are
    there to be found (invisible, not gone) as it crosses to them; by touch they show once the dossier is selected. The
-   keys show them by reaching them, or by selecting the dossier or one of its messages. */
-.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
+   keys show them by reaching them, or by selecting the dossier or one of its messages.
+   Their room costs the tab nothing: the tab reaches as far as it ever did (--stack-tab-max of the folder, its curved
+   corner after it), and the glyphs stand on the paper past that corner, which holds no name and no mark. They keep to
+   the folder's right edge where that paper is wide enough (a laptop: 30% of the folder); where it is narrower than
+   their row (a phone's ⋯ alone, 44px to touch, beside a tab of 85% of the folder: 43 to 54px of folder at 320 to 390)
+   they reach on past the folder's edge into the page's margin, the 16px of bare paper beside it, as far as they need
+   and no further (at 320, 14.4px; at 375, 6.2px; at 390, 3.9px), so the tab's corner keeps its curve clear of them. */
+.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
+  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));
   display:flex;align-items:center;justify-content:flex-end;gap:.25rem;padding-right:.1rem}
 .stack-tool{display:grid;place-items:center;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:0;padding:0;
   border:0;border-radius:.4rem;background:transparent;color:var(--stack-meta-ink);font-size:1.05rem;font-weight:700;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -186,11 +194,12 @@
 }
 /* By touch each glyph is 44px square. */
 @media(pointer:coarse){:root{--stack-tool-size:2.75rem}.reply-stack:not(.only-new *)>.stack-tools{gap:0}:root{--stack-tools-w:calc(3 * var(--stack-tool-size) + .1rem)}}
-/* On a phone, below 404px, Reply and Move below More fold into ⋯, whose menu offers them first (reply-stacks.mjs):
-   three 44px glyphs (133.6px) beside a tab whose second line holds who began the dossier and who named it
-   ("aim-core · Named by aim-ux", item 479) need a 371px folder, a 404px window; ⋯ alone leaves that line room
-   down to 320px. */
-@media(max-width:403.98px){
+/* In a narrow column (a phone, or a window 760px or narrower, where the tab may reach 85% of the folder), Reply and
+   Move below More fold into ⋯, whose menu offers them first (reply-stacks.mjs): the paper beside a tab of that reach
+   holds one glyph and its corner's curve, not three (three 44px glyphs and the curve need 146px, a 970px folder;
+   three of a pointer's 28px, 106px, a 704px folder). Wider, the tab reaches 70% of the folder, and the three stand
+   beside it. */
+@media(max-width:760px){
   :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}
   .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}
 }
@@ -407,7 +416,7 @@
 .reply-stack[data-compact=true]:not(.only-new *) .stack-meta{flex:none;font-size:.75rem;max-width:35%}
 .reply-stack[data-compact=true] .stack-repliers{display:none}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-toggle{top:.5rem}
-.reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;height:2.75rem}
+.reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;right:0;height:2.75rem}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:var(--stack-tools-w)}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}

@@ -4050,7 +4050,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
     await centre(p, card(ids.three));
     await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
+    // A folded row keeps its bar in a dossier, which offers Unfold (item 473 over 471's barless fold).
+    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) !== null, 'the pointer lights the folded row, with its bar');
+    await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'its bar offers Unfold');
     await rightClick(p, card(ids.three));
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
     const offered = await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
@@ -4400,11 +4402,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))})) && window.fetchesOut === 0`), 'the answer to the starred reply is drawn');
     assert.equal(await foldOf(topic, ids.kept), false, 'a starred message is not folded by a thumbs-up or a reply, in Core');
     assert.deepEqual(await folded(p, ids.kept), { row: false, words: null, whole: true }, 'and it reads whole');
-    // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with no bar and shows its own 👍
-    // once given (item 471): that 👍 takes it back.
+    // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with its bar, which offers Unfold
+    // (item 473 over 471's barless fold), and shows its own 👍 once given (item 471): that 👍 takes it back.
     await centre(p, card(ids.two));
     await p.point(card(ids.two) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) === null, 'the pointer lights reply two\'s row, with no bar');
+    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) !== null, 'the pointer lights reply two\'s row, with its bar');
+    await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'reply two\'s bar offers Unfold');
     await p.point(card(ids.two) + ' > .message-folded > .folded-thumb');
     await until(async () => !await thumbedBy(ids.two), 'the thumbs-up on reply two is taken back, in Core');
     assert.equal(await foldOf(topic, ids.two), true, 'and reply two stays folded');
@@ -5570,8 +5573,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await dossierOpen(p, 'laptop', ids.root);
     await becomes(async () => (await earlierLook(p, ids)).button, '8 earlier messages', 'the row shows');
     await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle').focus()`);
-    await p.key('Tab');
-    assert.equal(await p.evaluate(`document.activeElement?.matches(${JSON.stringify(earlierButton(ids.root))}) ?? false`), true, 'Tab from the chevron reaches the row');
+    // The title bar's glyphs stand after the chevron (item 473): Tab goes through Reply, Move below More and ⋯, in that
+    // order, and the next Tab reaches the row.
+    const reached = [];
+    for (let n = 0; n < 4; n++) {
+      await p.key('Tab');
+      reached.push(await p.evaluate(`(e=>e?.matches(${JSON.stringify(earlierButton(ids.root))})?'row':e?.closest('#messages .reply-stack > .stack-tools')?e.dataset.tool:(e?.className??'none'))(document.activeElement)`));
+    }
+    assert.deepEqual(reached, ['reply', 'aside', 'menu', 'row'], 'Tab from the chevron goes through the title bar\'s glyphs and reaches the row');
     const sent = await p.evaluate('window.sent.length');
     await p.key('Enter');
     const unfolded = openedLook.map(m => (m === 'r5:folded' ? 'r5:row' : m));
@@ -7143,6 +7152,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // tooltip, box, whether it shows a glyph and whether a press at its centre lands on it.
   const toolFacts = (p, id) => p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toolsOf(id))}),s=t.closest('.reply-stack'),tab=s.querySelector(':scope > [data-id] .stack-head'),tb=tab.getBoundingClientRect();
     return {tab:{left:tb.left,right:tb.right,top:tb.top,bottom:tb.bottom},name:tab.querySelector('.stack-name').getBoundingClientRect().width,
+      corner:parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize),
       tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();return {tool:b.dataset.tool,label:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,
         left:r.left,right:r.right,top:r.top,bottom:r.bottom,glyph:Boolean(b.querySelector(':scope > svg.glyph'))||b.textContent==='⋯',hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}}),
       overflow:document.documentElement.scrollWidth>innerWidth,width:innerWidth}})()`);
@@ -7220,7 +7230,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           for (const t of f.tools) {
             assert.ok(t.glyph, `${device} ${width}: ${t.tool} is a glyph, not a word`);
             assert.ok(t.hit, `${device} ${width}: a press at ${t.tool}'s centre lands on it`);
-            assert.ok(t.left >= f.tab.right - .5, `${device} ${width} ${theme}: ${t.tool} sits at the title bar's right, clear of the tab: ${JSON.stringify(f)}`);
+            assert.ok(t.left >= f.tab.right + f.corner - .5, `${device} ${width} ${theme}: ${t.tool} sits at the title bar's right, clear of the tab and its curved corner: ${JSON.stringify(f)}`);
             assert.ok(t.right <= f.width + .5 && t.top >= f.tab.top - .5 && t.bottom <= f.tab.bottom + .5, `${device} ${width}: ${t.tool} is inside the window, on the title bar's line: ${JSON.stringify(f)}`);
             if (device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${width}: ${t.tool} is 44px to touch: ${JSON.stringify(t)}`);
           }
@@ -7244,7 +7254,43 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  // Items 602 and 473: on a phone narrower than 404px the title bar's Reply and Move below More fold into its ⋯,
+  // Item 473: the title bar's glyphs stand in a row with the dossier's chevron, as a message bar's buttons stand with
+  // each other, so ← and → go along that row to the nearest control that way (docs/interaction.md, "The arrows
+  // everywhere"): on a laptop from ⋯ to Move below More, Reply and the chevron, and back; past ⋯, → goes on to the
+  // right rail, as from the messages. On a phone, at 390, 375 and 320, ⋯ stands alone and ← from it reaches the
+  // chevron. ↑ and ↓ stay the messages' keys there: ↓ from ⋯ lights the dossier's message below it.
+  await check('reading stacks ← and → on a dossier\'s title bar glyphs go along the title bar to the nearest control that way, the chevron included, on a laptop and at 390, 375 and 320; ↓ from ⋯ goes on to the dossier\'s message below', async () => {
+    const where = p => p.evaluate(`(e=>!e||e===document.body?'page':e.closest('#things')?'right rail':e.closest('#rail')?'outline':e.matches('#messages .reply-stack > .stack-toggle')?'chevron':e.closest('#messages .reply-stack > .stack-tools')?e.dataset.tool:e.closest('#messages [data-id]')?'message:'+e.closest('[data-id]').dataset.id:(e.id||e.className||e.tagName))(document.activeElement)`);
+    const keyFrom = async (p, id, tool, key) => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(id, tool))}).focus()`);
+      await until(async () => (await where(p)) === tool, `the keys on the title bar's ${tool}`);
+      await p.key(key);
+      return where(p);
+    };
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-arrows-${device}`, ids = await barDossierSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await away(p);
+      if (device === 'laptop') {
+        const seen = [await keyFrom(p, ids.root, 'menu', 'ArrowLeft'), await keyFrom(p, ids.root, 'aside', 'ArrowLeft'), await keyFrom(p, ids.root, 'reply', 'ArrowLeft'),
+          await keyFrom(p, ids.root, 'reply', 'ArrowRight'), await keyFrom(p, ids.root, 'aside', 'ArrowRight'), await keyFrom(p, ids.root, 'menu', 'ArrowRight')];
+        assert.deepEqual(seen, ['aside', 'reply', 'chevron', 'aside', 'menu', 'right rail'],
+          'laptop: ← from ⋯ to Move below More, Reply and the chevron; → back along the row, and past ⋯ on to the right rail');
+      } else {
+        for (const width of [390, 375, 320]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          assert.equal(await keyFrom(p, ids.root, 'menu', 'ArrowLeft'), 'chevron', `phone ${width}: ← from ⋯ reaches the chevron`);
+        }
+      }
+      // ↓ stays the messages' key: from ⋯ it lights the message below, in the dossier, never the page.
+      const down = await keyFrom(p, ids.root, 'menu', 'ArrowDown');
+      assert.ok([ids.r1, ids.r2].map(id => `message:${id}`).includes(down), `${device}: ↓ from ⋯ goes on to the dossier's message below: ${down}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Items 602 and 473: in a window 760px or narrower (a phone) the title bar's Reply and Move below More fold into its ⋯,
   // whose menu offers them first; as every menu item, each shows a glyph before its words, the drawing of the button
   // that does the same (602's rule): Reply to the first message the title bar's Reply, Move below More the Reader's
   // archive tray (item 601) and Bring back above More the tray with an arrow out. A menu with an item that names no

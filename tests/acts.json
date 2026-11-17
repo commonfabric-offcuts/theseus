@@ -21293,8 +21293,8 @@
    "break": [
     [
      "web/rails.mjs",
-     "|| inMessages(at, doc)),",
-     "|| inMessages(at, doc) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at)),"
+     "? inMessages(at, doc) : messagesSideways(at, doc))),",
+     "? inMessages(at, doc) || [...doc.querySelectorAll('#main > .topic-header button')].includes(at) : messagesSideways(at, doc))),"
     ]
    ],
    "check": {
@@ -26020,17 +26020,77 @@
   },
   {
    "item": 473,
-   "act": "The tab's name leaves room for the title bar's glyphs, which never sit over it",
+   "act": "The title bar's glyphs stand beside the tab, past its curved corner, reaching into the page's margin where the folder's paper beside the tab is narrower than they are, at 320, 375 and 390 pixels",
    "break": [
     [
      "web/stack-look.css",
-     "calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));",
-     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
+     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
+     "  right:0;\n"
     ]
    ],
    "check": {
     "native": "reading",
     "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's glyphs stand beside the tab, past its curved corner, at 320, 375 and 390 pixels, in Safari's engine",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
+     "  right:0;\n"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "At 390 a selected dossier whose first message carries a picture alone keeps its image mark beside its title bar's ⋯, which stands past the tab's curved corner, in Chrome and Safari's engine",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
+     "  right:0;\n"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "picture-only head row at 390px"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's glyphs take none of the tab's room: the tab reaches as far as release 88's, so head rows at 375 and 390 keep who began it whole and the image mark where it fits, in Chrome and Safari's engine",
+   "break": [
+    [
+     "web/stack-look.css",
+     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));\n  display:flex;flex-wrap:wrap;",
+     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));\n  display:flex;flex-wrap:wrap;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "head rows at 390px|head rows at 375px"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's glyphs take none of the tab's room: a selected dossier at 390 keeps its image mark beside ⋯",
+   "break": [
+    [
+     "web/stack-look.css",
+     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));\n  display:flex;flex-wrap:wrap;",
+     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));\n  display:flex;flex-wrap:wrap;"
+    ]
+   ],
+   "check": {
+    "native": "card-marks",
+    "case": "picture-only head row at 390px"
    }
   },
   {
@@ -26531,17 +26591,17 @@
   },
   {
    "item": 473,
-   "act": "On a phone the title bar's Reply and Move below More fold into ⋯, so the tab's second line keeps who began the dossier and who named it whole",
+   "act": "On a phone, and in any window 760px or narrower, the title bar's Reply and Move below More fold into ⋯, which alone fits the paper beside the tab, inside the window",
    "break": [
     [
      "web/stack-look.css",
-     "@media(max-width:403.98px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n}\n",
+     "@media(max-width:760px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n  .reply-stack:not(.only-new *)>.stack-tools>.stack-tool:is([data-tool=reply],[data-tool=aside]){display:none}\n}\n",
      ""
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "minted name"
+    "case": "the title bar shows Reply, Move below More and ⋯"
    }
   },
   {
@@ -26576,12 +26636,12 @@
   },
   {
    "item": 473,
-   "act": "On a laptop the title bar keeps its three glyphs: only a phone folds them into ⋯",
+   "act": "On a laptop the title bar keeps its three glyphs: only a window 760px or narrower folds them into ⋯",
    "break": [
     [
      "web/stack-look.css",
-     "@media(max-width:403.98px){\n",
-     "@media(min-width:0px){\n"
+     "@media(max-width:760px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n",
+     "@media(min-width:0px){\n  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n"
     ]
    ],
    "check": {
@@ -26657,6 +26717,96 @@
    "check": {
     "native": "reading",
     "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 473,
+   "act": "← and → on a dossier's title bar glyphs go along the title bar to the nearest control that way, the chevron included, on a laptop and on a phone",
+   "break": [
+    [
+     "web/panes.mjs",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "on a dossier's title bar glyphs go along the title bar"
+   }
+  },
+  {
+   "item": 473,
+   "act": "← and → on a dossier's title bar glyphs go along the title bar to the nearest control that way, in Safari's engine",
+   "break": [
+    [
+     "web/panes.mjs",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "on a dossier's title bar glyphs go along the title bar"
+   }
+  },
+  {
+   "item": 473,
+   "act": "← from a dossier's title bar ⋯ on a phone reaches the chevron: no arrow stays put where a control lies that way",
+   "break": [
+    [
+     "web/panes.mjs",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 473,
+   "act": "← from a dossier's title bar ⋯ on a phone reaches the chevron, in Safari's engine",
+   "break": [
+    [
+     "web/panes.mjs",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc) && !at.closest('.reply-stack > .stack-tools');",
+     "export const messagesSideways = (at, doc) => inMessages(at, doc);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-rail",
+    "case": "rail arrows on a topic and a Conversation"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Tab from a dossier's chevron goes through the title bar's Reply, Move below More and ⋯, then reaches the earlier-messages row",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "[p.toggle, p.tools]), p.replies,",
+     "[p.tools, p.toggle]), p.replies,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the earlier-messages row is reached by Tab"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Tab from a dossier's chevron goes through the title bar's glyphs, then reaches the earlier-messages row, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "[p.toggle, p.tools]), p.replies,",
+     "[p.tools, p.toggle]), p.replies,"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the earlier-messages row is reached by Tab"
    }
   }
  ]

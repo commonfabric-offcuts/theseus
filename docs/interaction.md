@@ -368,7 +368,10 @@ rule above. (`web/arrow-reach.mjs`)
   On a Notebook page's cards, ↑ above the first card and ↓ below the last go
   on to the page's controls (docs/decks.md).
   On a message's bar ← and → move along its buttons, and ↑ and ↓ go on to the
-  message above or below, as from the message.
+  message above or below, as from the message. On a dossier's title bar glyphs
+  ← and → move along the title bar, from ⋯ to Move below More, Reply and the
+  chevron, and past its end on to the pane beside; ↑ and ↓ stay the messages'
+  (docs/reply-stacks.md, "The title bar and the message bar").
 - **In a pane, off its keys.** On the logo block, the chips, Keys, the right
   rail's name and chips, People and the Notebook, ↑ and ↓ move within that
   pane, and ← and → too; past the pane's edge ← and → go on to the pane beside,
@@ -601,7 +604,9 @@ arrows ↑ above the outline's first row goes on up the side rail …"; the righ
 rail's chips, "rail arrows ↑ above the right rail's first section reaches …";
 below the messages, "rail arrows ↓ past the last message goes on down the page
 …" (at 1280, 390, 375 and 320); the bar, "rail arrows on a message's bar ← and
-→ move along its buttons, …"; the pages with no panes and a one-line field,
+→ move along its buttons, …"; a dossier's title bar, "reading stacks ← and →
+on a dossier's title bar glyphs …" (`tests/stack_native.mjs`, `native-reading`,
+`native-webkit-reading`); the pages with no panes and a one-line field,
 "rail arrows on the Outcomes home, an outcome's page, its pipeline and its
 Conversation, …" (at
 1280, 390, 375 and 320); a Notebook page's cards, "rail arrows on a Notebook
