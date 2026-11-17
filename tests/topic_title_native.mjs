@@ -6,6 +6,10 @@ import { execFileSync } from 'node:child_process';
 // Item 656 runs through the header step and both colour engines. Every act is
 // native input; waits name focus, a response, or the DOM state they consume.
 export async function topicTitleChecks({ check, page, until, control, view, facts, shot }, mode, mutations = true, phase = 'main') {
+  const capture = async (p, name) => {
+    await until(() => p.evaluate("document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the captured surface finished opening');
+    await shot(p, name);
+  };
   const active = p => p.evaluate('document.activeElement?.id');
   const held = async () => (await view('topic', { topic_id: 't1' })).topic;
   const title = p => p.evaluate('document.querySelector("#topic-title").textContent');
@@ -37,7 +41,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
     const start = async (state, url) => {
       const p = await page(`item-656-${phase}-${state}-${size}-${theme}`, null, true, { ...setup, ...(url ? { url } : {}) });
       await until(() => p.evaluate('document.body.dataset.ready === "true"'), 'topic loaded');
-      await shot(p, `item-656-${phase}-${state}-${size}-${theme}-before`);
+      await capture(p, `item-656-${phase}-${state}-${size}-${theme}-before`);
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), true, 'item 656: a pencil beside the topic title');
       assert.deepEqual(await p.evaluate(`(b=>[b.getAttribute('aria-label'),b.title,Boolean(b.querySelector('svg'))])(document.querySelector('#topic-title-rename'))`), ['Rename topic', 'Rename topic', true]);
       await fits(p);
@@ -51,20 +55,20 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await fits(p);
     };
     const type = (p, text) => p.send('Input.insertText', { text });
-    const snap = async (p, state) => { await fits(p); await shot(p, `item-656-${phase}-${state}-${size}-${theme}`); };
+    const snap = async (p, state) => { await fits(p); await capture(p, `item-656-${phase}-${state}-${size}-${theme}`); };
 
     if (phase === 'base' || phase === 'compare') {
       await check(`${mode} item 656 ${phase} screenshots at ${size} ${theme}`, async () => {
         const p = await page(`item-656-${phase}-${size}-${theme}`, null, true, setup);
         assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), phase === 'compare', 'only the current page has the title pencil');
         await until(() => p.evaluate('[...document.images].filter(i=>i.getClientRects().length).every(i=>i.complete)'), 'visible images are ready for comparison');
-        await shot(p, `item-656-${phase}-normal-${size}-${theme}`);
+        await capture(p, `item-656-${phase}-normal-${size}-${theme}`);
         if (width < 760) await press(p, '#rail-open');
-        await shot(p, `item-656-${phase}-rail-${size}-${theme}`);
+        await capture(p, `item-656-${phase}-rail-${size}-${theme}`);
         if (width < 760) await p.key('Escape');
         await press(p, '#settings-open');
         await until(() => p.evaluate('document.querySelector("#topic-settings").open'), 'base settings open');
-        await shot(p, `item-656-${phase}-settings-${size}-${theme}`);
+        await capture(p, `item-656-${phase}-settings-${size}-${theme}`);
         await p.close();
       });
       continue;
@@ -95,11 +99,11 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await until(async () => await title(p) === renamed && await p.evaluate('document.body.dataset.ready === "true"'), 'reload shows the saved title');
       if (width < 760) await press(p, '#rail-open');
       await until(() => p.evaluate(`document.querySelector('#outline a[data-topic-id="t1"]')?.textContent.includes(${JSON.stringify(renamed)})`), 'the rail shows the same saved title');
-      await shot(p, `item-656-${phase}-rail-${size}-${theme}`);
+      await capture(p, `item-656-${phase}-rail-${size}-${theme}`);
       if (width < 760) await p.key('Escape');
       await press(p, '#settings-open');
       await until(() => p.evaluate('document.querySelector("#topic-settings").open'), 'settings open');
-      await shot(p, `item-656-${phase}-settings-${size}-${theme}`);
+      await capture(p, `item-656-${phase}-settings-${size}-${theme}`);
       await press(p, '#topic-state .settings-actions button:first-of-type');
       await until(async () => await active(p) === 'topic-rename', 'settings rename focused');
       await type(p, original); await p.key('Enter');
