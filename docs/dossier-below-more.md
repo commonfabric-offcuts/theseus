@@ -79,7 +79,12 @@ the swipe on its title bar and the Reader's archive button show as ever; a
 press says "This dossier has a message you starred: unstar it to move it below
 More" where it was (`press-note.mjs`: under the archive button, the line of
 the message whose menu it was, or the title bar the swipe crossed), and
-nothing moves on any frame. The way out is to unstar. A star and the move are
+nothing moves on any frame. Command-Z, or Undo in ⋯, after a Bring back on a
+dossier starred since is held the same way: the note shows under the
+dossier's title bar, or, where that is out of the window, the reason goes on
+the page's status line, and nothing says it was put back. A note shows under
+what it is said beside, and over it where the window has no room below (a
+message near the bottom of a phone's screen). The way out is to unstar. A star and the move are
 each the reader's alone, so the hold is too: another reader's star never holds
 yours, and yours never holds theirs. Starring a message in a dossier the reader
 moved below More brings it back above More for them, in the same act; taking
@@ -87,13 +92,16 @@ the star off later leaves it above More.
 
 Core holds this for every way a dossier goes below More, since each sends
 `stack.aside`: the menu item, the swipe on the title bar, the Reader's archive
-button, Command-Z after a Bring back, and any client or agent sending the
+button, Command-Z or Undo in ⋯ after a Bring back, and any client or agent sending the
 command itself, as the CLI's `command` verb does (it has no verb of its own
-for the move). No key moves a dossier below More:
+for the move). No other key moves a dossier below More:
 
 - `stack.aside` below More is refused as `STARRED_IN_DOSSIER`, with that
   sentence, when the dossier holds a message the reader starred and can see;
-  nothing is recorded. Bring back is never refused.
+  nothing is recorded. Bring back (`through: null`) is never refused, even
+  for a dossier their star is in: a starred stack joined into a dossier they
+  moved below More leaves that move standing, and their Bring back of it is
+  recorded.
 - `message.star` with `starred: true` on a message of a dossier the reader
   moved below More records their Bring back (`through: null`, its next
   `aside_revision`) in the same transaction, and its result says so:

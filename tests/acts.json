@@ -26118,6 +26118,122 @@
     "native": "webkit-reading",
     "case": "reading stacks the Reader's star and archive button take a press that a repaint lands during"
    }
+  },
+  {
+   "item": 635,
+   "act": "Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing, and says why under its title bar",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }",
+     "if (below && undoable && this.heldByStar(stack)) { this.held(stack, at); return false; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star says why on the status line when the dossier's title bar is out of the window",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (!noteAt(at, HELD_BY_STAR, this.doc) && !noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc)) this.status(HELD_BY_STAR);",
+     "if (!noteAt(at, HELD_BY_STAR, this.doc)) noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star does not say it was put back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (last() !== false) this.say('Put back');",
+     "last(); this.say('Put back');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows over what it is said beside where the window has no room below, at each width in the browser",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star note over"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows over what it is said beside where the window has no room below",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows under what it is said beside where the window has room below",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows under what it is said beside where the window has room on neither side",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core never refuses a Bring back, even of a dossier holding the reader's star",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if value[\"through\"] is not None and starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):",
+     "            if starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
   }
  ]
 }

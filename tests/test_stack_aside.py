@@ -223,6 +223,25 @@ class StarHoldCase(StackCase):
         self.assertTrue(self.position(root, 'agent-b')['below'], 'for you, not for others')
         self.assertEqual(self.position(root).get('starred'), [kept])
 
+    def test_bring_back_is_never_refused_though_the_dossier_holds_the_readers_star(self):
+        # The hold refuses a move below More, never its way back: a starred stack joined into a dossier the reader
+        # moved below More (item 368) leaves their move standing, and their Bring back of it (through null, as
+        # Command-Z or the CLI's command verb sends it) is recorded, while the move made again is still refused.
+        root, _, _ = self.dossier()
+        kept = self.post('A note about the drainpipe')
+        self.committed(self.star(kept))
+        moved_to = self.latest()
+        self.committed(self.aside(root, moved_to))
+        self.committed(self.join(kept, root, actor='agent-a'))
+        self.assertEqual({key: self.position(root)[key] for key in ('through', 'starred', 'below')},
+                         {'through': moved_to, 'starred': [kept], 'below': False}, 'the move stands under the star')
+        back = self.committed(self.aside(root, None, revision=1))
+        self.assertEqual((back['through'], back['aside_revision'], back['changed']), (None, 2, True))
+        self.assertEqual({key: self.position(root)[key] for key in ('through', 'aside_revision', 'below')},
+                         {'through': None, 'aside_revision': 2, 'below': False})
+        self.rejected(self.aside(root, moved_to, revision=2), 'STARRED_IN_DOSSIER')
+        self.assertEqual(len(self.rows('aside')), 2, 'the move and its Bring back, and nothing for the refused move')
+
 
 class StarHoldCLICase(AgentCLIBase):
     """The CLI has no verb of its own for Move below More, but its `command` verb sends any command, stack.aside among

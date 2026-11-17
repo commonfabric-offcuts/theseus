@@ -300,10 +300,13 @@ export class StackFeed {
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }
   remember(undo) { this.undos.push(undo); if (this.undos.length > 50) this.undos.shift(); }
+  // ⌘Z, or Undo in ⋯. An undo that does nothing gives false: a Bring back's
+  // undo on a dossier starred since is held (setAside, item 635), and its note
+  // says why, so nothing says it was put back.
   undo() {
     const last = this.undos.pop();
     if (!last) { this.say('Nothing to put back'); return; }
-    last(); this.say('Put back');
+    if (last() !== false) this.say('Put back');
   }
   // Shows an act on the message at once and sends it after the acts before it.
   // Answered, refused or not settled, it is no longer drawn over what Core
