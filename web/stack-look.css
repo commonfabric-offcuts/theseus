@@ -148,7 +148,7 @@
 
 /* The tab: the head row (or, while renaming, the rename field) standing on the folder's top edge, two lines high. */
 .reply-stack:not(.only-new *) :is(.stack-head-card>.stack-head,.reply-stack>.stack-rename){position:absolute;top:calc(-1 * var(--stack-tab-h));left:0;
-  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));
+  box-sizing:border-box;height:var(--stack-tab-h);width:max-content;max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -165,18 +165,21 @@
 .stack-toggle:focus-visible{outline:none}
 
 /* The title bar's glyphs (item 473): Reply to the first message, Move below More (or Bring back) and ⋯, at the right
-   of the title bar, on the paper beside the tab, where the tab never reaches. Their place is kept while they are
-   hidden, so showing them moves nothing. Under a pointer that hovers they show while the dossier is under it, and are
-   there to be found (invisible, not gone) as it crosses to them; by touch they show once the dossier is selected. The
-   keys show them by reaching them, or by selecting the dossier or one of its messages.
-   Their room costs the tab nothing: the tab reaches as far as it ever did (--stack-tab-max of the folder, its curved
-   corner after it), and the glyphs stand on the paper past that corner, which holds no name and no mark. They keep to
-   the folder's right edge where that paper is wide enough (a laptop: 30% of the folder); where it is narrower than
-   their row (a phone's ⋯ alone, 44px to touch, beside a tab of 85% of the folder: 43 to 54px of folder at 320 to 390)
-   they reach on past the folder's edge into the page's margin, the 16px of bare paper beside it, as far as they need
-   and no further (at 320, 14.4px; at 375, 6.2px; at 390, 3.9px), so the tab's corner keeps its curve clear of them. */
-.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
-  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));
+   of the title bar, inside the folder's right edge, on the paper beside the tab. Under a pointer that hovers they show
+   while the dossier is under it, and are there to be found (invisible, not gone) as it crosses to them; by touch they
+   show once the dossier is selected. The keys show them by reaching them, or by selecting the dossier or one of its
+   messages.
+   Their room is --stack-tools-room: the row's width (--stack-tools-w) while they show, or under a pointer that hovers,
+   where hidden they are still there to be found (so a pointer crossing the dossier moves nothing); nothing while they
+   are hidden by touch, so the name has that width (warp #7317). The tab's cap leaves its curved corner and that room:
+   in a wide window the tab's own reach (--stack-tab-max, 70%) leaves more, so nothing moves; on a phone the tab, at
+   85% of the folder at rest, gives the room back once ⋯ shows (3.9px at 390, 6.1px at 375, 14.4px at 320), so ⋯
+   stands on the folder, inside its right edge, never past it in the page's margin. A dossier being renamed has no
+   glyphs, and keeps no room for them. */
+.reply-stack:not(.only-new *){--stack-tools-room:0px}
+.reply-stack:not(.only-new *):not([data-renaming=true]):is(:focus-within,:has(.stack-head-card.lit),:has(>.stack-tools [aria-expanded=true])){--stack-tools-room:var(--stack-tools-w)}
+@media(hover:hover){.reply-stack:not(.only-new *):not([data-renaming=true]){--stack-tools-room:var(--stack-tools-w)}}
+.reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:calc(-1 * var(--stack-tab-h));height:var(--stack-tab-h);
   display:flex;align-items:center;justify-content:flex-end;gap:.25rem;padding-right:.1rem}
 .stack-tool{display:grid;place-items:center;flex:none;width:var(--stack-tool-size);height:var(--stack-tool-size);min-height:0;padding:0;
   border:0;border-radius:.4rem;background:transparent;color:var(--stack-meta-ink);font-size:1.05rem;font-weight:700;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -417,7 +420,7 @@
 .reply-stack[data-compact=true] .stack-repliers{display:none}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-toggle{top:.5rem}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;right:0;height:2.75rem}
-.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:var(--stack-tools-w)}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:max(.7rem,var(--stack-tools-room))}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}

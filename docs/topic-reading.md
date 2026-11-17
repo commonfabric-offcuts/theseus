@@ -204,8 +204,11 @@ never wraps: on a narrow tab who replied and what is new give way first, then
 its marks, whole glyphs dropped from the end, then who started it, cut short;
 the reply count always shows, as it did before the marks, so a phone may show
 fewer marks there than the card does. The dossier's title bar glyphs (item
-473) take none of that row's room: the tab reaches as far as it does without
-them, and they stand on the paper past its curved corner.
+473) take none of that row's room while they are hidden: the tab reaches as far
+as it does without them, and they stand on the folder's paper past its curved
+corner, inside its right edge. Selected on a phone, ⋯ takes the few pixels it
+needs there back from the tab (docs/reply-stacks.md, "The title bar and the
+message bar").
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its

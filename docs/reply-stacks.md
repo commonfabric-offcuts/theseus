@@ -482,15 +482,20 @@ beside the tab, where the tab never reaches:
 They show while a pointer is over the dossier, and are there to be found
 (invisible, never gone) as the pointer crosses to them; by touch, once the
 dossier or one of its messages is selected; by the keys, as soon as one of
-them holds the focus, or the dossier or one of its messages is selected. Their
-place is kept while they are hidden, so showing them moves nothing. Their
-room costs the tab nothing: the tab reaches as far as it does without them
-(70% of the folder in a wide window, 85% in a narrow one), its name and its
-marks as they were, and they stand on the paper past its curved corner, which
-holds no name and no mark. Where the folder's own paper there is narrower
-than they are (a phone's ⋯, 44px to touch, beside a tab of 85% of a
-288 to 358px folder), they reach on past the folder's edge into the page's
-margin beside it, as far as they need: 14px at 320, 6px at 375, 4px at 390.
+them holds the focus, or the dossier or one of its messages is selected. They
+stand at the folder's right edge, on the paper past the tab's curved corner,
+which holds no name and no mark, and never past the folder's edge into the
+page's margin. Under a pointer their place is kept while they are hidden (the
+pointer finds them there), so showing them moves nothing, and their room costs
+the tab nothing: the tab reaches as far as it does without them (70% of the
+folder in a wide window, 85% in a narrow one), its name and its marks as they
+were. Hidden by touch they reserve nothing: the tab reaches its whole 85%, and
+the name has that width. Once they show they take the room they need, and
+where the folder's paper past the tab's corner is narrower than they are (a
+phone's ⋯, 44px to touch, beside a tab of 85% of a 288 to 358px folder) the
+tab gives it back: 14px at 320, 6px at 375, 4px at 390, so ⋯ stands on the
+folder, inside its right edge. An agent-only dossier's one quiet row keeps no
+room for ⋯ at its end either until ⋯ shows there.
 Hidden by touch they take no press: a tap where ⋯ sits lands on the page beneath it, not on ⋯, until the dossier is
 selected; the keys still reach them. A message on its own has no title bar and no
 glyphs; a dossier being renamed and Only new show none.
@@ -517,7 +522,8 @@ menu"), each shows the glyph of the button that does the same: Reply the title
 bar's Reply, Move below More the Reader's archive tray and Bring back above
 More the tray with an arrow out. Each does what its glyph does, by touch and by
 the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab is
-as wide at rest as once selected, so its name keeps the same words either way.
+never narrower at rest than once selected: the two glyphs folded into ⋯
+reserve nothing, and ⋯ takes only the room it needs once it shows.
 A wider window, where the tab reaches 70% of the folder, keeps the three
 glyphs.
 
@@ -879,6 +885,8 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a 👍 or an answer, and the Reader's mark, say what Theseus answered, never a lost connection unless none answered | node units, `tests/ui_reactions.test.mjs` and `tests/ui_inline_wiring.test.mjs` ("… item 547") |
 | a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
 | the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab and past its curved corner at 320, 375, 390 pixels and on a laptop at 1280 and 761 (three) and 760 (⋯ alone), light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
+| the title bar's ⋯ on the folder: its right edge at or inside the folder's, clear of the tab's corner, 44px, selected by touch at 390, 375 and 320, and under the pointer at 1280 and 760, light and dark | `tests/stack_native.mjs`, "reading stacks the title bar's ⋯ sits on the folder's face …", in Chrome and Safari's engine |
+| hidden glyphs reserve nothing: at 320 by touch, at rest, a dossier's tab reaches its whole cap and an agent-only dossier's quiet row its end padding, each long name still cut off; once selected, ⋯ inside the row, nothing of the meta under it, the tab's name no wider than at rest | `tests/stack_native.mjs`, "reading stacks hidden title bar glyphs reserve nothing …", in Chrome and Safari's engine |
 | the title bar's room costs the tab nothing: head rows at 375 and 390 keep who began the dossier whole and an image mark where 88 showed it, and at 390 a dossier whose first message carries a picture alone, selected by touch, keeps its image mark and who began it whole beside its ⋯, light and dark | `tests/card_marks_native.mjs`, "head rows at …" and "picture-only head row at 390px …", in Chrome and Safari's engine |
 | ← and → on the title bar's glyphs go along its row (from ⋯ to Move below More, Reply and the chevron, and back, past ⋯ to the right rail) on a laptop, and from ⋯ to the chevron at 390, 375 and 320; ↓ from ⋯ goes on to the dossier's message below | `tests/stack_native.mjs`, "reading stacks ← and → on a dossier's title bar glyphs …", in Chrome and Safari's engine; `tests/outcome_rail_native.mjs`, "rail arrows on a topic and a Conversation …" (no arrow stays put where a control lies that way) |
 | the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |

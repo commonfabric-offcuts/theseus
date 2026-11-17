@@ -26020,12 +26020,12 @@
   },
   {
    "item": 473,
-   "act": "The title bar's glyphs stand beside the tab, past its curved corner, reaching into the page's margin where the folder's paper beside the tab is narrower than they are, at 320, 375 and 390 pixels",
+   "act": "The title bar's glyphs stand beside the tab, past its curved corner, at 320, 375 and 390 pixels: once they show the tab gives them their room on the folder",
    "break": [
     [
      "web/stack-look.css",
-     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
-     "  right:0;\n"
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
     ]
    ],
    "check": {
@@ -26035,12 +26035,12 @@
   },
   {
    "item": 473,
-   "act": "The title bar's glyphs stand beside the tab, past its curved corner, at 320, 375 and 390 pixels, in Safari's engine",
+   "act": "The title bar's glyphs stand beside the tab, past its curved corner, at 320, 375 and 390 pixels, once they show the tab giving them their room on the folder, in Safari's engine",
    "break": [
     [
      "web/stack-look.css",
-     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
-     "  right:0;\n"
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
     ]
    ],
    "check": {
@@ -26054,8 +26054,8 @@
    "break": [
     [
      "web/stack-look.css",
-     "  right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));\n",
-     "  right:0;\n"
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
     ]
    ],
    "check": {
@@ -26065,12 +26065,12 @@
   },
   {
    "item": 473,
-   "act": "The title bar's glyphs take none of the tab's room: the tab reaches as far as release 88's, so head rows at 375 and 390 keep who began it whole and the image mark where it fits, in Chrome and Safari's engine",
+   "act": "The title bar's glyphs, hidden, take none of the tab's room: the tab reaches as far as release 88's, so head rows at 375 and 390 keep who began it whole and the image mark where it fits, in Chrome and Safari's engine",
    "break": [
     [
      "web/stack-look.css",
-     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));\n  display:flex;flex-wrap:wrap;",
-     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));\n  display:flex;flex-wrap:wrap;"
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));"
     ]
    ],
    "check": {
@@ -26080,12 +26080,12 @@
   },
   {
    "item": 473,
-   "act": "The title bar's glyphs take none of the tab's room: a selected dossier at 390 keeps its image mark beside ⋯",
+   "act": "The title bar's glyphs take no more of the tab's room than ⋯ needs: a selected dossier at 390 keeps its image mark beside ⋯",
    "break": [
     [
      "web/stack-look.css",
-     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r)));\n  display:flex;flex-wrap:wrap;",
-     "max-width:min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));\n  display:flex;flex-wrap:wrap;"
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r) - var(--stack-tools-w)));"
     ]
    ],
    "check": {
@@ -26706,7 +26706,7 @@
   },
   {
    "item": 473,
-   "act": "On a phone the title bar's room is ⋯'s alone, so ⋯ reaches past the folder's edge into the page's margin only as far as one glyph needs, inside the window",
+   "act": "On a phone the title bar's room is ⋯'s alone, so the tab gives back only as much as one glyph needs, ⋯ inside the window",
    "break": [
     [
      "web/stack-look.css",
@@ -26867,6 +26867,126 @@
    "check": {
     "native": "webkit-rail",
     "case": "rail in the right rail → and ← open and fold a section without ⌘"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone, selected by touch at 390, 375 and 320, the title bar's ⋯ stands inside the folder's right edge, never past it in the page's margin (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:",
+     ".reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));top:"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone, selected by touch at 390, 375 and 320, the title bar's ⋯ stands inside the folder's right edge, never past it in the page's margin, in Safari's engine (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:0;top:",
+     ".reply-stack:not(.only-new *)>.stack-tools{position:absolute;z-index:1;right:min(0px,calc(100% - min(var(--stack-tab-max),calc(100% - var(--stack-r-tab) - var(--stack-r))) - var(--stack-r-tab) - var(--stack-tools-w)));top:"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Once the title bar's ⋯ shows on a phone, the tab gives it its room on the folder, clear of the tab's curved corner (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Once the title bar's ⋯ shows on a phone, the tab gives it its room on the folder, clear of the tab's curved corner, in Safari's engine (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "calc(100% - var(--stack-r-tab) - max(var(--stack-r),var(--stack-tools-room))));",
+     "calc(100% - var(--stack-r-tab) - var(--stack-r)));"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Hidden by touch the title bar's glyphs reserve nothing: at 320 a dossier's tab reaches its whole cap, its long name still cut off (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *){--stack-tools-room:0px}",
+     ".reply-stack:not(.only-new *){--stack-tools-room:var(--stack-tools-w)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "hidden title bar glyphs reserve nothing"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Hidden by touch the title bar's glyphs reserve nothing: at 320 a dossier's tab reaches its whole cap, its long name still cut off, in Safari's engine (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ".reply-stack:not(.only-new *){--stack-tools-room:0px}",
+     ".reply-stack:not(.only-new *){--stack-tools-room:var(--stack-tools-w)}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "hidden title bar glyphs reserve nothing"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Hidden by touch the title bar's ⋯ reserves nothing in an agent-only dossier's quiet row: at 320 its meta runs to the row's end padding, and once selected ⋯ takes its room (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "padding-right:max(.7rem,var(--stack-tools-room))}",
+     "padding-right:var(--stack-tools-w)}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "hidden title bar glyphs reserve nothing"
+   }
+  },
+  {
+   "item": 473,
+   "act": "Hidden by touch the title bar's ⋯ reserves nothing in an agent-only dossier's quiet row: at 320 its meta runs to the row's end padding, and once selected ⋯ takes its room, in Safari's engine (warp #7317)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "padding-right:max(.7rem,var(--stack-tools-room))}",
+     "padding-right:var(--stack-tools-w)}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "hidden title bar glyphs reserve nothing"
    }
   }
  ]

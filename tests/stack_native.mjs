@@ -7238,12 +7238,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             if (device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${width}: ${t.tool} is 44px to touch: ${JSON.stringify(t)}`);
           }
           assert.ok(f.name > 20, `${device} ${width}: the tab keeps room for its name beside the glyphs: ${JSON.stringify(f)}`);
-          // At rest the hidden glyphs keep their place, and on a phone that place is ⋯'s alone: the tab is as wide at
-          // rest as once selected, its name the same words, not cut back for two glyphs folded into ⋯.
+          // Hidden by touch the glyphs reserve nothing (warp #7317): at rest the tab reaches at least as far as once
+          // selected, where ⋯ takes its room on the folder, and its name is at least as wide; and on a phone that room
+          // is ⋯'s alone, not cut back for two glyphs folded into ⋯.
           if (device === 'phone' && theme === 'light') {
             const r = resting[width], menu = f.tools.find(t => t.tool === 'menu');
-            assert.ok(Math.abs(r.tab.right - f.tab.right) <= .5 && r.name >= f.name - .5,
-              `phone ${width}: at rest the tab and its name are as wide as once selected: ${JSON.stringify({ rest: { tab: r.tab, name: r.name }, selected: { tab: f.tab, name: f.name } })}`);
+            assert.ok(r.tab.right >= f.tab.right - .5 && r.name >= f.name - .5,
+              `phone ${width}: at rest the tab and its name are at least as wide as once selected: ${JSON.stringify({ rest: { tab: r.tab, name: r.name }, selected: { tab: f.tab, name: f.name } })}`);
             assert.ok(menu.left - r.tab.right <= menu.width, `phone ${width}: at rest the tab reaches to within one glyph of ⋯: ${JSON.stringify({ rest: r.tab, menu })}`);
             observations.push({ name: 'title bar at rest', engine, device, width, tab: r.tab, name: r.name, selectedName: f.name, gapToMenu: menu.left - r.tab.right });
           }
@@ -7254,6 +7255,103 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
+  });
+
+  // Item 473, warp #7317 (D1): the title bar's ⋯ stands on the folder, never past it in the page's margin. On a phone,
+  // selected by touch at 390, 375 and 320, ⋯'s right edge is at or inside the folder's right edge, clear of the tab and
+  // its curved corner, 44px, and a press at its centre lands on it: once the glyphs show, the tab gives them the room
+  // they need. On a laptop under the pointer, at 1280 (three glyphs) and 760 (⋯ alone), they are inside it as before.
+  const faceFacts = (p, id) => p.evaluate(`(s=>{const f=s.getBoundingClientRect(),tab=s.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(),
+    corner=parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return {folder:{left:f.left,right:f.right},tab:{left:tab.left,right:tab.right},corner,overflow:document.documentElement.scrollWidth>innerWidth,
+      tools:[...s.querySelector(':scope > .stack-tools').children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();
+        return {tool:b.dataset.tool,left:r.left,right:r.right,width:r.width,height:r.height,hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})}})(document.querySelector('#messages .reply-stack[data-stack="${id}"]'))`);
+  await check('reading stacks the title bar\'s ⋯ sits on the folder\'s face, inside its right edge, selected by touch at 390, 375 and 320 pixels and under the pointer on a laptop, in light and dark', async () => {
+    const seen = [];
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-face-${device}`, ids = await barDossierSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await away(p);
+      for (const width of device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width, 760]) {
+        await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
+        await showTools(p, device, ids.root);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const f = await faceFacts(p, ids.root);
+          await shot(p, `title-bar-face-${device}-${width}-${theme}`);
+          seen.push({ device, width, theme, ...f });
+          observations.push({ name: 'title bar on the folder', engine, device, width, theme, ...f });
+        }
+        await dossierTheme(p, 'light');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every width and theme is pictured before any is judged.
+    for (const f of seen) {
+      const where = `${f.device} ${f.width} ${f.theme}`, all = JSON.stringify(f);
+      assert.ok(f.tools.some(t => t.tool === 'menu'), `${where}: ⋯ shows: ${all}`);
+      for (const t of f.tools) {
+        assert.ok(t.right <= f.folder.right + .5, `${where}: ${t.tool}'s right edge (${t.right}) is at or inside the folder's right edge (${f.folder.right}): ${all}`);
+        assert.ok(t.left >= f.tab.right + f.corner - .5, `${where}: ${t.tool} is clear of the tab and its curved corner: ${all}`);
+        assert.ok(t.hit, `${where}: a press at ${t.tool}'s centre lands on it: ${all}`);
+        if (f.device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${where}: ${t.tool} is 44px to touch: ${all}`);
+      }
+      assert.equal(f.overflow, false, `${where}: nothing scrolls sideways`);
+    }
+  });
+
+  // Item 473, warp #7317 (D2): hidden glyphs reserve nothing. At 320 by touch, with the glyphs hidden, a dossier's tab
+  // whose name is too long for it reaches its whole cap (85% of the folder, or the folder less its corners), and an
+  // agent-only dossier's one quiet row runs its meta on to the row's own end padding: neither keeps the glyphs' width
+  // while they are hidden. Each name still ends cut off, by the row, as a name too long for it does. Once a dossier is
+  // selected its ⋯ takes the room it needs: in the quiet row inside the row with nothing of the meta under it, and on
+  // the tab with the name no wider than at rest.
+  await check('reading stacks hidden title bar glyphs reserve nothing: at 320 by touch a dossier\'s tab and an agent-only dossier\'s quiet row give their names the room, a name too long still cut, and selected, ⋯ takes its room beside them', async () => {
+    const topic = 'title-bar-reserve', ids = await barDossierSeed(topic, [
+      ['quiet', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Agents alone go over a dossier name long enough to run past any phone row.' }],
+      ['quietReply', { sender: 'aim-ux', join: true, addressees: ['aim-core'], reply_to: 'quiet', body: 'Agreed between the two of us.' }]]);
+    const stack = id => `#messages .reply-stack[data-stack="${id}"]`;
+    const measure = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},stack=id=>document.querySelector('#messages .reply-stack[data-stack="'+id+'"]'),num=v=>parseFloat(v),
+      rem=num(getComputedStyle(document.documentElement).fontSize),box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}},
+      shown=s=>{const t=getComputedStyle(s.querySelector(':scope > .stack-tools'));return t.visibility==='visible'&&Number(t.opacity)===1},
+      menu=s=>{const m=s.querySelector(':scope > .stack-tools > [data-tool=menu]'),r=m.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height,hit:m.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}},
+      name=h=>{const n=h.querySelector(':scope > .stack-name');return {...box(n),cut:n.scrollWidth>n.clientWidth}};
+      const d=stack(ids.root),q=stack(ids.quiet),dh=d.querySelector(':scope > [data-id] .stack-head'),qh=q.querySelector(':scope > [data-id] .stack-head'),s=getComputedStyle(d),fw=d.getBoundingClientRect().width;
+      return {compact:q.dataset.compact,folder:box(d),cap:Math.min(num(s.getPropertyValue('--stack-tab-max'))/100*fw,fw-(num(s.getPropertyValue('--stack-r-tab'))+num(s.getPropertyValue('--stack-r')))*rem),
+        tab:{...box(dh),name:name(dh),shown:shown(d),menu:menu(d)},
+        quiet:{...box(qh),name:name(qh),meta:box(qh.querySelector(':scope > .stack-meta')),pad:num(getComputedStyle(qh).paddingRight),shown:shown(q),menu:menu(q)},
+        overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+    const p = await open(topic, 'phone', topic, ids.root);
+    await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width: 320 });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(stack(ids.quiet))})?.dataset.compact === 'true'`), 'the agent-only dossier is its quiet row');
+    await centre(p, stack(ids.root)); await away(p);
+    const rest = {};
+    for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); rest[theme] = await measure(p); await shot(p, `title-bar-reserve-320-rest-${theme}`); }
+    await dossierTheme(p, 'light');
+    // A tap selects the quiet row, then the dossier's tab, as a person does: each shows its ⋯.
+    await centre(p, stack(ids.quiet)); await tap(p, `${stack(ids.quiet)} > [data-id] .stack-head > .stack-meta`);
+    await until(async () => (await measure(p)).quiet.shown, 'the tap selects the quiet row and its ⋯ shows');
+    const quiet = await measure(p); await shot(p, 'title-bar-reserve-320-quiet-selected-light');
+    await centre(p, stack(ids.root)); await tap(p, `${stack(ids.root)} > [data-id] .stack-head > .stack-who`);
+    await until(async () => (await measure(p)).tab.shown, 'the tap selects the dossier and its ⋯ shows');
+    const tab = await measure(p); await shot(p, 'title-bar-reserve-320-tab-selected-light');
+    observations.push({ name: 'hidden title bar glyphs reserve nothing', engine, rest, quiet, tab });
+    for (const theme of ['light', 'dark']) {
+      const r = rest[theme], where = `320 ${theme} at rest: ${JSON.stringify(r)}`;
+      assert.equal(r.compact, 'true', `${where}: the agent-only dossier is its quiet row`);
+      assert.ok(!r.tab.shown && !r.quiet.shown, `${where}: the glyphs are hidden`);
+      assert.ok(r.tab.width >= r.cap - .5, `${where}: the tab reaches its whole cap (${r.cap}), nothing kept for hidden glyphs`);
+      assert.ok(r.quiet.right - r.quiet.meta.right <= .75 * 16 + .5, `${where}: the quiet row's meta runs on to the row's end padding, ${r.quiet.right - r.quiet.meta.right}px from its end, nothing kept for hidden glyphs`);
+      assert.ok(r.tab.name.cut && r.quiet.name.cut, `${where}: a name too long for its row is still cut off`);
+      assert.equal(r.overflow, false, `${where}: nothing scrolls sideways`);
+    }
+    const q = quiet.quiet, wq = `320 the quiet row selected: ${JSON.stringify(q)}`;
+    assert.ok(q.menu.width >= 44 && q.menu.height >= 44 && q.menu.hit, `${wq}: ⋯ shows, 44px, and a press at its centre lands on it`);
+    assert.ok(q.menu.right <= q.right + .5 && q.meta.right <= q.menu.left + .5, `${wq}: ⋯ is inside the row and nothing of the meta is under it`);
+    const t = tab.tab, wt = `320 the tab selected: ${JSON.stringify({ rest: rest.light.tab, selected: t })}`;
+    assert.ok(t.menu.width >= 44 && t.menu.hit && t.name.width <= rest.light.tab.name.width + .5, `${wt}: ⋯ shows and takes its room; the name is no wider than at rest`);
+    assert.equal(tab.overflow, false, 'nothing scrolls sideways');
+    assert.deepEqual(p.errors, []); await p.close();
   });
 
   // Item 473: the title bar's glyphs stand in a row with the dossier's chevron, as a message bar's buttons stand with

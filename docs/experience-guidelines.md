@@ -228,9 +228,13 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   the time's line, never a control, and a card with all three keeps a one-line
   author line; "head rows at …" checks a stack's head row keeps its reply count
   whole beside them, and "picture-only head row at 390px …" that a selected
-  dossier's title bar ⋯ takes none of the row's room: its image mark and who
-  began it stay whole ([topic-reading.md](topic-reading.md), "What a card
-  carries").
+  dossier's image mark and who began it stay whole beside its title bar's ⋯
+  ([topic-reading.md](topic-reading.md), "What a card carries");
+  `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
+  stacks hidden title bar glyphs reserve nothing …", at 320 by touch hidden
+  glyphs keep no width from a dossier's name, and "reading stacks the title
+  bar's ⋯ sits on the folder's face …", ⋯ stays inside the folder's right edge
+  at 320, 375 and 390 and on a laptop, light and dark.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
