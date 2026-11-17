@@ -36,7 +36,8 @@ from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
-from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
+from .outline_order import (ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA, TOPIC_POSITION_DOWN,
+                            TOPIC_POSITION_OCCUPIED, TOPIC_POSITION_SCHEMA)
 from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
@@ -193,6 +194,8 @@ STEPS = (
     # is open. Stepping back is refused once any outcome has been archived or completed, even one brought back since.
     # Built on 43 beside item 17's step, it landed second and follows it.
     ("44", "45", ENDS_SCHEMA, ENDS_DOWN, ENDS_OCCUPIED),
+    # Item 641: default topic positions never move with activity.
+    ("45", "46", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
 )
 
 

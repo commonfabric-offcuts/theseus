@@ -783,10 +783,16 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (placed) await control({ method: 'order_as', workspace_id: oid, ids: [a, b], operation_id: tag + '-place' });
       const p = await open(tag, '/?topic=' + b, size, theme);
       const ids = async () => (await outline(p)).outcomes[oid]?.topics.map(row => row.id);
+      const press = async selector => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+        await until(() => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect();
+          return b.top>=0 && b.bottom<=innerHeight && e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})()`), tag + ': ' + selector + ' is in view and uncovered');
+        if (SIZES[size].mobile) await tap(p, selector); else await p.point(selector);
+      };
       const show = async () => {
         await until(() => p.evaluate("document.body?.dataset.ready==='true'").catch(() => false), tag + ': page is ready');
         if (SIZES[size].mobile && !(await drawer(p)).open) {
-          await tap(p, '#rail-open');
+          await press('#rail-open');
           await until(async () => (await drawer(p)).open, tag + ': drawer opens');
         }
         await outlineAtRest(p, tag);
@@ -813,7 +819,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
           await expect(wanted, 'a topic new to the reader enters at the top once');
         }
         await shot(p, tag + '-before-activity');
-        const target = placed ? b : a;
+        const target = a;
         const unread = (await outline(p)).outcomes[oid].topics.find(row => row.id === target).unread;
         const sent = await control({ method: 'agent_message', operation_id: tag + '-news', topic_id: target, join: true, addressees: [], body: 'Another person’s new message leaves topic positions alone.' });
         assert.equal(sent.status, 'committed', 'the message actually committed');
@@ -835,6 +841,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await reload(tag + ': reopen after own move');
         await show();
         await expect(movedOrder, 'the reader’s move holds after reload');
+        if (SIZES[size].mobile) {
+          await p.key('Escape');
+          await until(async () => !(await drawer(p)).open, tag + ': close the drawer to write');
+        }
+        const body = 'My message in Topic B keeps Topic A above it — ' + tag;
+        await press('#inline-writing-body');
+        await p.send('Input.insertText', { text: body });
+        await until(() => p.evaluate("!document.getElementById('inline-send').disabled"), tag + ': send is available');
+        await press('#inline-send');
+        await until(() => p.evaluate(`document.getElementById('messages').textContent.includes(${JSON.stringify(body)})`), tag + ': own send is drawn');
+        await show();
+        await expect(movedOrder, 'sending in B keeps A above B throughout');
+        await reload(tag + ': reopen after sending');
+        await expect(movedOrder, 'A stays above B after sending and reopening');
         await shot(p, tag + '-own-move');
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }

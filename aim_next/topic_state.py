@@ -120,13 +120,13 @@ def _fenced(expected, version, held):
             raise Refusal("REVISION_CONFLICT", "The topic's %s changed since it was read; nothing was changed" % name, {"topic_revision": version})
 
 
-def order_cursor(done, activity_ms, topic_id):
-    """The position of a topic in its outcome's list: "DONE:ACTIVITY_MS:ID"."""
-    return "%d:%d:%s" % (int(bool(done)), activity_ms, topic_id)
+def order_cursor(done, list_position, topic_id):
+    """The position of a topic in its outcome's list: "DONE:LIST_POSITION:ID"."""
+    return "%d:%d:%s" % (int(bool(done)), list_position, topic_id)
 
 
 def order_position(cursor):
-    """(done, activity_ms, topic_id) from a cursor order_cursor wrote; anything else is refused."""
+    """(done, list_position, topic_id) from a cursor order_cursor wrote; anything else is refused."""
     parts = cursor.split(":", 2) if isinstance(cursor, str) else ()
     if (len(parts) != 3 or parts[0] not in ("0", "1") or not parts[1].isascii() or not parts[1].isdigit()
             or len(parts[1]) > 18 or (len(parts[1]) > 1 and parts[1][0] == "0")):
