@@ -83,6 +83,31 @@ test('item 645 regression: Only new counts a drawn folded head and skips hidden 
   subject.reviewPaintNames(f.list, f.messages, f.state);
   assert.deepEqual(f.names(), ['person', ''], 'Only new draws the head whole and hides separating furniture');
 });
+test('item 645 harness: filter off excludes the closed head and names the first visible reply', async () => {
+  const f = fixture([['head', 'You'], ['reply', 'You']]);
+  const section = f.doc.createElement('section'), replies = f.doc.createElement('div');
+  section.className = 'reply-stack'; section.dataset.headOpen = 'false'; replies.className = 'stack-replies';
+  section.append(f.cards.get('head'), replies); replies.append(f.cards.get('reply')); f.list.append(section);
+  f.state.only = () => true; subject.reviewPaintNames(f.list, f.messages, f.state);
+  assert.deepEqual(f.names(), ['You', '']);
+  f.state.only = null; subject.reviewPaintNames(f.list, f.messages, f.state);
+  assert.equal(f.names()[1], 'You', 'actual grouping excludes the closed head outside Only new');
+  const css = await readFile(new URL('../web/stack-look.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.reply-stack[data-head-open=false]:not(.only-new *) .stack-head-card>:not(.stack-head){display:none}'));
+  // Below-browser CSS contract model only; native cases prove actual drawing.
+  const restored = ['', f.names()[1]];
+  const stack = await readFile(new URL('./stack_native.mjs', import.meta.url), 'utf8');
+  const line = stack.split('\n').find(line => line.includes('assert.deepEqual(restored,'));
+  const expectation = new Function('assert', 'restored', line);
+  expectation(assert, restored);
+  assert.throws(() => expectation(assert, ['', '']), { name: 'AssertionError' }, 'wrong suppression must fail the native expectation');
+  const attribution = stack.slice(stack.indexOf('  const item645Attribution ='), stack.indexOf('\n\n', stack.indexOf('  const item645Attribution =')));
+  const checkAttribution = new Function('assert', attribution + ';return item645Attribution;')(assert);
+  const p = value => ({ evaluate: async () => value });
+  await checkAttribution(p([{text:'You',ariaHidden:null},{text:'You',ariaHidden:null}]), ['head','reply']);
+  await assert.rejects(() => checkAttribution(p([{text:'fixture-person',ariaHidden:null},{text:'You',ariaHidden:null}]), ['head','reply']), {name:'AssertionError'});
+  await assert.rejects(() => checkAttribution(p([{text:'You',ariaHidden:null},{text:'You',ariaHidden:'true'}]), ['head','reply']), {name:'AssertionError'});
+});
 test('item 645 regression: a New line placed by the arranged callback starts a named run', () => {
   const f = fixture([['a', 'agent'], ['b', 'agent'], ['c', 'agent']]);
   let separated = false;

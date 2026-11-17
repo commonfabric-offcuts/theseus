@@ -10,6 +10,7 @@ from pathlib import Path
 import sqlite3
 import sys
 import tempfile
+import tarfile
 import threading
 import time
 from types import SimpleNamespace
@@ -507,6 +508,63 @@ def main():
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
         server = serve()
+        # Item 645: source-bound page comparisons inside one filtered native run.
+        # This private stdin control swaps immutable public Build bytes only;
+        # Core, records, origin and authority remain the same isolated fixture.
+        item645_candidate = server.build
+        item645_candidate_csp = server.csp
+        item645_original = None
+
+        def item645_runtime(phase):
+            nonlocal item645_original
+            def hashes(build):
+                return {name: hashlib.sha256(data).hexdigest() for name, data in build.files.items()}
+            if phase == "original":
+                if item645_original is None:
+                    folder = Path(__file__).parent
+                    manifest = json.loads((folder / "item_645_original_web.json").read_text())
+                    archive = folder / "item_645_original_web.tar.gz"
+                    assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+                    destination = root / "item645-original"
+                    destination.mkdir()
+                    with tarfile.open(str(archive), "r:gz") as packed:
+                        for member in packed.getmembers():
+                            assert member.name == "web" or (member.name.startswith("web/") and ".." not in Path(member.name).parts)
+                            assert member.isdir() or member.isfile()
+                        packed.extractall(str(destination))
+                    item645_original = server_module.web_build.load(destination / "web")
+                    assert hashes(item645_original) == manifest["files"]
+                server.build = item645_original
+            elif phase == "restored":
+                server.build = item645_candidate
+            elif phase in ("wrong-suppression", "raw-attribution"):
+                destination = root / ("item645-" + phase)
+                destination.mkdir(exist_ok=True)
+                for name, data in item645_candidate.files.items():
+                    path = destination / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                path = destination / "reply-stacks.mjs"
+                data = path.read_bytes()
+                old, new = ((b"state.only || entry.dataset.headOpen", b"entry.dataset.headOpen") if phase == "wrong-suppression"
+                            else (b"const [author, words] = row.children;\n  author.textContent = nameOf(item.author_id);",
+                                  b"const [author, words] = row.children;\n  author.textContent = item.author_id;"))
+                assert data.count(old) == 1
+                path.write_bytes(data.replace(old, new))
+                assert path.read_bytes() != data
+                server.build = server_module.web_build.load(destination)
+            else:
+                raise ValueError("Unknown item 645 runtime phase")
+            # The import map and boot hashes belong to the selected immutable
+            # build, just as create_server binds them at startup.
+            script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
+            before, rest = item645_candidate_csp.split("script-src ", 1)
+            server.csp = before + "script-src " + script_src + ";" + rest.split(";", 1)[1]
+            if phase == "restored":
+                assert server.csp == item645_candidate_csp
+            return {"phase": phase, "stamp": server.build.stamp, "hashes": hashes(server.build),
+                    "candidate_hashes": hashes(item645_candidate), "restored": server.build is item645_candidate,
+                    "csp_sha256": hashlib.sha256(server.csp.encode()).hexdigest()}
 
         def on_team(operation):
             """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
@@ -626,6 +684,8 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                    elif request["method"] == "item_645_runtime":
+                        answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
                         with sqlite3.connect(str(path)) as db:
                             answer = {"media": db.execute("SELECT count(*) FROM media_intents").fetchone()[0]}
@@ -1293,6 +1353,10 @@ def main():
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
+            item645_unrestored = item645_original is not None and server is not None and server.build is not item645_candidate
+            if item645_unrestored:
+                server.build = item645_candidate
+                server.csp = item645_candidate_csp
             if controls is not None:
                 controls.close()
             if server is not None:
@@ -1302,6 +1366,7 @@ def main():
                 assert not thread.is_alive(), "Owned HTTP fixture did not close"
             if controls is not None:
                 controls.assert_healthy()
+            assert not item645_unrestored, "Item 645 comparison runtime was not restored"
 
 
 if __name__ == "__main__":
