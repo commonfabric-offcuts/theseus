@@ -658,6 +658,8 @@ page waits until shown, and leaving the card cancels that waiting clear.
 While the landing loads pages, intermediate card positions report no reading;
 on-screen reports resume at its destination, leaving newer unread messages for
 the next press rather than consuming them on the way to an older mark.
+The phone's open outline drawer makes the topic inert: no card behind that
+drawer reports reading, even if a redraw places it inside the viewport.
 Reading it on screen settles its delivery, and the count goes. The count's tooltip says "Show the oldest
 unread message", and on a phone it answers a finger 44px each way. The count and
 the message it leads to are one rule, written once and read by both: a delivery

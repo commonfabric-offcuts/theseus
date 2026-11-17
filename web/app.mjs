@@ -510,6 +510,7 @@ function changed(editor) {
 // person's own are never reported.
 function noteRead() {
   if (unreadLandingBusy) return;
+  if ($('main').inert) return;
   if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
   const source = registry.current?.source;

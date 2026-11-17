@@ -26552,6 +26552,20 @@
    "check": {
     "node": "tests/ui_unread_landing.test.mjs"
    }
+  },
+  {
+   "item": 613,
+   "act": "A phone topic covered by its outline drawer reports no reading behind the drawer",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if ($('main').inert) return;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
   }
  ]
 }
