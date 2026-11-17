@@ -26431,9 +26431,23 @@
    "act": "A topic's unread count counts only what a press on it reaches: while above nought, the oldest unread message is one the reader's pages of the topic reach, and a topic left, a whisper between others or another reader's delivery counts nothing",
    "break": [
     [
-     "aim_next/delivery.py",
-     "\"WHERE g.recipient_id=? AND g.kind='subscription' AND g.active=1 AND g.pending_count>0\" + scope + \" GROUP BY g.topic_id\"",
-     "\"WHERE g.recipient_id=? AND g.kind='subscription' AND g.pending_count>0\" + scope + \" GROUP BY g.topic_id\""
+     "aim_next/topic_reading.py",
+     "SUBSCRIBED = \"g.recipient_id=? AND g.kind='subscription' AND g.active=1\"",
+     "SUBSCRIBED = \"g.recipient_id=? AND g.kind='subscription'\""
+    ]
+   ],
+   "check": {
+    "python": "test_new_line.py"
+   }
+  },
+  {
+   "item": 613,
+   "act": "The count and the oldest unread message it leads to read one rule: a delivery waiting by name, counted, is the message the count leads to",
+   "break": [
+    [
+     "aim_next/topic_reading.py",
+     "        \"UNION ALL SELECT g.id FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 WHERE \" + ADDRESSED,\n        (actor, topic_id, actor))]",
+     "        \"\", (actor, topic_id))]"
     ]
    ],
    "check": {

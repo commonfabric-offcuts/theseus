@@ -267,14 +267,15 @@ class NewLineCase(ReaderCase):
             return db, settings
         with mock.patch.object(store_module, "_connect", connect):
             self.line()
-        # The first view's statements: the subscription group, the direct group, a probe of each, the marks.
+        # The first view's statements: the reader's unread groups, the subscription and the direct one, by the counts'
+        # own rule (topic_reading.SUBSCRIBED, ADDRESSED; item 613), a probe of each, the marks.
         first = statements[:next(index for index, sql in enumerate(statements) if "FROM message_marks k INDEXED BY reader_marks" in sql) + 1]
-        groups = [sql for sql in first if "FROM topic_participants p CROSS JOIN delivery_groups g" in sql]
+        groups = [sql for sql in first if "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 WHERE" in sql]
         deliveries = [sql for sql in first if "pending_group_topic_deliveries" in sql]
         marks = [sql for sql in first if "FROM message_marks k INDEXED BY reader_marks" in sql]
         self.assertEqual((len(groups), len(deliveries), len(marks)), (1, 2, 1), first)
         with sqlite3.connect(str(self.path)) as db:
-            for query, indexes in ((groups[0], ("SEARCH p USING", "sqlite_autoindex_delivery_groups_1")),
+            for query, indexes in ((groups[0], ("sqlite_autoindex_delivery_groups_1",)),
                                    (deliveries[0], ("pending_group_topic_deliveries", "sqlite_autoindex_messages_1")),
                                    (deliveries[1], ("pending_group_topic_deliveries", "sqlite_autoindex_messages_1")),
                                    (marks[0], ("reader_marks", "sqlite_autoindex_messages_1"))):
