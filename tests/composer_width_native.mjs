@@ -82,12 +82,12 @@ export async function composerWidthCases(h) {
       const chooser = p.waitForEvent('filechooser');
       await press(p, a.add);
       await (await chooser).setFiles(HEIC);
-      await until(p, a => document.querySelector(`${a.strip} .image-choice`)?.hasAttribute('data-needs'), 'the refused image', a, 20000);
+      await until(p, a => Boolean(document.querySelector(`${a.strip} [data-method=asDownload]:not([disabled])`)), 'the refused image offers Attach as download', a, 20000);
       if (surface === 'New message') await press(p, `${a.strip} .image-open`);
       else await press(p, a.send, true);
       await until(p, a => document.querySelector(`${a.strip} .image-choice`)?.hasAttribute('data-open'), 'both recovery controls open', a);
       assert.equal(await p.locator(a.strip).getByRole('button', { name: 'Attach as download', exact: true }).count(), 1);
-      assert.equal(await p.locator(a.strip).getByRole('button', { name: 'Remove', exact: true }).count(), 1);
+      assert.equal(await p.locator(a.strip).getByRole('button', { name: `Remove ${HEIC.name}`, exact: true }).count(), 1);
     }
     // These branches are seeded through the actual adapter/state objects,
     // rather than imitating their DOM. No synthetic resize handler is called.
@@ -154,6 +154,7 @@ export async function composerWidthCases(h) {
         near(shrunk.left, before.left + STEP_PX, 'left edge moves inward');
         near(shrunk.right, before.right - STEP_PX, 'right edge moves inward');
         near(shrunk.center, initial.center, 'stays centred');
+        await picture(p, `${label}-dragged-${side}`);
         near(shrunk.top, initial.top, 'no vertical movement'); near(shrunk.height, initial.height, 'no vertical resize');
         await drag(p, a, side, -inward, -25, touch);
         const grown = await geometry(p, a);
