@@ -4837,7 +4837,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   // wordmark with its presence dot) stays first, and no section of the rail moves. In the phone's drawer they end the
   // drawer; on a page with no rail (the outcome's own page, the Outcomes home) they end the page. Read from the page as
   // drawn: the column that holds the three (the rail or main), its children on show in order, the three lines, whether
-  // they sit below everything else on show in that column and one under the other, inside the screen, and their looks.
+  // they sit below everything else on show in that column, how each line stands to the one before it (under it, or
+  // beside it on the same row), inside the screen, and their looks. The looks are the ones the logo block gave them:
+  // on a laptop one under the other; on a phone the guide's ? and Health side by side on one row, here under the name.
   const footDrawn = p => p.evaluate(`(()=>{
     const shown = e => Boolean(e) && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
     const name = e => e.id || e.classList[0] || e.tagName.toLowerCase(), box = e => e.getBoundingClientRect();
@@ -4846,7 +4848,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const swatch = document.createElement('span'); swatch.style.color = 'var(--muted)'; document.body.append(swatch); const muted = getComputedStyle(swatch).color; swatch.remove();
     return { column: column.id || column.tagName.toLowerCase(), order: [...column.children].filter(shown).map(name), lines: lines.map(name),
       below: others.length > 0 && others.every(e => box(foot).top >= box(e).bottom - 0.5),
-      stacked: lines.every((e, at) => at === 0 || box(e).top >= box(lines[at - 1]).bottom - 0.5),
+      layout: lines.slice(1).map((e, at) => { const a = box(lines[at]), b = box(e);
+        return b.top >= a.bottom - 0.5 ? 'under' : Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 2 && b.left >= a.right - 0.5 ? 'beside' : 'overlapping'; }),
       inside: lines.every(e => box(e).left >= -0.5 && box(e).right <= Math.min(innerWidth, box(column).right) + 0.5),
       brand: [...brand.children].filter(shown).map(name), dot: Boolean(brand.querySelector('.wordmark .presence-dot')), brandIn: brand.parentElement === column,
       name: label.textContent, quiet: [label, guide].every(e => e && getComputedStyle(e).color === muted),
@@ -4908,8 +4911,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     for (const { at, phone, page: kind, drawn, opened, errors } of seen) {
       const where = `${at} ${kind}`;
       assert.deepEqual(drawn.lines, ['instance-label', 'guide-open', 'health-link'], where + ': the workspace name, the guide\'s ? under it, then Health');
-      assert.deepEqual([drawn.below, drawn.stacked, drawn.inside, drawn.scroll], [true, true, true, true],
-        where + ': below everything else in its column, one under the other, inside the screen, and nothing sideways');
+      assert.deepEqual([drawn.below, drawn.inside, drawn.scroll], [true, true, true],
+        where + ': below everything else in its column, inside the screen, and nothing sideways');
+      // As the logo block drew them: one under the other on a laptop; on a phone the guide's ? and Health on one row.
+      assert.deepEqual(drawn.layout, phone ? ['under', 'beside'] : ['under', 'under'],
+        where + (phone ? ': the guide\'s ? under the name, Health beside it on its row' : ': one under the other'));
       assert.equal(drawn.order.at(-1), 'rail-foot', where + ': the three end their column: ' + drawn.order.join(' '));
       assert.equal(drawn.order[0], 'brand', where + ': the logo block still heads it: ' + drawn.order.join(' '));
       assert.deepEqual([drawn.brandIn, drawn.brand[0], drawn.dot], [true, 'wordmark', true], where + ': the logo block starts with the wordmark and its presence dot');
