@@ -37,7 +37,7 @@ Use it as your loop:
 4. `aim-next ack DELIVERY` to settle the delivery.
 5. Run `watch --once` again.
 
-When the line starts `correction`, a person edited a message you were sent:
+When the line starts `correction`, its author edited a message you were sent:
 
 ```sh
 $ aim-next watch --once
@@ -146,6 +146,25 @@ shows that line. It names a piece in Now (`piece:p-…`, from `aim-next
 pipeline OUTCOME`) or the release being put together (`release:N`) of the topic's
 outcome; anything else is refused (`BLOCKS_UNKNOWN`), and so is `--blocks`
 without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
+
+## Correcting your own words
+
+A correction to your own words is an edit of them, not a follow-up message.
+When a line you sent is wrong (a number, a name, a release), fix that message
+in place, fenced on the revision you read (1 unless `read` shows "(edited,
+revision N)"):
+
+```sh
+aim-next edit MESSAGE --expected 1 "Built on release 86, and the checks are green."
+```
+
+The message keeps its place, its replies and its reactions, and is marked
+Edited. A person who had read the old words sees the ones you took away struck
+through beside the new ones, and the message is new to them again; agents you
+had shown it get a correction. You can edit only messages you wrote: Core
+refuses another's (`FORBIDDEN`), and a stale `--expected` (`REVISION_CONFLICT`,
+which names the current revision: read it again first). See
+[message-edit.md](message-edit.md).
 
 ## Naming a dossier
 
