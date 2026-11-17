@@ -1,0 +1,85 @@
+# One builder's browser cases on GitHub's hosted pool (warp codex #4923), pushed by fable-tools/native-case.py on a
+# pool/** branch: the candidate's tree plus this file and .github/pool-run.json, which names the step and its cases.
+# It runs only on pool/** pushes, reads nothing secret, and is never merged; the branch is deleted once its
+# evidence is downloaded.
+name: Pool
+
+on:
+  push:
+    branches:
+      - 'pool/**'
+
+permissions:
+  contents: read
+
+env:
+  CHROME_VERSION: 156.0.8078.47
+  PLAYWRIGHT_VERSION: 1.63.0
+
+jobs:
+  cases:
+    name: ${{ github.ref_name }}
+    runs-on: macos-26
+    # GitHub's own end for a hung job (warp codex #5499: 127's "The cases" stayed in progress 1h29, and only the 6-hour
+    # default would have ended it). pool.py writes over this line the step's expected length plus fifteen minutes, from
+    # the expected_length() its waiter uses, as checks.yml's browser shards carry 75. 360 is GitHub's default.
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: Chrome for Testing and Playwright's WebKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          browsers="$RUNNER_TEMP/browsers"
+          mkdir -p "$browsers/playwright"
+          npx --yes @puppeteer/browsers install "chrome@${CHROME_VERSION}" --path "$browsers"
+          chrome="$browsers/chrome/mac_arm-${CHROME_VERSION}/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+          test -x "$chrome"
+          (cd "$browsers/playwright" \
+            && npm init -y >/dev/null \
+            && npm install --no-audit --no-fund "playwright-core@${PLAYWRIGHT_VERSION}" "playwright@${PLAYWRIGHT_VERSION}" >/dev/null \
+            && npx playwright install webkit)
+          echo "AIM_CHROME_FOR_TESTING=$chrome" >> "$GITHUB_ENV"
+          echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
+      - name: The cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pool"
+          /usr/bin/python3 -I - "$RUNNER_TEMP/pool" <<'PY'
+          import json, os, subprocess, sys
+          out = sys.argv[1]
+          spec = json.load(open(".github/pool-run.json"))
+          node = subprocess.run(["/bin/sh", "-c", "command -v node"], capture_output=True, text=True).stdout.strip()
+          ran = []
+          for j, case in enumerate(spec["cases"] or [None], 1):
+              if spec["step"].startswith("suite:"):
+                  # Unit suites (native-case.py STEP units), run as checks.yml runs them.
+                  argv = ["/usr/bin/python3", "-I", "-B", "tools/release_check.py", "--out", os.path.join(out, "c%d" % j),
+                          "--node", node, "--only", spec["step"][len("suite:"):]]
+              else:
+                  argv = ["/usr/bin/python3", "-I", "-B", "tools/native.py", "--out", os.path.join(out, "c%d" % j),
+                          "--chrome", os.environ["AIM_CHROME_FOR_TESTING"], "--playwright", os.environ["AIM_PLAYWRIGHT_CORE"],
+                          "--node", node, spec["step"]] + ([case] if case else [])
+              with open(os.path.join(out, "c%d.log" % j), "w") as log:
+                  code = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT).returncode
+              ran.append({"case": case, "exit": code})
+              print("c%d exit %d %s" % (j, code, json.dumps(case)), flush=True)
+              json.dump(ran, open(os.path.join(out, "cases.json"), "w"))
+          # A red case does not fail the run (warp codex #5192: every failed run mailed Tony, 796 by 10:49 on 15 Nov):
+          # its result is in cases.json and its folder, where pool.py and the auditor read it. Only a run that could
+          # not produce them fails (this script raising, or the evidence step finding nothing to keep).
+          sys.exit(0)
+          PY
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pool
+          path: ${{ runner.temp }}/pool
+          if-no-files-found: error
