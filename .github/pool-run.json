@@ -1,0 +1,11 @@
+{
+ "step": "reading",
+ "cases": [
+  "reading stacks star brings back",
+  "reading stacks star hold",
+  "reading stacks star refused by Core",
+  "reading stacks star title bar"
+ ],
+ "label": "takeover-red-reading-7270a8fd-1",
+ "snapshot": "7270a8fd726b1b750d632f6a5660c633528fe690"
+}
