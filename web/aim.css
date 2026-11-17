@@ -1204,7 +1204,7 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 /* Item 649: a small note in the card's lower corner, with room for a finger.
    The note glyph is the existing private-note drawing; no private words live here. */
 .message-card:has(>.note-corner){padding-bottom:2.75rem}
-.note-corner{position:absolute;right:0;bottom:0;display:flex;align-items:center;justify-content:center;width:1rem;height:1rem;color:var(--muted);border-radius:.5rem;cursor:pointer}
+.note-corner{position:absolute;right:0;bottom:0;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer}
 .note-corner:hover{color:var(--ink)}
 .note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
 .note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
