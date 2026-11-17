@@ -760,15 +760,21 @@ def main():
                         answer = tools_seed(request)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
+                    elif freshness and request["method"] == "agent_edit":
+                        # An agent's new words for a message it wrote, as its CLI's `edit` saves them (item 614),
+                        # fenced on the revision it read (1 unless given); Core may refuse it.
+                        answer = command("message.edit", request["operation_id"], {"body": request["body"]}, {"message_id": request["message_id"]},
+                                         {"message_revision": request.get("revision", 1)}, sender=request["sender"], refusable=True)
                     elif freshness and request["method"] == "agent_thumb":
                         # An agent's thumbs-up on a message, as its CLI's `thumb` gives it (docs/thumbs.md).
                         revision = store().view(request["sender"], "reactions", {"message_id": request["message_id"]})["reactions"]["thumb_revision"]
                         answer = command("message.thumb", request["operation_id"], {"thumbed": request.get("thumbed", True)},
                                          {"message_id": request["message_id"]}, {"thumb_revision": revision}, sender=request["sender"])
                     elif freshness and request["method"] == "stack_act":
-                        # A star, a stack's short name, a join or a place, as another person or an agent
-                        # makes it through Core (docs/reply-stacks.md), fenced on what they last read.
-                        field = STACK_KINDS[request["kind"]][1]
+                        # A star, a stack's short name, a join, a place or a dossier's cover, as another person or
+                        # an agent makes it through Core (docs/reply-stacks.md, docs/dossier-covers.md), fenced on
+                        # what they last read.
+                        field = "cover_revision" if request["kind"] == "stack.cover" else STACK_KINDS[request["kind"]][1]
                         with sqlite3.connect(str(path)) as db:
                             db.row_factory = sqlite3.Row
                             revision = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {}).get(field, 0)

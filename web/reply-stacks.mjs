@@ -21,11 +21,12 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 import { carriesNode, carriesOf } from './marks.mjs';
+import { coverKey, coverSheet, paintCoverPills } from './dossier-cover.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
 const states = new WeakMap();
@@ -345,7 +346,7 @@ function makeStack(doc, id) {
   const toggle = element(doc, 'button', 'stack-toggle'); toggle.type = 'button';
   replies.id = `stack-replies-${id}`; toggle.setAttribute('aria-controls', replies.id);
   section.dataset.stack = id; section.setAttribute('role', 'group');
-  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null });
+  parts.set(section, { replies, toggle, lines: new Map(), placed: null, rename: null, cover: null, coverKey: '' });
   return section;
 }
 
@@ -568,7 +569,15 @@ function paintStack(section, stack, byId, context) {
   for (const entry of [head, ...desired]) if (entry.dataset.id) {
     entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
   }
-  let previousFace = open ? head : null;
+  // The dossier's cover (item 624, dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
+  // tab stands above the folder, and before the chevron and the replies; never inside the head's card, which closed
+  // shows its tab alone. Headed by a reply, its first message above the loaded page, the folder takes it from its
+  // place (stackCover). Drawn again only when what it says changes. A card with no folder takes pills instead.
+  const cover = single ? null : stackCover(stack), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id };
+  const key = coverKey(cover, coverContext);
+  if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
+  // A cover stands between the first message and the replies, so the first reply overlaps no face of the head's.
+  let previousFace = open && !p.cover ? head : null;
   for (const entry of desired) {
     if (entry.hidden) continue;
     if (!entry.dataset.id) { previousFace = null; continue; }
@@ -583,11 +592,11 @@ function paintStack(section, stack, byId, context) {
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);
   const rename = single ? null : renameField(section, stack, shown, context);
-  reconcile(section, [head, ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
+  reconcile(section, [head, ...(p.cover ? [p.cover] : []), ...(rename ? [rename] : single ? [] : [p.toggle]), p.replies, ...(stack.placed !== null ? [p.placed] : [])]);
   if (single || rename) p.toggle.remove();
   if (stack.placed === null) p.placed?.remove();
   Object.assign(section.dataset, { seq: String(stack.newest), fold: level, headOpen: String(open), placed: String(stack.placed !== null),
-    single: String(single), renaming: String(state.renaming === stack.id) });
+    single: String(single), renaming: String(state.renaming === stack.id), covered: String(Boolean(p.cover)) });
   section.setAttribute('aria-label', single ? 'Placed message' : `Reply stack: ${shown.name}`);
 }
 
@@ -665,6 +674,11 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc });
   // An open dossier's earlier messages, once their row is opened, read as rows (item 476).
   for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
+  // A card with no folder whose cover says something shows it as pills under who wrote it (item 624): a message on
+  // its own, or a dossier's one reply loaded while its first message is above the page, which takes its dossier's
+  // cover from its place (stackCover). Any other message shows none: a folder has its cover as its sheet instead.
+  const lone = new Map(stacks.filter(stack => !stack.replies.length).map(stack => [stack.id, stack]));
+  for (const [id, entry] of byId) paintCoverPills(cardIn(entry), lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null, { viewer, nameOf, topicId: messages.get(id)?.topic_id });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }
   // What is hidden here is what shownView says is hidden: below a closed More,

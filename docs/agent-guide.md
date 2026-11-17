@@ -37,7 +37,7 @@ Use it as your loop:
 4. `aim-next ack DELIVERY` to settle the delivery.
 5. Run `watch --once` again.
 
-When the line starts `correction`, a person edited a message you were sent:
+When the line starts `correction`, its author edited a message you were sent:
 
 ```sh
 $ aim-next watch --once
@@ -147,6 +147,25 @@ pipeline OUTCOME`) or the release being put together (`release:N`) of the topic'
 outcome; anything else is refused (`BLOCKS_UNKNOWN`), and so is `--blocks`
 without `--asks` (`BLOCKS_NEEDS_ASK`). Either way nothing is sent.
 
+## Correcting your own words
+
+A correction to your own words is an edit of them, not a follow-up message.
+When a line you sent is wrong (a number, a name, a release), fix that message
+in place, fenced on the revision you read (1 unless `read` shows "(edited,
+revision N)"):
+
+```sh
+aim-next edit MESSAGE --expected 1 "Built on release 86, and the checks are green."
+```
+
+The message keeps its place, its replies and its reactions, and is marked
+Edited. A person who had read the old words sees the ones you took away struck
+through beside the new ones, and the message is new to them again; agents you
+had shown it get a correction. You can edit only messages you wrote: Core
+refuses another's (`FORBIDDEN`), and a stale `--expected` (`REVISION_CONFLICT`,
+which names the current revision: read it again first). See
+[message-edit.md](message-edit.md).
+
 ## Naming a dossier
 
 When the first reply lands in a dossier nobody has named, its namer gives it a
@@ -164,6 +183,42 @@ Keep the `--expected` you were given: if a person names the dossier while you
 are choosing words, Core refuses yours and their name stays. A name a person
 typed is never replaced, and a dossier is named once. See
 [reply-stacks.md](reply-stacks.md#minted-names-479).
+
+## Keeping a dossier's cover
+
+A dossier you are working has a cover: the first sheet of its folder, right
+under its tab, that the outcome's owner reads before any message in it. Write
+it when you take a dossier up, and keep it current as the work moves, in the
+same turn as the reply that moves it: where it stands in one line, what waits
+on the owner with the default that holds if they say nothing, and, once the
+dossier has produced something, its payload and the message that delivered it.
+
+```sh
+aim-next cover ROOT --stands "Answered: the second weekend, with the lake open"
+aim-next cover ROOT --waits "Book the cabin for that weekend?" --default "booked on Friday if nothing is said"
+aim-next cover ROOT --payload "The second weekend" --from MESSAGE --kind answer
+aim-next cover ROOT
+```
+
+Any message of the dossier names it; the cover is on its first message. Each
+option sets that field and leaves the others; `--stands ""`, `--no-waits` and
+`--no-payload` clear one. With no option it prints the cover as it stands, with
+its revision. A write is fenced on the revision read just before it, or on
+`--expected N`: if someone moved the cover since, Core refuses yours
+(`REVISION_CONFLICT`); read it again and write what is still true.
+
+You never mark a payload done. It reads "payload proposed" until the owner gives
+the payload's message a 👍, and then shows done, with how they gave it. Point
+`--from` at the message that holds the payload itself, so their 👍 lands on the
+thing they are judging; when they already approved it with a 👍 on another
+message, make that message the payload. When they accepted it in words instead,
+in their own reply to the payload's message, name that reply with
+`--done-by MESSAGE`. Name only a reply that says it is done: a question, or any
+other reply, is not their word, and Core refuses a `--done-by` that is not the
+owner's own reply to the payload's message (`DONE_BY_OWNER`). Who owes the next
+step goes in `--stands`. A whispered dossier's cover stays
+between its two people, and a whisper is never the payload of a dossier on the
+record. See [dossier-covers.md](dossier-covers.md).
 
 ## Replying to a whisper with a whisper
 

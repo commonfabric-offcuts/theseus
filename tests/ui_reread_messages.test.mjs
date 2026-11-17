@@ -28,13 +28,17 @@ test('no words in any page module ask the person to Refresh; the one status abou
   }
 });
 
-test('the page has no header bar and no Refresh button; the logo block tops the rail', () => {
+test('the page has no header bar and no Refresh button; the logo block tops the rail, and the rail\'s foot ends it', () => {
   const html = source('index.html');
   assert.doesNotMatch(html, /<header class="app-header"/);
   assert.doesNotMatch(html, /id="refresh"/);
   const rail = html.match(/<nav\b[^>]*\bclass="rail"[^>]*>\s*([\s\S]*?)<\/nav>/)[1];
-  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
-    'the wordmark with its presence dot, the workspace name, the Health link and Turn on notifications, first in the rail');
+  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
+    'the wordmark with its presence dot and Turn on notifications, first in the rail');
+  // Item 628: who you are on which instance and the Health link (the guide's ? goes between them, interaction-guide.mjs) end the rail, after its last section.
+  assert.match(rail, /<section id="skills-navigation"[\s\S]*?<\/section>\s*<div class="rail-foot">\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<\/div>\s*$/,
+    'the workspace name, then the Health link, last in the rail, after Skills and tools');
+  assert.equal(html.match(/id="instance-label"|id="health-link"/g).length, 2, 'each once');
   const after = rail.slice(rail.indexOf('</div>') + 6);
   assert.match(after, /^\s*<div id="page-notices" class="page-notices">\s*<div id="app-status"[^>]*><\/div>\s*<div id="wakes-status"[^>]*><\/div>\s*<div id="updates-status"[^]*?<\/div>\s*<div id="topic-navigation-status"[^>]*><\/div>\s*<\/div>\s*<a id="outcomes-home"/,
     'the notices directly under it, one group (item 547), then "← Outcomes"');

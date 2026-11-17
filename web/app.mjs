@@ -891,7 +891,7 @@ function paintViews(kind) {
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -1290,6 +1290,11 @@ function readerDossierName(source) {
   const ref = source?.source_ref;
   return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
 }
+// The cover of that dossier (item 624), on the same terms: the Reader shows it as one line above the message.
+function readerDossierCover(source) {
+  const ref = source?.source_ref;
+  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierCover(ref.id) : null;
+}
 function paintReaderTitle() {
   const p = registry?.current;
   if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
@@ -1582,7 +1587,7 @@ async function messageEdited(key, version, read, current) {
   try { latest ??= await read('source', { source_ref: { kind: 'message', id } }); }
   catch (error) { if (['FORBIDDEN', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code)) return done; throw error; }
   if (!current() || !registry.isSourceCurrent(p) || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
-  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null });
+  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null });
   reader.redrawSource();
   return done;
 }
@@ -1602,8 +1607,8 @@ function repaintYours(ids) {
   paintCardReading(); menu?.paint();
 }
 // Each card whose words an edit changed (TopicViews.takeRevised): the edited
-// message's words, its excerpt cue, its folded line and its author line's
-// "Edited", and the reply line of each loaded reply to it; then the
+// message's words, its excerpt cue, its folded line, its author line's
+// "Edited" and whether it reads as read, and the reply line of each loaded reply to it; then the
 // conversation's own copy of each edited message (edits, loaded here or not)
 // and of each reply to one, and the stacks, whose rows read first lines.
 function repaintEdited(ids, edits) {
@@ -1619,7 +1624,7 @@ function repaintEdited(ids, edits) {
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
     if (preview) {
-      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) });
+      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -1629,8 +1634,11 @@ function repaintEdited(ids, edits) {
     paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
     cardScroll?.forget(id, card);
+    // An agent's edit of words the person had read makes the message new to them again (item 614): Core says so
+    // (unread), and opening it in the Reader earlier in this visit no longer reads it.
+    if (item.unread === true) openedIds.delete(id);
   }
-  stackMessages(); menu?.paint();
+  paintCardReading(); stackMessages(); menu?.paint();
   if (here?.page) paintConversationPage();
 }
 // The source a page's link names: that revision, or the page as it stands,
@@ -2183,6 +2191,7 @@ async function initialize() {
     error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     dossierName: source => readerDossierName(source),
+    dossierCover: source => readerDossierCover(source),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so

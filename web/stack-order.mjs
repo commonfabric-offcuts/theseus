@@ -19,7 +19,7 @@
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision' };
+const REVISIONS = { aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -202,6 +202,18 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
   const headNew = unread(stack.head);
   return { name: typed?.text || preview(stack.head), typed: typed ?? null, mintedBy: typed?.text && typed.minted === true ? typed.by : null, count: stack.replies.length, repliers,
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
+}
+
+// A dossier's cover (item 624), on its name's terms: its first message's,
+// which Core sends with the position of every message in it, so a stack of
+// replies whose first message is above the loaded page shows it under its
+// tab too; where the page holds that message, its own acts say it. Null for a
+// dossier with none, and for a message on its own unless alone: true asks for
+// the cover its pills show (dossier-cover.mjs).
+export function stackCover(stack, { alone = false } = {}) {
+  const position = positionOf(stack);
+  if (position && position.root_id !== stack.head.id) return position.cover ?? null;
+  return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new

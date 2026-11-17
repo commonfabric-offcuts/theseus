@@ -360,3 +360,33 @@
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}
+
+/* A dossier's cover (item 624, web/dossier-cover.mjs): the folder's first sheet, right after the head's entry, whose
+   tab stands above the folder, and before the chevron and the replies. It wears the folder's sheet (--panel is the
+   stack's sheet here), never a card's tint or a coloured edge. Its pills are one language: a line glyph in the text's
+   colour, then a few words; the state is words and weight, never a fill. A message on its own shows its cover's pills
+   under who wrote it instead. Only New, and an agent-only dossier's quiet row, show no cover. */
+.reply-stack>.dossier-cover{display:flex;position:relative;box-sizing:border-box;margin:0 0 .4rem;padding:.7rem .9rem .75rem;
+  border-radius:var(--stack-r-sheet,.6rem);background:var(--panel);box-shadow:var(--stack-contact,none)}
+.dossier-cover{flex-direction:column;gap:.38rem;font-size:.9rem;line-height:1.4;color:var(--ink);text-align:left;white-space:normal}
+.cover-line{display:block;min-width:0}
+.cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
+.cover-line>.cover-src{margin-left:.35rem}
+.cover-stands{font-size:.95rem;font-weight:550}
+.cover-words{min-width:0;overflow-wrap:anywhere}
+.cover-label{color:var(--muted);font-size:.78rem;font-weight:600;letter-spacing:.02em}
+.cover-note{display:block;color:var(--muted);font-size:.8rem}
+.cover-src{color:var(--muted);font-size:.74rem;font-variant-numeric:tabular-nums;opacity:.85;white-space:nowrap}
+.cover-words>.words-link{overflow-wrap:anywhere}
+.row-pills{display:flex;flex-wrap:wrap;gap:.3rem;margin:.1rem 0 .3rem}
+.row-pill{display:inline-flex;align-items:center;gap:.28rem;max-width:100%;padding:0 .5rem 0 .4rem;border:1px solid var(--line);border-radius:1rem;
+  color:var(--muted);font-size:.74rem;font-weight:600;line-height:1.35rem;white-space:nowrap;vertical-align:middle}
+.row-pill svg{flex:none;color:var(--ink)}
+.row-pill .pill-words{overflow:hidden;text-overflow:ellipsis}
+.row-pill[data-state=done],.row-pill[data-state=done] svg{color:var(--accent)}
+.row-pill[data-state=waiting]{color:var(--warn)}
+.only-new .dossier-cover,.reply-stack[data-compact=true]>.dossier-cover,.message-card[data-folded=true]>.row-pills{display:none}
+@media(max-width:640px){
+  .dossier-cover{font-size:.88rem}
+  .cover-stands{font-size:.92rem}
+}

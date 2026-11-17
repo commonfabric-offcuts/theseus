@@ -792,11 +792,13 @@ export function linkedFenceNodes(text, doc, images = null) {
   return nodes;
 }
 
-// Puts text, formatted, in host in place of what host held.
+// Puts text, formatted, in host in place of what host held. struck: words the
+// reader had read that the text no longer holds, struck through where they stood (strike).
 export function formatWords(host, text, options = {}) {
   if (deferFencePaint(host, () => formatWords(host, text, options))) return host;
   host.replaceChildren();
   for (const node of formatNodes(text, { doc: host.ownerDocument ?? globalThis.document, ...options })) host.append(node);
+  strike(host, options.struck);
   host.classList.add('formatted');
   DRAWN.set(host, String(text ?? ''));
   if (options.revision === undefined) REVISIONS.delete(host); else REVISIONS.set(host, options.revision);
@@ -820,8 +822,8 @@ export const drawnRevision = host => REVISIONS.get(host);
 // one passage, shown as a block. A passage never cuts a link, code or a
 // mark: the sentences one spans join, as the line's own reading says. images, for a Notebook page: images.of(line)
 // names the image a line puts there, and that line is a passage of its own holding images.node(image, doc).
-export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null } = {}) {
-  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images }))) return;
+export function drawPassages(host, body, doc = globalThis.document, { meter, copyFences = false, images = null, struck = null } = {}) {
+  if (deferFencePaint(host, () => drawPassages(host, body, doc, { meter, copyFences, images, struck }))) return;
   body = String(body ?? '');
   host.replaceChildren();
   const blocks = blocksOf(Mapped.of(body), false, 0, meter, images), drawn = [];
@@ -878,7 +880,51 @@ export function drawPassages(host, body, doc = globalThis.document, { meter, cop
     if (!SOURCE.has(node)) placed(node, { start, end });
     host.append(node);
   });
+  strike(host, struck);
   DRAWN.set(host, body);
+}
+
+// Words a person had read that its agent author's edit took away (item 614,
+// docs/message-edit.md), struck through where they stood among the words host
+// drew: cuts [{at, words}], at a place in the drawn text (as Core counts it, in
+// UTF-16 units, which a string's indices are). Each is a <del> whose words map to that
+// one place, with a space either side where a word would touch it, so a
+// selection or a quote over it takes none of its words and every position the
+// drawn words know stays as it was. A place no drawn words reach (inside a
+// link's marks, past the end) takes the first drawn words after it, else the end.
+export function strike(host, cuts) {
+  if (!Array.isArray(cuts) || !cuts.length) return host;
+  const doc = host.ownerDocument;
+  // From the last place back, so each split leaves the places before it where they were.
+  for (const { at, words } of [...cuts].sort((a, b) => b.at - a.at)) {
+    const texts = textsIn(host), i = texts.findIndex(node => SOURCE.get(node)?.words && SOURCE.get(node).words.end() >= at);
+    const found = texts[i];
+    // Where the struck words go: after anchor, before it, or at the end of host; and the words either side of them.
+    let anchor = texts.at(-1) ?? null, side = anchor ? 'after' : 'append', before = anchor, after = null;
+    if (found) {
+      const mapped = SOURCE.get(found).words, length = mapped.text.length;
+      let k = 0;
+      while (k < length && mapped.at(k) < at) k++;
+      if (k > 0 && k < length) {
+        found.after(placed(doc.createTextNode(mapped.text.slice(k)), { words: mapped.slice(k) }));
+        found.data = mapped.text.slice(0, k);
+        SOURCE.set(found, { words: mapped.slice(0, k) });
+      }
+      if (k > 0) { anchor = found; side = 'after'; before = found; after = k < length ? found.nextSibling : texts[i + 1] ?? null; }
+      else { anchor = found; side = 'before'; before = texts[i - 1] ?? null; after = found; }
+    }
+    const del = doc.createElement('del');
+    del.className = 'struck-words';
+    del.title = 'Words you read before the author changed them';
+    del.append(placed(doc.createTextNode(words), { start: at, end: at }));
+    const gap = () => placed(doc.createTextNode(' '), { start: at, end: at });
+    const touches = (node, last) => { const text = node?.data ?? ''; return Boolean(text) && !/\s/.test(last ? text.at(-1) : text[0]); };
+    const nodes = [...(touches(before, true) ? [gap()] : []), del, ...(touches(after, false) ? [gap()] : [])];
+    if (side === 'after') anchor.after(...nodes);
+    else if (side === 'before') anchor.before(...nodes);
+    else host.append(...nodes);
+  }
+  return host;
 }
 
 // The passages of a text, as the Reader draws them (drawPassages): each

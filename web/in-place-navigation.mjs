@@ -88,14 +88,15 @@ export class Scope {
 
 // What the shell keeps across moves, by selector: the outline, the right
 // rail and the drawer's backdrop. The two holders (the layout and the rail)
-// stay the same elements and are refilled inside. The logo block is put back
-// as it now reads (its name and Health line do not blink), the guide's way in
-// included until the next run puts its own in that place (interaction-guide.mjs):
-// the block keeps its height, so the rail under it never grows shorter in the
-// move and the outline keeps its scroll, even scrolled near the rail's end.
+// stay the same elements and are refilled inside. The logo block and the
+// rail's foot are put back as they now read (the name and the Health line do
+// not blink), the guide's way in included until the next run puts its own in
+// that place (interaction-guide.mjs): each keeps its height, so the rail never
+// grows shorter in the move and the outline keeps its scroll, even scrolled
+// near the rail's end.
 const HOLDERS = ['.workspace-layout', '#rail'];
 export const KEPT = ['#outline', '#things', '#things-backdrop', '#rail-backdrop'];
-const BRAND = '.brand';
+const AS_READ = ['.brand', '.rail-foot'];
 // A part of the page a kept part holds for it (the page's topic list in the
 // outline, outline-rail.mjs) is still the run's: its ids and its listeners.
 const PAGE_PART = '[data-page-part]';
@@ -106,7 +107,7 @@ const inRails = el => Boolean(el?.closest?.(RAILS));
 const inOutline = el => Boolean(el?.closest?.('#outline'));
 // The keys that only change another key: pressed alone, they say nothing of how the person moves.
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn']);
-const selectorOf = node => node.nodeType === 1 ? [...HOLDERS, ...KEPT, BRAND].find(selector => node.matches(selector)) ?? null : null;
+const selectorOf = node => node.nodeType === 1 ? [...HOLDERS, ...KEPT, ...AS_READ].find(selector => node.matches(selector)) ?? null : null;
 // Puts host's children in the order the pristine copy has them: a kept part
 // is the live element itself; anything else is a fresh copy of the pristine
 // one. What a run added that index.html does not have (a menu on the body,
@@ -116,7 +117,7 @@ function restore(host, pristine) {
   for (const child of pristine.childNodes) {
     const selector = selectorOf(child), live = selector ? doc.querySelector(selector) : null;
     if (!live) { children.push(child.cloneNode(true)); continue; }
-    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }
+    if (AS_READ.includes(selector)) { children.push(live.cloneNode(true)); continue; }
     if (HOLDERS.includes(selector)) restore(live, child);
     children.push(live);
   }
@@ -212,8 +213,8 @@ export class Shell {
     if (rail && !doc.getElementById('outline')) {
       const outline = doc.createElement('section');
       outline.id = 'outline'; outline.className = 'outline'; outline.setAttribute('aria-label', 'Outcomes and their topics');
-      // Last in the rail, so the page finds its own parts first by id (app.mjs $).
-      rail.append(outline);
+      // Last in the rail but for its foot (item 628), so the page finds its own parts first by id (app.mjs $).
+      rail.insertBefore(outline, rail.querySelector(':scope > .rail-foot'));
     }
     if (main && !doc.getElementById('things')) {
       const things = doc.createElement('aside');
