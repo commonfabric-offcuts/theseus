@@ -2338,6 +2338,20 @@
     "fbaa4716569d5fa9868b339cf1da93465ef6c330cb4ad06b36bfa2b817a1920e": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "1393445e601bbe4b55ad14b521ad6f7b579496605ae1f6fc51ae81cdd1a11a1d": {
+      "inputs": [
+        "tests/fixtures/schema_45.sql"
+      ],
+      "scope": "repository"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/test_new_line.py": {

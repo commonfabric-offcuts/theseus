@@ -20689,7 +20689,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"45\"",
+     "SCHEMA_VERSION = \"46\"",
      "SCHEMA_VERSION = \"44\""
     ]
    ],
@@ -27256,6 +27256,76 @@
    ],
    "check": {
     "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 641,
+   "act": "An outcome’s default topic order never follows message or state activity",
+   "break": [
+    [
+     "aim_next/store.py",
+     " ORDER BY t.list_position DESC,t.id DESC LIMIT ?",
+     " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?"
+    ]
+   ],
+   "check": {
+    "python": "test_topic_order.py"
+   }
+  },
+  {
+   "item": 641,
+   "act": "A newly created topic receives a distinct newer position in its creation transaction",
+   "break": [
+    [
+     "aim_next/outline_order.py",
+     "UPDATE topic_position_clock SET value=value+1 WHERE singleton=1;",
+     "UPDATE topic_position_clock SET value=value WHERE singleton=1;"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 641,
+   "act": "Upgrade derives default positions from the first recorded change, never the latest activity",
+   "break": [
+    [
+     "aim_next/outline_order.py",
+     "ORDER BY c.seq LIMIT 1",
+     "ORDER BY c.seq DESC LIMIT 1"
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 641,
+   "act": "A live read of the current topic cannot move its row with activity",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "const key = item => [doneFlag(item), Number.isSafeInteger(item.list_position) ? item.list_position : 0, item.id];",
+     "const key = item => [doneFlag(item), Number.isSafeInteger(item.activity_ms) ? item.activity_ms : 0, item.id];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 641,
+   "act": "A topic’s paging cursor stays unchanged when its activity changes",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "`${doneFlag(item)}:${item.list_position}:${item.id}`",
+     "`${doneFlag(item)}:${item.activity_ms}:${item.id}`"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_topic_navigation.test.mjs"
    }
   }
  ]
