@@ -654,6 +654,29 @@ def main():
                             answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
                                                   {"marked": request["marked"]}, {"message_id": message_id},
                                                   {"mark_revision": row[0] if row else 0})["result"])
+                    elif request["method"] == "item715_seed":
+                        prefix = request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Starred dossier fixture", "team": []})
+                        command("opening.save", prefix + "-opening-save", {"workspace_id": workspace, "topic_id": topic_id,
+                                "title": "Parent topic", "participants": [], "body": "Fixture opening", "attachments": []},
+                                {"opening_id": prefix + "-opening"}, {"opening_revision": 0})
+                        command("opening.publish", prefix + "-opening-publish", {}, {"opening_id": prefix + "-opening"}, {"opening_revision": 1})
+                        roots = []
+                        for n, title in enumerate(["A long dossier title " * 8, "Equal title", "Equal title", ""]):
+                            mid = command("message.post", prefix + "-post-%d" % n, {"body": "Fallback words %d" % n}, {"topic_id": topic_id})["result"]["message_id"]
+                            roots.append(mid)
+                            if title:
+                                command("stack.name", prefix + "-name-%d" % n, {"name": title}, {"message_id": mid}, {"name_revision": 0})
+                            if not request.get("empty"):
+                                command("message.star", prefix + "-star-%d" % n, {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                        answer = {"topic": topic_id, "workspace": workspace, "roots": roots}
+                    elif request["method"] == "item715_act":
+                        field = STACK_KINDS[request["kind"]][1]
+                        with sqlite3.connect(str(path)) as db:
+                            db.row_factory = sqlite3.Row
+                            revision = current_acts(db, actor, [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
+                        answer = command(request["kind"], request["operation_id"], request["args"], {"message_id": request["message_id"]}, {field: revision})
                     elif request["method"] == "server_stop":
                         # As a deploy stops the server: its live streams end and
                         # the address refuses connections until server_start.
