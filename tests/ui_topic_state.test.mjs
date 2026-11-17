@@ -1670,3 +1670,46 @@ test('Waiting on you lists the blocking asks in the order Core gives them, thoug
     'Blocking a piece (item 259): Squash, in Building Theseus — fable asked at 6:40 AM',
     'Blocking a piece (item 259): Rebase, in Building Theseus — fable asked at 6:20 AM']);
 });
+
+test('item 656 header rename uses the existing title field and fences, returns focus, and restores settings rename', async t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  const { panel, host, sent } = live({}, [], 'tony', { titleSurface });
+  const input = controls(host).title;
+  panel.renameTitle();
+  assert.equal(input.parent, titleSurface.host, 'the field is in the header');
+  assert.equal(document.activeElement, input);
+  assert.equal(titleSurface.title.hidden, true);
+  type(input, 'A new name'); key(input, 'Enter'); await settled();
+  assert.deepEqual(sent, [[{ title: 'Naming' }, { title: 'A new name' }]]);
+  assert.equal(document.activeElement, titleSurface.pencil);
+  assert.equal(titleSurface.host.hidden, true);
+  assert.equal(input.parent, controls(host).rename.parent, 'settings gets its field back');
+  controls(host).rename.onclick(); type(input, 'From settings'); key(input, 'Enter'); await settled();
+  assert.equal(panel.topic.title, 'From settings');
+  assert.equal(document.activeElement, controls(host).rename);
+  panel.renameTitle(); type(input, 'Discard'); key(input, 'Escape');
+  assert.equal(panel.topic.title, 'From settings');
+  assert.equal(sent.length, 2, 'Escape sends nothing');
+  panel.paint(topic({ version: 20, owner_id: 'other', creator_id: 'other' }), []);
+  panel.renameTitle();
+  assert.equal(titleSurface.host.hidden, true, 'a reader who cannot rename opens no editor');
+});
+
+test('item 656 header refusal and errors keep the line and notice together without opening settings', async t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  let attention = 0;
+  const { panel, host } = live({}, [], 'tony', { titleSurface, attention: () => attention++, read: async () => ({ topic: topic({ version: 8, title: 'Theirs' }), participants: [] }),
+    send: async () => ({ status: 'rejected', error: { code: 'REVISION_CONFLICT' } }) });
+  panel.renameTitle(); const input = panel.fields.title.line;
+  type(input, 'Mine'); key(input, 'Enter'); await settled();
+  assert.equal(input.value, 'Mine');
+  assert.equal(panel.notice.parent, titleSurface.host);
+  assert.match(panel.notice.textContent, /Someone else renamed it first/);
+  assert.equal(attention, 0, 'the header already shows the refusal');
+  key(input, 'Escape');
+  assert.equal(input.parent, controls(host).rename.parent);
+  assert.equal(panel.notice.parent, host);
+  assert.equal(document.activeElement, titleSurface.pencil);
+});

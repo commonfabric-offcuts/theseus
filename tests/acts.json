@@ -26991,6 +26991,66 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 656,
+   "act": "The title pencil opens the existing title field in the header",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "      titleSurface.pencil.onclick = () => this.renameTitle();",
+     "      titleSurface.pencil.onclick = () => {};"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 normal:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "The title pencil follows the existing permission to rename",
+   "break": [
+    [
+     "web/topic-header.mjs",
+     "  if (pencil) pencil.hidden = !settings || !managesTopic(topic, reader) || title.hidden;",
+     "  if (pencil) pencil.hidden = !settings || title.hidden;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 permission:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "The header gives the title field back so settings rename still works",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "    if (managed) this.controls.actions.prepend(managed.title);",
+     "    if (managed) surface.host.append(managed.title);"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 normal:"
+   }
+  },
+  {
+   "item": 656,
+   "act": "A refused header rename keeps its words and recovery notice in the header",
+   "break": [
+    [
+     "web/topic-state.mjs",
+     "        if (!(field.name === 'title' && this.inlineTitle)) this.attention();",
+     "        this.attention();"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "item 656 refused:"
+   }
   }
  ]
 }

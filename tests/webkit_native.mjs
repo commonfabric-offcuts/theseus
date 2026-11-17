@@ -259,7 +259,7 @@ try {
   const contextWith = async hasTouch => contexts[hasTouch] ??= await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch });
   const page = async (suffix, hint, connected = false, setup = {}) => {
     assert.equal(connected, true, 'WebKit runs connected pages only');
-    let touch = (['--device', '--invite'].includes(mode) || (mode === '--colors' && caseFilter?.includes('item 656'))), scheme = null;
+    let touch = (setup.touch === true || ['--device', '--invite'].includes(mode)), scheme = null;
     const initScripts = [];
     const errors = [], calls = [], events = [];
     const attach = opened => {
@@ -295,7 +295,7 @@ try {
     // server, and its answer is held from the page (a response-stage hold), then given to it or lost as a reset connection.
     let intercept = null;
     const held = [];
-    if (mode === '--invite' || (mode === '--colors' && caseFilter?.includes('item 656'))) await pw.route(facts.origin + '/api/**', async route => {
+    if (mode === '--invite' || setup.titleRename === true) await pw.route(facts.origin + '/api/**', async route => {
       let payload; try { payload = JSON.parse(route.request().postData() ?? 'null'); } catch { payload = null; }
       if (!(intercept && await intercept(payload))) return route.continue();
       const response = await route.fetch();
@@ -469,7 +469,7 @@ try {
       }
     };
     const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
-      intercept: handler => { assert.equal(mode, '--invite', 'intercept is offered in the invite mode'); intercept = handler; },
+      intercept: handler => { assert.ok(mode === '--invite' || setup.titleRename === true, 'response interception is offered for this case'); intercept = handler; },
       release: entry => entry.route.fulfill({ response: entry.response }),
       fail: entry => entry.route.abort('connectionreset'),
       open: async index => {

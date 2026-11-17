@@ -208,7 +208,12 @@ An action sits on the surface where its work happens.
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
-- Otherwise no automated check. Held by Tony's preview of every new surface.
+- `tests/topic_title_native.mjs` (`native-header`, `native-colors`,
+  `native-webkit-colors`): the “item 656” cases keep the Rename topic pencil
+  beside the title, edit there, retain the name in header and rail after
+  reload, preserve settings rename and follow its permission. Each state
+  (normal, editing, busy, refused, invalid title, and read-only) is checked
+  at 320, 375, 390 and laptop widths in both themes.
 
 ## Quiet, not button land
 

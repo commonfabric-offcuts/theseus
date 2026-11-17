@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 // Item 656 runs through the header step and both colour engines. Every act is
 // native input; waits name focus, a response, or the DOM state they consume.
-export async function topicTitleChecks({ check, page, until, control, view, facts, shot }, mode) {
+export async function topicTitleChecks({ check, page, until, control, view, facts, shot }, mode, mutations = true) {
   const active = p => p.evaluate('document.activeElement?.id');
   const held = async () => (await view('topic', { topic_id: 't1' })).topic;
   const title = p => p.evaluate('document.querySelector("#topic-title").textContent');
   const updates = p => p.calls.filter(c => c.payload?.kind === 'topic.update').map(c => c.payload);
   for (const width of [320, 375, 390, 1440]) for (const theme of ['light', 'dark']) {
     const size = width === 1440 ? 'laptop' : width;
-    const setup = { beforeNavigate: async p => {
+    const setup = { touch: width < 760, titleRename: true, beforeNavigate: async p => {
       await p.send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 760 });
       if (width < 760) await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
@@ -55,10 +57,11 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       const p = await start('normal');
       await snap(p, 'normal');
       await edit(p);
-      const renamed = `A topic renamed at ${size} ${theme}`;
+      const renamed = original === `A topic renamed at ${size} ${theme}` ? `Another title at ${size} ${theme}` : `A topic renamed at ${size} ${theme}`;
       await type(p, renamed); await p.key('Enter');
       await until(async () => await title(p) === renamed && await active(p) === 'topic-title-rename', 'saved title and focus back on pencil');
       assert.equal((await held()).title, renamed);
+      assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-settings #topic-rename"))'), true, 'settings keeps its rename field after a header save');
       assert.deepEqual(updates(p).map(c => [c.args, c.expected.topic_fields]), [[{ title: renamed }, { title: original }]], 'only the title changes');
       await p.send('Page.reload');
       await until(async () => await title(p) === renamed && await p.evaluate('document.body.dataset.ready === "true"'), 'reload shows the saved title');
@@ -133,7 +136,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       assert.equal(await title(p), original); assert.deepEqual(p.errors, []);
     });
 
-    await check(`${mode} item 656 permission: a member who cannot rename has no pencil; a coordinator gains and loses it live; Conversation has none at ${size} ${theme}`, async () => {
+    await check(`${mode} item 656 permission: a member who cannot rename has no pencil; an owner gains and loses it live; Conversation has none at ${size} ${theme}`, async () => {
       // Start with an allowed title so this whole acceptance case is red before
       // the feature, then exercise the denied state independently.
       await start('permission');
@@ -154,4 +157,47 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
     });
   }
+  if (!mutations) return;
+  // Apply each ledger break to the served source on the hosted runner, prove
+  // the real acceptance action fails, restore the bytes, then run its control.
+  // These stay inside item 656's filtered pool cases; no separate suite runs.
+  const ledger = JSON.parse(await readFile(new URL('./acts.json', import.meta.url), 'utf8'));
+  for (const act of ledger.acts.filter(act => act.item === 656)) {
+    await check(`${mode} item 656 mutant: ${act.act}`, async () => {
+      const originals = [];
+      const pages = [];
+      const selected = name => name.includes(act.check.case) && name.endsWith('320 light');
+      const run = async () => {
+        let ran = 0;
+        await topicTitleChecks({ check: async (name, action) => { if (selected(name)) { ran++; await action(); } },
+          page: async (...args) => { const p = await page(...args); pages.push(p); return p; }, until, control, view, facts, shot }, mode, false);
+        assert.equal(ran, 1, 'one real acceptance case exercises this mutation');
+      };
+      let caught = null;
+      try {
+        for (const [file, from, to] of act.break) {
+          const url = new URL('../' + file, import.meta.url), original = await readFile(url, 'utf8');
+          assert.equal(original.split(from).length, 2, 'the mutation target is unique');
+          const changed = original.replace(from, to);
+          assert.notEqual(changed, original, 'the source really changes');
+          originals.push({ url, original, changed });
+          await writeFile(url, changed);
+        }
+        try { await run(); } catch (error) { caught = error; }
+      } finally {
+        for (const { url, original } of originals) await writeFile(url, original);
+      }
+      assert.ok(caught, 'the acceptance case must fail with the mutation applied');
+      assert.match(caught.message, /title|pencil|renam|focus|settings/i, 'failed for the title rule');
+      assert.deepEqual(pages.flatMap(p => p.errors), [], 'a script error is not mutation proof');
+      const digest = text => createHash('sha256').update(text).digest('hex');
+      for (const { url, original, changed } of originals) {
+        assert.equal(await readFile(url, 'utf8'), original, 'exact source bytes restored');
+        process.stdout.write(JSON.stringify({ item: 656, mutation: act.act, file: url.pathname, before: digest(original), mutated: digest(changed), caught: caught.message }) + '\n');
+      }
+      await run();
+      process.stdout.write(JSON.stringify({ item: 656, mutation: act.act, restored_control_passed: true }) + '\n');
+    });
+  }
+
 }

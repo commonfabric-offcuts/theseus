@@ -1083,7 +1083,7 @@ function participantPill(person) {
 // gear, except on a conversation, which refuses every change Topic settings makes.
 function paintHeader(current) {
   // ✅ Done on a topic Ready for review, for a reader who may say where it stands: the Done chip's tap.
-  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
+  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open'), pencil: $('topic-title-rename') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation', done: topicState?.says ? () => topicState.markDone() : null });
   // A conversation's heading says what it is for and who answers, not where it stands.
   if (current.kind === 'conversation') {
@@ -1733,6 +1733,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; settings?.close();
+    topicState?.hide(); $('topic-title-rename').hidden = true;
     paintMarks();
     // The rails hide what they show of it too.
     shell.topicChanged();
@@ -2062,7 +2063,7 @@ async function initialize() {
   // "Tools this topic improves" (docs/skills-and-tools.md): read with the page, and again as Topic settings opens.
   // One for the topic being read: a topic reached in place replaces the one before, so its chips never paint here.
   settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close'),
-    opened: () => { const tools = topicTools; if (tools) run(() => tools.load()); } });
+    opened: () => { topicState?.restoreTitleSurface(); const tools = topicTools; if (tools) run(() => tools.load()); } });
   $('topic-tools').hidden = true; $('topic-tools').replaceChildren();
   topicTools = here.page ? null : new TopicTools({ host: $('topic-tools'), topicId: topic.id, instanceId: bootstrap.instance_id, read: pipelineView, send: pipelineSend });
   if (topicTools) { const tools = topicTools; run(() => tools.load()); }
@@ -2099,7 +2100,8 @@ async function initialize() {
   paintParticipants(topic, result.participants);
   // The topic as the topic view gives it, read once after a change that was not confirmed.
   const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
-  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
+  topicState?.hide();
+  topicState = new TopicStatePanel({ titleSurface: { host: $('topic-title-edit'), title: $('topic-title'), pencil: $('topic-title-rename') }, host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
     // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
     attention: () => { if (!$('topic-settings').open) settings.open(); },
     // Each save names its operation: sent again, it is the same command, and Core answers what it holds for it.

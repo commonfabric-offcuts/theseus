@@ -76,7 +76,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description', 'topic-people'], 'the outcome\'s name, the title row, then the subtitle and the Team (item 465)');
     assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true], ['things-open', false]], 'the outcome\'s name, with "☰ Outcomes" before it shown only on a phone, and "Pipeline & pages" after it only below laptop width');
     // New message, a quiet ✎, ends the row (docs/reader.md).
-    assert.deepEqual(top.row, ['topic-title', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
+    assert.deepEqual(top.row, ['topic-title', 'topic-title-edit', 'topic-title-rename', 'settings-open', 'new-message'], 'the gear shares the title\'s row, after it, and New message ends it');
     assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden, top.gear.size], ['Topic settings', 'Topic settings', 'dialog', false, [44, 44]]);
     assert.ok(top.gear.middle >= top.line.top && top.gear.middle <= top.line.top + top.line.height, 'the gear\'s middle is level with the title\'s first line: ' + JSON.stringify(top));
     assert.ok(top.gear.left >= top.line.right, 'the gear is at the upper right, beside the title');
@@ -192,7 +192,9 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(async () => (await subtitle(p)).text === 'Each release and what comes next', 'page painted');
     await p.evaluate(`document.querySelector('#main').focus()`);
     await p.key('Tab');
-    assert.equal(await focused(p), 'settings-open', 'Tab from the top of the page reaches the gear');
+    assert.equal(await focused(p), 'topic-title-rename', 'Tab from the top reaches Rename topic (item 656)');
+    await p.key('Tab');
+    assert.equal(await focused(p), 'settings-open', 'the next Tab reaches the gear');
     await p.key('Enter');
     await until(() => isOpen(p), 'Return opens Topic settings');
     assert.equal(await p.evaluate(`document.querySelector('#topic-settings').matches(':modal')`), true, 'opened as a modal dialog');
