@@ -242,7 +242,10 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   Conversation with its topics, folding every other outcome; on a pencil it
   opens its title line (docs/rails.md, "The outline"). A click or a tap on a
   row opens it too, and leaves the keys on it with their ring, so ↑ ↓ and →
-  go on from there. ⌘→ opens the focused
+  go on from there. On a phone, a tap on a collapsed outcome first opens its
+  topics in the rail, leaving the drawer and the current page as they were;
+  a tap on an open outcome goes to its Conversation (item 654). A topic tap
+  still opens that topic. Laptop clicks still navigate and toggle the topics. ⌘→ opens the focused
   outcome (or a focused topic's outcome) and ⌘← folds it, with the keys on its
   row; → opens a folded outcome and shows its topics, the next → lands on its
   pencil, and the next goes on into the messages; on Done (N) or Archived (N)

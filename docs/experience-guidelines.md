@@ -109,6 +109,11 @@ and the writing. Focus stays visible and follows what the person did.
   right rail's Build topics follow the reader's own order …" (⌘↑/⌘↓ order, as
   the outline keeps it).
 - Touch: see "A phone by touch" below.
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): the
+  "rail item 654 …" cases tap a collapsed outcome and then the open one:
+  the first expands its topics with the drawer, page and scroll kept; the
+  second opens its Conversation. Topic taps and laptop clicks keep their way,
+  at 320, 375, 390 and 1280px, in light and dark.
 
 ## Dismiss without losing work
 
