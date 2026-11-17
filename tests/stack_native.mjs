@@ -316,7 +316,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // On its author, at the row's start: in a dossier "Folded" is said to a screen reader only (item 471).
         await centre(p, card(ids.folded));
         const before = await above();
-        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-author');
+        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-words');
         await until(async () => !(await look()).folded.folded, `${at}: a press on the row unfolds it`);
         await until(() => foldedInCore(ids.folded, false), `${at}: Core keeps the unfold`);
         for (const theme of ['light', 'dark']) {
@@ -4092,7 +4092,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.three, operation_id: topic + '-fold-three', args: { folded: true } });
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
     await centre(p, card(ids.three));
-    await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
+    await p.point(card(ids.three) + ' > .message-folded > .folded-words', 'move');
     await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
     await rightClick(p, card(ids.three));
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
@@ -4446,7 +4446,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with no bar and shows its own 👍
     // once given (item 471): that 👍 takes it back.
     await centre(p, card(ids.two));
-    await p.point(card(ids.two) + ' > .message-folded > .folded-author', 'move');
+    await p.point(card(ids.two) + ' > .message-folded > .folded-words', 'move');
     await until(async () => (await lit(p)).includes(ids.two) && await bar(p) === null, 'the pointer lights reply two\'s row, with no bar');
     await p.point(card(ids.two) + ' > .message-folded > .folded-thumb');
     await until(async () => !await thumbedBy(ids.two), 'the thumbs-up on reply two is taken back, in Core');
@@ -4635,7 +4635,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await centre(p, thumb);
       if (device === 'laptop') {
         // The pointer on the row lights it, and its bar sits clear of the row's 👍, so the 👍 can still be pressed.
-        await p.point(card(ids.one) + ' > .message-folded > .folded-author', 'move');
+        await p.point(card(ids.one) + ' > .message-folded > .folded-words', 'move');
         await until(async () => (await lit(p)).includes(ids.one) && await bar(p) !== null, 'laptop: the row lights, with its bar');
         assert.equal(await p.evaluate(`(()=>{const b=document.querySelector('.message-bar').getBoundingClientRect(),t=document.querySelector(${JSON.stringify(thumb)}).getBoundingClientRect();
           return b.right>t.left&&b.left<t.right&&b.bottom>t.top&&b.top<t.bottom})()`), false, 'laptop: the bar does not cover the row\'s 👍');
@@ -4840,7 +4840,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await atWidth(p, device, width);
       await fullyOpen(p, device, ids);
       const at = `${device} ${width}px`;
-      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-author`;
+      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-words`;
       const nothingElse = async what => {
         assert.equal(await readerOn(p), null, `${at}: ${what} opens no Reader`);
         assert.equal(await p.evaluate(`Boolean(document.querySelector('.color-picker'))`), false, `${at}: nor the color picker`);

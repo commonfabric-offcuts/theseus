@@ -176,7 +176,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       if (device === 'phone') await unfoldRow(p, device, id);
       else {
         const dossier = await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack')?.dataset.single === 'false'`);
-        await p.point(card(id) + ' > .message-folded > .folded-author', 'move');
+        await p.point(card(id) + ' > .message-folded > .folded-words', 'move');
         await until(async () => (await lit(p)).includes(id) && (await bar(p) === null) === dossier, `${device}: ${id} lights on its folded row, ${dossier ? 'with no bar in a dossier' : 'with its bar'}`);
         return;
       }
@@ -191,8 +191,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // Whether a message shows as its folded row, and a press on that row, which shows it whole again (docs/reply-stacks.md).
   const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
   const unfoldRow = async (p, device, id) => {
-    // On its author, at the row's start ("Folded" is said to a screen reader only in a dossier, item 471).
-    const row = card(id) + ' > .message-folded > .folded-author';
+    // On its words: item 645 keeps repeated sender names for screen readers only.
+    const row = card(id) + ' > .message-folded > .folded-words';
     await centre(p, row); await press(p, device, row);
     await until(async () => !await foldedRow(p, id) && await p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`), `${device}: a press on ${id}'s row shows it whole`);
   };
@@ -329,7 +329,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await press(p, device, card(ids.ask) + ' > .stack-head .stack-who');
           await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.ask) + ' > .message-folded')})?.getClientRects().length)`), device + ': a press on the dossier\'s head row shows the ask as its folded row');
         }
-        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-author');
+        await press(p, device, card(ids.ask) + ' > .message-folded > .folded-words');
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(choices)}).getClientRects().length > 0`), device + ': a press on its folded row shows the ask whole');
         if (device !== 'phone' || !(await lit(p)).includes(ids.ask)) await light(p, device, ids.ask);
       };

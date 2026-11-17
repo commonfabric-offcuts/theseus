@@ -333,7 +333,7 @@ try {
           // 476), and a press on that row shows it whole first, as unfold does.
           const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
           if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
-            await point(`${card} > .message-folded > .folded-author`);
+            await point(`${card} > .message-folded > .folded-words`);
             await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
             await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
           }
