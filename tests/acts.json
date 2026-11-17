@@ -26961,8 +26961,7 @@
     ]
    ],
    "check": {
-    "native": "colors",
-    "case": "your own message keeps its own style when it arrives live and when More loads it"
+    "node": "tests/ui_stack_order.test.mjs"
    }
   },
   {
@@ -26991,8 +26990,7 @@
     ]
    ],
    "check": {
-    "native": "freshness",
-    "case": "access that comes back clears the paused note and More"
+    "node": "tests/ui_inline_wiring.test.mjs"
    }
   },
   {
@@ -27041,6 +27039,21 @@
    ],
    "check": {
     "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The Reader's title never names a dossier by the oldest reply the page holds, so it reads the same while the topic's updates are paused",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
+     "(stack.replies.length ? head.name : '')"
+    ]
+   ],
+   "check": {
+    "native": "freshness",
+    "case": "access that comes back clears the paused note and More"
    }
   }
  ]
