@@ -196,7 +196,7 @@ The corner follows Core's reader-scoped `yours.note`: no corner for an empty
 note or another actor's note. It disappears when your saved note is emptied.
 Opening uses the existing foreground source/editor read, retains writing during
 a slow or failed read, and permits retry from the same corner. Unavailable
-sources retain the existing read-only note recovery. No note text is put in the
+sources retain the existing note recovery with saving held. No note text is put in the
 feed or the shortcut's attributes. The `reading item 649` native cases in
 `tests/topic_reading_native.mjs` cover these branches at 320, 375, 390 and laptop,
 light and dark, in Chromium and WebKit. Measured bounds use a named 1px tolerance.

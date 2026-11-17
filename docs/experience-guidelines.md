@@ -212,7 +212,7 @@ An action sits on the surface where its work happens.
   the `reading item 649` cases at 320, 375, 390 and laptop, light and dark:
   the message's own note corner opens the composer to that private note by
   pointer, keys and first tap; a slow or failed opening retains writing and
-  can be retried, an unavailable source keeps the note read-only, and empty
+  can be retried, an unavailable source keeps saving held and offers Retry access, and empty
   or other-reader notes show no corner.
 
 ## Quiet, not button land

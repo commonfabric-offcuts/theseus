@@ -244,7 +244,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const applies=b?.name==='source'||b?.name==='editor_state';
       if(applies&&window.noteFault){window.noteReads++;
         if(window.noteFault==='busy'&&b.name==='editor_state')await new Promise(go=>window.releaseNote=go);
-        if(window.noteFault==='error')throw Error('item 649 interrupted note read');
+        if(window.noteFault==='error')return new Response(JSON.stringify({error:{code:'VIEW_REFUSED',message:'item 649 note read refused'}}),{status:409,headers:{'Content-Type':'application/json'}});
         if(window.noteFault==='unavailable'&&b.name==='source')return new Response(JSON.stringify({error:{code:'FORBIDDEN'}}),{status:200,headers:{'Content-Type':'application/json'}});
         if(window.noteFault==='unavailable'&&b.name==='editor_state'){const r=await fetch_.call(this,input,init),j=await r.json();
           j.source_available=false;return new Response(JSON.stringify(j),{status:r.status,headers:r.headers})}}
@@ -279,10 +279,19 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       assert.equal(await p.evaluate("window.sent.includes('message.send')"), false, 'opening a note sends no message');
     };
     await check(`reading ${name} page comparison retains the message and its marks`, async () => {
-      const {p} = await setupNote('look');
+      const state = await setupNote('look'), {p,ids,note} = state;
       await p.evaluate("document.fonts.ready");
       await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-page');
       assert.equal(await p.evaluate("document.documentElement.scrollWidth<=innerWidth+1"), true, 'layoutTolerancePx=1: page fits');
+      // The old + / Show note route exists at the original source base too.
+      // Capture that same Reader surface before and after the corner shortcut.
+      const device = size === 'laptop' ? 'laptop' : 'phone';
+      await openReader(p, device, ids.note, 'Check the exact destination');
+      await press(p, device, '#plus-button');
+      await until(() => p.evaluate("!document.querySelector('#plus-panel').hidden"), 'existing plus panel is open');
+      await press(p, device, '#toggle-note');
+      await noteShown(state);
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-existing-note');
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading ${name} normal corner opens the exact private note by pointer or touch and keyboard`, async () => {
@@ -312,16 +321,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       if(branch==='busy') {
         await until(() => p.evaluate('typeof window.releaseNote==="function"'), 'editor read is waiting');
         assert.equal(await readerOn(p),null,'no premature composer while opening');
-        await p.evaluate('window.noteFault=null;window.releaseNote()');
+        await p.evaluate('(()=>{window.noteFault=null;window.releaseNote()})()');
         await noteShown(state);
       } else if(branch==='error') {
-        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('Connection interrupted')"), 'read error is visible');
+        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 note read refused')"), 'read error is visible');
         assert.equal(await readerOn(p),null,'a failed read exposes no note');
         await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-error');
         await p.evaluate('window.noteFault=null'); await pressCorner(state); await noteShown(state);
       } else {
         await noteShown(state, true);
-        assert.equal(await p.evaluate("document.querySelector('#writing-body').readOnly"),true,'unavailable source keeps note read-only');
+        assert.equal(await p.evaluate("document.querySelector('#send-reply').disabled"),true,'unavailable source holds saving while keeping the note');
+        assert.equal(await p.evaluate("document.querySelector('#retry-source').hidden"),false,'unavailable source offers Retry access');
         await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-unavailable');
       }
       assert.deepEqual(p.errors, []); await p.close();
