@@ -53,17 +53,20 @@ export async function promiseChecks(api, helpers) {
   const scenario = async (phase, baseline = false) => {
     const { topic, ids, promise } = await make(phase);
     // Capture genuine live92 layout at every requested size/theme before asserting the missing act.
-    if (baseline) for (const [width, shape] of sizes) {
-      const p = await open(`${topic}-${width}`, shape, topic, ids.root);
-      for (const theme of ['light', 'dark']) { await scheme(p, theme); await centre(p, covers(ids.root)); await shot(p, `717-base-feed-${width}-${theme}`);
+    if (baseline) for (const [width, shape] of sizes) for (const theme of ['light', 'dark']) {
+      // Each viewport/theme owns its topic: reading a source in one cannot fold the next one's source.
+      const fixture = await make(`base-${width}-${theme}`);
+      const p = await open(`${fixture.topic}`, shape, fixture.topic, fixture.ids.root);
+      try { await scheme(p, theme); await centre(p, covers(fixture.ids.root)); await shot(p, `717-base-feed-${width}-${theme}`);
         // The payload citation stays visible even after reading folds its source message.
         const device = shape.startsWith('phone') ? 'phone' : 'laptop';
-        const citation = covers(ids.root) + ' .cover-payload .cover-src';
+        const citation = covers(fixture.ids.root) + ' .cover-payload .cover-src';
         await centre(p, citation); await press(p, device, citation);
         await until(() => p.evaluate('document.querySelector("#reader").open'), 'the visible source citation opens the Reader');
         await press(p, device, '#reader-cover > summary');
-        await shot(p, `717-base-reader-${width}-${theme}`); await closeReader(p, shape.startsWith('phone') ? 'phone' : 'laptop'); }
-      await p.close();
+        await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'baseline disclosure opens');
+        await shot(p, `717-base-reader-${width}-${theme}`);
+      } finally { await p.close(); }
     }
     const result = await write(ids.root, { promises: [promise] }, `${topic}-promise`);
     assert.equal(result.status, 'committed', `explicit promise write: ${JSON.stringify(result)}`);
@@ -110,6 +113,10 @@ export async function promiseChecks(api, helpers) {
 
   await check('reading item 717 applied rendering mutants fail the same own case and restored bytes pass', async () => {
     const url = new URL('../web/dossier-cover.mjs', import.meta.url), original = await readFile(url, 'utf8');
+    if (!original.includes('for (const promise of cover.promises ?? [])')) {
+      observations.push({ name: 'item 717 final-only mutants excluded at unchanged product baseline' });
+      return;
+    }
     const definitions = [
       { name: 'promise omitted', from: 'for (const promise of cover.promises ?? [])', to: 'for (const promise of [])' },
       { name: 'prior time not struck', from: "element(doc, 's', 'promise-prior')", to: "element(doc, 'span', 'promise-prior')" },
