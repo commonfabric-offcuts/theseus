@@ -4380,12 +4380,12 @@ async function starred655() {
   const source = { instance_id: 'fixture', source_ref: { kind: 'message', id: 'old-root' }, topic_id: 't1', seq: 1, body: 'The unnamed first line.\nMore words.', attachments: [] };
   const p = { token: 1, surface: 'reader', mode: 'reply', source, editors: { reply: { ...f.editor, offered: true } } };
   f.registry.current = p;
-  const feed = { dossierName: () => null, arrange() {} };
+  const feed = { dossierName: () => null, arrange() {}, actsOf: () => ({}), asideOffer: () => null };
   f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, stackFeed: feed });
   let position = { root_id: 'old-root', name: null, has_other_messages: true };
   const read = f.api.view;
   f.api.view = async (name, args, options) => {
-    if (name === 'stack_positions') return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id, stack_position: position }] };
+    if (name === 'stack_positions') return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: args.message_ids[0], stack_position: position }] };
     if (name === 'topic_messages' && args.message_ids) return { instance_id: 'fixture', items: [{ id: position.root_id, body: 'The unnamed first line.', attachments: [] }] };
     return read(name, args, options);
   };
@@ -4453,4 +4453,52 @@ test('item 655 B4 title return clears Only new after preservation succeeds, whil
   f.registry.close = async () => { f.registry.current = null; return true; };
   assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
   assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
+});
+
+
+test('item 655 B1 a loaded root whose replies are still outside the page agrees with its scoped title', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  const position = { root_id: source.source_ref.id, name_revision: 0, at: { acts: 3 }, has_other_messages: true, name: null };
+  setPosition(position);
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id, stack_position: position });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.');
+  f.views.messages.get(source.source_ref.id).stack_position = { ...position, name_revision: 1, at: { acts: 4 } };
+  assert.equal(f.readerDossierName(source), null, 'a later loaded position refuses stale cached metadata');
+});
+
+test('item 655 B2 an older dossier lookup cannot reverse a newer freshness answer', async () => {
+  const { f, p, source } = await starred655();
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p);
+  await entered.promise;
+  await f.present(p);
+  held.resolve({ instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id,
+    stack_position: { root_id: source.source_ref.id, name: { text: 'Stale old name' } } }] });
+  await old;
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'the later lookup wins even when the older one finishes last');
+});
+
+test('item 655 B3 a metadata failure from an abandoned opening cannot paint over the newer Reader', async () => {
+  const { f, p } = await starred655();
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p).catch(error => error);
+  await entered.promise;
+  const next = { ...p, token: 2, source: { ...p.source, source_ref: { kind: 'message', id: 'newer-source' } } };
+  f.registry.current = next;
+  await f.present(next);
+  held.reject(Error('Abandoned read failed'));
+  await old;
+  assert.equal(f.reader.presentation, next);
+  assert.doesNotMatch(f.get('reader-notice').textContent, /Dossier name could not be read/);
 });

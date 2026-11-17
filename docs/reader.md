@@ -30,7 +30,8 @@ freshness even while the source stays outside the feed. If the scoped name
 lookup fails, the Reader still opens the exact source and explains that its
 dossier name could not be read. A title return from a Conversation clears
 Only new so a settled source can be revealed; merely opening it keeps the
-filter.
+filter. A loaded root whose replies are outside the page also uses the
+scoped name, only while its position is at least as current as the feed.
 The ordinary More messages frontier stays where it was, so the messages
 between that page and the newest ones are still reachable.
 

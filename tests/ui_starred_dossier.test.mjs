@@ -58,3 +58,16 @@ test('item 655 B3 open waits for presentation and reports a presentation failure
   assert.equal(reportedEarly, false, 'open must not report success before presentation has completed');
   assert.match(answer.error?.message ?? '', /Dossier lookup refused/, 'the caller receives the failure instead of an unhandled rejection');
 });
+
+
+test('item 655 B3 an open superseded during presentation never reports success for the abandoned source', async () => {
+  const entered = gate655(), release = gate655();
+  let count = 0;
+  const f = opening655(async () => { if (++count === 1) { entered.resolve(); await release.promise; } });
+  const old = f.open();
+  await entered.promise;
+  const newer = await f.open();
+  release.resolve();
+  assert.equal(await old, null, 'the late presentation result is abandoned');
+  assert.equal(f.registry.current, newer, 'the newer presentation stays current');
+});

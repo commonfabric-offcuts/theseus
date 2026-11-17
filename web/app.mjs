@@ -552,25 +552,15 @@ async function present(presentation) {
   else {
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
-    // A message opened alone still belongs to its dossier. Read only its position and, for an
-    // unnamed dossier, its first message; unrelated topic history stays unloaded (item 655).
-    if (!presentation.sourceUnavailable && presentation.source.source_ref.kind === 'message' &&
-        presentation.source.topic_id === topic.id && !views.messages.has(presentation.source.source_ref.id)) {
-      const source = presentation.source, id = source.source_ref.id;
-      const position = checkedView(await api.view('stack_positions', { topic_id: topic.id, message_ids: [id] }, { readClass: 'foreground' }), bootstrap.instance_id).items.find(item => item.message_id === id)?.stack_position;
-      if (!registry.isCurrent(presentation)) return;
-      let name = position?.name?.text || null;
-      if (!name && position?.root_id && position.root_id !== id) {
-        const root = checkedView(await api.view('topic_messages', { topic_id: topic.id, message_ids: [position.root_id] }, { readClass: 'foreground' }), bootstrap.instance_id).items.find(item => item.id === position.root_id);
-        if (!registry.isCurrent(presentation)) return;
-        if (root) name = messagePreview(root);
-      }
-      presentation.dossierName = name;
-    }
+    let dossierError = null;
+    try { await readReaderDossier(presentation, (name, args) => api.view(name, args, { readClass: 'foreground' })); }
+    catch (error) { dossierError = error; }
+    if (!registry.isCurrent(presentation)) return;
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
+    else if (dossierError) reader.notice(['Dossier name could not be read. The message and your writing are kept.', dossierError]);
     const shown = presentation.source.source_ref;
     if (presentation.mark && !presentation.sourceUnavailable && shown.kind === 'message') {
       marks.learn(shown.id, presentation.mark.mark_revision, { topicId: presentation.source.topic_id, seq: presentation.source.seq });
@@ -1298,14 +1288,49 @@ function paintReaderAside() {
   button.setAttribute('aria-pressed', String(offer.below));
   button.setAttribute('aria-label', words); button.title = words;
 }
-// The Reader's title names the dossier its message is in (item 561), as the
-// dossier's tab does (StackFeed.dossierName), including a message opened alone
-// from Starred. Its presentation keeps the scoped name read at opening.
-// A Notebook page keeps its own title. Painted again when the stacks are.
+// The loaded feed owns its titles. An unloaded Reader source has one scoped
+// lookup, refreshed with acts and neighbors, never a second feed/history cache.
+// Fence every await on both the source and the newest lookup so a late answer
+// cannot rename a newer Reader or undo a later name/join.
+let dossierRead = 0;
+async function readReaderDossier(presentation, read, current = () => true) {
+  const lookup = ++dossierRead, accessEpoch = listAccessEpoch;
+  const source = presentation?.source, id = source?.source_ref?.id;
+  if (!presentation || presentation.sourceUnavailable || source.source_ref.kind !== 'message' ||
+      source.topic_id !== topic?.id || views.messages.has(id) && stackFeed?.dossierName(id)) return true;
+  const admitted = () => lookup === dossierRead && current() && accessEpoch === listAccessEpoch &&
+    !topicUnavailable && registry.isSourceCurrent(presentation);
+  const answer = checkedView(await read('stack_positions', { topic_id: source.topic_id, message_ids: [id] }), bootstrap.instance_id);
+  if (!admitted()) return false;
+  const position = answer.items.find(item => item.message_id === id)?.stack_position;
+  if (answer.topic_id !== source.topic_id || !position?.root_id) throw Error('The dossier identity could not be confirmed.');
+  let name = position.name?.text || null;
+  if (!name && (position.root_id !== id || position.has_other_messages)) {
+    let root = source;
+    if (position.root_id !== id) {
+      const page = checkedView(await read('topic_messages', { topic_id: source.topic_id, message_ids: [position.root_id] }), bootstrap.instance_id);
+      if (!admitted()) return false;
+      root = page.items.find(item => item.id === position.root_id);
+      if (!root) throw Error('The dossier first message could not be confirmed.');
+    }
+    name = messagePreview(root);
+  }
+  registry.current.dossierName = name;
+  registry.current.dossierPosition = position;
+  return true;
+}
 function readerDossierName(source) {
   const ref = source?.source_ref;
-  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id
-    ? stackFeed.dossierName(ref.id) || (registry.current?.source === source ? registry.current.dossierName : null) : null;
+  if (!stackFeed || topicUnavailable || ref?.kind !== 'message' || source.topic_id !== topic?.id) return null;
+  const name = stackFeed.dossierName(ref.id);
+  if (name) return name;
+  const p = registry.current, loaded = views.messages.get(ref.id), position = loaded?.stack_position;
+  // A loaded root may still have all of its replies outside the page. Its scoped
+  // name is usable only while at least as current as the loaded position; a
+  // later split/name must never revive a name cached for its former dossier.
+  return p?.source === source && (!loaded || position && p.dossierPosition &&
+    position.root_id === p.dossierPosition.root_id && position.name_revision === p.dossierPosition.name_revision &&
+    position.at?.acts <= p.dossierPosition.at?.acts) ? p.dossierName : null;
 }
 function paintReaderTitle() {
   const p = registry?.current;
@@ -1914,9 +1939,19 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
-      if (key !== 'neighbors') return views.refresh(key, version, read, current);
+      if (key !== 'neighbors') {
+        const done = await views.refresh(key, version, read, current);
+        if (key === 'acts' && done !== false && current()) {
+          await readReaderDossier(registry.current, read, current);
+          if (current()) paintReaderTitle();
+        }
+        return done;
+      }
       const p = registry.current;
       if (!p || p.source.source_ref.kind !== 'message') return true;
+      await readReaderDossier(p, read, current);
+      if (!current() || !registry.isSourceCurrent(p)) return true;
+      paintReaderTitle();
       p.neighbors = null; p.core = null;
       const result = await registry.neighbors(p, { read });
       if (!current() || !registry.isSourceCurrent(p) || !result) return true;
@@ -2196,6 +2231,8 @@ async function initialize() {
               views.messagesPage(page, { anchored: true, cursor: source.seq + 1 });
             } finally { foreground.release(); }
           }
+          if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
+          if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }
           landOn(id, { full: true })?.focus({ preventScroll: true });
         }
         return true;
@@ -2223,7 +2260,7 @@ async function initialize() {
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
-  registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
+  registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
   registry.cleanup.resumeListeners.add(rechecked);

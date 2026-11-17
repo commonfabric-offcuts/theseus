@@ -27012,8 +27012,8 @@
    "break": [
     [
      "web/app.mjs",
-     "presentation.dossierName = name;",
-     "presentation.dossierName = null;"
+     "registry.current.dossierName = name;",
+     "registry.current.dossierName = null;"
     ]
    ],
    "check": {
@@ -27048,6 +27048,94 @@
    ],
    "check": {
     "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unnamed old dossier root uses its first line while a singleton keeps the topic title",
+   "break": [
+    [
+     "web/app.mjs",
+     "position.root_id !== id || position.has_other_messages",
+     "position.root_id !== id"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B1-root"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Core distinguishes visible dossier members from singletons, hidden whispers and replies joined elsewhere",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "position[\"has_other_messages\"] = others[root]",
+     "position[\"has_other_messages\"] = False"
+    ]
+   ],
+   "check": {
+    "python": "test_starred_dossier.py"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unloaded dossier title follows remote names, cleared names, joins and splits through freshness",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (key === 'acts' && done !== false && current())",
+     "if (false && done !== false && current())"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B2-fresh"
+   }
+  },
+  {
+   "item": 655,
+   "act": "A failed dossier metadata lookup still opens its exact source with a visible notice",
+   "break": [
+    [
+     "web/app.mjs",
+     "catch (error) { dossierError = error; }",
+     "catch (error) { throw error; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B3-position|item 655 B3-root"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Opening waits for presentation and abandons a source superseded while presenting",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "this.current = presentation; await this.present(presentation);",
+     "this.current = presentation; this.present(presentation);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "A composer title return clears Only new only after preservation succeeds",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }",
+     "if (false) { here.onlyNew = false; paintConversationPage(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B4-return"
    }
   }
  ]

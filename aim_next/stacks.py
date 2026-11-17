@@ -556,6 +556,16 @@ class Stacks:
                 raise Refusal("INVALID_ARGUMENT", "Messages must be in the named topic")
             rows.append(row)
         found = stack_positions(db, actor, rows)
+        # The scoped Reader lookup must distinguish an unnamed root with replies
+        # from a singleton. Seek only its indexed reply/join edges, once per root;
+        # EXISTS stops at the first other visible member (never unrelated history).
+        others = {}
+        for position in found.values():
+            root = position["root_id"]
+            if root not in others:
+                others[root] = bool(db.execute(MEMBERS + " SELECT EXISTS(SELECT 1 FROM members WHERE id<>:root)",
+                                               {"root": root, "actor": actor}).fetchone()[0])
+            position["has_other_messages"] = others[root]
         return {"instance_id": self.instance_id, "topic_id": topic["id"],
                 "items": [{"message_id": row["id"], "stack_position": found[row["id"]]} for row in rows]}
 
