@@ -27028,8 +27028,8 @@
    "break": [
     [
      "web/topic-state.mjs",
-     "    if (managed) this.controls.actions.prepend(managed.title);",
-     "    if (managed) surface.host.append(managed.title);"
+     "      if (managed) this.controls.actions.prepend(managed.title);",
+     "      if (managed) surface.host.append(managed.title);"
     ]
    ],
    "check": {

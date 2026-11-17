@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 
 // Item 656 runs through the header step and both colour engines. Every act is
 // native input; waits name focus, a response, or the DOM state they consume.
-export async function topicTitleChecks({ check, page, until, control, view, facts, shot }, mode, mutations = true) {
+export async function topicTitleChecks({ check, page, until, control, view, facts, shot }, mode, mutations = true, phase = 'main') {
   const active = p => p.evaluate('document.activeElement?.id');
   const held = async () => (await view('topic', { topic_id: 't1' })).topic;
   const title = p => p.evaluate('document.querySelector("#topic-title").textContent');
@@ -34,9 +34,9 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       if (pencil) assert.ok(pencil.width >= 44 && pencil.height >= 44, 'the named pencil is a touch target');
     };
     const start = async (state, url) => {
-      const p = await page(`item-656-${state}-${size}-${theme}`, null, true, { ...setup, ...(url ? { url } : {}) });
+      const p = await page(`item-656-${phase}-${state}-${size}-${theme}`, null, true, { ...setup, ...(url ? { url } : {}) });
       await until(() => p.evaluate('document.body.dataset.ready === "true"'), 'topic loaded');
-      await shot(p, `item-656-${state}-${size}-${theme}-before`);
+      await shot(p, `item-656-${phase}-${state}-${size}-${theme}-before`);
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), true, 'item 656: a pencil beside the topic title');
       assert.deepEqual(await p.evaluate(`(b=>[b.getAttribute('aria-label'),b.title,Boolean(b.querySelector('svg'))])(document.querySelector('#topic-title-rename'))`), ['Rename topic', 'Rename topic', true]);
       await fits(p);
@@ -50,7 +50,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await fits(p);
     };
     const type = (p, text) => p.send('Input.insertText', { text });
-    const snap = async (p, state) => { await fits(p); await shot(p, `item-656-${state}-${size}-${theme}`); };
+    const snap = async (p, state) => { await fits(p); await shot(p, `item-656-${phase}-${state}-${size}-${theme}`); };
 
     await check(`${mode} item 656 normal: pencil renames in place; reload keeps header and rail; settings rename still works at ${size} ${theme}`, async () => {
       const original = (await held()).title;
@@ -80,8 +80,8 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
 
     await check(`${mode} item 656 editing: Escape and unchanged Return record nothing, preserve the page and keyboard reaches the pencil at ${size} ${theme}`, async () => {
       const p = await start('editing'), original = await title(p), before = updates(p).length;
-      // From the heading the browser's next Tab reaches the pencil.
-      await p.evaluate('document.querySelector("#topic-title").focus()'); await p.key('Tab');
+      // Shift-Tab from the gear reaches the preceding pencil.
+      await p.evaluate('document.querySelector("#settings-open").focus()'); await p.key('Tab', 8);
       assert.equal(await active(p), 'topic-title-rename', 'native Tab reaches the pencil');
       await p.key('Enter'); await until(async () => await active(p) === 'topic-rename', 'Return opens rename');
       assert.deepEqual(await p.evaluate('(e=>[e.value,e.selectionStart,e.selectionEnd])(document.querySelector("#topic-rename"))'), [original, 0, original.length]);
@@ -105,14 +105,14 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await p.key('Enter'); assert.equal(updates(p).length, 1, 'no duplicate save while busy');
       p.intercept(null); await p.release(p.held.shift());
       await until(async () => await active(p) === 'topic-title-rename', 'answer restores title and pencil');
-      await control({ method: 'topic_state', operation_id: `656-busy-restore-${size}-${theme}`, topic_id: 't1', args: { title: original } });
+      await control({ method: 'topic_state', operation_id: `656-${phase}-busy-restore-${size}-${theme}`, topic_id: 't1', args: { title: original } });
       assert.deepEqual(p.errors, []);
     });
 
     await check(`${mode} item 656 refused: newer title stands, typed words stay beside the refusal, Return recovers at ${size} ${theme}`, async () => {
       const p = await start('refused'), original = await title(p);
       await edit(p); await type(p, 'My kept title');
-      await control({ method: 'topic_state', operation_id: `656-conflict-${size}-${theme}`, topic_id: 't1', args: { title: 'Their newer title' } });
+      await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-${size}-${theme}`, topic_id: 't1', args: { title: 'Their newer title' } });
       await until(async () => await title(p) === 'Their newer title', 'page learned the newer title');
       await p.key('Enter');
       await until(() => p.evaluate('document.querySelector("#topic-title-edit .notice")?.textContent.includes("Someone else renamed it first")'), 'refusal beside the kept title');
@@ -121,7 +121,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       assert.equal(await p.evaluate('document.querySelector("#topic-settings").open'), false);
       await snap(p, 'refused'); await p.key('Enter');
       await until(async () => await title(p) === 'My kept title' && await active(p) === 'topic-title-rename', 'Return recovers');
-      await control({ method: 'topic_state', operation_id: `656-conflict-restore-${size}-${theme}`, topic_id: 't1', args: { title: original } });
+      await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-restore-${size}-${theme}`, topic_id: 't1', args: { title: original } });
       assert.deepEqual(p.errors, []);
     });
 
@@ -140,7 +140,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       // Start with an allowed title so this whole acceptance case is red before
       // the feature, then exercise the denied state independently.
       await start('permission');
-      const made = await control({ method: 'agent_topic', operation_id: `656-permission-${mode}-${size}-${theme}`, title: 'A member reads this topic', body: 'Permission fixture.', team: true });
+      const made = await control({ method: 'agent_topic', operation_id: `656-${phase}-permission-${mode}-${size}-${theme}`, title: 'A member reads this topic', body: 'Permission fixture.', team: true });
       const p = await page(`item-656-denied-${size}-${theme}`, null, true, { ...setup, url: `${facts.origin}/?topic=${made.topic_id}` });
       await until(async () => await title(p) === 'A member reads this topic', 'member topic loaded');
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), false, 'no pencil without rename permission');
@@ -148,9 +148,9 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       await press(p, '#settings-open');
       assert.equal(await p.evaluate('Boolean(document.querySelector("#topic-settings #topic-rename"))'), false, 'settings agrees on permission');
       await p.key('Escape');
-      await control({ method: 'outcome_change', operation_id: `656-owner-${mode}-${size}-${theme}`, sender: facts.agent, workspace_id: made.workspace_id, owner: facts.actor });
+      await control({ method: 'outcome_change', operation_id: `656-${phase}-owner-${mode}-${size}-${theme}`, sender: facts.agent, workspace_id: made.workspace_id, owner: facts.actor });
       await until(() => p.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), 'new owner gains pencil live');
-      await control({ method: 'outcome_change', operation_id: `656-owner-back-${mode}-${size}-${theme}`, sender: facts.actor, workspace_id: made.workspace_id, owner: facts.agent });
+      await control({ method: 'outcome_change', operation_id: `656-${phase}-owner-back-${mode}-${size}-${theme}`, sender: facts.actor, workspace_id: made.workspace_id, owner: facts.agent });
       await until(() => p.evaluate('!document.querySelector("#topic-title-rename:not([hidden])")'), 'old owner loses pencil live');
       const q = await page(`item-656-conversation-${size}-${theme}`, null, true, { ...setup, url: `${facts.origin}/?workspace=${made.workspace_id}` });
       assert.equal(await q.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), false, 'Conversation cannot be renamed as a topic');
@@ -167,13 +167,20 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       const originals = [];
       const pages = [];
       const selected = name => name.includes(act.check.case) && name.endsWith('320 light');
+      let runNumber = 0;
+      const restart = async () => {
+        for (const p of pages.splice(0)) await p.close();
+        await control({ method: 'server_stop' });
+        Object.assign(facts, await control({ method: 'server_start' }));
+      };
       const run = async () => {
+        runNumber++;
         let ran = 0;
         await topicTitleChecks({ check: async (name, action) => { if (selected(name)) { ran++; await action(); } },
-          page: async (...args) => { const p = await page(...args); pages.push(p); return p; }, until, control, view, facts, shot }, mode, false);
+          page: async (...args) => { const p = await page(...args); pages.push(p); return p; }, until, control, view, facts, shot }, mode, false, `probe-${ledger.acts.indexOf(act)}-${runNumber}`);
         assert.equal(ran, 1, 'one real acceptance case exercises this mutation');
       };
-      let caught = null;
+      let caught = null, pageErrors = [];
       try {
         for (const [file, from, to] of act.break) {
           const url = new URL('../' + file, import.meta.url), original = await readFile(url, 'utf8');
@@ -183,13 +190,17 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
           originals.push({ url, original, changed });
           await writeFile(url, changed);
         }
+        await restart();
         try { await run(); } catch (error) { caught = error; }
       } finally {
         for (const { url, original } of originals) await writeFile(url, original);
+        pageErrors = pages.flatMap(p => p.errors);
+        await restart();
       }
+      process.stdout.write(JSON.stringify({ item: 656, mutation: act.act, failed_case: caught?.message ?? null }) + '\n');
       assert.ok(caught, 'the acceptance case must fail with the mutation applied');
       assert.match(caught.message, /title|pencil|renam|focus|settings/i, 'failed for the title rule');
-      assert.deepEqual(pages.flatMap(p => p.errors), [], 'a script error is not mutation proof');
+      assert.deepEqual(pageErrors, [], 'a script error is not mutation proof');
       const digest = text => createHash('sha256').update(text).digest('hex');
       for (const { url, original, changed } of originals) {
         assert.equal(await readFile(url, 'utf8'), original, 'exact source bytes restored');

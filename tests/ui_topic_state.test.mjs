@@ -1676,6 +1676,13 @@ test('item 656 header rename uses the existing title field and fences, returns f
   const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
   const { panel, host, sent } = live({}, [], 'tony', { titleSurface });
   const input = controls(host).title;
+  // Moving a focused native field fires blur synchronously. Re-entering the
+  // move from that blur used to throw in Chromium (the first hosted red).
+  const remove = input.remove.bind(input);
+  input.remove = () => {
+    if (document.activeElement === input) leave(input);
+    remove();
+  };
   panel.renameTitle();
   assert.equal(input.parent, titleSurface.host, 'the field is in the header');
   assert.equal(document.activeElement, input);

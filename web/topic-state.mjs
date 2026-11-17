@@ -306,10 +306,10 @@ export class TopicStatePanel {
     if (manager && !controls.managed) {
       const unchanged = () => this.fields.title?.line.value === this.topic?.title;
       const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
-        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.save('title'); } });
+        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!this.movingTitle && !unchanged()) this.save('title'); } });
       title.setAttribute('aria-label', 'Title');
       // Leaving the title unchanged puts the actions back, where the focus went.
-      title.addEventListener('blur', () => { if (unchanged() && !title.hidden) this.renaming(false, false); });
+      title.addEventListener('blur', () => { if (!this.movingTitle && unchanged() && !title.hidden) this.renaming(false, false); });
       const rename = element('button', { type: 'button', className: 'text-action', textContent: 'Rename' });
       rename.onclick = () => this.renaming(true);
       // Archive means what it said when pressed.
@@ -343,11 +343,14 @@ export class TopicStatePanel {
   restoreTitleSurface() {
     if (!this.inlineTitle) return;
     const managed = this.controls?.managed, surface = this.titleSurface;
-    if (managed) this.controls.actions.prepend(managed.title);
-    this.host.insertBefore(this.notice, this.controls?.actions ?? null);
+    this.inlineTitle = false;
+    this.movingTitle = true;
+    try {
+      if (managed) this.controls.actions.prepend(managed.title);
+      this.host.insertBefore(this.notice, this.controls?.actions ?? null);
+    } finally { this.movingTitle = false; }
     surface.host.hidden = true; surface.title.hidden = false;
     surface.pencil.hidden = !managesTopic(this.topic, this.reader) || this.topic.kind === 'conversation';
-    this.inlineTitle = false;
   }
 
   // Whether the one-line title shows in place of the title or settings actions.
