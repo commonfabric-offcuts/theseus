@@ -20,7 +20,9 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       } else await open(p, id, 'Swipe fixture.');
       if (state === 'folded') {
         await press(p, '#reader-menu');
+        const savedFold = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold');
         await press(p, '[role=menuitem]:text-is("Fold message")');
+        await (await savedFold).finished();
         await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded === 'true', 'setup: the message already folded', id);
       }
       if (state === 'private-note') {
@@ -74,6 +76,7 @@ export async function composeSwipe648({ check, page, open, press, until, picture
         ? p.waitForRequest(r => r.url().endsWith('/api/command') && r.postDataJSON()?.kind === 'message.fold', { timeout: 8000 }) : null;
       try {
         const foldedResponse = foldRequest ? p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold') : null;
+        foldedResponse?.catch(() => {});
         await swipe();
         if (foldRequest) {
           await foldRequest;
@@ -98,6 +101,11 @@ export async function composeSwipe648({ check, page, open, press, until, picture
         assert.equal(foreign.acts.items.find(row => row.message_id === id)?.acts.folded ?? false, false, 'another actor has no fold');
         assert.ok(!JSON.stringify(foreign).includes('Exact α writing'), 'private writing is never another actor\'s acts');
         await picture(p, `item648-${state}-after`);
+        if (state !== 'empty') {
+          await press(p, '#reader-close');
+          await until(p, () => !document.querySelector('#reader').open, 'the Reader closed with writing kept');
+          await picture(p, `item648-${state}-feed`);
+        }
         await close(p);
       } finally { release(); if (foldRequest) await foldRequest.catch(() => {}); }
     });
