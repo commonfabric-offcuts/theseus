@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 
 // The topic's Team is exercised in the whispers step because that page runs in
 // both Chromium and WebKit. Every press below is a native mouse click or tap.
-export async function teamBarChecks({ check, page, until, shot, control, view }) {
+export async function teamBarChecks({ check, page, until, shot, control, view, facts }) {
   const opener = '#participants .add-chip', field = '#participants .people-add input';
   const shown = p => p.evaluate(`!document.querySelector('#participants .people-add').hidden`);
   const word = p => p.evaluate(`document.querySelector('${opener}').textContent`);
   const membership = async () => (await view('topic', { topic_id: 't1' })).participants.map(x => x.actor_id).sort();
   const fit = p => p.evaluate(`(()=>{const nodes=[...document.querySelectorAll('#topic-people h2,#participants button,#participants input,#participants .notice')].filter(e=>e.getClientRects().length);
     return {sideways:document.documentElement.scrollWidth>innerWidth,out:nodes.filter(e=>{const b=e.getBoundingClientRect();return b.left<-.5||b.right>innerWidth+.5}).map(e=>e.textContent||e.tagName),
-      small:matchMedia('(pointer:coarse)').matches?nodes.filter(e=>e.matches('button')&&e.getBoundingClientRect().height<44).map(e=>e.textContent):[]}})()`);
-  const place = p => p.evaluate(`['#topic-title','#topic-description','#people-heading','#participants .person-pill'].map(s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height]})`);
+      small:matchMedia('(pointer:coarse)').matches?nodes.filter(e=>e.matches('.add-chip,.people-add button')&&e.getBoundingClientRect().height<44).map(e=>e.textContent):[]}})()`);
+  const place = p => p.evaluate(`['#topic-title','#topic-description','#people-heading','#participants .person-pill'].map(s=>{const e=document.querySelector(s),r=document.createRange();r.selectNodeContents(e);const b=s==='#topic-description'?r.getBoundingClientRect():e.getBoundingClientRect();return [b.x,b.y,b.width,b.height]})`);
   for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) {
     const tag = `${width}-${theme}`;
     const setup = async p => {
@@ -73,18 +73,30 @@ export async function teamBarChecks({ check, page, until, shot, control, view })
       assert.equal(await shown(p), false);
       await p.close();
     });
-    for (const state of ['empty', 'refused', 'busy']) await check(`whispers item 643 ${state} picker closes with Done or outside ${tag}`, async () => {
+    await check(`whispers item 643 read-only Team ${tag}`, async () => {
+      const elsewhere = await control({ method: 'elsewhere_ask', operation_id: `item-643-readonly-${tag}`, body: 'Read-only Team fixture' });
+      const p = await page(`item-643-${tag}-readonly`, null, true, { url: `${facts.origin}/?topic=${elsewhere.topic_id}`, beforeNavigate: setup });
+      await until(() => p.evaluate(`Boolean(document.querySelector('#participants .person-pill'))`), 'read-only Team drawn');
+      await shot(p, `item-643-${tag}-readonly`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('${opener}'))`), false, 'a reader cannot add people');
+      assert.equal(await shown(p), false);
+      assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
+      await p.close();
+    });
+    for (const state of ['empty', 'refused', 'error', 'busy']) await check(`whispers item 643 ${state} picker closes with Done or outside ${tag}`, async () => {
       const p = await openPage(state), before = await membership(); await open(p);
       await press(p, field); await p.send('Input.insertText', { text: `unknown-item-643-${state}` });
       if (state === 'busy') {
         // Hold the real command's response, not its handler or the Store. This
-        // same network boundary is available in both browser engines.
-        await p.evaluate(`(()=>{const fetch=window.fetch;window.fetch=async(...args)=>{let body;try{body=JSON.parse(args[1]?.body)}catch{}const response=await fetch(...args);if(body?.kind==='participation.set'){window.item643ResponseHeld=true;await new Promise(resolve=>window.item643Release=resolve)}return response}})()`);
+        // same network boundary is available in both browser engines. Api
+        // captures fetch at construction, but reads Response.json at delivery.
+        await p.evaluate(`(()=>{const json=Response.prototype.json;Response.prototype.json=async function(){const body=await json.call(this);if(this.url.endsWith('/api/command')){window.item643ResponseHeld=true;await new Promise(resolve=>window.item643Release=resolve)}return body}})()`);
         await p.key('Enter');
         await until(() => p.evaluate('window.item643ResponseHeld===true'), 'real participation response held');
-      } else if (state === 'refused') {
+      } else if (state === 'refused' || state === 'error') {
+        if (state === 'error') await p.evaluate(`(()=>{const json=Response.prototype.json;Response.prototype.json=async function(){if(this.url.endsWith('/api/command'))throw Error('item 643 lost response');return json.call(this)}})()`);
         await p.key('Enter');
-        await until(() => p.evaluate(`!document.querySelector('#participants .notice').hidden`), 'the actual unknown name is refused');
+        await until(() => p.evaluate(`!document.querySelector('#participants .notice').hidden`), 'the refused or unconfirmed change is reported');
       }
       await shot(p, `item-643-${tag}-${state}`);
       assert.equal(await word(p), 'Done'); assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
