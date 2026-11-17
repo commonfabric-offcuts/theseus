@@ -11,7 +11,7 @@ from . import whispers
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
-from .stacks import act_fields, awaiting_fields, record_wait_start
+from .stacks import act_fields, awaiting_fields, record_wait_start, source_dossier
 from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
                            struck, words, withheld)
 
@@ -521,7 +521,17 @@ class Conversation:
                 "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
                 "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
-                "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+                "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
+                **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+
+    def _source_dossier(self, db, actor, row):
+        """The dossier the message is in (stacks.source_dossier), for a reader of its topic; None for one who reads only
+        this message, sent to them by name, as that grants nothing more of the topic."""
+        try:
+            self._topic(db, actor, row["topic_id"])
+        except Refusal:
+            return None
+        return source_dossier(db, actor, row["id"])
 
     def _source_quotes(self, db, actor, stored):
         """A message's stored quotes as the actor reads them (whispers.redact_quotes). A quote of a

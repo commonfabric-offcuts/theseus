@@ -67,9 +67,10 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
+import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
 import { headerClick } from './reply-stacks.mjs';
@@ -1296,12 +1297,21 @@ function paintReaderAside() {
   button.setAttribute('aria-label', words); button.title = words;
 }
 // The Reader's title names the dossier its message is in (item 561), as the
-// dossier's tab does (StackFeed.dossierName): only for a message of this topic
-// the page's stacks hold; another topic's message, a Notebook page and a message
-// opened alone keep their own titles. Painted again when the stacks are.
+// dossier's tab does (StackFeed.dossierName): only for a message of this topic;
+// another topic's message, a Notebook page and a message opened alone keep
+// their own titles. Painted again when the stacks are. Item 550: where the
+// page's stacks cannot say (the dossier's first message not loaded and no name
+// on it, or the topic's updates paused), the dossier Core read with the source
+// does: its name, else its first message's line; a dossier of that message
+// alone keeps the topic's name. Never the oldest reply the page holds.
 function readerDossierName(source) {
   const ref = source?.source_ref;
-  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
+  if (ref?.kind !== 'message' || source.topic_id !== topic?.id) return null;
+  const drawnName = stackFeed && !topicUnavailable ? stackFeed.dossierName(ref.id) : null;
+  if (drawnName) return drawnName;
+  const dossier = source.dossier;
+  if (!dossier) return null;
+  return dossier.name?.text || (dossier.alone ? '' : messagePreview(dossier.first)) || null;
 }
 // The cover of that dossier (item 624), on the same terms: the Reader shows it as one line above the message.
 function readerDossierCover(source) {
@@ -2370,7 +2380,7 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
+  $('more-messages').onclick = () => run(() => { fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.

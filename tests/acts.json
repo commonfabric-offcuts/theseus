@@ -2410,8 +2410,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
-     "  return actsOf(item).starred === true || item.seq === newestReply(stack);"
+     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "  return actsOf(item).starred === true || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));"
     ]
    ],
    "check": {
@@ -5155,8 +5155,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => b.seq - a.seq), ...late];"
     ]
    ],
    "check": {
@@ -5169,8 +5169,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "gather(loaded, { viewer }));",
-     "gather(loaded));"
+     "  const stacks = ordered(gather(loaded, { viewer, filled: state.filled, apart: state.apart }));",
+     "  const stacks = ordered(gather(loaded, { filled: state.filled, apart: state.apart }));"
     ]
    ],
    "check": {
@@ -5493,8 +5493,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq), ...late];"
     ]
    ],
    "check": {
@@ -5521,8 +5521,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq), ...late];"
     ]
    ],
    "check": {
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -6944,7 +6944,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && starsOf(a) === starsOf(b) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],
@@ -7861,7 +7861,7 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (!open) { setLevel(state, stack, 'open'); state.again(); return true; }",
+     "  if (!open && (row || found.section.dataset.headOpen !== 'true')) { setLevel(state, stack, 'open'); state.again(); return true; }",
      "  if (!open) return true;"
     ]
    ],
@@ -7981,8 +7981,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => b.seq - a.seq), ...late];"
     ]
    ],
    "check": {
@@ -10364,8 +10364,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
-     "return kept(item) || item.seq === newestReply(stack);"
+     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "return kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));"
     ]
    ],
    "check": {
@@ -13656,8 +13656,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"], \"starred\": starred,\n",
-     "                               \"starred\": starred,\n"
+     "\"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"], \"join_revision\"",
+     "\"join_revision\""
     ]
    ],
    "check": {
@@ -13699,8 +13699,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -13772,8 +13772,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();",
-     "    if (kind === 'stack.aside' || kind === 'stack.name') await this.refreshPositions();"
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();"
     ]
    ],
    "check": {
@@ -15005,21 +15005,6 @@
    "check": {
     "native": "reading",
     "case": "reading stacks the New message composer rests"
-   }
-  },
-  {
-   "item": 378,
-   "act": "The Reader's archive button counts every message the move takes, where the page draws the dossier as several stacks, its first message not loaded",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "const dossier = this.state.stacks.filter(each => positionOf(each)?.root_id === position.root_id);",
-     "const dossier = [stack];"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks the Reader's archive button counts every message that moves with the dossier"
    }
   },
   {
@@ -19890,8 +19875,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -23872,7 +23857,12 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "(stack.replies.length ? head.name : '')",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
+     "''"
+    ],
+    [
+     "web/app.mjs",
+     "(dossier.alone ? '' : messagePreview(dossier.first))",
      "''"
     ]
    ],
@@ -23887,7 +23877,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "(stack.replies.length ? head.name : '')",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
      "head.name"
     ]
    ],
@@ -27766,8 +27756,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'cover_revision'];",
-     "'aside_revision', 'name_revision'];"
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
+     "'aside_revision', 'name_revision', 'place_revision'];"
     ]
    ],
    "check": {
@@ -30487,6 +30477,919 @@
    ],
    "check": {
     "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 378,
+   "act": "The Reader's archive button counts every message the move takes, its first message not loaded and its answers one stack",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks the Reader's archive button counts every message that moves with the dossier"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The messages of one dossier are one stack by the first message Core names for each, its name once, whatever of it is loaded",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier whose fork sits above the page shows its name once, with every loaded reply in its stack and its count right",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "one dossier whose fork sits above the loaded page is one stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier whose fork sits above the page shows its name once, with every loaded reply in its stack and its count right, in Safari's engine",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "one dossier whose fork sits above the loaded page is one stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier's first message, where the page holds it, heads the branches gathered under it, though one is older",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const head = fresh.find(item => item.id === root) ?? oldest(",
+     "    const head = oldest("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A head whose join or split is not yet answered takes no dossier by the positions read before it",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     " : !root || !hangs || item.moving ? id : ",
+     " : !root || !hangs ? id : "
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A branch split back out shows apart at once, under its own first line, while the split waits for its answer",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "{ ...item, acts, stack_position, ...(moving ? { moving } : {}) }",
+     "{ ...item, acts, stack_position }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A branch split back out shows apart at once, under its own first line, while the split waits for its answer, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "{ ...item, acts, stack_position, ...(moving ? { moving } : {}) }",
+     "{ ...item, acts, stack_position }"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page is Core's join of that first message",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const item = root?.item ?? this.messages().get(shows.act.id)",
+     "const item = this.messages().get(shows.act.id)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page shows every loaded message of it in the stack it joins at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.act('stack.join', item, { into: shows.act.into }, into ? members.map(([id]) => [id, { stack_position: into }]) : []);",
+     "this.act('stack.join', item, { into: shows.act.into });"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier's position carries its first message's join revision",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     ", \"join_revision\": acts[\"join_revision\"],",
+     ","
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A join of a dossier whose first message is above the page is fenced on the join revision Core holds for it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {})",
+     "...({})"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page joins as a whole"
+   }
+  },
+  {
+   "item": 550,
+   "act": "What the page keeps of a dossier's stack for this visit goes to its new head when loading more of it gives it another",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  return new Map(before.filter(stack => !heads.has(stack.id) && now.has(stack.dossier))",
+     "  return new Map([].filter(stack => !heads.has(stack.id) && now.has(stack.dossier))"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier the reader opened stays open when Earlier messages gives its stack another head",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const kept of [state.levels, state.held]) {",
+     "  for (const kept of [state.held]) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page stays as the reader left it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier the reader opened stays open when Earlier messages gives its stack another head, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const kept of [state.levels, state.held]) {",
+     "  for (const kept of [state.held]) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier whose first message is above the page stays as the reader left it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "An open dossier keeps the seven it showed when Earlier messages gives its stack another head, a reply that arrived hidden by none",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  for (const kept of [state.levels, state.held]) {",
+     "  for (const kept of [state.levels]) {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page stays as the reader left it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "An open dossier's earlier-messages row, once opened, stays open when Earlier messages gives its stack another head",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (state.earlier.delete(from)) state.earlier.add(to); else state.earlier.delete(to);",
+     "  state.earlier.delete(from);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier whose first message is above the page stays as the reader left it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A stack whose head is not its dossier's first message sorts by the reader's place on that first message, which its position carries",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "const first = byRoot ? position.placed : actsOf(head).placed",
+     "const first = actsOf(head).placed"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘↑ and ⌘↓ place a dossier on its first message, loaded or not, so the place holds whatever of it loads",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);",
+     "return this.messages().get(stack.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier the reader placed"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘↑ and ⌘↓ place a dossier on its first message, loaded or not, so the place holds whatever of it loads, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);",
+     "return this.messages().get(stack.id);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier the reader placed"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A place on a dossier's first message the page has not loaded shows at once, before Core answers it",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier the reader placed"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A place on a dossier's first message the page has not loaded is read back before the page lets go of what it showed, so no frame drops the dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     " || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     ") await this.refreshPositions();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier the reader placed"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A place on a dossier's first message the page has not loaded is fenced on the place revision its position carries",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "      ...(!this.messages().has(root) && 'place_revision' in position ? { placed: position.placed, place_revision: position.place_revision } : {}) });",
+     "      });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier the reader placed"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier's position carries the reader's own place on its first message and its revision",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\n                               \"placed\": acts[\"placed\"], \"place_revision\": acts[\"place_revision\"],",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A read of positions that changes the reader's place for a dossier draws the stacks again",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "'name_revision', 'place_revision', 'cover_revision'];",
+     "'name_revision', 'cover_revision'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A stack joined into a branch that does not head its dossier's one stack keeps its join in that stack",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A stack joined into a branch that does not head its dossier's one stack shows its join line and Split back out there",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a stack joined into a branch of a dossier above the page"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A stack joined into a branch that does not head its dossier's one stack shows its join line and Split back out there, in Safari's engine",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a stack joined into a branch of a dossier above the page"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A place the reader set on another message of a dossier, before places went on the first message, places it while the first message carries none, whichever message heads its stack, loaded or not",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Of the places on a dossier's other messages, the one set last places it",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "each.at_ms > latest.at_ms ? each : latest",
+     "each.at_ms < latest.at_ms ? each : latest"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier placed on messages that do not head its stack is on top with its place line, through Earlier messages",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A dossier placed on messages that do not head its stack is on top with its place line, through Earlier messages, in Safari's engine",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "place = typeof first === 'number' ? first : heldPlace(position);",
+     "place = first;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away every place on a dossier's other messages",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];",
+     "const items = [first];"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Let new replies move it takes away every place on a dossier's other messages, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];",
+     "const items = [first];"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back every place it took away",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });",
+     "this.remember(() => { items.slice(0, 1).forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back every place it took away, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });",
+     "this.remember(() => { items.slice(0, 1).forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on messages that do not head its stack"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A position lists the reader's own places on its dossier's other messages",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"places\": [each for each in places.get(root, []) if each[\"message_id\"] != root],",
+     "\"places\": [],"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A position lists those places the most recently set first",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "ORDER BY a.at_ms DESC,a.id DESC",
+     "ORDER BY a.at_ms,a.id"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back the places on a dossier's other messages the one set first first, so the one set last still places it, on the page and after a reload",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".filter(each => each.message_id !== first.id).reverse();",
+     ".filter(each => each.message_id !== first.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "a dossier placed on two of its messages that disagree"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it puts back the places on a dossier's other messages the one set first first, so the one set last still places it, on the page and after a reload, in Safari's engine",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     ".filter(each => each.message_id !== first.id).reverse();",
+     ".filter(each => each.message_id !== first.id);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "a dossier placed on two of its messages that disagree"
+   }
+  },
+  {
+   "item": 550,
+   "act": "⌘Z after Let new replies move it shows each place it puts back on a dossier's other messages at once, before Core answers, as it did on a stack's head before item 550",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "const making = [...this.pending].flatMap(([id, marks]) => {",
+     "const making = [].flatMap(([id, marks]) => {"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shows the place at once, before Core answers"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A reader's place listed on a dossier's other message is fenced by their own place revisions alone, whatever another reader's reach there",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "b.kind='place' AND b.owner=:actor)",
+     "b.kind='place')"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message the page has not loaded keeps each branch's head in view",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "|| item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "|| item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "rendering: every pill is as wide as its words"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A reply of the reader's own never heads a stack gathered under a first message not loaded while another branch can",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "    const theirs = tops.filter(item => viewer === null || item.author_id !== viewer);",
+     "    const theirs = tops;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages fills the stack shown last above it: the older messages of its dossier show where the button was, under the head it had",
+   "break": [
+    [
+     "web/app.mjs",
+     "run(() => { fillFrom($('messages')); return listPage('messages', true); });",
+     "run(() => listPage('messages', true));"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "More messages shows the older messages where its button was"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The Reader's title names the dossier by what Core read with the source where the page's stacks cannot say, never by the oldest loaded reply",
+   "break": [
+    [
+     "web/app.mjs",
+     "  const dossier = source.dossier;\n  if (!dossier) return null;",
+     "  const dossier = null;\n  if (!dossier) return null;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Core sends a message read as a source with its dossier: first message, name, how that message begins, and whether it is alone",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "\"dossier\": self._source_dossier(db, actor, row),",
+     "\"dossier\": None,"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "What More messages filled a stack with is a run of whole cards below what it showed, none overlapping or covering the card above, so nothing shown moves",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }",
+     "    if (!entry.dataset.id) { previousFace = null; continue; }"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "More messages shows the older messages where its button was"
+   }
+  },
+  {
+   "item": 550,
+   "act": "What More loaded, the dossier's first message among it, gathers nothing the stack showed and heads nothing, so nothing shown moves",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const { byId, up } = links(items, has, id => filled.has(id) || apart.has(id)),",
+     "  const { byId, up } = links(items, has, id => apart.has(id)),"
+    ],
+    [
+     "web/stack-order.mjs",
+     "fresh = members.filter(item => !filled.has(item.id)), tops",
+     "fresh = members, tops"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The Reader's title never names a dossier by the oldest reply the page holds, so it reads the same while the topic's updates are paused",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
+     "(stack.replies.length ? head.name : '')"
+    ]
+   ],
+   "check": {
+    "native": "freshness",
+    "case": "access that comes back clears the paused note and More"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older messages of a dossier whose stack sits higher up where its button was, each a card of its own, so that stack keeps its head and nothing shown moves",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older replies of a dossier drawn higher up below the last card shown, newest first, whole, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older replies of a dossier drawn higher up below the last card shown, newest first, whole, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages pressed again, where the last card above it is a card of its own that the first press showed, shows the next older messages of that card's dossier below it as cards of their own, never at the end of that dossier's stack higher up",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages pressed again shows the next older replies of a dossier drawn higher up below the card of its own the first press showed, newest first, the stack higher up keeping its count, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages pressed again shows the next older replies of a dossier drawn higher up below the card of its own the first press showed, newest first, the stack higher up keeping its count, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "into: last && !state.apart.has(last.id) ? last.dossier : null,",
+     "into: last?.dossier ?? null,"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, never its tab alone",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, named or not, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shows the words of the reply heading it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, named or not, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "shows the words of the reply heading it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A press on the words of a gathered stack's head, shown whole while the stack is folded, does what it does on any card; its tab opens the dossier",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!open && (row || found.section.dataset.headOpen !== 'true')) {",
+     "  if (!open) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More keeps a dossier cover once: older replies kept apart below its button repeat neither its sheet nor its pills, even when another press loads its root",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "!stack.replies.length && !state.apart.has(stack.id)",
+     "!stack.replies.length"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Earlier messages shows every older message"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More keeps a dossier cover once: older replies kept apart below its button repeat neither its sheet nor its pills, even when another press loads its root",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "!stack.replies.length && !state.apart.has(stack.id)",
+     "!stack.replies.length"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks Earlier messages shows every older message"
    }
   }
  ]

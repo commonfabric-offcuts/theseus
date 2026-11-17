@@ -17,7 +17,8 @@ change:
   once, loaded on the reader's page or not (item 472).
 - `place` (stack.place): where the reader keeps the stack this message heads in
   their own order of the topic's stacks, as a number to sort by, or none to let
-  new replies move it again. Theirs alone.
+  new replies move it again. Theirs alone. The page places a dossier on its first
+  message, which its position carries to every message in it (item 550).
 - `name` (stack.name): the short name of the dossier this message is the first
   message of; a name typed anywhere in a dossier lands there. The topic's:
   anyone who reads it may rename it, everyone sees it, and it says who typed
@@ -369,6 +370,24 @@ def _dossier_through(db, actor, root, message):
                       " WHERE m.id=:root OR m.seq<=:seq ORDER BY m.id<>:root, m.seq", {"root": root, "actor": actor, "seq": message["seq"]}).fetchall()
 
 
+# How much of a dossier's first message source_dossier reads: more than its first line can take (a stack's name, and
+# so a first line shown as one, is at most 200 characters), so the page's first line of it is the whole message's.
+OPENING = 2000
+
+
+def source_dossier(db, actor, message_id):
+    """The dossier a message is in, as the Reader titles a reply there (item 550, docs/reader.md): its first message's
+    id, its name typed or minted (None while nobody named it), that first message as it begins (its words cut at
+    OPENING characters, held and marked as words handed out are, and its attachments), and whether the dossier is that
+    one message alone. Read with the message, so the Reader names the dossier whatever of it the page has loaded,
+    never by the oldest reply the page holds, and while the topic's updates are paused."""
+    root = StackRoots(db, actor).root(message_id)
+    name = current_acts(db, actor, [root]).get(root, EMPTY)["name"]
+    first = db.execute("SELECT " + words("m", chars=OPENING) + " AS body,m.attachments FROM messages m WHERE m.id=?", (root,)).fetchone()
+    count = db.execute(MEMBERS + " SELECT count(*) FROM (SELECT id FROM members LIMIT 2)", {"root": root, "actor": actor}).fetchone()[0]
+    return {"root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
+
+
 def dossier_namer(db, root, replied=False):
     """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
     (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record
@@ -434,19 +453,38 @@ def _seen_acts(db, actor, topic):
                       "WHERE a.topic_id=:topic AND a.owner IN ('',:actor) AND " + VISIBLE, {"topic": topic, "actor": actor}).fetchone()[0]
 
 
+def _reader_places(db, actor, topic):
+    """The reader's own places in the topic, on messages they can see, each (message id, its place, the place's
+    revision, when it was set), the most recently set first."""
+    return db.execute("SELECT a.message_id,json_extract(a.value,'$.key') AS placed,a.revision,a.at_ms FROM message_acts a INDEXED BY topic_acts "
+                      "JOIN messages m ON m.id=a.message_id WHERE a.topic_id=:topic AND a.kind='place' AND a.owner=:actor AND " + VISIBLE +
+                      " AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='place' AND b.owner=:actor)"
+                      " AND json_extract(a.value,'$.key') IS NOT NULL ORDER BY a.at_ms DESC,a.id DESC", {"topic": topic, "actor": actor}).fetchall()
+
+
 def stack_positions(db, actor, items):
     """{message id: its dossier's position for the reader}. `at` is the snapshot it was read at: for a dossier put
     aside, the newest message in it the reader can see (0 for one that is not, which no message moves), and the
     newest act in the topic they hear of. A whisper the reader is outside moves neither, nor does a message outside
-    the dossier, so a page of earlier messages reads the same however the topic grows. `starred` names the messages of
-    the dossier the reader starred, loaded on their page or not: its title bar shows their star, and it is never below
-    More for them (item 635), whatever joined it."""
-    roots, acts_at, stars, positions, result = StackRoots(db, actor), {}, {}, {}, {}
+    the dossier, so a page of earlier messages reads the same however the topic grows. `name_revision` and
+    `join_revision` are its first message's, the fences a page holding only replies names and joins it on, and
+    `placed` and `place_revision` the reader's own place for the dossier, on its first message, and its fence: a page
+    that has not loaded that message, whatever of the dossier it has loaded, keeps the dossier where the reader put
+    it (item 550). `places` lists the reader's own places on the dossier's other messages, each {message_id, placed,
+    place_revision, at_ms}, the most recently set first: before item 550 a stack was placed on the message heading it,
+    a reply or a stack later joined into the dossier, and while the first message carries no place the page sorts the
+    dossier by them, and Let new replies move it takes each away. The reader's starred messages (item 635), loaded or not,
+    light the title star and keep the dossier above More.
+    """
+    roots, acts_at, stars, places, positions, result = StackRoots(db, actor), {}, {}, {}, {}, {}
     for item in items:
         topic = item["topic_id"]
         if topic not in acts_at:
             acts_at[topic] = _seen_acts(db, actor, topic)
             stars[topic] = starred_in(db, actor, topic, roots)
+            for row in _reader_places(db, actor, topic):
+                places.setdefault(roots.root(row["message_id"]), []).append(
+                    {"message_id": row["message_id"], "placed": row["placed"], "place_revision": row["revision"], "at_ms": row["at_ms"]})
         root = roots.root(item["id"])
         if root not in positions:
             acts = current_acts(db, actor, [root]).get(root, EMPTY)
@@ -455,7 +493,10 @@ def stack_positions(db, actor, items):
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
-                               "name": acts["name"], "name_revision": acts["name_revision"], "starred": starred,
+                               "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
+                               "placed": acts["placed"], "place_revision": acts["place_revision"],
+                               "places": [each for each in places.get(root, []) if each["message_id"] != root],
+                               "starred": starred,
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
                                "below": through is not None and not starred and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}

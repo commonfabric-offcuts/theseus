@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
+import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
@@ -169,8 +169,9 @@ export class StackFeed {
     // learns the revision the act before it left, as a loaded message does.
     this.standIns = new Map();
     // The acts shown and not yet answered, by message, in the order made; and
-    // the acts each message was last drawn with.
-    this.pending = new Map(); this.drawn = new Map();
+    // the acts each message was last drawn with; and when each act shown was
+    // made, as a count of the acts made, across messages (shownPlaces).
+    this.pending = new Map(); this.drawn = new Map(); this.made = new WeakMap(); this.makes = 0;
     // The acts not settled, by operation, each kept with its exact request
     // until Core answers it (waiting); and what the page says of each act not
     // settled or refused, by operation (or, for a card command it does not
@@ -203,7 +204,7 @@ export class StackFeed {
   // not yet answered over it. known: the message when the page has not loaded it.
   actsOf(id, known = null) {
     let acts = (this.messages().get(id) ?? known)?.acts ?? {};
-    for (const shown of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
+    for (const { stack_position, ...shown } of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
     return acts;
   }
   // The loaded messages as the stacks draw them, each with its acts as shown.
@@ -214,13 +215,43 @@ export class StackFeed {
       if (!item) return item;
       const acts = this.actsOf(id);
       this.drawn.set(id, JSON.stringify(acts));
+      // Where a join of its dossier is not yet answered, the message shows where that act puts it (join).
       let stack_position = item.stack_position;
+      for (const mark of this.pending.get(id) ?? []) if ('stack_position' in mark) stack_position = mark.stack_position;
       for (const pending of this.pending.get(stack_position?.root_id) ?? []) {
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null };
         if ('name' in pending) stack_position = { ...stack_position, name: pending.name };
+        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };
       }
-      return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position } : item;
+      const places = stack_position?.places && this.shownPlaces(stack_position, messages);
+      if (places && places !== stack_position.places) stack_position = { ...stack_position, places };
+      // A join or split not yet answered: the positions Core sent name the dossier it left (stack-order.mjs, positionOf).
+      const moving = (this.pending.get(id) ?? []).some(mark => 'joined' in mark);
+      return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position, ...(moving ? { moving } : {}) } : item;
     } };
+  }
+  // The places on a dossier's other messages (its position's places, stack-order.mjs heldPlace) as the page holds
+  // them. A place act not yet answered on any message of the dossier is the one set last, the last made first, listed
+  // or not: the positions read after Let new replies move it list none of the places its ⌘Z puts back, and each shows
+  // at once, as one on a stack's head did before item 550. Another listed shows as the page holds its message at that
+  // place's revision or later, an act answered before the positions are read again. The list Core sent where nothing
+  // differs.
+  shownPlaces(position, messages) {
+    const root = position.root_id, known = id => messages.get(id) ?? this.standIns.get(id);
+    const making = [...this.pending].flatMap(([id, marks]) => {
+      const mark = marks.findLast(each => 'placed' in each), item = known(id);
+      return id !== root && mark && (item?.stack_position?.root_id ?? item?.dossier) === root ? [{ id, order: this.made.get(mark) }] : [];
+    }).sort((a, b) => b.order - a.order);
+    const listed = position.places.filter(each => !making.some(({ id }) => id === each.message_id)).map(each => {
+      const acts = known(each.message_id) && this.actsOf(each.message_id, known(each.message_id));
+      return acts && (acts.place_revision ?? 0) >= each.place_revision && acts.placed !== each.placed ? { ...each, placed: acts.placed ?? null } : each;
+    });
+    if (!making.length && listed.every((each, index) => each === position.places[index])) return position.places;
+    const latest = position.places.reduce((most, each) => Math.max(most, each.at_ms), 0);
+    return [...making.map(({ id }, index) => {
+      const acts = this.actsOf(id, known(id));
+      return { message_id: id, placed: acts.placed ?? null, place_revision: acts.place_revision ?? 0, at_ms: latest + making.length - index };
+    }), ...listed];
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
@@ -326,6 +357,7 @@ export class StackFeed {
     const shown = shownAct(kind, args, this.viewer, this.clock());
     const shows = [[item.id, shown], ...also];
     for (const [id, mark] of shows) this.pending.set(id, [...this.pending.get(id) ?? [], mark]);
+    this.made.set(shown, ++this.makes);
     const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
       for (const [id, mark] of shows) {
         const left = (this.pending.get(id) ?? []).filter(each => each !== mark);
@@ -456,8 +488,10 @@ export class StackFeed {
       await this.refreshPositions();
     }
     // What places a dossier and names it is read again after an act that changes them: a join or a split moves
-    // messages to another dossier, whose positions they carry from then on (item 470).
-    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join') await this.refreshPositions();
+    // messages to another dossier, whose positions they carry from then on (item 470). A place on a first message
+    // the page has not loaded, or on any other message of a dossier, is shown by those positions (item 550).
+    const firstLoaded = this.messages().get(item.id)?.stack_position?.root_id === item.id;
+    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();
     return receipt.result;
   }
   // The message's entry, its stack and its card.
@@ -555,17 +589,41 @@ export class StackFeed {
     if (!found) return;
     const side = this.sideOf(found), changes = moveOf(side.stacks, side.index, way);
     if (!changes) { this.say(way === 'up' ? 'Already at the top' : 'Already at the bottom'); return; }
-    const heads = changes.map(change => this.messages().get(change.id));
-    const before = heads.map(item => this.actsOf(item.id).placed ?? null);
+    const heads = changes.map(change => this.placeOn(side.stacks.find(stack => stack.id === change.id)));
+    const before = heads.map(item => this.actsOf(item.id, item).placed ?? null);
     changes.forEach((change, index) => this.act('stack.place', heads[index], { key: change.key }));
     this.remember(() => { heads.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); this.focusOn(entry.dataset.id); });
     this.arrange(); this.focusOn(entry.dataset.id);
     this.say(`Moved ${way}, placed here by you`);
   }
+  // A place is the dossier's, as its name is (item 550): it goes on its first
+  // message, loaded or not, fenced on the place Core holds there, so loading
+  // more of the dossier keeps it. A page whose Core sends no positions places
+  // the head it shows.
+  placeOn(stack) {
+    const root = this.rootOf(stack);
+    return root && 'place_revision' in root.position ? root.item : this.messages().get(stack.id);
+  }
+  // Let new replies move it takes away every place the dossier sorts by
+  // (stack-order.mjs, gather): the one on its first message, and each one on
+  // another of its messages that its position lists (places), set before
+  // places went on the first message, loaded or not. ⌘Z puts each back, the
+  // one set first first, as the positions list them the most recently set
+  // first, so the one set last is set last again and still places the dossier.
   unplace(stack) {
-    const item = this.messages().get(stack.id), before = this.actsOf(stack.id).placed ?? null;
-    this.act('stack.place', item, { key: null });
-    this.remember(() => { this.act('stack.place', item, { key: before }); this.arrange(); });
+    const position = positionOf(stack), first = this.placeOn(stack), listed = (position?.places ?? []).filter(each => each.message_id !== first.id).reverse();
+    const held = listed.map(each => {
+      if (!this.messages().has(each.message_id) && !this.standIns.has(each.message_id)) this.standIns.set(each.message_id, { id: each.message_id, acts: {} });
+      const item = this.messages().get(each.message_id) ?? this.standIns.get(each.message_id);
+      // A stand-in says which dossier it is in, so a place act on it not yet answered shows there (shownPlaces).
+      if (!this.messages().has(item.id)) item.dossier = position.root_id;
+      item.acts = laterActs(item.acts, { placed: each.placed, place_revision: each.place_revision });
+      return item;
+    });
+    const items = [first, ...held.filter(item => typeof this.actsOf(item.id, item).placed === 'number')];
+    const before = items.map(item => this.actsOf(item.id, item).placed ?? null);
+    items.forEach(item => this.act('stack.place', item, { key: null }));
+    this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });
     this.arrange(); this.say('New replies move it again');
   }
   // A join from the keys, ⋯ or the phone's sheet shows where it went
@@ -578,10 +636,16 @@ export class StackFeed {
     const side = this.sideOf(found), shows = joinShown(side.stacks, side.index, way, entry.dataset.id);
     if (!shows) { this.say(way === 'up' ? 'No stack above to join' : 'No stack below to join'); return; }
     const state = this.state, was = state.levels.get(shows.open);
-    const item = this.messages().get(shows.act.id), before = this.actsOf(item.id).joined?.into ?? null;
-    this.act('stack.join', item, { into: shows.act.into });
+    // A dossier joins as a whole, as it is named and put aside (item 550): one whose first message the page has
+    // not loaded is one stack of its branches here, and the join is sent for that first message, its loaded
+    // messages shown at once where the stack it joins is, and back where they were at ⌘Z.
+    const from = side.stacks[side.index], position = positionOf(from), root = position && position.root_id !== from.id ? this.rootOf(from) : null;
+    const item = root?.item ?? this.messages().get(shows.act.id), before = this.actsOf(item.id, item).joined?.into ?? null;
+    const members = root ? [from.head, ...from.replies].map(each => [each.id, this.messages().get(each.id)?.stack_position ?? null]) : [];
+    const into = root && positionOf(joinOf(side.stacks, side.index, way));
+    this.act('stack.join', item, { into: shows.act.into }, into ? members.map(([id]) => [id, { stack_position: into }]) : []);
     this.remember(() => {
-      this.act('stack.join', item, { into: before });
+      this.act('stack.join', item, { into: before }, members.map(([id, was]) => [id, { stack_position: was }]));
       if (was === undefined) state.levels.delete(shows.open); else state.levels.set(shows.open, was);
       this.arrange(); this.focusOn(item.id);
     });
@@ -704,18 +768,22 @@ export class StackFeed {
     if (!position) return null;
     if (!this.messages().has(root) && !this.standIns.has(root)) this.standIns.set(root, { id: root, acts: {} });
     const item = this.messages().get(root) ?? this.standIns.get(root);
+    // A stand-in also holds the revisions its join and place are fenced on (item 550): a dossier's first message is
+    // joined and placed by it.
     item.acts = laterActs(item.acts, { aside: position.through, aside_revision: position.aside_revision,
-      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}) });
+      ...('name_revision' in position ? { name: position.name, name_revision: position.name_revision } : {}),
+      ...(!this.messages().has(root) && 'join_revision' in position ? { join_revision: position.join_revision } : {}),
+      ...(!this.messages().has(root) && 'place_revision' in position ? { placed: position.placed, place_revision: position.place_revision } : {}) });
     return { item, position };
   }
   // What the Reader's archive button offers for the dossier a message is in
   // (item 378): Move below More, or Bring back once it is there, the same act
   // as ⋯'s (setAside), with how many of the page's messages go with it. The
-  // act moves Core's whole dossier, which the page draws as more than one
-  // stack where its first message is not loaded (two replies to it are two
-  // stacks), so the count is of every stack drawn from that dossier. Null
-  // where ⋯ offers neither: no stack drawn holds the message, or Core sent no
-  // position for it.
+  // act moves Core's whole dossier, which the page draws as one stack, its
+  // first message loaded or not (item 550), and the older messages of it More
+  // messages showed where its button was as cards of their own, so the count is
+  // of every stack drawn from that dossier. Null where ⋯ offers neither: no
+  // stack drawn holds the message, or Core sent no position for it.
   asideOffer(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     const position = stack && positionOf(stack);
@@ -726,12 +794,14 @@ export class StackFeed {
   // The name of the dossier a message is in, as its tab shows it (item 561):
   // the name typed or minted, or, for a dossier nobody named, its first line.
   // Null for a message of its own nobody named (a stack of one, which shows no
-  // tab), and for one no stack drawn holds.
+  // tab), for one no stack drawn holds, and (item 550) for a dossier nobody
+  // named whose first message is not loaded, as no line on the page is its
+  // first message's (app.mjs, readerDossierName).
   dossierName(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     if (!stack) return null;
     const head = headOf(stack, { preview: messagePreview });
-    return head.typed?.text || (stack.replies.length ? head.name : '') || null;
+    return head.typed?.text || (stack.replies.length && stack.dossier === stack.head.id ? head.name : '') || null;
   }
   // The cover of the dossier a message is in, as its folder shows it (item 624, stackCover: from its place when its
   // first message is not loaded), with the topic its links go to and the dossier's first message (rootId); null for a

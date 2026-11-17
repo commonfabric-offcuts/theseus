@@ -336,7 +336,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   on a phone or with two fingers on a trackpad, to move it below More messages
   for you on every device. The menu offers Move below More and Bring back
   above More; ⌘Z undoes it. In the Reader the archive button beside the star
-  is the same act, labelled with how many messages move with it (the whole dossier's, every stack the page draws of it)
+  is the same act, labelled with how many messages move with it (the whole dossier's, one stack on the page whatever of it is loaded, and any older message of it Earlier messages showed where its button was, item 550)
   (item 378). Your own replies leave it there; a new reply from
   someone else brings it back. Other messages still swipe to fold individually.
   A dossier holding a message you starred stays above More for you (item

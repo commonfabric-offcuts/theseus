@@ -252,8 +252,11 @@ order and folds, and the one file that sets the look. In short:
 - Open, a dossier of more than seven messages shows its newest seven and one
   row for the rest, "8 earlier messages", which shows them all as rows in
   place for this visit, recording nothing (item 476).
-- A message whose parent is not loaded heads its own stack until the parent
-  loads.
+- The page groups messages by the dossier Core names for each, so one
+  dossier is one stack whatever of it is loaded (item 550,
+  docs/reply-stacks.md, "One dossier, one stack"): its name shows once.
+  Earlier messages shows what it loads where its button was, so no stack
+  higher up takes another head or another card.
 - The conversation page stacks its replies by the same rule. There a folded
   stack also keeps in view an item nothing has settled and an ask waiting
   on the reader, so a card's New tag and "Asks you" are never folded away

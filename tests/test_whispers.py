@@ -987,7 +987,7 @@ MESSAGE_READS = {
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
-                           "back, found by the same walk, read only to record their Bring back, never shown", 25),
+                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message", 27),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "

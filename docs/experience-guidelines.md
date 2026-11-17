@@ -204,6 +204,27 @@ page shorter under what is being read.
   stacks a message arriving in an open dossier hides nothing being read: …",
   the newest seven counted when the dossier opened, so a reply arriving never
   puts the card or row being read behind the earlier-messages row.
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks one dossier whose fork sits above the loaded page is one
+  stack …": a dossier the loaded page cuts above its fork is one stack, its
+  name once, at 320, 375 and 390 and a laptop, and loading the older
+  messages, the fork and then its first message, shows every message once,
+  each where the button was, and leaves the stack its head and its name once
+  ([reply-stacks.md](reply-stacks.md), "One dossier, one stack").
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks Earlier messages shows every older message it loads where
+  the button was, those of a dossier whose stack sits higher up too …": the
+  older replies of a dossier drawn higher up show below the last card shown,
+  newest first, whole, and neither that card nor the stack higher up moves or
+  takes another head, at 320, 375 and 390 by a finger and a laptop.
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks a dossier whose first message is above the page stays as
+  the reader left it …" and "… a dossier the reader placed, its first
+  message above the page, keeps its place …": Earlier messages loading an
+  older reply to a dossier's first message, then that first message, leaves
+  the dossier open under its head with the seven it showed and its
+  earlier-messages row as it was, at 320, 375 and 390 and a laptop, and where
+  the reader placed it, through a reload too.
 - `tests/new_line_native.mjs` (`native-colors`, `native-webkit-new-line`):
   "the room after the Notebook keeps the card being read in place as the New
   line fades or moves up, and goes as the person scrolls up", at a phone's

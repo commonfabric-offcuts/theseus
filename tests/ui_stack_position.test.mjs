@@ -77,6 +77,7 @@ test('an act that moves nothing about where a dossier sits reports no position c
   assert.deepEqual(views.messages.get('b').stack_position.at, { messages: 4, acts: 10 }, 'and it reaches every loaded message of the dossier');
   // The negative: each thing that places a dossier, changed by a later read, is a change.
   for (const [what, moved] of [['below', { below:false }], ['aside revision', { aside_revision:2 }], ['through', { through:6 }], ['first message', { root_id:'joined' }], ['dossier name (item 470)', { name:{ text:'Named', by:'owner', at_ms:1 }, name_revision:1 }],
+    ['reader\'s place for it (item 550)', { placed:2.5, place_revision:1 }],
     ['dossier cover (item 624)', { cover:{ stands:'Answered', waiting:[], payload:null, by:'agent', at_ms:1, owner:'owner' }, cover_revision:1 }]]) {
     const other = new TopicViews({ instanceId:'i', topicId:'t' });
     other.messages.set('a', { id:'a', stack_position: position(4,9) });
@@ -189,4 +190,17 @@ test('a star that brings its dossier back refreshes neighbours despite being the
     ? { instance_id:'i', topic_id:'t', version:4, next_cursor:null, items:[] }
     : { instance_id:'i', topic_id:'t', items:args.message_ids.map(message_id => ({ message_id, stack_position:position(4,4,{ through:null, below:false, aside_revision:2 }) })) }, () => true);
   assert.deepEqual(asked, [['neighbors', 4, true]], 'the star and Bring back moved the dossier: old neighbours cannot stand');
+});
+
+test('queue42 cover stars and both personal place shapes independently refresh partial dossier positions', () => {
+  for (const delta of [{cover_revision:2}, {starred:['older-unloaded']}, {place_revision:2}, {places:[{message_id:'old',placed:2,place_revision:1,at_ms:5}]}]) {
+    const views = new TopicViews({instanceId:'i',topicId:'t'});
+    const start = position(4,1,{cover_revision:1,starred:[],place_revision:1,places:[]});
+    for (const id of ['a','b']) views.messages.set(id,{id,stack_position:start});
+    const changed = {...start,...delta,at:{messages:4,acts:2}};
+    assert.equal(views.learnPositions([{message_id:'a',stack_position:changed}]),true,JSON.stringify(delta));
+    assert.deepEqual(views.messages.get('b').stack_position,changed,'all fragments take the combined position');
+    assert.equal(views.learnPositions([{message_id:'b',stack_position:start}]),false,'late input reverses none');
+    assert.equal(views.learnPositions([{message_id:'a',stack_position:{...changed,at:{messages:4,acts:3}}}]),false,'a watermark alone redraws nothing');
+  }
 });
