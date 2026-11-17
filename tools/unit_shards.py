@@ -35,9 +35,27 @@ def deal(files, minutes, total):
     return bins
 
 
+def test_files(root):
+    """Import-free inventory of unittest's files and package initializers.
+
+    Discovery enters only directories containing __init__.py, and accepts
+    test_*.py only when unittest considers the filename a module name.
+    Package hooks may choose their own suites; their initializer owns them.
+    """
+    def walk(directory):
+        for path in sorted(directory.iterdir()):
+            if path.is_file():
+                if path.match('test_*.py') and unittest.loader.VALID_MODULE_NAME.match(path.name):
+                    yield str(path.relative_to(root))
+            elif path.is_dir() and (path / '__init__.py').is_file():
+                yield str((path / '__init__.py').relative_to(root))
+                yield from walk(path)
+    return sorted(walk(root / 'tests'))
+
+
 def jobs(root, weights):
     config = weights['units']
-    files = sorted(str(p.relative_to(root)) for p in (root / 'tests').glob('test_*.py'))
+    files = test_files(root)
     bins = deal(files, config['python_minutes'], config['python_shards'])
     result = []
     for i, bucket in enumerate(bins, 1):
@@ -57,6 +75,25 @@ def leaves(suite):
             yield from leaves(test)
         else:
             yield test
+
+
+class FileLoader(unittest.TestLoader):
+    """Keep discovery's source path even for synthetic tests or custom ids."""
+
+    def __init__(self, root):
+        super().__init__()
+        self.root, self.owners = root.absolute(), {}
+
+    def _find_test_path(self, full_path, pattern, *args, **kwargs):
+        suite, recurse = super()._find_test_path(full_path, pattern, *args, **kwargs)
+        if suite is not None:
+            path = Path(full_path)
+            if path.is_dir():
+                path /= '__init__.py'
+            owner = str(path.relative_to(self.root))
+            for test in leaves(suite):
+                self.owners[id(test)] = owner
+        return suite, recurse
 
 
 class TimedResult(unittest.TextTestResult):
@@ -90,21 +127,15 @@ def run(root, shard=None, weights=None):
     began = time.monotonic()
     chosen = partition(shard) if shard else None
     sys.path.insert(0, str(root))
-    suite = unittest.TestLoader().discover(str(root / 'tests'), pattern='test_*.py')
+    loader = FileLoader(root)
+    suite = loader.discover(str(root / 'tests'), pattern='test_*.py')
     modules = collections.OrderedDict()
     for test in leaves(suite):
-        # Failed imports stay tests too; dropping one would turn an error green.
-        module = test.id().rsplit('.', 2)[0]
-        path = 'tests/' + module.replace('.', '/') + '.py'
+        path = loader.owners[id(test)]
         modules.setdefault(path, []).append(test)
-    files = sorted(str(p.relative_to(root)) for p in (root / 'tests').glob('test_*.py'))
+    files = test_files(root)
     bins = deal(files, (weights or {}).get('units', {}).get('python_minutes', {}), chosen[1] if chosen else 1)
     selected = set(bins[chosen[0] - 1]['files'] if chosen else files)
-    # Unittest's synthetic failed-import id is not a source path. Keep it in one
-    # shard so discovery can never silently lose its error.
-    unknown = set(modules) - set(files)
-    if unknown and (chosen is None or chosen[0] == 1):
-        selected |= unknown
     file_times = {}
     planned = unittest.TestSuite(TimedModule(tests, path, file_times) for path, tests in modules.items() if path in selected)
     if not planned.countTestCases():

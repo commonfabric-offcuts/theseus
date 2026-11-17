@@ -8,6 +8,18 @@ plan and avoids one alphabetical directory accumulating the expensive tests.
 Node units and deploy-refusals each have their own job. Browser and replay
 selection retain their existing rules.
 
+The planner and runner share an import-free inventory matching unittest's
+filesystem rules: valid `test_*.py` modules under `tests/`, descending only
+through packages with `__init__.py`. Package initializers are also planned
+files, since discovery can load tests or a `load_tests` hook from them.
+Non-package subdirectories and invalid module filenames are excluded. The
+runner assigns each discovered suite to the file or initializer that produced
+it, including failed imports, module skips and custom test identities. Hooks
+still control their suites as in ordinary unittest discovery; planned files
+suppressed by a hook contribute no tests. No unplanned synthetic filename is
+added to a shard's receipt. Package files use the same measured median as any
+new file, and their partition receipts combine with exact coverage checks.
+
 Each Python process writes its partition (index, total and files), count, wall
 time, file times and 25 slowest tests. Its unittest names and result lines stay
 compatible with the release evidence readers. The combined summary holds one

@@ -27089,6 +27089,34 @@
    "check": {
     "python": "test_tool_records.py"
    }
+  },
+  {
+   "item": 665,
+   "act": "Python package tests and initializers are included in the same file plan the runner reports",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "config = weights['units']\n    files = test_files(root)",
+     "config = weights['units']\n    files = sorted(str(p.relative_to(root)) for p in (root / 'tests').glob('test_*.py'))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Discovery errors, skips and custom identities belong to their discovered source file",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "path = loader.owners[id(test)]",
+     "path = 'tests/' + test.id().rsplit('.', 2)[0].replace('.', '/') + '.py'"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
   }
  ]
 }

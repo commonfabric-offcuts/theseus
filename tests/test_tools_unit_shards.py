@@ -186,6 +186,99 @@ class PythonReleaseAdapter(unittest.TestCase):
 
 
 class PythonFileShards(unittest.TestCase):
+    def package_run(self, additions, expected_tests, passed=True, invalid_name=False):
+        from tools import unit_shards
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            case = ('import unittest\nclass Case(unittest.TestCase):\n'
+                    ' def test_one(self): self.assertTrue(True)\n')
+            sources = {'tests/test_%s.py' % name: case for name in ('a', 'b', 'c', 'd')}
+            sources.update(additions)
+            # Neither a non-package subtree nor an invalid module name is discovered.
+            sources['tests/ignored/test_ignored.py'] = 'raise AssertionError("not a package")\n'
+            if invalid_name:
+                sources['tests/test_bad-name.py'] = 'raise AssertionError("not a module name")\n'
+            for path, source in sources.items():
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(source)
+            weights = {'units': {'python_minutes': {}, 'python_shards': 4, 'setup_minutes': 1,
+                                 'minutes': {'node-units': 1, 'deploy-refusals': 1}}}
+            plan = [job for job in unit_shards.jobs(root, weights) if job.get('python_shard')]
+
+            def run(shard=None):
+                answer = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/unit_shards.py'),
+                                         '--root', str(root)] + (['--shard', shard] if shard else []),
+                                        capture_output=True, text=True)
+                self.assertIn(answer.returncode, (0, 1), answer.stderr)
+                evidence = json.loads(answer.stdout.splitlines()[-1])
+                counts, good = release_check.python_counts(answer.stderr)
+                step = {'name': 'python-units', 'exit': answer.returncode,
+                        'passed': answer.returncode == 0 and good, 'counts': counts}
+                return evidence, step
+
+            whole, whole_step = run()
+            baseline = subprocess.run([sys.executable, '-I', '-m', 'unittest', 'discover',
+                                       '-s', str(root / 'tests'), '-p', 'test_*.py', '-v'],
+                                      capture_output=True, text=True)
+            self.assertEqual(whole_step['counts'], release_check.python_counts(baseline.stderr)[0])
+            self.assertEqual(whole_step['exit'], baseline.returncode)
+            self.assertEqual(whole['tests'], expected_tests)
+            self.assertEqual(whole_step['passed'], passed)
+            docs, receipts, names = [], [], []
+            for job in plan:
+                evidence, step = run(job['python_shard'])
+                docs.append({'steps': [step], 'python_shard': evidence['python_shard']})
+                receipts.append({'shard': {'name': job['name']}})
+                names += [row['test'] for row in evidence['timing']['slowest_tests']]
+            steps, required, jobs, missing_jobs, missing = release_check.combine_unit_results(docs, plan, receipts)
+            self.assertEqual(missing, [], (plan, docs))
+            self.assertEqual(missing_jobs, [])
+            self.assertEqual(required, ['python-units'])
+            self.assertEqual(len(steps), 1)
+            self.assertEqual(steps[0]['passed'], passed)
+            self.assertEqual(steps[0]['counts'], whole_step['counts'])
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(sorted(names), sorted(row['test'] for row in whole['timing']['slowest_tests']))
+            expected_files = sorted(path for path in sources
+                                    if path not in ('tests/ignored/test_ignored.py', 'tests/test_bad-name.py'))
+            files = [path for job in plan for path in job['files']]
+            self.assertEqual(sorted(files), expected_files)
+            self.assertEqual(len(files), len(set(files)))
+
+    def test_package_shards_match_discovery_and_combine(self):
+        self.package_run({'tests/pkg/__init__.py': '',
+                          'tests/pkg/test_nested.py': 'import unittest\nclass Nested(unittest.TestCase):\n'
+                                                      ' def test_nested(self): pass\n'}, 5)
+
+    def test_package_initializers_keep_their_discovery_owner(self):
+        case = ('import unittest\nclass Initializer(unittest.TestCase):\n'
+                ' def test_init(self): pass\n')
+        self.package_run({'tests/pkg/__init__.py': case,
+                          'tests/pkg/inner/__init__.py': '',
+                          'tests/pkg/inner/test_nested.py': case}, 6)
+
+    def test_package_hooks_keep_their_discovery_owner(self):
+        # A load_tests hook may return tests with an arbitrary id or module;
+        # they still belong to the file whose discovery produced that suite.
+        hook = ('import unittest\nclass Hook(unittest.TestCase):\n'
+                ' def test_hook(self): pass\n def id(self): return "custom-id"\n'
+                'def load_tests(loader, tests, pattern):\n'
+                ' return loader.loadTestsFromTestCase(Hook)\n')
+        self.package_run({'tests/pkg/__init__.py': hook,
+                          'tests/pkg/test_not_loaded.py': 'raise AssertionError("hook owns discovery")\n'}, 5)
+
+    def test_inventory_ignores_invalid_module_names(self):
+        self.package_run({}, 4, invalid_name=True)
+
+    def test_discovery_errors_and_skips_keep_their_planned_file(self):
+        for path in ('tests/pkg/test_nested.py', 'tests/pkg/__init__.py', 'tests/test_a.py'):
+            for source, passed in (('raise ImportError("broken import")\n', False),
+                                   ('import unittest\nraise unittest.SkipTest("module skipped")\n', True)):
+                with self.subTest(path=path, passed=passed):
+                    files = {'tests/pkg/__init__.py': '', path: source}
+                    self.package_run(files, 5 if path != 'tests/test_a.py' else 4, passed)
+
     def test_shards_equal_one_process_and_print_timings_on_pass_and_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -223,7 +316,7 @@ class PythonFileShards(unittest.TestCase):
         weights = json.loads((ROOT / '.github/check-weights.json').read_text())
         planned = unit_shards.jobs(ROOT, weights)
         python = [job for job in planned if job.get('python_shard')]
-        expected = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'tests').glob('test_*.py'))
+        expected = unit_shards.test_files(ROOT)
         files = [f for job in python for f in job['files']]
         self.assertEqual(sorted(files), expected)
         self.assertEqual(len(files), len(set(files)))
