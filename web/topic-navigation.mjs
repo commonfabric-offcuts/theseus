@@ -139,7 +139,7 @@ export class TopicPages {
     const items = [...this.loaded.values()].filter(item => item.id !== current?.id || here)
       .map(item => item.id === current?.id ? { ...item, ...current } : item);
     if (here && !this.loaded.has(current.id)) items.push(current);
-    return items.sort((a, b) => compare(key(a), key(b)));
+    return items.sort((a, b) => compare([doneFlag(a), a.activity_ms ?? 0, a.id], [doneFlag(b), b.activity_ms ?? 0, b.id]));
   }
   accept(answer, cursor = null) {
     if (cursor !== null && (!this.started || cursor !== this.next)) return false;
