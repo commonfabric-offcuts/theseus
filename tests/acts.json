@@ -28429,6 +28429,111 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
+  },
+  {
+   "item": 704,
+   "act": "A whisper keeps its existing dotted frame on standalone cards and dossier sheets without a solid spread rim",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-card*/border-style:dashed",
+     "/*704-card*/border-style:solid"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "The selection rectangle on a whisper card or folded row is dotted and remains visible",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-selection*/outline:2px dashed var(--focus)",
+     "/*704-selection*/outline:2px solid var(--focus)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-selected"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper drawn as a dossier header keeps a dotted frame on both folder and tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header*/outline:1px dashed var(--whisper-line)",
+     "/*704-header*/outline:1px solid var(--whisper-line)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A selected whisper dossier header has dotted selection on both folder and tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header-selection*/outline:2px dashed var(--focus)",
+     "/*704-header-selection*/outline:2px solid var(--focus)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-selected"
+   }
+  },
+  {
+   "item": 704,
+   "act": "Keyboard focus on a whispered composer source or quoted whisper writing stays visible and dotted",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-focus*/outline-style:dashed",
+     "/*704-focus*/outline-style:solid"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 704 composer source-keyboard"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper has no solid spread rim outside its dotted border",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:none",
+     "/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:0 0 0 2px #000"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 feed-rest"
+   }
+  },
+  {
+   "item": 704,
+   "act": "A whisper dossier selection never adds a solid rectangle under its nested tab",
+   "break": [
+    [
+     "web/aim.css",
+     "/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:none",
+     "/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:0 0 0 2px var(--stack-ring)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 704 dossier-header-selected"
+   }
   }
  ]
 }

@@ -16,7 +16,7 @@ const card = id => `#messages .message-card[data-id="${id}"]`;
 
 // A real on-disk source mutation, read by a fresh page. Every control gets new
 // fixture operation identities. Never count an arbitrary error as a killed mutant.
-async function withMutant(run, old, replacement) {
+async function withMutant(run, old, replacement, restart) {
   const original = await readFile(cssFile, 'utf8');
   if (!original.includes('/* Item 704: whisper frames */')) return; // the red-before commit
   assert.equal(original.split(old).length, 2, 'the mutation has exactly one source target');
@@ -24,15 +24,17 @@ async function withMutant(run, old, replacement) {
   await writeFile(cssFile, changed);
   try {
     assert.equal(await readFile(cssFile, 'utf8'), changed, 'mutation actually applied');
+    await restart();
     console.log('item 704 MUTANT applied', digest(original), digest(changed), old);
-    await assert.rejects(() => run('mutant'), /704 frame:/, 'the native frame assertion kills this mutation');
+    await assert.rejects(() => run('mutant-' + digest(changed).slice(0, 8)), /704 frame:/, 'the native frame assertion kills this mutation');
     console.log('item 704 MUTANT killed');
   } finally {
     await writeFile(cssFile, original);
     assert.equal(digest(await readFile(cssFile)), digest(original), 'original source bytes restored');
+    await restart();
     console.log('item 704 RESTORED', digest(original));
   }
-  await run('restored');
+  await run('restored-' + digest(changed).slice(0, 8));
   console.log('item 704 restored control PASS');
 }
 
@@ -58,6 +60,11 @@ function holdsFrame(f, selected, border = true) {
 }
 
 export async function whisperOutlineReading({ check, until, control, facts, shot, engine, observations }, h) {
+  const restart = async () => {
+    await control({ method: 'server_stop' });
+    const { origin } = await control({ method: 'server_start' });
+    assert.equal(origin, facts.origin, 'fixture restarts on its own origin');
+  };
   const branches = ['feed-rest', 'feed-selected', 'dossier-sheet-rest', 'dossier-sheet-selected', 'dossier-folded-selected', 'dossier-header-rest', 'dossier-header-selected'];
   for (const state of branches) await check(`reading item 704 ${state}: whispers keep dotted frames at 320 375 390 and laptop, light and dark`, async () => {
     const run = async (phase, devices = widths, schemes = themes) => {
@@ -70,11 +77,14 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
           ['root', { sender: 'person', whisper: true, addressees: ['aim-core'], body: 'Private dossier question.' }],
           ['reply', { sender: 'aim-core', whisper: true, reply_to: 'root', addressees: [facts.actor], body: 'Private dossier answer.' }],
         ]);
+        await control({ method: 'private_writing', operation_id: topic + '-other-note', topic_id: topic,
+          message_id: ids.reply, sender: 'aim-core', kind: 'note', body: 'Other actor private note sentinel704' });
         if (state.includes('folded')) await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.reply,
           operation_id: topic + '-fold', args: { folded: true } });
         const p = await h.open(topic, device, topic, ids.alone, '', '/?topic=' + topic,
           pg => pg.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] }));
         try {
+          assert.equal(digest(await p.evaluate('fetch("/aim.css").then(r=>r.text())')), digest(await readFile(cssFile)), 'page serves the exact source snapshot');
           const mobile = device !== 'laptop', selected = state.endsWith('selected');
           const root = `#messages .reply-stack[data-stack="${ids.root}"]`;
           const dossier = state.startsWith('dossier');
@@ -98,6 +108,7 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
             await until(async () => (await h.lit(p)).includes(id), '704 native selection lights this whisper');
           } else {
             // Moving to a different public card leaves this whisper unselected.
+            await h.centre(p, h.words(ids.public));
             await p.point(h.words(ids.public), 'move');
             await h.centre(p, target);
           }
@@ -105,9 +116,11 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
           const f = await p.evaluate(frameExpression(selector));
           const header = state.includes('header') ? await p.evaluate(frameExpression(card(id) + ' > .stack-head')) : null;
           await shot(p, `item-704-${state}-${device}-${theme}-${phase}`);
-          observations.push({ name: `item 704 ${state}`, phase, device, theme, frame: f, header });
+          const tabShadow = header ? await p.evaluate(`getComputedStyle(document.querySelector(${q(card(id) + ' .stack-name')}),'::before').boxShadow`) : null;
+          observations.push({ name: `item 704 ${state}`, phase, device, theme, frame: f, header, tabShadow });
           try {
             if (header) {
+              assert.equal(tabShadow, 'none', '704 frame: no nested solid tab rectangle');
               holdsFrame(f, selected, false); holdsFrame(header, selected, false);
               assert.equal(f.outline, 'dashed', '704 frame: folded dossier keeps whisper edge');
               assert.equal(header.outline, 'dashed', '704 frame: nested dossier tab keeps whisper edge');
@@ -116,6 +129,7 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
             const ordinary = await p.evaluate(frameExpression(card(ids.public)));
             assert.ok(ordinary.border.every(([style]) => style !== 'dashed'), 'public cards do not become whispers');
             assert.ok(!await p.evaluate('document.querySelector("#reader").open'), 'selection opens no composer');
+            assert.ok(!await p.evaluate('document.body.textContent.includes("Other actor private note sentinel704")'), "another actor's note never enters the page");
             assert.deepEqual(p.errors, []);
           } catch (error) { errors.push(`${device} ${theme}: ${error.message}`); }
         } finally { await p.close(); }
@@ -124,13 +138,26 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
     };
     await run('current');
     const header = state.includes('header'), selected = state.endsWith('selected');
-    const old = header ? '/*704-header*/outline:1px dashed var(--whisper-line)' : selected
+    const old = header ? selected ? '/*704-header-selection*/outline:2px dashed var(--focus)' : '/*704-header*/outline:1px dashed var(--whisper-line)' : selected
       ? '/*704-selection*/outline:2px dashed var(--focus)' : '/*704-card*/border-style:dashed';
-    await withMutant(phase => run(phase, ['laptop'], ['light']), old, old.replace('dashed', 'solid'));
+    await withMutant(phase => run(phase, ['laptop'], ['light']), old, old.replace('dashed', 'solid'), restart);
+    if (state === 'feed-rest') {
+      const rim = '/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:none';
+      await withMutant(phase => run(phase, ['laptop'], ['light']), rim, rim.replace('box-shadow:none', 'box-shadow:0 0 0 2px #000'), restart);
+    }
+    if (state === 'dossier-header-selected') {
+      const tab = '/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:none';
+      await withMutant(phase => run(phase, ['laptop'], ['light']), tab, tab.replace('--stack-tab-shadow:none', '--stack-tab-shadow:0 0 0 2px var(--stack-ring)'), restart);
+    }
   });
 }
 
 export async function whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close }) {
+  const restart = async () => {
+    await control({ method: 'server_stop' });
+    const { origin } = await control({ method: 'server_start' });
+    assert.equal(origin, facts.origin, 'fixture restarts on its own origin');
+  };
   // The source has no saving/refused/empty branch of its own: those belong to
   // the writing below it. Exercise the source while that writing is empty,
   // quoted, saving and refused, and focus by native Tab rather than .focus().
@@ -144,10 +171,13 @@ export async function whisperOutlineCompose({ check, control, facts, engine, pag
         await say('-join', { sender: facts.agent, join: true, body: 'Public source control.' });
         const root = await say('-root', { sender: 'person', whisper: true, addressees: [facts.agent], body: 'Exact private question.' });
         const reply = await say('-reply', { sender: facts.agent, whisper: true, reply_to: root, addressees: [facts.actor], body: 'Exact private answer.' });
+        await control({ method: 'private_writing', operation_id: topic + '-other-note', topic_id: topic,
+          message_id: reply, sender: facts.agent, kind: 'note', body: 'Other actor private note sentinel704' });
         const p = await page(shape, scheme, `/?topic=${topic}&message=${reply}`);
         let releaseSave, saveHeld;
         const interceptedSave = new Promise(resolve => { saveHeld = resolve; });
         try {
+          assert.equal(digest(await p.evaluate(() => fetch('/aim.css').then(r=>r.text()))), digest(await readFile(cssFile)), 'page serves the exact source snapshot');
           await until(p, () => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Exact private answer.'), '704 private source drawn');
           if (state === 'source-keyboard') {
             // Shift-Tab from the + reaches the source; tab until its actual
@@ -157,10 +187,11 @@ export async function whisperOutlineCompose({ check, control, facts, engine, pag
               await p.keyboard.press(engine === 'webkit' ? 'Shift+Alt+Tab' : 'Shift+Tab');
             assert.equal(await p.evaluate(() => document.activeElement.id), 'source-body', 'native Tab reaches the source');
           } else if (!state.startsWith('source')) {
-            // A tap on the passage lights the actual words. Return quotes
-            // them on laptop; the Quote pill is a native touch target on phone.
+            // A native press focuses the source. Select All chooses only
+            // its exact words; the Quote pill is tapped on the phone.
             const passage = '#source-body > span';
-            if (p.touch) await press(p, passage); else await p.locator(passage).first().hover();
+            await press(p, passage);
+            await p.keyboard.press('ControlOrMeta+A');
             await until(p, () => !document.querySelector('#quote-selection').hidden, '704 quote offered for lit passage');
             await press(p, '#quote-selection');
             await until(p, () => document.querySelector('#writing-body').value === '> Exact private answer.\n\n', '704 exact words quoted');
@@ -195,6 +226,17 @@ export async function whisperOutlineCompose({ check, control, facts, engine, pag
               assert.equal(await p.locator('#writing-body').inputValue(), '> Exact private answer.\n\n' + (state === 'quoted' ? '' : 'Exact continuation.'), 'exact quote and continuation survive');
               assert.match(await p.locator('#who-chip').textContent(), /Whisper to/);
             }
+            assert.ok(!await p.evaluate(() => document.body.textContent.includes('Other actor private note sentinel704')), "another actor's note never enters the composer");
+            if (state === 'quoted') {
+              await until(p, () => document.querySelector('#save-state').dataset.save === 'saved', 'exact quote saved in Core');
+              const saved = await control({ method: 'agent_view', actor: facts.actor, name: 'editor_state',
+                args: { source_ref: { kind: 'message', id: reply }, topic_id: topic } });
+              assert.equal(saved.draft.body, '> Exact private answer.\n\n');
+              assert.equal(saved.draft.whisper, true);
+              assert.deepEqual(saved.draft.addressees, [facts.agent]);
+              assert.deepEqual(saved.draft.quotes, [{ source: { kind: 'message', id: reply, revision: 1 }, excerpt: 'Exact private answer.' }]);
+            }
+            if (state === 'refused') assert.equal(await p.locator('#review-versions').isVisible(), true, 'refused save keeps its recovery control');
             assert.equal(await p.locator('#source-body > span').first().textContent(), 'Exact private answer.', 'source holds only its exact message words');
           } catch (error) { errors.push(`${shape} ${scheme}: ${error.message}`); }
         } finally {
@@ -209,6 +251,6 @@ export async function whisperOutlineCompose({ check, control, facts, engine, pag
     };
     await run('current');
     const old = state === 'source-keyboard' ? '/*704-focus*/outline-style:dashed' : '#source-body.whispering{border:1px dashed';
-    await withMutant(phase => run(phase, ['stacked'], ['light']), old, old.replace('dashed', 'solid'));
+    await withMutant(phase => run(phase, ['stacked'], ['light']), old, old.replace('dashed', 'solid'), restart);
   });
 }
