@@ -42,8 +42,16 @@ release 90, plus this piece's new checks). Adding files uses the measured
 median and deals them with the existing files; refresh the weights from the
 next run's `timing.files` rather than adjusting a cap. The runner is guarded
 with the other producer tools: an ordinary train cannot alter it without
-producer review. Python retains `run_step`'s per-process bytecode cache, also
+producer review, and the tool-record parser excludes it from ordinary tool
+ownership through its matching closed list. Python retains `run_step`'s per-process bytecode cache, also
 used by nested child checks; isolation flags must not discard it.
 
 The protected Verdict is expected to refuse this producer change until its
 source is reviewed; these receipts do not claim the old Verdict approved it.
+
+The second instrumented Python receipt ran 3,017 tests. It caught the matching
+tool-record exclusion missing from that closed list (corrected), plus the
+unchanged start-line racing-open case using real time to open a line and a
+fixed November 17 cut time. That race was reproduced on the release-90 source
+and now supplies the fixture's `T0` to both writers, retaining its concurrency
+assertions without a calendar deadline. No start-line product code changed.

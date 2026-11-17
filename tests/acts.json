@@ -27075,6 +27075,20 @@
    "check": {
     "python": "test_tools_train.py"
    }
+  },
+  {
+   "item": 665,
+   "act": "A Python producer runner cannot be claimed as an ordinary tool record",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "\"tools/train.py\", \"tools/unit_shards.py\")",
+     "\"tools/train.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
   }
  ]
 }
