@@ -22770,8 +22770,8 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases) == 1",
-     "\"green\": (not missing and combined[\"tree_unchanged\"]"
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"] and len(bases) == 1",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"]"
     ]
    ],
    "check": {
@@ -22882,7 +22882,7 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"]",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"]",
      "\"green\": (combined[\"tree_unchanged\"]"
     ]
    ],
@@ -22896,7 +22896,7 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases)",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"] and len(bases)",
      "\"green\": (not missing and len(bases)"
     ]
    ],
