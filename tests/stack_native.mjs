@@ -7125,9 +7125,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // "In the browser"). The shape a person met: the one message waiting for them is 19 replies down a dossier
   // whose first message is far up the topic, with 118 messages after it, so it is neither on the topic's first
   // page nor among the dossier's newest seven, but behind its earlier-messages row. One press on the topic's
-  // count in the outline, from another topic, opens the topic there: the dossier open, its earlier row expanded
-  // as far as the message, the message whole on screen, uncovered, with the keys on it, every message of the
-  // dossier drawn once across the pages read in, and the phone's drawer closed. Read on screen, Core settles it
+  // count in the outline, from another topic, opens the topic there: the dossier whole from its first message and
+  // open, its earlier row expanded as far as the message (the others before it drawn as its rows), the message
+  // whole on screen, uncovered, with the keys on it, every message drawn once across the pages read in, and the
+  // phone's drawer closed. Read on screen, Core settles it
   // and the count goes. A topic with nothing unread, its only message to someone else by name (another reader's
   // pending delivery), shows no count. At a laptop's width and at 390, 375 and 320 on a phone, light and dark; on
   // a phone the count answers a finger 44px each way. Pressed on the open topic's own row, it lands there in place
@@ -7135,18 +7136,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // and the other devices still run, so each width has its picture.
   await check('reading unread count one press lands on the oldest unread message deep in a dossier behind its earlier row, on screen, and the count goes once it is read', async () => {
     const countOf = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
-    const landed = (p, topic, target) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))});
+    const landed = (p, topic, target, root) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))});
       const here=new URL(location.href).searchParams.get('topic'),drawer=document.getElementById('rail').classList.contains('open');if(!c)return {here,drawer,card:false};
       const s=c.closest('.reply-stack'),w=c.querySelector(':scope > .message-preview'),b=c.getBoundingClientRect(),r=w&&w.getClientRects().length?w.getBoundingClientRect():null;
       const plain=Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2)));
       const ids=[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>e.dataset.id),twice=ids.filter((id,i)=>ids.indexOf(id)!==i).length;
-      return {here,drawer,card:true,fold:s?.dataset.fold??null,whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=0&&b.bottom<=innerHeight,plain,focused:document.activeElement===c,twice,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
-    const want = topic => ({ here: topic, drawer: false, card: true, fold: 'open', whole: true, onScreen: true, plain: true, focused: true, twice: 0, sideways: false });
+      return {here,drawer,card:true,dossier:s?.dataset.stack===${JSON.stringify(root)},fold:s?.dataset.fold??null,rows:Boolean(s?.querySelector('.message-card[data-earlier="true"]')),whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=0&&b.bottom<=innerHeight,plain,focused:document.activeElement===c,twice,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const want = topic => ({ here: topic, drawer: false, card: true, dossier: true, fold: 'open', rows: true, whole: true, onScreen: true, plain: true, focused: true, twice: 0, sideways: false });
     // Once the press has opened the topic: its message is read in (the pages before it, however many), then it is shown.
-    const lands = async (p, device, topic, target) => {
+    const lands = async (p, device, topic, { target, root }) => {
       await until(() => p.evaluate(`new URL(location.href).searchParams.get('topic')===${JSON.stringify(topic)}&&document.body.dataset.ready==='true'`), `${device}: the press opens the topic`);
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))}))`), `${device}: the waiting message is read in, however far up the topic it is`);
-      await becomes(() => landed(p, topic, target), want(topic), `${device}: one press opens the topic on the waiting message, plainly on screen in its open dossier`);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(root))}))`), `${device}: and its dossier's first message, further up still`);
+      await becomes(() => landed(p, topic, target, root), want(topic), `${device}: one press opens the topic on the waiting message, plainly on screen in its open dossier`);
     };
     const missed = [];
     for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
@@ -7165,16 +7167,16 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-count-${device}-${theme}`); }
       await dossierTheme(p, 'light');
       if (touch) await tap(p, countOf(deep)); else await p.point(countOf(deep));
-      try { await lands(p, device, deep, ids.target); }
+      try { await lands(p, device, deep, ids); }
       catch (error) {
         // Kept as the press left it, in both themes, and the next device goes on.
         for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-landed-${device}-${theme}`); }
         missed.push(`${device}: ${error.message}`); await p.close(); continue;
       }
-      observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target) });
+      observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target, ids.root) });
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        assert.deepEqual(await landed(p, deep, ids.target), want(deep), `${device} ${theme}: still there`);
+        assert.deepEqual(await landed(p, deep, ids.target, ids.root), want(deep), `${device} ${theme}: still there`);
         await shot(p, `unread-landed-${device}-${theme}`);
       }
       await dossierTheme(p, 'light');
@@ -7196,7 +7198,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(own))})?.textContent==='1'`), 'the open topic counts its one waiting message');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.target))}))`), false, 'opened at its newest, the waiting message is not on the page');
     await p.point(countOf(own));
-    await lands(p, 'in place', own, ids.target);
+    await lands(p, 'in place', own, ids);
     assert.ok(made.length === 1);
     assert.deepEqual(p.errors, []); await p.close();
   });

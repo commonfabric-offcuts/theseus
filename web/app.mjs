@@ -1667,11 +1667,11 @@ function listPage(kind, more = false) {
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
 }
-// Older pages, one after another, until the message wanted() names ({seq},
+// Older pages, one after another, until the message wanted() names ({id},
 // or none) is loaded or no older page is left; its entry, or null. A read
 // that moves nothing on (a refusal, or a review pending) ends it.
 async function loadUntil(wanted) {
-  const loaded = () => entries($('messages')).find(child => wanted() && Number(child.dataset.seq) === wanted().seq) ?? null;
+  const loaded = () => entries($('messages')).find(child => wanted() && child.dataset.id === wanted().id) ?? null;
   while (wanted() && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
@@ -1687,14 +1687,20 @@ async function loadToUnread() {
 }
 // What a topic's unread count leads to (item 613, docs/attention.md): the
 // oldest message still unread for the reader, as Core finds it by the rule
-// the count keeps, read in however far back it is; its dossier open, its
-// earlier-messages row expanded as far as it, the message whole, brought into
-// view and given the focus, so it is plainly on the screen. Reading it there
-// settles it, as any card read on screen, and the count goes with it.
+// the count keeps, read in however far back it is, and on to its dossier's
+// first message (its stack_position's root), so the dossier is drawn whole
+// rather than from the message; its dossier open, its earlier-messages row
+// expanded as far as it, the message whole, brought into view and given the
+// focus, so it is plainly on the screen. Reading it there settles it, as any
+// card read on screen, and the count goes with it.
 async function landOnUnread() {
   // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
   if (shell.drawer?.isOpen()) shell.drawer.close();
-  const entry = await loadUntil(() => views.oldestUnread);
+  const found = await loadUntil(() => views.oldestUnread);
+  if (!found) return;
+  const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
+  if (root) await loadUntil(() => ({ id: root }));
+  const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return;
   reveal(entry, { full: true, open: true });
   const card = opened(entry);

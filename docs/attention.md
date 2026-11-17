@@ -644,10 +644,11 @@ in the outline, the outcome page's topic list or the right rail's Build rows,
 opens the topic at the oldest message still unread for the reader
 (`?topic=T&at=unread`, docs/links.md), where the rest of the row opens the topic
 as before. The page reads in older pages of the topic as far as that message,
-however far up it is, opens the dossier it is in, expands the dossier's earlier
-row as far as it (docs/reply-stacks.md, "Earlier messages"), and brings it whole
-into view with the keys on it; on a phone the drawer closes first. Reading it on
-screen settles it, and the count goes. The count's tooltip says "Show the oldest
+however far up it is, and on to the first message of the dossier it is in, so
+the dossier is drawn whole rather than from the message; it opens the dossier,
+expands its earlier row as far as the message (docs/reply-stacks.md, "Earlier
+messages"), and brings it whole into view with the keys on it; on a phone the
+drawer closes first. Reading it on screen settles it, and the count goes. The count's tooltip says "Show the oldest
 unread message", and on a phone it answers a finger 44px each way. The count and
 the message it leads to are one rule, written once and read by both: a delivery
 pending in one of the reader's active groups (`SUBSCRIBED` and `ADDRESSED` in

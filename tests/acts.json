@@ -26356,6 +26356,21 @@
   },
   {
    "item": 613,
+   "act": "Landing on the oldest unread message reads in its dossier's first message too, so the dossier is drawn whole and the message shows in its place behind the earlier row, expanded as far as it",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (root) await loadUntil(() => ({ id: root }));\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
    "act": "Landing on a message draws its dossier open, whatever its level, so its earlier row expands as far as the message",
    "break": [
     [
