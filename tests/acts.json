@@ -27047,6 +27047,34 @@
    "check": {
     "python": "test_tools_unit_shards.py"
    }
+  },
+  {
+   "item": 665,
+   "act": "Each Python process retains its own bytecode cache for nested child checks",
+   "break": [
+    [
+     "tools/release_check.py",
+     "[python, str(REPO / \"tools/unit_shards.py\")",
+     "[python, \"-I\", str(REPO / \"tools/unit_shards.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "The Python runner is guarded as a producer tool in a judged-first train",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/release_check.py\", \"tools/unit_shards.py\",",
+     "\"tools/release_check.py\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
   }
  ]
 }

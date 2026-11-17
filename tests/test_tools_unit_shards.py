@@ -142,6 +142,23 @@ class UnitJobSummary(unittest.TestCase):
 
 
 class PythonReleaseAdapter(unittest.TestCase):
+    def test_runner_keeps_each_process_bytecode_prefix(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'repo'
+            (root / 'tests').mkdir(parents=True)
+            (root / 'tests/test_bytecode.py').write_text(
+                'import sys, unittest\nclass Case(unittest.TestCase):\n'
+                ' def test_cache(self): self.assertIsNotNone(sys.pycache_prefix)\n')
+            out = Path(tmp) / 'out'
+            sha = 'a' * 40
+            with mock.patch.object(release_check, 'preflight', return_value=sha), \
+                    mock.patch.object(release_check, 'tools_of', return_value={}), \
+                    mock.patch.object(release_check, 'tree', return_value=(sha, '')):
+                summary = release_check.check(root, out, '/chrome', sys.executable, '/node', only=['python-units'])
+            self.assertTrue(summary['passed'], (out / 'python-units.log').read_text())
+            self.assertTrue(summary['steps'][0]['timing']['slowest_tests'])
+
     def test_release_summary_keeps_partition_wall_time_and_slowest_tests(self):
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:

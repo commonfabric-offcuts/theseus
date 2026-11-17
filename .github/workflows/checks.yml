@@ -97,7 +97,8 @@ jobs:
     runs-on: macos-26
     # Browser/replay limits retain their existing measurements. Unit limits are
     # ceil((measured file/step minutes + measured setup) * 1.5), from
-    # .github/check-weights.json: controls 44044963750/44045149108 and train 30.
+    # .github/check-weights.json: file timings 44112970996, Node/setup
+    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false

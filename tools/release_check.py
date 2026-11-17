@@ -723,7 +723,7 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
 
         def one(name):
             if name == "python-units":
-                result = run_step(name, [python, "-I", str(REPO / "tools/unit_shards.py"), "--root", str(root)]
+                result = run_step(name, [python, str(REPO / "tools/unit_shards.py"), "--root", str(root)]
                                   + (["--shard", python_shard] if python_shard else []), root, out, python_counts, "unittest")
                 for line in Path(result['log']).read_text(errors='replace').splitlines():
                     if line.startswith('{"unit_shards": 1,'):

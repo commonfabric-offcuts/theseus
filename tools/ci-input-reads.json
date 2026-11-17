@@ -3806,6 +3806,10 @@
         ".github/check-weights.json"
       ],
       "scope": "repository"
+    },
+    "8835cba22c6509353b92cb2d6c41bedc71dbdc4f5822056845498ee0b5618454": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/test_tools_wake_replay.py": {

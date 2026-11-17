@@ -17,11 +17,33 @@ or required step, including a job cancelled before publishing a summary.
 Missing work never becomes a passed result or a quarantine success. The deploy
 continues to read the ordinary required steps and refuses incomplete Python.
 
-The historical controls measured Python at 42m and train 33 at 43m39s. Their
-captured unittest logs have no individual timings. The first instrumented
-hosted run supplies file measurements; a subsequent train checks that every
-shard finishes inside about 20 minutes and that their counts total the same
-suite as one process (3,005 tests at release 90, plus new checks). Timeouts are
-rounded-up measured minutes plus half; their sources are recorded with them.
+The historical controls measured Python at 42m and train 33 at 43m39s; train
+30's unittest time was 29.4m. Their captured logs have no individual timings.
+Pool run [44112970996](https://github.com/commonfabric-offcuts/theseus/actions/runs/44112970996)
+at snapshot `4345c9b16d5283e29820273b2603c0553591d4ba` measured every file in
+43m37s. Its 3,016 tests were the base's 3,005 plus 11 new checks; three reds
+exposed the new runner's lost bytecode prefix and its missing train guard,
+both corrected before handoff. Four longest-first bins now measure 11.58,
+10.67, 10.67 and 10.67 minutes. The slowest file, `test_tools_start_line.py`,
+runs alone; `test_codex_host.py` is the next largest at 7.36 minutes.
+
+The timeout is `ceil((measured minutes + 0.902 setup minutes) * 1.5)` for each
+unit job: Python 19/18/18/18 minutes, Node 5, deploy-refusals 3. Node's 124.887s
+and the 54.113s setup/upload overhead come from pool run
+[44112985174](https://github.com/commonfabric-offcuts/theseus/actions/runs/44112985174).
+Deploy-refusals' 65.290s comes from train 30's completed step in run
+[44007172971](https://github.com/commonfabric-offcuts/theseus/actions/runs/44007172971);
+the later control was cancelled during it. Exact intervals and file weights
+are recorded beside these settings in `.github/check-weights.json`.
+
+A subsequent train checks that every shard finishes inside about 20 minutes
+and that their counts total the same suite as one process (3,005 tests at
+release 90, plus this piece's new checks). Adding files uses the measured
+median and deals them with the existing files; refresh the weights from the
+next run's `timing.files` rather than adjusting a cap. The runner is guarded
+with the other producer tools: an ordinary train cannot alter it without
+producer review. Python retains `run_step`'s per-process bytecode cache, also
+used by nested child checks; isolation flags must not discard it.
+
 The protected Verdict is expected to refuse this producer change until its
 source is reviewed; these receipts do not claim the old Verdict approved it.
