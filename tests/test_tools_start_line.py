@@ -274,8 +274,9 @@ class OpenCase(StartLineCase):
         before = self.count()
         racer = self.writer.parent / "racer.py"
         racer.write_text(RACING_WRITER)
+        # The winning nested open uses the same fixed time as cut_ok.
         inner = [sys.executable, "-I", "-B", str(TOOL), "open", "w1", str(number), "--cli", str(CLI), "--profile", str(self.profiles["agent-a"]),
-                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--", sys.executable, "-I", "-c",
+                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--now", T0, "--", sys.executable, "-I", "-c",
                  "import sys; sys.stdin.read(); sys.stdout.write('The racing line.')"]
         code, result, err = self.tool("open", "w1", str(number), "--topic", "t1", "--surface", str(self.surface),
                                       "--", sys.executable, "-I", str(racer), *inner)
