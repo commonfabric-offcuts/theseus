@@ -26088,6 +26088,36 @@
     "native": "reading",
     "case": "reading stacks star refused by Core"
    }
+  },
+  {
+   "item": 635,
+   "act": "The Reader's star keeps its glyph's text when painted again, so a press a repaint lands during is taken",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (button.textContent !== glyph) button.textContent = glyph;",
+     "  button.textContent = glyph;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the Reader's star and archive button take a press that a repaint lands during"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The Reader's archive button keeps its number's text when painted again, so a press a repaint lands during is taken",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (count.textContent !== shown) count.textContent = shown;",
+     "  count.textContent = shown;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the Reader's star and archive button take a press that a repaint lands during"
+   }
   }
  ]
 }

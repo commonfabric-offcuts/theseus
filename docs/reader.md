@@ -32,6 +32,13 @@ message too: the page reads its acts with the loaded messages', and again
 whenever they change (`TopicViews.showAlone`), so a star made on another
 device shows there as well.
 
+Painted again, the star's glyph and the archive button's number below keep
+their text where it has not changed (`paintReaderStar`, `paintReaderAside`):
+Safari sends no click for a press whose text left the page before the
+release, and a repaint held for a press (`press-hold.mjs`) runs at that
+release, so a press on either while the page read something was lost there
+(item 635).
+
 Beside the star, an archive glyph with a number is Move below More for the
 message's whole dossier (item 378): the same act as the card's ⋯ Move below
 More (`StackFeed.setAside`), and the number is how many messages move below
