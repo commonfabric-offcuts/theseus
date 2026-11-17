@@ -26706,7 +26706,7 @@
   },
   {
    "item": 473,
-   "act": "On a phone the title bar keeps only ⋯'s width beside the tab, at rest as once selected, so the tab's name is not cut back for the two glyphs folded into ⋯",
+   "act": "On a phone the title bar's room is ⋯'s alone, so ⋯ reaches past the folder's edge into the page's margin only as far as one glyph needs, inside the window",
    "break": [
     [
      "web/stack-look.css",
