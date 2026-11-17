@@ -7362,4 +7362,116 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
+
+  // Item 624, the Reader's cover line (docs/reader.md): one quiet line above the message, and a press opens the whole
+  // sheet, for the message and the dossier it was pressed on. The Reader opened on another dossier's message, on the
+  // same message again, or stepped to the next one shows the line closed, the message right under it; so it does when
+  // the open sheet's cover goes and comes back, or its message joins another dossier. A cover rewritten while its sheet
+  // is open keeps it open, saying the new words. What the Reader shows of it: shown, open, the line's words, the sheet,
+  // where it stands on the sheet, the message's first line inside the window, and nothing sideways.
+  const readerCoverAt = p => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover'),s=document.querySelector('#source-body'),m=d.querySelector('summary');
+    const shown=!d.hidden&&d.getClientRects().length>0&&d.getBoundingClientRect().height>0,pill=m.querySelector('.row-pill'),words=m.querySelector('.reader-cover-words');
+    return {shown,open:d.open,line:shown?m.textContent:null,sheet:Boolean(d.querySelector('.dossier-cover')?.getClientRects().length),
+      stands:d.querySelector('.dossier-cover .cover-stands')?.textContent??null,inView:s.getBoundingClientRect().top<innerHeight-24,
+      oneLine:!shown||(words?.getClientRects().length===1&&(!pill||!pill.getClientRects().length||pill.getBoundingClientRect().right<=m.getBoundingClientRect().right+0.5)),
+      sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  await check('reading covers the Reader\'s cover sheet opens only where it is pressed: another dossier\'s message, the same message opened again, the next message, a cover that goes and comes back and a message joined to another dossier each show the line closed, the message under it; a cover rewritten while open stays open; on a laptop and at 320, 375 and 390', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      const at = `${device} ${width}`, topic = `cover-sheet-${device}-${width}`, ids = await coverSeed(topic);
+      const write = async (id, args, op) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: id, operation_id: `${topic}-${op}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await write(ids.bare, { stands: 'The other dossier waits on the road report', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b');
+      const p = await open(topic, device, topic, ids.lone);
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+      const look = async () => { const c = await readerCoverAt(p); return { shown: c.shown, open: c.open, line: c.line, sheet: c.sheet, inView: c.inView, oneLine: c.oneLine, sideways: c.sideways }; };
+      const closed = line => ({ shown: true, open: false, line, sheet: false, inView: true, oneLine: true, sideways: false });
+      const opens = async message => {
+        await press(p, device, '#reader-cover > summary');
+        await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet]; }, [true, true], `${at}: ${message}: pressed, the line opens to the sheet`);
+      };
+      const A = 'Cover Answered again: the second weekend payload proposed';
+      // Dossier A's sheet, opened on its note and rewritten by its agent while open: it stays open, saying the new words.
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed('Cover Answered: the second weekend, with the lake open payload proposed'), `${at}: the line, closed`);
+      await opens('A');
+      await write(ids.root, { stands: 'Answered again: the second weekend' }, 'again');
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet, c.stands, c.line]; }, [true, true, 'Answered again: the second weekend', 'Cover Answered again: the second weekend'],
+        `${at}: a rewrite keeps the sheet open, saying the new words`);
+      // The same message opened again: the line, closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed(A), `${at}: the same message opened again shows the line closed`);
+      // Another dossier's message, after A's sheet was open: B's own line, closed, the message right under it.
+      await opens('A again');
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await becomes(look, closed('Cover The other dossier waits on the road report payload proposed'), `${at}: another dossier's message shows its own line, closed, the message under it`);
+      if (width !== 375) for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-sheet-next-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Stepped to the next message above, with B's sheet open: that message's line, closed.
+      await opens('B');
+      const was = await readerOn(p), step = stepButton(device, 'above');
+      if (device === 'phone') await p.evaluate(`document.querySelector(${JSON.stringify(step)}).scrollIntoView({block:'center'})`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(step)}).disabled`), `${at}: the step above can be pressed`);
+      await press(p, device, step);
+      await until(async () => ![null, was].includes(await readerOn(p)), `${at}: the Reader steps to another message`);
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.shown, c.open, c.sheet]; }, [true, false, false], `${at}: the next message's line is closed`);
+      // Back on B's reply with its sheet open, its cover cleared and written again: the line comes back closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await opens('B again');
+      await write(ids.bare, { stands: '', payload: null }, 'b-clear');
+      await becomes(async () => (await readerCoverAt(p)).shown, false, `${at}: a cleared cover takes the line away`);
+      await write(ids.bare, { stands: 'The other dossier stands again', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b-again');
+      await becomes(look, closed('Cover The other dossier stands again payload proposed'), `${at}: written again, the line comes back closed`);
+      // B's sheet open, and B joined into A: the message reads A's line, closed.
+      await opens('B written again');
+      const joined = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.bare, operation_id: `${topic}-join`, args: { into: ids.root } });
+      assert.equal(joined.status, 'committed', JSON.stringify(joined));
+      await becomes(look, closed(A), `${at}: joined into A, the message shows A's line, closed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624: the open Reader's cover line follows the cover, as the page's stacks do (docs/reader.md). An agent's
+  // rewrite, and the person's 👍 on the payload's message given and taken back (from another of their devices), each
+  // reach the line with the Reader open on the payload's message; Core holds each first. On a laptop, and on a phone at
+  // 320, 375 and 390, light and dark.
+  await check('reading covers the open Reader\'s cover line follows the cover: an agent\'s rewrite, and the person\'s 👍 on the payload given and taken back, reach it with the Reader open', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-follows-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const line = async () => (await readerCoverAt(p)).line;
+      const thumb = async (thumbed, op) => {
+        const answer = await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.answer, thumbed, operation_id: `${topic}-${op}` });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await openReader(p, device, ids.answer, 'The second weekend');
+      await becomes(line, 'Cover Answered: the second weekend, with the lake open payload proposed', `${device}: the line`);
+      const rewrite = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, operation_id: `${topic}-again`, args: { stands: 'Booked for the second weekend' } });
+      assert.equal(rewrite.status, 'committed', JSON.stringify(rewrite));
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: an agent's rewrite reaches the open Reader's line`);
+      await thumb(true, 'thumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done?.how === 'thumb', `${device}: Core holds it done by the person's 👍`);
+      await until(async () => /^Cover Booked for the second weekend done · your 👍 at \d{1,2}:\d\d [AP]M$/.test(await line() ?? ''), `${device}: the person's 👍 reaches the open Reader's line as done`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const c = await readerCoverAt(p);
+          assert.deepEqual([c.shown, c.open, c.inView, c.oneLine, c.sideways], [true, false, true, true, false], `${device} ${width} ${theme}: the done line on one row, the message under it: ${JSON.stringify(c)}`);
+          if (width !== 375) await shot(p, `cover-follows-done-${device}-${width}-${theme}`);
+        }
+      }
+      await dossierTheme(p, 'light');
+      await thumb(false, 'unthumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done === null, `${device}: taken back, Core holds it proposed`);
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: taken back, the open Reader's line says proposed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
 }

@@ -12,6 +12,7 @@ outsider is on no team, and other-reader is a person outside the outcome. The wo
 """
 
 import json
+from unittest import mock
 
 from test_agent_verbs import AgentVerbCase
 
@@ -181,6 +182,44 @@ class DoneCase(CoverCase):
         self.committed(self.thumb(answer))
         self.committed(self.thumb(answer, on=False, revision=1))
         self.assertEqual(self.shown(root)["payload"]["done"], done, "the named word stands")
+
+    def thumb_at(self, message, ms, **more):
+        """The owner's 👍 on message, given at ms, so which came first, it or their reply, is the fixture's and not the clock's."""
+        with mock.patch("aim_next.reactions._now_ms", return_value=ms):
+            return self.thumb(message, **more)
+
+    def test_a_thumb_given_before_the_named_word_is_the_done_that_counts(self):
+        """docs/dossier-covers.md, Done: "If both happened, the earlier one counts." The owner's 👍 came first, then their
+        reply, which the writer names: Done stays the 👍, at its time."""
+        root, answer, _ = self.dossier()
+        self.committed(self.cover(root, {"payload": self.payload(answer)}))
+        self.committed(self.thumb_at(answer, 1000))
+        word = self.post("Good, the second weekend it is.", reply_to=answer)
+        sent = self.sql("SELECT sent_ms FROM messages WHERE id=?", (word,))[0][0]
+        named = self.committed(self.cover(root, {"payload": self.payload(answer, done_by=word)}, revision=2))
+        thumb = {"how": "thumb", "by": "owner", "at_ms": 1000}
+        self.assertEqual(named["cover"]["payload"]["done"], thumb, "the 👍 came first")
+        self.assertEqual(self.shown(root, "agent-b")["payload"]["done"], thumb)
+        # Taken back, the 👍 leaves the named word, at its own time.
+        self.committed(self.thumb(answer, on=False, revision=1))
+        done = self.shown(root)["payload"]["done"]
+        self.assertEqual((done["how"], done["at_ms"], done["message_id"]), ("word", sent, word))
+
+    def test_a_word_named_before_the_thumb_is_the_done_that_counts_and_the_later_thumb_records_nothing(self):
+        """The other order: the owner's named reply came first; their 👍 a minute after it changes nothing, and no row is
+        kept for it."""
+        root, answer, _ = self.dossier()
+        word = self.post("Good, the second weekend it is.", reply_to=answer)
+        sent = self.sql("SELECT sent_ms FROM messages WHERE id=?", (word,))[0][0]
+        self.committed(self.cover(root, {"payload": self.payload(answer, done_by=word)}))
+        rows = len(self.rows())
+        self.committed(self.thumb_at(answer, sent + 60000))
+        done = self.shown(root, "agent-b")["payload"]["done"]
+        self.assertEqual((done["how"], done["at_ms"], done["message_id"]), ("word", sent, word), "the named word came first")
+        self.assertEqual(len(self.rows()), rows, "a later 👍 settles nothing new")
+        # A write after it reads the same: the word is still the earlier.
+        rewritten = self.committed(self.cover(root, {"stands": "Booked"}, revision=1))
+        self.assertEqual((rewritten["cover"]["payload"]["done"]["how"], rewritten["cover"]["payload"]["done"]["at_ms"]), ("word", sent))
 
     def test_done_by_names_the_owners_own_reply_to_the_payloads_message_or_the_write_is_refused(self):
         root, answer, note = self.dossier()
@@ -394,7 +433,46 @@ class VerbCase(CoverCase):
         self.assertIn("--default", err)
         code, _, err = self.run_cli("cover", root, "--payload", "No message")
         self.assertEqual(code, 2)
+        self.assertIn("--payload TEXT --from MESSAGE", err)
+        # A payload's other options name no payload on their own: each is refused, never read as a plain read.
+        for alone in (["--from", answer], ["--link", "https://example.test/cabin"], ["--kind", "decision"]):
+            with self.subTest(alone=alone):
+                code, out, err = self.run_cli("cover", root, *alone)
+                self.assertEqual((code, out), (2, ""), out)
+                self.assertIn("--payload TEXT --from MESSAGE", err)
+        code, out, err = self.run_cli("cover", root, "--no-payload", "--link", "https://example.test/cabin")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("--no-payload clears the payload", err)
+        code, out, err = self.run_cli("cover", root, "--no-waits", "--waits", "Book it?", "--default", "booked")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("--no-waits clears", err)
         self.assertEqual(len(self.rows()), 1)
+        # The same words again write nothing, and say so; "" clears where it stands.
+        code, out, err = self.run_cli("cover", root, "--stands", "First")
+        self.assertEqual((code, out.splitlines()[0]), (0, "no change to the cover of the dossier of %s" % root), err)
+        self.assertEqual(len(self.rows()), 1)
+        code, out, err = self.run_cli("cover", root, "--stands", "")
+        self.assertEqual((code, out.splitlines()), (0, ["wrote the cover of the dossier of %s" % root, "no cover on the dossier of %s (revision 2)" % root]), err)
+        self.assertIsNone(self.shown(root))
+
+    def test_the_verb_writes_the_payloads_link_and_kind_and_a_payload_without_them_has_neither(self):
+        root, answer, _ = self.dossier()
+        seq = self.sql("SELECT seq FROM messages WHERE id=?", (answer,))[0][0]
+        code, out, err = self.run_cli("cover", answer, "--payload", "Book the second weekend", "--from", answer,
+                                      "--link", "https://example.test/cabin", "--kind", "decision")
+        self.assertEqual((code, err), (0, ""), out)
+        payload = self.shown(root)["payload"]
+        self.assertEqual((payload["text"], payload["message_id"], payload["link"], payload["kind"]),
+                         ("Book the second weekend", answer, "https://example.test/cabin", "decision"))
+        self.assertIn("  payload (decision): Book the second weekend  [%s #%s]  https://example.test/cabin" % (answer, seq), out.splitlines())
+        code, out, err = self.run_cli("cover", root)
+        self.assertIn("  payload (decision): Book the second weekend  [%s #%s]  https://example.test/cabin" % (answer, seq), out.splitlines())
+        # A payload written again with neither option carries neither.
+        code, out, err = self.run_cli("cover", root, "--payload", "Book the second weekend", "--from", answer)
+        self.assertEqual((code, err), (0, ""), out)
+        payload = self.shown(root)["payload"]
+        self.assertEqual((payload["link"], payload["kind"]), (None, None))
+        self.assertIn("  payload: Book the second weekend  [%s #%s]" % (answer, seq), out.splitlines())
 
     def test_the_verb_names_the_owners_reply_that_made_it_done(self):
         root, answer, _ = self.dossier()
