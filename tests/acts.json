@@ -5169,13 +5169,8 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  let stacks = ordered(gather(loaded, { viewer, filled: state.filled }));",
-     "  let stacks = ordered(gather(loaded, { filled: state.filled }));"
-    ],
-    [
-     "web/reply-stacks.mjs",
-     "  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { viewer, filled: state.filled }));",
-     "  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { filled: state.filled }));"
+     "  const stacks = ordered(gather(loaded, { viewer, filled: state.filled, apart: state.apart }));",
+     "  const stacks = ordered(gather(loaded, { filled: state.filled, apart: state.apart }));"
     ]
    ],
    "check": {
@@ -7866,7 +7861,7 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "  if (!open) { setLevel(state, stack, 'open'); state.again(); return true; }",
+     "  if (!open && (row || found.section.dataset.headOpen !== 'true')) { setLevel(state, stack, 'open'); state.again(); return true; }",
      "  if (!open) return true;"
     ]
    ],
@@ -14974,8 +14969,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "count: 1 + stack.replies.length",
-     "count: 1"
+     "count + 1 + each.replies.length",
+     "count + 1"
     ]
    ],
    "check": {
@@ -15018,8 +15013,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
-     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
     ]
    ],
    "check": {
@@ -15093,8 +15088,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (!position) return null;\n    return { stack, below: position.below",
-     "    if (!position) return { stack, below: false, count: 1 };\n    return { stack, below: position.below"
+     "    if (!position) return null;\n    const dossier",
+     "    if (!position) return { stack, below: false, count: 1 };\n    const dossier"
     ]
    ],
    "check": {
@@ -19895,8 +19890,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set(), apart: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set(), apart: new Set() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -23763,12 +23758,12 @@
   },
   {
    "item": 550,
-   "act": "The branches of one dossier whose fork sits above the loaded page gather into one stack, its name once",
+   "act": "The messages of one dossier are one stack by the first message Core names for each, its name once, whatever of it is loaded",
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
-     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
     ]
    ],
    "check": {
@@ -23781,8 +23776,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
-     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
     ]
    ],
    "check": {
@@ -23796,8 +23791,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
-     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
+     "    const dossier = parent ? of(parent.id, seen) : !root || !hangs || item.moving ? id : root !== id && byId.has(root) ? of(root, seen) : root;",
+     "    const dossier = parent ? of(parent.id, seen) : id;"
     ]
    ],
    "check": {
@@ -23811,8 +23806,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const first = loaded ?? oldest(theirs.length ? theirs : fresh.length ? fresh : found);",
-     "    const first = oldest(theirs.length ? theirs : fresh.length ? fresh : found);"
+     "    const head = fresh.find(item => item.id === root) ?? oldest(",
+     "    const head = oldest("
     ]
    ],
    "check": {
@@ -23825,8 +23820,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  const hangs = !stack.head.moving && Boolean(",
-     "  const hangs = Boolean("
+     " : !root || !hangs || item.moving ? id : ",
+     " : !root || !hangs ? id : "
     ]
    ],
    "check": {
@@ -24119,8 +24114,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "const joins = new Map(found.flatMap(branch => [...branch.joins]));",
-     "const joins = first.joins;"
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
     ]
    ],
    "check": {
@@ -24133,8 +24128,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "const joins = new Map(found.flatMap(branch => [...branch.joins]));",
-     "const joins = first.joins;"
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
     ]
    ],
    "check": {
@@ -24148,8 +24143,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "const joins = new Map(found.flatMap(branch => [...branch.joins]));",
-     "const joins = first.joins;"
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined).map(",
+     "    const joins = new Map(replies.filter(item => up(item.id)?.joined && up(item.id).id === head.id).map("
     ]
    ],
    "check": {
@@ -26956,8 +26951,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "theirs = fresh.filter(branch => viewer === null || branch.head.author_id !== viewer);",
-     "theirs = fresh;"
+     "    const theirs = tops.filter(item => viewer === null || item.author_id !== viewer);",
+     "    const theirs = tops;"
     ]
    ],
    "check": {
@@ -27028,13 +27023,13 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  const loaded = has ?? (id => byId.has(id)), on = id => loaded(id) && !filled.has(id);",
-     "  const loaded = has ?? (id => byId.has(id)), on = loaded;"
+     "  const { byId, up } = links(items, has, id => filled.has(id) || apart.has(id)),",
+     "  const { byId, up } = links(items, has, id => apart.has(id)),"
     ],
     [
      "web/stack-order.mjs",
-     "    const loaded = found.find(branch => !into.has(branch.id) && !filled.has(branch.id));",
-     "    const loaded = found.find(branch => !into.has(branch.id));"
+     "fresh = members.filter(item => !filled.has(item.id)), tops",
+     "fresh = members, tops"
     ]
    ],
    "check": {
@@ -27054,6 +27049,108 @@
    "check": {
     "native": "freshness",
     "case": "access that comes back clears the paused note and More"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older messages of a dossier whose stack sits higher up where its button was, each a card of its own, so that stack keeps its head and nothing shown moves",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older replies of a dossier drawn higher up below the last card shown, newest first, whole, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages shows the older replies of a dossier drawn higher up below the last card shown, newest first, whole, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "filling.drawn.has(of)) (of === filling.into ? state.filled : state.apart).add(item.id);",
+     "of === filling.into) (of === filling.into ? state.filled : state.apart).add(item.id);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "those of a dossier whose stack sits higher up too"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, never its tab alone",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, named or not, at 320, 375, 390 and on a laptop",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "shows the words of the reply heading it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message not loaded shows its head's words, unread or read, named or not, at 320, 375, 390 and on a laptop, in Safari's engine",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  const whole = open || (!single && level === 'folded' && stack.dossier !== stack.id);",
+     "  const whole = open;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "shows the words of the reply heading it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A press on the words of a gathered stack's head, shown whole while the stack is folded, does what it does on any card; its tab opens the dossier",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  if (!open && (row || found.section.dataset.headOpen !== 'true')) {",
+     "  if (!open) {"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_inline_wiring.test.mjs"
    }
   }
  ]
