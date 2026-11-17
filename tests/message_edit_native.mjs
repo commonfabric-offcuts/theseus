@@ -770,21 +770,26 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       }
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
       // A second correction that only adds words, before and after, while the Reader shows the message: nothing more is
-      // struck, there or on the card, what was struck moves with the words, and the card is new again once the Reader
-      // closes, though this visit opened it.
+      // struck, there or on the card, and what was struck moves with the words. The person is reading it there.
       const again = await control({ method: 'agent_edit', operation_id: `${read}-edit-2`, sender: 'aim-core', message_id: a.line, revision: 2, body: 'Update: ' + FIXED + ' Deployed.' });
       assert.equal(again.status, 'committed', `${width}: the second edit commits`);
       await becomes(() => strikeOf(p, '#source-body').then(seen => seen && { text: seen.text.trim(), struck: seen.struck }), { text: 'Update: ' + STRUCK + ' Deployed.', struck: ['85'] },
-        `${width}: the open Reader shows the added words, and only what they had read and lost is struck`);
+        `${width}: the open Reader shows the added words, and only what they had read and lost is struck, where it now stands`);
       await closeReader(p, device === 'laptop' ? 'laptop' : 'phone');
       await becomes(() => strikeOf(p, words(a.line)).then(seen => seen && { text: seen.text, struck: seen.struck }), { text: 'Update: ' + STRUCK + ' Deployed.', struck: ['85'] },
         `${width}: the card shows the same`);
-      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as new again after the second edit`);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: opened in the Reader this visit, the card reads as read`);
+      // A third, with the Reader closed: the card is new again, though this visit opened it.
+      const third = await control({ method: 'agent_edit', operation_id: `${read}-edit-3`, sender: 'aim-core', message_id: a.line, revision: 3, body: 'Update: ' + FIXED + ' Deployed at noon.' });
+      assert.equal(third.status, 'committed', `${width}: the third edit commits`);
+      await becomes(() => strikeOf(p, words(a.line)).then(seen => seen && { text: seen.text, struck: seen.struck }), { text: 'Update: ' + STRUCK + ' Deployed at noon.', struck: ['85'] },
+        `${width}: the card shows the third words`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as new again after the third edit`);
       assert.deepEqual(p.errors, []);
       await p.close();
       // A page loaded afresh draws the card struck from the start, new.
       const r = await open(read, device, read, a.line, 'window.holdReads = true');
-      assert.deepEqual(await strikeOf(r, words(a.line)).then(seen => ({ text: seen.text, struck: seen.struck })), { text: 'Update: ' + STRUCK + ' Deployed.', struck: ['85'] },
+      assert.deepEqual(await strikeOf(r, words(a.line)).then(seen => ({ text: seen.text, struck: seen.struck })), { text: 'Update: ' + STRUCK + ' Deployed at noon.', struck: ['85'] },
         `${width}: loaded afresh, the card is drawn struck`);
       assert.equal(await r.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), false, `${width}: and new`);
       assert.deepEqual(r.errors, []);
