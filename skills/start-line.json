@@ -1,0 +1,14 @@
+{
+  "id": "start-line",
+  "kind": "tool",
+  "name": "Start line",
+  "summary": "Writes the one-line brief of what a build will make before it starts, tells the owner about their items, and reads their answer",
+  "home": "building-theseus",
+  "files": [
+    "tools/start_line.py",
+    "tests/test_tools_start_line.py"
+  ],
+  "check": {
+    "python": "tests/test_tools_start_line.py"
+  }
+}
