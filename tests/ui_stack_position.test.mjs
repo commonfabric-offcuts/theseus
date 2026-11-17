@@ -63,6 +63,7 @@ test('an act that moves nothing about where a dossier sits reports no position c
   assert.deepEqual(views.messages.get('b').stack_position.at, { messages: 4, acts: 10 }, 'and it reaches every loaded message of the dossier');
   // The negative: each thing that places a dossier, changed by a later read, is a change.
   for (const [what, moved] of [['below', { below:false }], ['aside revision', { aside_revision:2 }], ['through', { through:6 }], ['first message', { root_id:'joined' }], ['dossier name (item 470)', { name:{ text:'Named', by:'owner', at_ms:1 }, name_revision:1 }],
+    ['reader\'s place for it (item 550)', { placed:2.5, place_revision:1 }],
     ['dossier cover (item 624)', { cover:{ stands:'Answered', waiting:[], payload:null, by:'agent', at_ms:1, owner:'owner' }, cover_revision:1 }]]) {
     const other = new TopicViews({ instanceId:'i', topicId:'t' });
     other.messages.set('a', { id:'a', stack_position: position(4,9) });

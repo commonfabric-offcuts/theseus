@@ -15,12 +15,18 @@ not have sent", read whole by a screen reader).
 
 The Reader's title names the dossier a reply there goes into (item 561):
 its name, typed or minted, as the dossier's tab shows it, and for a dossier
-nobody has named yet its first line, as its tab shows that. A message of its
+nobody has named yet its first message's first line, never the oldest reply
+the page has loaded (item 550). Where the page cannot say (that first message
+is not loaded, or the topic's updates are paused), the dossier Core sends with
+the message read as a source says: its first message's id, its name, that
+message as it begins and whether the dossier is that message alone
+(`dossier` in the `source` view, `stacks.source_dossier`; none for a reader
+who reads only that message, sent to them by name). A message of its
 own, which nobody answered or named, has the topic's name. A name given while
 the Reader is open shows at once. However long, the title keeps one line, cut
 off with an ellipsis, so the star, the archive button and ✕ keep their place;
 a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
-`Reader.paintTitle`).
+`readerDossierName` in `app.mjs`, `Reader.paintTitle`).
 
 A message of a dossier with a cover (item 624, [dossier-covers.md](dossier-covers.md))
 shows the cover as one quiet line above the message: "Cover", where the dossier
@@ -47,9 +53,11 @@ device shows there as well.
 Beside the star, an archive glyph with a number is Move below More for the
 message's whole dossier (item 378): the same act as the card's ⋯ Move below
 More (`StackFeed.setAside`), and the number is how many messages move below
-More with it, the message itself included. The act moves the whole dossier, and
-a dossier whose first message the page has not loaded is drawn as one stack for
-each reply to it there, so every stack drawn from the dossier is counted ("Move below More: 3
+More with it, the message itself included. The act moves the whole dossier,
+which the page draws as one stack whether or not it has loaded its first
+message (item 550), with any older message of it More messages showed where
+its button was as a card of its own, so the count is of every stack the page
+draws of the dossier ("Move below More: 3
 messages" by name and as its tooltip). Once the dossier is below More it shows
 pressed and brings it back ("Bring back above More: 3 messages"), as ⋯ does.
 The Reader stays open on the message and the focus stays on the button; the
