@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { FELL } from './press-fell.mjs';
 
 export function assertDepartureTrace(trace, expectedReceipts) {
   assert.equal(expectedReceipts.length,2,'both expected publication identities are retained');
@@ -48,6 +49,48 @@ export async function waitForDepartureList(p, expected, now, until, what) {
     assert.deepEqual(drawn.ids,expected.ids,'the committed reply changes no topic position, including the already-revealed target');
     return drawn;
   },what);
+}
+
+// One CSS pixel permits subpixel layout/scroll rounding in runner engines.
+// The case names this tolerance; a control drifting 8px per frame cannot settle.
+export const DEPARTURE_CONTROL_TOLERANCE_PX = 1;
+export async function pressDepartureDrawer(p, until, tolerancePx = DEPARTURE_CONTROL_TOLERANCE_PX) {
+  const selector = '#rail-open';
+  const settle = async () => {
+    let anchor, stable = 0;
+    return until(async () => {
+      const b = await p.evaluate(`new Promise(resolve=>requestAnimationFrame(()=>{
+        const e=document.querySelector('#rail-open'),b=e?.getBoundingClientRect();
+        const ready=document.body.dataset.ready==='true'&&!document.documentElement.hasAttribute('data-rails-reading')
+          &&!document.querySelector('#retry-topics[aria-disabled]');
+        if(!ready||!b||!b.width||!b.height)return resolve(null);
+        if(b.top<-${tolerancePx}||b.bottom>innerHeight+${tolerancePx}||b.left<-${tolerancePx}||b.right>innerWidth+${tolerancePx}){
+          e.scrollIntoView({block:'center',inline:'nearest'});return resolve(null);
+        }
+        resolve({x:b.x,y:b.y,width:b.width,height:b.height});
+      }))`);
+      if (!b) { anchor = null; stable = 0; return false; }
+      if (!anchor || !['x','y','width','height'].every(k=>Math.abs(b[k]-anchor[k])<=tolerancePx)) {
+        anchor = b; stable = 0; return false;
+      }
+      return ++stable >= 3 && b;
+    }, `departure drawer revealed and settled within ${tolerancePx} CSS px`);
+  };
+  // Scroll first, then observe frames; scrolling can finish after its CDP answer.
+  await p.evaluate("document.querySelector('#rail-open').scrollIntoView({block:'center',inline:'nearest'})");
+  let b = await settle();
+  await p.send('Input.dispatchMouseEvent', {type:'mouseMoved',x:b.x+b.width/2,y:b.y+b.height/2});
+  // Hover and scroll can redraw the header. Aim again at its current position.
+  b = await settle();
+  const x=b.x+b.width/2,y=b.y+b.height/2;
+  assert.equal(await p.evaluate(`(()=>{const e=document.querySelector('#rail-open');
+    if(!e?.contains(document.elementFromPoint(${x},${y})))return false;
+    ${FELL.watch(selector)}window.pressFell='no native pointerdown observed';return true;})()`), true, 'the native drawer press hits its actual control');
+  await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
+  let fell;
+  try { fell = await p.evaluate(FELL.read); }
+  finally { await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1}); }
+  assert.equal(fell, '', 'the actual native drawer pointerdown stays on its control');
 }
 
 export async function departureChecks({check,page,until,facts,view,control,observations,shot}) {
@@ -163,7 +206,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await p.evaluate(`document.addEventListener('click',e=>{if(e.target.closest('#topics a[data-topic-id="t2"]'))console.log('item-641-native-departure-target');},true)`);
     const drawer=async open=>{if(width>=600)return;
       if(await p.evaluate("document.getElementById('rail').classList.contains('open')")!==open){
-        if(open)await point(p,'#rail-open');else await p.key('Escape');
+        if(open)await pressDepartureDrawer(p,until,DEPARTURE_CONTROL_TOLERANCE_PX);else await p.key('Escape');
         await until(()=>p.evaluate(`document.getElementById('rail').classList.contains('open')===${open}`),'departure drawer '+open);
       }
     };

@@ -18,7 +18,7 @@ export class ReleaseRule {
   constructor({ failed = () => {} } = {}) {
     Object.assign(this, { onFailed: failed, excused: [], failed: [], unsettled: new Map() });
     this.cancelled = new Set(); this.delivered = new Set(); this.loaders = new Map(); this.replaced = new Set();
-    this.documentLoader = null; this.mainFrame = null; this.pausedUnder = new Map();
+    this.documentLoader = null; this.mainFrame = null; this.pausedUnder = new Map(); this.pending = new Set();
   }
 
   // Why the page gave this request up, or null while it has not.
@@ -31,7 +31,14 @@ export class ReleaseRule {
   // Why the page gave up the request a refused release was for, or null while it has not.
   // One with no networkId is known by its pause alone: the document it paused under.
   why(failure) {
-    if (failure.networkId) return this.abandoned(failure.networkId);
+    if (failure.networkId) {
+      if (this.delivered.has(failure.networkId)) return null;
+      const reason = this.abandoned(failure.networkId);
+      if (reason) return reason;
+      // A pause can precede Network's request report during replacement.
+      // Use its captured main document only until Network names its loader.
+      if (this.loaders.has(failure.networkId)) return null;
+    }
     return this.replaced.has(this.pausedUnder.get(failure.requestId)) ? 'document replaced' : null;
   }
 
@@ -43,7 +50,10 @@ export class ReleaseRule {
 
   // Every CDP event of the page's session.
   observe({ method, params }) {
-    if (method === 'Network.requestWillBeSent' && params.loaderId) this.loaders.set(params.requestId, params.loaderId);
+    if (method === 'Network.requestWillBeSent' && params.loaderId) {
+      this.loaders.set(params.requestId, params.loaderId);
+      for (const [key, failure] of this.unsettled) if (this.why(failure)) this.settle(key, failure);
+    }
     // A navigation's own request belongs to the document it brings, not the one it replaces.
     if (method === 'Fetch.requestPaused' && params.frameId === this.mainFrame && params.resourceType !== 'Document') {
       this.pausedUnder.set(params.requestId, this.documentLoader);
@@ -56,17 +66,33 @@ export class ReleaseRule {
     if (['Network.responseReceived', 'Network.loadingFinished', 'Network.loadingFailed'].includes(method)) {
       const id = params.requestId;
       if (method === 'Network.loadingFailed' && params.canceled === true) this.cancelled.add(id); else this.delivered.add(id);
-      const failure = this.unsettled.get(id);
-      if (failure?.networkId === id) this.settle(id, failure);
+      for (const [key, failure] of this.unsettled) if (failure.networkId === id) this.settle(key, failure);
     }
+  }
+
+  // Own the command until its answer, including its refusal classification.
+  // Only a failed release command goes through this rule, never a body read
+  // or an interception callback error.
+  async release(event, act) {
+    const task = (async () => {
+      try { await act(); return true; }
+      catch (error) {
+        this.refused({message:error.message,requestId:event.requestId,networkId:event.networkId,
+          url:event.request.url,responseStatusCode:event.responseStatusCode},error.cdp?.message);
+        return false;
+      }
+    })();
+    this.pending.add(task);
+    try { return await task; } finally { this.pending.delete(task); }
   }
 
   // A release of a paused request failed with `message`.
   // `failure` names the pause's requestId and, when Chrome gave one, its networkId.
   refused(failure, message) {
-    const key = failure.networkId || (this.pausedUnder.has(failure.requestId) ? failure.requestId : null);
-    if (!key || !/Invalid InterceptionId/.test(message ?? '')) { this.failed.push(failure); this.onFailed(failure); }
-    else if ((failure.networkId && this.delivered.has(key)) || this.why(failure)) this.settle(key, failure);
+    const key = failure.requestId || failure.networkId;
+    const owned = failure.networkId || this.pausedUnder.has(failure.requestId);
+    if (!key || !owned || !/Invalid InterceptionId/.test(message ?? '')) { this.failed.push(failure); this.onFailed(failure); }
+    else if ((failure.networkId && this.delivered.has(failure.networkId)) || this.why(failure)) this.settle(key, failure);
     else this.unsettled.set(key, failure);
   }
 }
