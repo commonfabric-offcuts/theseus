@@ -27020,6 +27020,20 @@
     "native": "compose",
     "case": "item 644 quote"
    }
+  },
+  {
+   "item": 644,
+   "act": "The every-frame card composer instrument rejects a transient jump in the sheet's actual scroll owner",
+   "break": [
+    [
+     "tests/card_scroll_probe.mjs",
+     ",\n    document.querySelector('.notebook-sheet-page:not([hidden])')?.scrollTop ?? 0",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_scroll_probe.test.mjs"
+   }
   }
  ]
 }
