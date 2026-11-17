@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { whisperOutlineReading } from './whisper_outline_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
@@ -3072,6 +3073,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await whisperOutlineReading({ check, until, control, facts, shot, engine, observations },
+    { seed, open, centre, tap, lit, words });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },
