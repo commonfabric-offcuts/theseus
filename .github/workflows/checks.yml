@@ -49,9 +49,9 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Three browser shards, the units and the replay make five jobs: one wave under the five-macOS-jobs-at-once cap
-  # of a personal account. Raise this once the repository is under the organization, whose cap is fifty.
-  BROWSER_SHARDS: 3
+  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
+  # This is six jobs with units and replay; an account cap can queue the extra job.
+  BROWSER_SHARDS: 4
 
 jobs:
   plan:
@@ -66,14 +66,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 - "$BROWSER_SHARDS" <<'PY' >> "$GITHUB_OUTPUT"
-          import json, sys
+          import json, math, sys
           sys.path.insert(0, ".")
           from tools import release_check as check
           shards_wanted = int(sys.argv[1])
           native = ["native-" + step.name for step in check.NATIVE_STEPS]
           # Deal the modes longest first into the least loaded shard, by the minutes each took on a runner
           # (.github/check-weights.json); a mode not measured yet takes the median, so a new mode is dealt, not dropped.
-          measured = json.load(open(".github/check-weights.json"))["minutes"]
+          with open(".github/check-weights.json") as weights:
+              measured = json.load(weights)["minutes"]
           known = sorted(measured.values())
           median = known[len(known) // 2] if known else 1.0
           loads = [[0.0, []] for _ in range(shards_wanted)]
@@ -81,10 +82,16 @@ jobs:
               lightest = min(loads, key=lambda b: b[0])
               lightest[0] += measured.get(name, median)
               lightest[1].append(name)
-          shards = [{"name": "browser %d of %d (about %.0f min)" % (i + 1, shards_wanted, load), "steps": ",".join(names)}
-                    for i, (load, names) in enumerate(loads)]
-          shards.append({"name": "units and deploy refusals", "steps": ",".join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,))})
-          shards.append({"name": "wake replay", "steps": check.WAKE_REPLAY})
+          # Item 666: max-of-three measured weights deal to 50.3, 50.2, 50.2, 50.2 minutes.
+          # ceil(longest dealt total * 1.5) = 76 today; recomputed for scoped selections too.
+          longest = max(load for load, names in loads)
+          timeout = math.ceil(longest * 1.5)
+          shards = [{"name": "browser %d of %d (about %.0f min)" % (i + 1, shards_wanted, load), "steps": ",".join(names),
+                     "minutes": round(load, 1), "timeout_minutes": timeout,
+                     "timeout_source": "ceil(longest dealt %.1f minutes * 1.5); .github/check-weights.json sources" % longest}
+                    for i, (load, names) in enumerate(loads) if names]
+          shards.append({"name": "units and deploy refusals", "steps": ",".join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,)), "timeout_minutes": 45})
+          shards.append({"name": "wake replay", "steps": check.WAKE_REPLAY, "timeout_minutes": 45})
           assert sorted(s for shard in shards for s in shard["steps"].split(",")) == sorted(check.REQUIRED), "every required step runs in exactly one shard"
           print("shards=" + json.dumps(shards))
           PY
@@ -93,9 +100,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
-    # 45 on a18e8b1e. Units, deploy refusals and wake replay keep 45.
-    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 75 || 45 }}
+    # Browser limit comes from the plan's measured longest total plus half, not a fixed cap.
+    # The plan names the measured total beside that number; other jobs keep their own limit.
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
@@ -288,13 +295,16 @@ jobs:
           names = [step["name"] for step in steps]
           if len(names) != len(set(names)):
               sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
-          required = sorted(set().union(*[set(d.get("required") or []) for d in docs]))
+          # The plan survives a cancelled shard. Never learn required names only from the shards that answered.
+          planned = {name for shard in json.loads(env.get("PLAN_SHARDS") or "[]") for name in shard["steps"].split(",")}
+          required = sorted(planned.union(*[set(d.get("required") or []) for d in docs]))
           missing = [name for name in required if name not in names]
           first = timed[0]
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
+              "required": required,
               "started_at": min(d["started_at"] for d in timed),
               "finished_at": max(d["finished_at"] for d in timed),
               "steps": steps,

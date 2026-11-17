@@ -150,6 +150,44 @@ The summary's `quarantine` says which commit it was read at (`at`), how many cas
 
 The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present (a shard cancelled at its time limit leaves no summary, and one refused before running leaves a summary with no commit and no steps: either way its steps are missing), every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. Every other shard's summary must name the one commit checked.
 
+### Browser shard minutes (item 666)
+
+The plan deals browser steps largest first onto the lightest of four shards,
+using `.github/check-weights.json`. Each weight is the maximum finished step
+time from Checks runs 44007172971, 44044963750 and 44099688612 (17 November's
+brief, consecutive step-result timestamps); `sources` lists each step's run
+and minutes. The cancelled run contributes only steps it finished. The 48
+browser steps total 200.9 minutes and deal to 50.3, 50.2, 50.2 and 50.2,
+within five minutes of the 50.225-minute even split. `native-reading`,
+`native-rail`, `native-webkit-reading` and `native-compose` each have their own
+shard. A fifth long step goes onto the lightest shard when its turn comes:
+with only four shards, some long steps must then share one (today
+`native-webkit-rail` shares with `native-compose`). Ties retain step order and
+choose the first lightest shard, making a plan reproducible.
+
+The same deal accepts a scoped selection or a small fix's selected browser
+steps; the selection owns which steps run, and the weights own where they run.
+Empty shards are omitted. An unmeasured step takes the upper median of all
+measured weights (1.1 minutes today), or 1 minute with no measurements. That
+keeps it in the run without treating an unknown duration as zero; update its
+weight from the next full run.
+
+Each browser matrix entry carries its `minutes`, `timeout_minutes` and
+`timeout_source`: the ceiling of the longest dealt total plus half,
+`ceil(longest * 1.5)`, or 76 minutes for today's full selection. The runner
+reads that matrix field; a scoped selection recomputes it. Units, deploy
+refusals and wake replay keep their existing 45-minute limit. Four browser
+jobs plus those two jobs can queue under an account's five-job cap.
+
+The combined summary's `required` includes both the plan's steps and those
+named by the shard summaries. Every planned step with no result is named in
+`failed` and printed as `missing`, including every step of a cancelled or
+refused shard, even when surviving summaries name only their own steps. A
+missing step makes both raw and quarantine verdicts red. The deploy still
+checks the required step inventory independently. The next merged train's
+full run is the wall-clock acceptance: all four browser jobs must finish
+inside their derived limits and within five minutes of an even split.
+
 `tools/quarantine.py count` prints the number of quarantined cases, one plain number, from this checkout's policy, or `--at COMMIT` (a ref works) from that commit's: the board reads it. A malformed list prints no number and exits 2. `tools/quarantine.py passes SUMMARY…` prints, for each quarantined case, in how many of those summaries its whole step ran with the case in it and in how many of those it passed (`10 of 10  native-colors | …`), from each step's `quarantine.cases`.
 
 ### The wake replay: `tools/wake_replay.py`

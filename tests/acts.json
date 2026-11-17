@@ -26991,6 +26991,90 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 666,
+   "act": "The full browser run deals measured minutes over four balanced shards with the four long steps apart",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "  BROWSER_SHARDS: 4",
+     "  BROWSER_SHARDS: 3"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser steps are dealt largest first onto the lightest shard, including a fifth long step",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "key=lambda n: -measured.get(n, median)",
+     "key=lambda n: measured.get(n, median)"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser shard limits come from the longest measured dealt total plus half",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "timeout = math.ceil(longest * 1.5)",
+     "timeout = math.ceil(longest)"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A new browser step is dealt using the measured median instead of being dropped or given zero minutes",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "median = known[len(known) // 2] if known else 1.0",
+     "median = 0.0"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Every step of a missing browser shard stays required and is reported missing",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "required = sorted(planned.union(*[set(d.get(\"required\") or []) for d in docs]))",
+     "required = sorted(set().union(*[set(d.get(\"required\") or []) for d in docs]))"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser weights retain the measured maximum and the run each sample came from",
+   "break": [
+    [
+     ".github/check-weights.json",
+     "\"native-rail\": 28.7",
+     "\"native-rail\": 3.2"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
   }
  ]
 }

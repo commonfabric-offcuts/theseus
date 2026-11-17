@@ -1,48 +1,687 @@
 {
- "about": "Minutes each native browser mode took on a GitHub macos-26 runner, from the Checks workflow's first run (Nov 13, 2026). The plan job deals modes into shards longest first by these weights; a mode missing here takes the median. Refresh from a run's artifacts when the modes change.",
+ "about": "Item 666, 17 Nov 2026: maximum finished step minutes across Checks runs 44007172971, 44044963750 and 44099688612, supplied in the brief step-times.json (consecutive step-result timestamps). Each source sample is below. The cancelled run contributes only finished steps. Largest first onto the lightest of four shards; unmeasured modes use the upper median measured weight (1.1 minutes today), or 1 minute with no measurements, so new modes run. Refresh from full-run artifacts when modes change.",
  "minutes": {
   "native-asks": 0.2,
-  "native-cleanup": 0.5,
-  "native-colors": 1.7,
-  "native-compose": 6.2,
-  "native-connected": 0.3,
-  "native-conversation": 2.1,
-  "native-correction": 0.8,
-  "native-duties": 0.1,
-  "native-forms": 0.4,
-  "native-freshness": 2.2,
-  "native-header": 1.3,
-  "native-health": 0.6,
-  "native-images": 3.3,
-  "native-inline": 1.6,
-  "native-journal": 0.2,
-  "native-light": 0.7,
+  "native-card-marks": 1.7,
+  "native-cleanup": 0.4,
+  "native-colors": 7.0,
+  "native-compose": 18.3,
+  "native-connected": 0.5,
+  "native-conversation": 3.0,
+  "native-correction": 0.6,
+  "native-duties": 0.2,
+  "native-fence-copy": 6.8,
+  "native-forms": 0.9,
+  "native-freshness": 3.2,
+  "native-header": 3.6,
+  "native-health": 1.1,
+  "native-images": 3.2,
+  "native-inline": 1.3,
+  "native-journal": 0.1,
+  "native-light": 1.3,
   "native-list": 0.3,
-  "native-live": 5.0,
-  "native-navigation": 0.9,
-  "native-notebook": 4.9,
-  "native-openings": 0.4,
-  "native-pipeline": 0.4,
-  "native-rail": 3.2,
-  "native-reader": 0.2,
+  "native-live": 5.5,
+  "native-navigation": 1.9,
+  "native-notebook": 9.5,
+  "native-openings": 0.5,
+  "native-pipeline": 1.1,
+  "native-rail": 28.7,
+  "native-reader": 0.1,
   "native-reader-anchor-control": 0.1,
   "native-reader-finished": 0.8,
   "native-reader-keyboard": 0.1,
   "native-reader-mutations": 0.2,
   "native-reader-review-gaps": 0.2,
-  "native-reading": 10.5,
-  "native-sources": 0.1,
-  "native-targets": 0.3,
+  "native-reading": 38.6,
+  "native-sources": 0.2,
+  "native-targets": 1.4,
   "native-wakes": 0.2,
-  "native-webkit-colors": 0.4,
+  "native-webkit-colors": 0.3,
   "native-webkit-device": 0.1,
-  "native-webkit-new-line": 0.5,
-  "native-webkit-notebook": 5.2,
-  "native-webkit-pipeline": 0.6,
-  "native-webkit-rail": 1.7,
-  "native-webkit-reading": 9.4,
-  "native-webkit-whispers": 0.3,
-  "native-whispers": 0.2,
-  "native-work": 0.3
+  "native-webkit-health": 1.1,
+  "native-webkit-invite": 0.5,
+  "native-webkit-new-line": 1.7,
+  "native-webkit-notebook": 8.0,
+  "native-webkit-pipeline": 1.3,
+  "native-webkit-rail": 20.2,
+  "native-webkit-reading": 22.1,
+  "native-webkit-targets": 1.4,
+  "native-webkit-whispers": 0.5,
+  "native-whispers": 0.7,
+  "native-work": 0.2
+ },
+ "sources": {
+  "native-asks": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.2
+   }
+  ],
+  "native-card-marks": [
+   {
+    "run": "44007172971",
+    "minutes": 1.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.5
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.7
+   }
+  ],
+  "native-cleanup": [
+   {
+    "run": "44007172971",
+    "minutes": 0.3
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.4
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.3
+   }
+  ],
+  "native-colors": [
+   {
+    "run": "44007172971",
+    "minutes": 6.3
+   },
+   {
+    "run": "44044963750",
+    "minutes": 7.0
+   },
+   {
+    "run": "44099688612",
+    "minutes": 6.6
+   }
+  ],
+  "native-compose": [
+   {
+    "run": "44007172971",
+    "minutes": 18.3
+   },
+   {
+    "run": "44044963750",
+    "minutes": 18.3
+   },
+   {
+    "run": "44099688612",
+    "minutes": 17.6
+   }
+  ],
+  "native-connected": [
+   {
+    "run": "44007172971",
+    "minutes": 0.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.3
+   }
+  ],
+  "native-conversation": [
+   {
+    "run": "44007172971",
+    "minutes": 2.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 2.4
+   },
+   {
+    "run": "44099688612",
+    "minutes": 3.0
+   }
+  ],
+  "native-correction": [
+   {
+    "run": "44007172971",
+    "minutes": 0.6
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.6
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.6
+   }
+  ],
+  "native-duties": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.2
+   }
+  ],
+  "native-fence-copy": [
+   {
+    "run": "44007172971",
+    "minutes": 5.9
+   },
+   {
+    "run": "44044963750",
+    "minutes": 6.8
+   },
+   {
+    "run": "44099688612",
+    "minutes": 5.7
+   }
+  ],
+  "native-forms": [
+   {
+    "run": "44007172971",
+    "minutes": 0.8
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.9
+   }
+  ],
+  "native-freshness": [
+   {
+    "run": "44007172971",
+    "minutes": 2.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 3.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 2.4
+   }
+  ],
+  "native-header": [
+   {
+    "run": "44007172971",
+    "minutes": 2.9
+   },
+   {
+    "run": "44044963750",
+    "minutes": 3.6
+   },
+   {
+    "run": "44099688612",
+    "minutes": 2.8
+   }
+  ],
+  "native-health": [
+   {
+    "run": "44007172971",
+    "minutes": 0.8
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.0
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.1
+   }
+  ],
+  "native-images": [
+   {
+    "run": "44007172971",
+    "minutes": 2.7
+   },
+   {
+    "run": "44044963750",
+    "minutes": 3.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 2.6
+   }
+  ],
+  "native-inline": [
+   {
+    "run": "44007172971",
+    "minutes": 1.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.3
+   }
+  ],
+  "native-journal": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.1
+   }
+  ],
+  "native-light": [
+   {
+    "run": "44007172971",
+    "minutes": 1.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.3
+   }
+  ],
+  "native-list": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.3
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.3
+   }
+  ],
+  "native-live": [
+   {
+    "run": "44007172971",
+    "minutes": 4.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 5.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 5.5
+   }
+  ],
+  "native-navigation": [
+   {
+    "run": "44007172971",
+    "minutes": 1.9
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.8
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.8
+   }
+  ],
+  "native-notebook": [
+   {
+    "run": "44007172971",
+    "minutes": 7.4
+   },
+   {
+    "run": "44044963750",
+    "minutes": 7.9
+   },
+   {
+    "run": "44099688612",
+    "minutes": 9.5
+   }
+  ],
+  "native-openings": [
+   {
+    "run": "44007172971",
+    "minutes": 0.4
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.5
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.4
+   }
+  ],
+  "native-pipeline": [
+   {
+    "run": "44007172971",
+    "minutes": 1.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.1
+   }
+  ],
+  "native-rail": [
+   {
+    "run": "44007172971",
+    "minutes": 24.6
+   },
+   {
+    "run": "44044963750",
+    "minutes": 27.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 28.7
+   }
+  ],
+  "native-reader": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.1
+   }
+  ],
+  "native-reader-anchor-control": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.1
+   }
+  ],
+  "native-reader-finished": [
+   {
+    "run": "44007172971",
+    "minutes": 0.8
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.8
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.8
+   }
+  ],
+  "native-reader-keyboard": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.0
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.0
+   }
+  ],
+  "native-reader-mutations": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.2
+   }
+  ],
+  "native-reader-review-gaps": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.2
+   }
+  ],
+  "native-reading": [
+   {
+    "run": "44007172971",
+    "minutes": 27.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 29.4
+   },
+   {
+    "run": "44099688612",
+    "minutes": 38.6
+   }
+  ],
+  "native-sources": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.2
+   }
+  ],
+  "native-targets": [
+   {
+    "run": "44007172971",
+    "minutes": 1.0
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.4
+   }
+  ],
+  "native-wakes": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.1
+   }
+  ],
+  "native-webkit-colors": [
+   {
+    "run": "44007172971",
+    "minutes": 0.3
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.3
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.3
+   }
+  ],
+  "native-webkit-device": [
+   {
+    "run": "44007172971",
+    "minutes": 0.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.1
+   }
+  ],
+  "native-webkit-health": [
+   {
+    "run": "44007172971",
+    "minutes": 0.7
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.8
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.1
+   }
+  ],
+  "native-webkit-invite": [
+   {
+    "run": "44007172971",
+    "minutes": 0.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.5
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.5
+   }
+  ],
+  "native-webkit-new-line": [
+   {
+    "run": "44007172971",
+    "minutes": 1.7
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.7
+   },
+   {
+    "run": "44099688612",
+    "minutes": 1.7
+   }
+  ],
+  "native-webkit-notebook": [
+   {
+    "run": "44007172971",
+    "minutes": 7.3
+   },
+   {
+    "run": "44044963750",
+    "minutes": 8.0
+   },
+   {
+    "run": "44099688612",
+    "minutes": 6.9
+   }
+  ],
+  "native-webkit-pipeline": [
+   {
+    "run": "44007172971",
+    "minutes": 1.1
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.3
+   }
+  ],
+  "native-webkit-rail": [
+   {
+    "run": "44007172971",
+    "minutes": 17.6
+   },
+   {
+    "run": "44044963750",
+    "minutes": 18.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 20.2
+   }
+  ],
+  "native-webkit-reading": [
+   {
+    "run": "44007172971",
+    "minutes": 20.6
+   },
+   {
+    "run": "44044963750",
+    "minutes": 22.1
+   },
+   {
+    "run": "44099688612",
+    "minutes": 21.9
+   }
+  ],
+  "native-webkit-targets": [
+   {
+    "run": "44007172971",
+    "minutes": 0.9
+   },
+   {
+    "run": "44044963750",
+    "minutes": 1.4
+   }
+  ],
+  "native-webkit-whispers": [
+   {
+    "run": "44007172971",
+    "minutes": 0.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.5
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.5
+   }
+  ],
+  "native-whispers": [
+   {
+    "run": "44007172971",
+    "minutes": 0.5
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.7
+   }
+  ],
+  "native-work": [
+   {
+    "run": "44007172971",
+    "minutes": 0.2
+   },
+   {
+    "run": "44044963750",
+    "minutes": 0.2
+   },
+   {
+    "run": "44099688612",
+    "minutes": 0.2
+   }
+  ]
  }
 }
