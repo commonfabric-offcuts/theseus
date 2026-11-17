@@ -33,7 +33,10 @@ class Element {
 }
 function dom(t) {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag) };
+  const listeners = new Map();
+  globalThis.document = { createElement: tag => new Element(tag),
+    addEventListener: (name, fn) => { const group = listeners.get(name) ?? []; group.push(fn); listeners.set(name, group); },
+    emit: (name, event) => { for (const fn of listeners.get(name) ?? []) fn(event); } };
   t.after(() => { globalThis.document = previous; });
 }
 // A view answering from a sorted list of ids, a page at a time, as core does.
@@ -604,4 +607,44 @@ test('a change that is not confirmed reads who is here once and says so; a faile
   bare.host.find(node => node.attributes['aria-label'] === 'Remove ally').onclick(); await new Promise(setImmediate);
   assert.equal(notice(bare.host), 'The change was not confirmed, and reading who is here again failed too.', 'a panel with no read never says Refresh');
   assert.deepEqual([listWords(['tony']), listWords(['tony', 'fable']), listWords([])], ['tony', 'tony and fable', 'nobody']);
+});
+
+
+test('item 643 the topic Team closes by Done, Escape and an outside click, preserving its filter and outside focus', t => {
+  dom(t);
+  const host = new Element('div'), outside = new Element('button'), sent = [];
+  const panel = new PeoplePanel({ host, label: 'Add to topic', dismissible: true,
+    candidates: () => [{ id: 'fable' }], add: id => { sent.push(id); } });
+  panel.paint(people(['tony']), true);
+  const press = (from, to = from, more = {}) => {
+    document.emit('pointerdown', { target: from, button: 0, isPrimary: true, ...more });
+    document.emit('click', { target: to });
+  };
+  panel.opener.onclick();
+  assert.equal(panel.openerWord?.textContent, 'Done');
+  assert.equal(panel.opener.title, 'Done');
+  panel.input.value = 'fab';
+  press(panel.input); assert.equal(panel.row.hidden, false);
+  press(panel.choices); assert.equal(panel.row.hidden, false);
+  press(panel.input, outside); assert.equal(panel.row.hidden, false, 'a selection dragged out stays open');
+  press(outside, panel.input); assert.equal(panel.row.hidden, false, 'a press ending inside stays open');
+  press(outside, outside, { button: 2 }); assert.equal(panel.row.hidden, false, 'a right press does not dismiss');
+  outside.focus(); press(outside);
+  assert.equal(panel.row.hidden, true);
+  assert.equal(panel.openerWord.textContent, '+ Add');
+  assert.equal(document.activeElement, outside, 'the outside control keeps its focus');
+  panel.opener.onclick();
+  assert.equal(panel.input.value, 'fab');
+  panel.opener.onclick();
+  assert.equal(panel.row.hidden, true);
+  assert.equal(document.activeElement, panel.opener, 'Done keeps the focus on its button');
+  panel.opener.onclick();
+  panel.input.onkeydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+  assert.equal(panel.row.hidden, true); assert.equal(panel.openerWord.textContent, '+ Add');
+  panel.opener.onclick(); panel.paint(people(['tony']), false);
+  assert.equal(panel.row.hidden, true); assert.equal(panel.openerWord.textContent, '+ Add');
+  panel.paint(people(['tony']), true);
+  assert.equal(panel.opener.title, 'Add to topic');
+  assert.equal(panel.opener.getAttribute('aria-expanded'), 'false');
+  assert.deepEqual(sent, [], 'neither closing nor losing permission submits the filter');
 });

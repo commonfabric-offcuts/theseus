@@ -26991,6 +26991,96 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 643,
+   "act": "The topic Team label keeps its title case",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:none;",
+     ".topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;"
+    ]
+   ],
+   "check": {
+    "native": "whispers",
+    "case": "whispers item 643 Team spelling"
+   }
+  },
+  {
+   "item": 643,
+   "act": "The topic Team label keeps its title case in Safari’s engine",
+   "break": [
+    [
+     "web/aim.css",
+     ".topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:none;",
+     ".topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-whispers",
+    "case": "whispers item 643 Team spelling"
+   }
+  },
+  {
+   "item": 643,
+   "act": "The topic Add button reads Done while the agent choices and field show",
+   "break": [
+    [
+     "web/people.mjs",
+     "this.openerWord.textContent = open ? 'Done' : '+ Add';",
+     "this.openerWord.textContent = '+ Add';"
+    ]
+   ],
+   "check": {
+    "native": "whispers",
+    "case": "whispers item 643 Add becomes Done"
+   }
+  },
+  {
+   "item": 643,
+   "act": "The topic Add button reads Done while the agent choices and field show in Safari’s engine",
+   "break": [
+    [
+     "web/people.mjs",
+     "this.openerWord.textContent = open ? 'Done' : '+ Add';",
+     "this.openerWord.textContent = '+ Add';"
+    ]
+   ],
+   "check": {
+    "native": "webkit-whispers",
+    "case": "whispers item 643 Add becomes Done"
+   }
+  },
+  {
+   "item": 643,
+   "act": "A click outside the topic Team picker closes it as Done without submitting the filter",
+   "break": [
+    [
+     "web/people.mjs",
+     "if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);",
+     "if (false) this.toggle(false, false);"
+    ]
+   ],
+   "check": {
+    "native": "whispers",
+    "case": "whispers item 643 outside closes"
+   }
+  },
+  {
+   "item": 643,
+   "act": "A click outside the topic Team picker closes it as Done without submitting the filter in Safari’s engine",
+   "break": [
+    [
+     "web/people.mjs",
+     "if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);",
+     "if (false) this.toggle(false, false);"
+    ]
+   ],
+   "check": {
+    "native": "webkit-whispers",
+    "case": "whispers item 643 outside closes"
+   }
   }
  ]
 }
