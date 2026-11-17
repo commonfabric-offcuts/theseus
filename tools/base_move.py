@@ -200,9 +200,13 @@ def controller_binding(source, judgment, github, repository, head):
             and prs[0].get('base', {}).get('ref') == current['ref']
             and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
     external = '%d-%d' % (source['run'], source['attempt'])
-    name = 'Verdict for ' + current['ref']
+    # The early, unretargeted receipt publishes an empty base, not a guessed
+    # original ref. Both PR records above still bind its complete base facts.
+    retargeted = current != original
+    name = 'Verdict for ' + current['ref'] if retargeted else 'Verdict'
+    published_base = current['ref'] if retargeted else ''
     require(pub.get('check_run_id') == listed['id'] == raw.get('id')
-            and pub.get('head_sha') == head and pub.get('name') == name and pub.get('base') == current['ref']
+            and pub.get('head_sha') == head and pub.get('name') == name and pub.get('base') == published_base
             and pub.get('external_id') == external, 'published Verdict binding differs')
     for key, expected in (('controller_run', data['run']), ('controller_attempt', data['attempt']),
                           ('producer_run', source['run']), ('producer_attempt', source['attempt'])):
@@ -483,7 +487,7 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
     """The verified record, including all artifact references and review, or refusal."""
     try:
         data = fields(document(ref), 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review')
-        require(type(data['version']) is int and data['version'] == 3, 'unknown version')
+        require(type(data['version']) is int and data['version'] == 4, 'unknown version')
         for key in ('source_head', 'original_base', 'live_base', 'assembly_head', 'assembly_tree'):
             sha(data[key])
         number(data['live_release'])

@@ -140,7 +140,7 @@ class BaseMoveFixture(TrainCase):
                             'inputs': {'tests/reader_compose_native.mjs': self.git(self.work, 'rev-parse', self.assembly + ':tests/reader_compose_native.mjs')}}
                 self.receipts.append({'step': self.save(prefix + '/step.json', step), 'report': report, 'log': log,
                                       'snapshot': self.save(prefix + '/snapshot.json', snapshot)})
-        self.evidence_body = {'version': 3, 'source_head': self.head, 'original_base': self.old,
+        self.evidence_body = {'version': 4, 'source_head': self.head, 'original_base': self.old,
             'live_base': self.L, 'live_release': 19, 'assembly_head': self.assembly, 'assembly_tree': self.tree(self.assembly),
             'source': {'run': 101, 'attempt': 1, 'tested_merge': self.original_merge, 'base_at_run': self.original_base, 'files': self.files,
                        'inventory': self.save('inventory.json', self.inventory)}, 'receipts': self.receipts}
@@ -730,7 +730,7 @@ class ControllerProvenance(unittest.TestCase):
     Network alone is replaced with an exact API-path table. No git/browser/deploy.
     """
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix='controller-v3-')
+        self.tmp = tempfile.TemporaryDirectory(prefix='controller-v4-')
         self.addCleanup(self.tmp.cleanup)
         self.head, self.old, self.current, self.controller_head = (c * 40 for c in 'abcd')
         self.current_base = {'ref': 'release/live73', 'sha': self.current}
@@ -922,7 +922,7 @@ class ControllerProvenance(unittest.TestCase):
         self.api['actions/artifacts/301']['workflow_run']['id'] = 101; self.refuses('artifact provenance')
 
 
-class V3SourceBindings(BaseMoveFixture):
+class V4SourceBindings(BaseMoveFixture):
     def test_original_ref_still_binds_provenance(self):
         self.evidence_body['source']['base_at_run'] = dict(self.original_base, ref='train/unknown')
         self.refuse('source merge binding')
@@ -935,6 +935,135 @@ class V3SourceBindings(BaseMoveFixture):
         del self.evidence_body['source']['controller']['current_base']
         self.refuse('fields')
 
-    def test_v2_envelope_is_not_v3(self):
-        self.evidence_body['version'] = 2
+    def test_v3_envelope_is_not_v4(self):
+        self.evidence_body['version'] = 3
         self.refuse('unknown version')
+
+
+class PlainControllerProvenance(unittest.TestCase):
+    """Synthetic public-contract isolates for the authentic early-refusal shape."""
+    def setUp(self):
+        self.f = ControllerProvenance()
+        self.f.setUp()
+        self.addCleanup(self.f.doCleanups)
+        f = self.f
+        f.current_base.update(f.source['base_at_run'])
+        f.binding['producer']['pull_request'].update(base_ref=f.current_base['ref'], base_sha=f.current_base['sha'])
+        f.raw['pull_requests'][0]['base'] = dict(f.current_base)
+        f.published.update(name='Verdict', base='')
+        f.check['name'] = f.raw['name'] = 'Verdict'
+        f.freeze()
+
+    def test_plain_controller_preserves_original_failure(self):
+        f = self.f; result = f.consume()
+        self.assertEqual(result['current_base'], f.source['base_at_run'])
+        self.assertEqual(result['refusals'], 'original refusal\n')
+        self.assertEqual(result['output'], f.check['output'])
+
+    def test_plain_cannot_take_branch_name(self):
+        f = self.f
+        f.published['name'] = f.check['name'] = f.raw['name'] = 'Verdict for ' + f.current_base['ref']
+        f.freeze(); f.refuses('published Verdict binding')
+
+    def test_plain_publication_base_is_exactly_empty(self):
+        f = self.f; f.published['base'] = f.current_base['ref']
+        f.freeze(); f.refuses('published Verdict binding')
+
+    def test_plain_missing_publication_base(self):
+        f = self.f; del f.published['base']; f.freeze(); f.refuses('published Verdict binding')
+
+    def test_plain_missing_publication_name(self):
+        f = self.f; del f.published['name']; f.freeze(); f.refuses('published Verdict binding')
+
+    def test_same_sha_different_ref_is_retargeted(self):
+        f = self.f
+        f.source['base_at_run']['ref'] = 'train/another'
+        f.refuses('published Verdict binding')
+
+    def test_same_ref_different_sha_is_retargeted(self):
+        f = self.f
+        f.source['base_at_run']['sha'] = f.source['tested_merge']['first_parent'] = f.current
+        f.refuses('published Verdict binding')
+
+    def test_plain_authentic_field_negatives(self):
+        # Each isolate starts from valid plain bytes. Archive mutations below
+        # are explicitly synthetic, never changes to the operational receipts.
+        rows = [
+            ('producer', ('pull_request', 'base_ref'), 'train/wrong', 'current PR binding'),
+            ('producer', ('pull_request', 'base_sha'), '0' * 40, 'current PR binding'),
+            ('producer', ('pull_request', 'head_sha'), '0' * 40, 'current PR binding'),
+            ('producer', ('head_sha',), '0' * 40, 'producer binding'),
+            ('controller', ('sha',), '0' * 40, 'protected controller identity'),
+            ('controller', ('ref',), 'refs/heads/wrong', 'protected controller identity'),
+            ('published', ('external_id',), '101-2', 'published Verdict binding'),
+            ('published', ('controller_attempt',), '2', 'published attempt binding'),
+            ('published', ('producer_attempt',), '2', 'published attempt binding'),
+            ('published', ('controller_run',), '203', 'published attempt binding'),
+            ('published', ('producer_run',), '102', 'published attempt binding'),
+            ('check', ('name',), 'Verdict extra', 'source check binding'),
+            ('raw', ('name',), 'Verdict extra', 'source check binding'),
+            ('raw', ('app', 'id'), 1, 'untrusted Verdict App'),
+            ('raw', ('external_id',), '101-2', 'source check binding'),
+            ('raw', ('pull_requests', 0, 'number'), 32, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'head', 'sha'), '0' * 40, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'base', 'sha'), '0' * 40, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'base', 'ref'), 'train/wrong', 'archived check current PR'),
+            ('raw', ('output', 'summary'), 'fake pass', 'Verdict output')]
+        for target, path, value, why in rows:
+            with self.subTest(target=target, path=path):
+                self.setUp(); f = self.f
+                obj = f.binding[target] if target in ('producer', 'controller') else getattr(f, target)
+                for key in path[:-1]: obj = obj[key]
+                obj[path[-1]] = value
+                f.freeze(); f.refuses(why)
+
+    def test_plain_missing_current_fact(self):
+        f = self.f; del f.current_base['sha']; f.refuses('fields')
+
+    def test_plain_missing_producer_fact(self):
+        f = self.f; del f.binding['producer']['pull_request']['base_sha']
+        f.freeze(); f.refuses('current PR binding')
+
+    def test_plain_missing_check_fact(self):
+        f = self.f; del f.raw['pull_requests'][0]['base']['sha']; f.refuses('archived check current PR')
+
+    def test_plain_wrong_source_attempt(self):
+        f = self.f; f.source['attempt'] = 2; f.refuses('artifact provenance')
+
+    def test_plain_wrong_archive_name(self):
+        f = self.f; f.api['actions/artifacts/301']['name'] += '-extra'; f.refuses('artifact provenance')
+
+    def test_plain_wrong_archive_digest(self):
+        f = self.f; f.api['actions/artifacts/301']['digest'] = 'sha256:' + '0' * 64; f.refuses('artifact provenance')
+
+    def test_plain_wrong_refusal(self):
+        f = self.f; f.refusals = b'another refusal\n'; f.freeze(); f.refuses('refusal ground')
+
+
+class PlainSourceBindings(BaseMoveFixture):
+    def setUp(self):
+        super().setUp()
+        self.controller_producer['producer']['pull_request'].update(
+            base_ref=self.original_base['ref'], base_sha=self.original_base['sha'])
+        self.controller_check['name'] = self.published['name'] = 'Verdict'
+        self.published['base'] = ''
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201'].update(
+            name='Verdict', pull_requests=[{'number': 31, 'head': {'sha': self.head}, 'base': dict(self.original_base)}])
+        self.freeze_controller()
+        self.evidence_body['source']['controller']['current_base'] = dict(self.original_base)
+
+    def test_plain_full_source_preserves_original_red(self):
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+        measured = self.evidence_of('02-release')['record']['measurements']['train']['base_move']
+        self.assertFalse(measured['source_observed']['passed'])
+        self.assertEqual(measured['source_observed']['controller']['current_base'], self.original_base)
+        self.assertNotEqual(measured['source']['tested_merge']['sha'], self.head)
+
+    def test_plain_original_ref_still_binds_provenance(self):
+        self.evidence_body['source']['base_at_run']['ref'] = 'train/wrong'
+        self.evidence_body['source']['controller']['current_base']['ref'] = 'train/wrong'
+        self.controller_producer['producer']['pull_request']['base_ref'] = 'train/wrong'
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['pull_requests'][0]['base']['ref'] = 'train/wrong'
+        self.freeze_controller()
+        self.evidence_body['source']['controller']['current_base'] = dict(ref='train/wrong', sha=self.old)
+        self.refuse('source merge binding')
