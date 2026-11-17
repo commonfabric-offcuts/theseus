@@ -7209,4 +7209,61 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.ok(made.length === 1);
     assert.deepEqual(p.errors, []); await p.close();
   });
+
+  // Review 613 B1/B2: each input/state has its own case at every supported width.
+  const unreadPrefix = 'reading unread count one press lands on the oldest unread message';
+  const unreadCount = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
+  const unreadLook = (p, id) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});if(!c)return null;
+    const w=c.querySelector(':scope > .message-preview'),r=w?.getClientRects().length?w.getBoundingClientRect():null,b=c.getBoundingClientRect();
+    return {whole:c.dataset.earlier!=='true'&&Boolean(r),plain:Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2))),
+      focused:document.activeElement===c,onScreen:b.top>=0&&b.bottom<=innerHeight,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const unreadOn = { whole: true, plain: true, focused: true, onScreen: true, sideways: false };
+  const unreadDrawer = async (p, device) => {
+    if (device === 'laptop') return;
+    await centre(p, '#rail-open'); await tap(p, '#rail-open');
+    await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), 'the outline drawer opens');
+  };
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
+    await check(`${unreadPrefix}: marked older message then pending delivery, ${device}`, async () => {
+      const deep = `unread-marked-${device}`, calm = `unread-markcalm-${device}`;
+      const made = await control({ method: 'navigation_topics', topics: [{ id: calm, title: 'Shed ' + device }, { id: deep, title: 'Vines ' + device }] });
+      const reminder = (await control({ method: 'agent_message', operation_id: deep + '-reminder', topic_id: deep, source: 'topic', sender: other, join: true,
+        addressees: [facts.actor], body: 'Check the frost cloth before Friday.', read: true })).result.message_id;
+      await control({ method: 'mark', operation_id: deep + '-mark', message_ids: [reminder], marked: true });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The vines need twine by Friday.' });
+      const p = await open(deep, device, calm, made[0].result.message_id);
+      await unreadDrawer(p, device);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='2'`), 'the badge counts both the explicit mark and the delivery');
+      await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));
+      await becomes(() => unreadLook(p, reminder), unreadOn, 'the first press shows the older marked message whole and plain');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-marked-${device}-${theme}`); }
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread?.id === ids.target, 'B1: reading the marked message clears it and advances to the pending delivery');
+      await unreadDrawer(p, device);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
+      await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));
+      await becomes(() => unreadLook(p, ids.target), unreadOn, 'the next press reaches the later pending delivery');
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, 'both messages are now read');
+      await unreadDrawer(p, device);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(unreadCount(deep))})`), 'the badge is gone after both messages are read');
+      observations.push({ name: 'unread marked advances', engine, device, reminder, target: ids.target });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    for (const input of ['row Return', 'More new below Return']) await check(`${unreadPrefix}: ${input}, ${device}`, async () => {
+      const deep = `unread-keys-${input.startsWith('row') ? 'row' : 'line'}-${device}`;
+      await control({ method: 'navigation_topics', topics: [{ id: deep, title: 'Fences ' + device }] });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The fence wire is tightened.' });
+      const p = await open(deep, device, deep, ids.newest);
+      if (input === 'row Return') await unreadDrawer(p, device);
+      const selector = input === 'row Return' ? `#outline a.nav-item[data-topic-id="${deep}"]` : '#messages .new-line-older';
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), 'the keyboard control is drawn');
+      // Focus setup only; activation below is a native key, never a handler invocation.
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+      await p.key('Enter');
+      await becomes(() => unreadLook(p, ids.target), unreadOn, 'B2: Return shows the oldest unread message whole and plain');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-keys-${input.startsWith('row') ? 'row' : 'line'}-${device}-${theme}`); }
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, 'the reached message is read');
+      observations.push({ name: 'unread keyboard lands', engine, device, input, target: ids.target, look: await unreadLook(p, ids.target) });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 }
