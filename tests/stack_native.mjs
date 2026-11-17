@@ -1277,8 +1277,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await becomes(above, false, `${device} ${width} ${way}: the dossier is below More`);
         await moreOpen();
         await becomes(async () => Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length`)), true, `${device} ${width} ${way}: More shows it`);
+        // Chrome holds Core's answer to the star, and the reads that would tell the page of it, so the page is seen
+        // to show the dossier back above More at once, as Core makes it, before it has heard so (StackFeed.star).
+        const holds = payload => payload?.kind === 'message.star' || ['message_acts', 'stack_positions'].includes(payload?.name);
+        const holding = engine === 'chrome' && way === 'menu';
+        if (holding) p.intercept(holds);
         if (way === 'menu') { await menuAgain(p, device, ids.two, ids.lone); await choose(p, device, 'Star for me'); }
         else { await openReader(p, device, ids.two, 'Two coats'); await press(p, device, '#reader-star'); }
+        if (holding) {
+          await until(() => p.held.some(entry => entry.payload?.kind === 'message.star'), `${device} ${width}: Core's answer to the star is held`);
+          await becomes(above, true, `${device} ${width}: before the page has Core's answer, the dossier shows above More at once`);
+          p.intercept(null);
+          for (const entry of p.held.splice(0)) await p.release(entry);
+        }
         await until(async () => { const at = await positionIn(topic, ids.root); return !at.below && at.through === null; }, `${device} ${width} ${way}: the star brought it back above More, in Core`);
         assert.equal((await actsOf(topic, ids.two))?.starred, true, `${device} ${width} ${way}: and the message is starred`);
         assert.notEqual((await actsOf(topic, ids.root, other))?.aside ?? null, null, `${device} ${width} ${way}: another reader's move stands`);
@@ -1374,6 +1385,49 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
   else observations.push({ name: 'reading stacks star refused by Core', engine, held: 'holds the page\'s reads with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
+  // The Reader's star and archive button keep the text a press lands on when they are painted again (docs/reader.md):
+  // Safari sends no click for a press whose node left the page before the release, and a repaint held for a press
+  // (press-hold.mjs) runs at its release, so a press that a repaint lands during was lost there. Each control is held
+  // down while the page reads a star the reader made on another device, then let go; the press is taken.
+  await check('reading stacks the Reader\'s star and archive button take a press that a repaint lands during', async () => {
+    const topic = 'stack-reader-press-repaint';
+    const ids = await starSeed(topic);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page is at rest');
+    await openReader(p, 'laptop', ids.two, 'Two coats');
+    // A star made elsewhere on the message outside the dossier, which the page reads while the press is held: the
+    // read is answered, the page at rest, and two frames on its repaint waits for the release.
+    const starElsewhere = async (on, step) => {
+      await p.evaluate(`(()=>{window.watched=false;window.watchFor=${JSON.stringify({ read: 'message_acts', words: ids.lone })};return true})()`);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.lone, operation_id: `${topic}-${step}`, args: { starred: on } });
+      await until(() => p.evaluate('window.watched === true'), `${step}: the page read the star made elsewhere while the press is held`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${step}: and is at rest`);
+      await twoFrames(p);
+    };
+    const pressAcross = async (selector, step, on) => {
+      const b = await p.box(selector), x = b.x + b.width / 2, y = b.y + b.height / 2;
+      const taps = await p.evaluate('window.taps');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await starElsewhere(on, step);
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await until(async () => (await p.evaluate('window.taps')) > taps, `${step}: the press is a click`);
+    };
+    // The archive button, pressed on its count: the dossier moves below More.
+    await becomes(() => p.evaluate(`document.querySelector('#reader-aside').getAttribute('aria-label')`), 'Move below More: 3 messages', 'the archive button offers the move');
+    await pressAcross('#reader-aside .aside-count', 'archive', true);
+    await until(async () => (await positionIn(topic, ids.root)).below, 'the archive button pressed across a repaint moves the dossier below More, in Core');
+    await becomes(() => p.evaluate(`document.querySelector('#reader-aside').getAttribute('aria-pressed')`), 'true', 'and shows it moved');
+    // The star, pressed on its glyph: the message is starred, which brings its dossier back above More (item 635).
+    await becomes(() => p.evaluate(`document.querySelector('#reader-star').getAttribute('aria-pressed')`), 'false', 'the Reader\'s star is not pressed');
+    await pressAcross('#reader-star', 'star', false);
+    await until(async () => (await actsOf(topic, ids.two))?.starred === true, 'the Reader\'s star pressed across a repaint stars the message, in Core');
+    await becomes(() => p.evaluate(`(b=>[b.getAttribute('aria-pressed'),b.textContent])(document.querySelector('#reader-star'))`), ['true', '★'], 'and shows it starred');
+    assert.equal((await positionIn(topic, ids.root)).below, false, 'the star brought the dossier back above More');
+    assert.deepEqual(p.errors, []); await p.close();
+    await readAll(topic);
+  });
 
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
