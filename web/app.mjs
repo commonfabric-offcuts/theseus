@@ -565,7 +565,7 @@ async function present(presentation) {
         if (!registry.isCurrent(presentation)) return;
         if (root) name = messagePreview(root);
       }
-      presentation.dossierName = name;
+      presentation.dossierName = null;
     }
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
