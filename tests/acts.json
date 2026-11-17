@@ -27093,8 +27093,8 @@
     ]
    ],
    "check": {
-    "native": "whispers",
-    "case": "whispers item 643 B1 drag endpoints keep picker open"
+    "native": "colors",
+    "case": "colors item 643 B1 drag endpoints keep picker open"
    }
   },
   {
@@ -27108,8 +27108,8 @@
     ]
    ],
    "check": {
-    "native": "webkit-whispers",
-    "case": "whispers item 643 B1 drag endpoints keep picker open"
+    "native": "webkit-colors",
+    "case": "colors item 643 B1 drag endpoints keep picker open"
    }
   },
   {

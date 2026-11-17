@@ -116,8 +116,8 @@ A press outside a pop-up closes it and keeps unsent writing and images. A press
 outside, Escape and the close control all keep work the same way. A press that
 starts or ends inside the pop-up is not an outside press.
 
-- `tests/team_bar_native.mjs` (`native-whispers`, `native-webkit-whispers`):
-  "whispers item 643 B1 drag endpoints keep picker open" and the empty,
+- `tests/team_bar_native.mjs` (`native-colors`, `native-webkit-colors`):
+  "colors item 643 B1 drag endpoints keep picker open" and the empty,
   refused, error and busy picker cases exercise drags from the Team label
   into the name field or choices, and back out. The actual pointer release
   decides whether it ended inside, even when the click targets their common
