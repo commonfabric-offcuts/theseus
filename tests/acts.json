@@ -26061,21 +26061,6 @@
   },
   {
    "item": 635,
-   "act": "A Core refusal of the move, for a star the page has not read, is said where it was pressed",
-   "break": [
-    [
-     "web/stack-feed.mjs",
-     "if (error?.receipt?.error?.code === 'STARRED_IN_DOSSIER') this.held(stack, at);",
-     "if (false) this.held(stack, at);"
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading stacks star unloaded"
-   }
-  },
-  {
-   "item": 635,
    "act": "A star in a dossier below More shows it back above More on the page at once",
    "break": [
     [
@@ -26087,6 +26072,21 @@
    "check": {
     "native": "reading",
     "case": "reading stacks star brings back"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core's refusal of the move, for a star the page has not read, is said with its reason and the dossier stays above More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "raise Refusal(*HELD_BY_STAR)",
+     "pass"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star refused by Core"
    }
   }
  ]

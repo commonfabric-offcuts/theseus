@@ -1326,6 +1326,38 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Core holds the rule for every entry point: a move sent before the page has read a star the reader made on another
+  // device (its reads held here) is refused by Core, its reason said on the status line as any refusal is, and the
+  // dossier is where Core holds it, above More. Chrome only: Safari's harness cannot hold the page's reads.
+  if (engine === 'chrome') await check('reading stacks star refused by Core: Move below More, sent before the page has read a star made on another device, is refused by Core with its reason, and the dossier stays above More', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-core-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      const reads = payload => ['message_acts', 'stack_positions', 'stars'].includes(payload?.name);
+      p.intercept(reads);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-elsewhere`, args: { starred: true } });
+      await until(() => p.held.some(entry => reads(entry.payload)), `${device} ${width}: the page's read of the star made elsewhere is held`);
+      assert.equal((await titleStar(p, ids.root)).shown, false, `${device} ${width}: the page has not read the star`);
+      await menuOf(p, device, ids.two);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(() => p.evaluate(`document.getElementById('app-status').textContent.includes(${JSON.stringify(HELD)})`), `${device} ${width}: Core's refusal is said, with its reason`);
+      assert.deepEqual([(await actsOf(topic, ids.root))?.aside ?? null, (await positionIn(topic, ids.root)).below], [null, false], `${device} ${width}: Core holds no move`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-core-refused-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      p.intercept(null);
+      for (const entry of p.held.splice(0)) await p.release(entry);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the star read, the title bar shows it`);
+      await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length) && !document.querySelector('#messages .stack-more')`), true,
+        `${device} ${width}: the dossier is above More, where Core holds it`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+  else observations.push({ name: 'reading stacks star refused by Core', engine, held: 'holds the page\'s reads with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
   // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an

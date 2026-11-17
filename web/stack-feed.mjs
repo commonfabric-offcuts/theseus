@@ -721,8 +721,9 @@ export class StackFeed {
     // before Core answers, and also when Core finds the place unchanged (the
     // same through keeps its revision, so drawnBelow's place would hold).
     for (const each of this.messages().values()) if (each.stack_position?.root_id === root) { this.state.peeked.delete(each.id); this.state.here.delete(each.id); }
-    // Core refuses it too, for a star the page has not read yet (made on another device), said where the press was.
-    this.act('stack.aside', item, { through }).catch(error => { if (error?.receipt?.error?.code === 'STARRED_IN_DOSSIER') this.held(stack, at); });
+    // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
+    // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
+    this.act('stack.aside', item, { through });
     if (undoable) this.remember(() => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through }));
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does

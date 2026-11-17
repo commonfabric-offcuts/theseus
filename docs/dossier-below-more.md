@@ -104,8 +104,11 @@ which all send `stack.aside`:
   dossier below More keeps it above More for that reader (item 368).
 
 The page checks the same rule before sending anything, so a press on a
-dossier whose title bar shows the star moves nothing even for a frame; Core's
-refusal, for a star the page has not read yet, is said in the same place.
+dossier whose title bar shows the star moves nothing even for a frame. A move
+sent before the page has read a star made on another device is refused by
+Core, and said on the status line as any refusal is ("… was not saved: This
+dossier has a message you starred …"); the dossier shows where Core holds it,
+above More.
 
 Schema 38 adds `aside` to the existing act table plus reply/join edge indexes.
 Upgrade preserves act ids, revisions and the sequence high-water mark. Downgrade
