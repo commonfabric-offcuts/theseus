@@ -7244,10 +7244,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread,
           count: (await view('workspace_topics', { workspace_id: 'w1' })).items.find(item => item.id === deep)?.unread });
       }
-      await unreadDrawer(p, device);
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
-      await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));
-      await becomes(() => unreadLook(p, ids.target), unreadOn, 'the next press reaches the later pending delivery');
+      const traceSecond = async phase => observations.push({ name: 'unread second press', engine, device, phase,
+        look: await p.evaluate(`(()=>{const r=document.getElementById('rail'),b=document.querySelector(${JSON.stringify(unreadCount(deep))}),c=document.querySelector(${JSON.stringify(card(ids.target))});
+          const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};
+          const q=box(b),h=q&&document.elementFromPoint(q.x+Math.min(12,q.width/2),q.y+Math.min(12,q.height/2));
+          return {scrollY,drawer:r.className,railScroll:r.scrollTop,inert:document.getElementById('main').inert,badge:box(b),hit:h?.outerHTML.slice(0,500),
+            focus:document.activeElement?.outerHTML.slice(0,500),target:box(c),sent:window.sent}})()`),
+        oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread });
+      await traceSecond('before opening');
+      try {
+        await unreadDrawer(p, device);
+        await traceSecond('drawer opened');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
+        await centre(p, unreadCount(deep));
+        await traceSecond('badge centred');
+        await press(p, device, unreadCount(deep));
+        await traceSecond('badge pressed');
+        await becomes(() => unreadLook(p, ids.target), unreadOn, 'the next press reaches the later pending delivery');
+      } catch (error) {
+        await traceSecond('failed');
+        await shot(p, `unread-second-failed-${device}`);
+        throw error;
+      }
       await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, 'both messages are now read');
       await unreadDrawer(p, device);
       await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(unreadCount(deep))})`), 'the badge is gone after both messages are read');
