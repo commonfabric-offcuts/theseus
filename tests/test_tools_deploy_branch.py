@@ -31,8 +31,12 @@ class ReleaseBranch(DeployCase):
         self.git("init", "-q")
         self.git("config", "user.name", "Deploy fixture")
         self.git("config", "user.email", "deploy@example.invalid")
+        self.git("commit", "-q", "--allow-empty", "-m", "Earlier release")
+        self.earlier = self.git("rev-parse", "HEAD")
         self.git("commit", "-q", "--allow-empty", "-m", "Old release")
         self.old = self.git("rev-parse", "HEAD")
+        self.git("commit", "-q", "--allow-empty", "-m", "Intermediate change")
+        self.middle = self.git("rev-parse", "HEAD")
         self.git("commit", "-q", "--allow-empty", "-m", "New release\n\nPipeline: 667")
         self.new = self.git("rev-parse", "HEAD")
         self.remote = self.config.live.parent / "remote.git"
@@ -191,6 +195,44 @@ class ReleaseBranch(DeployCase):
         self.assertEqual(self.run_release(), 1, "a missing branch is not permission to create one")
         self.assertFalse(self.branch_evidence()["success"])
         self.assertEqual(self.git("for-each-ref", "refs/heads/release/live73", bare=True), "")
+
+    def assert_changed_branch_is_kept(self, target):
+        """Change the real bare ref after fetch, before push's own remote advertisement."""
+        raced = []
+        def change_before_push(argv):
+            if "push" in argv:
+                self.assertEqual(self.remote_head(), self.old)
+                args = ("-d", "refs/heads/release/live73") if target is None else ("refs/heads/release/live73", target)
+                self.git("update-ref", *args, bare=True)
+                # Assert the mutation applied before letting the real git push run.
+                self.assertEqual(self.git("for-each-ref", "--format=%(objectname)", "refs/heads/release/live73", bare=True),
+                                 target or "")
+                raced.append(target)
+
+        self.assertEqual(self.run_release(intercept=change_before_push), 1,
+                         "publication must refuse a branch deleted or changed since fetch")
+        self.assertEqual(raced, [target], "the race must occur at the real publication boundary")
+        self.assertEqual(self.git("for-each-ref", "--format=%(objectname)", "refs/heads/release/live73", bare=True),
+                         target or "", "publication must neither recreate nor overwrite the changed branch")
+        evidence = self.branch_evidence()
+        self.assertEqual((evidence["old_head"], evidence["new_head"]), (self.old, self.new))
+        self.assertFalse(evidence["success"])
+        self.assertFalse(evidence["moved"])
+        self.assertIsNone(evidence["read_back"])
+        self.assertNotEqual(evidence["push"]["exit"], 0)
+        self.assertIn("push", evidence["refused"])
+        self.assertIn("release record is kept", self.output.getvalue())
+        self.assertEqual(self.git("rev-parse", "HEAD"), self.new, "the verified release stays live")
+        self.assertEqual([record["commit"] for record in self.host.written], [self.new])
+
+    def test_branch_deleted_between_fetch_and_push_is_not_recreated_and_record_is_kept(self):
+        self.assert_changed_branch_is_kept(None)
+
+    def test_branch_rewound_between_fetch_and_push_is_not_overwritten_and_record_is_kept(self):
+        self.assert_changed_branch_is_kept(self.earlier)
+
+    def test_branch_advanced_between_fetch_and_push_is_not_overwritten_and_record_is_kept(self):
+        self.assert_changed_branch_is_kept(self.middle)
 
     def test_failed_verify_leaves_branch_untouched(self):
         self.assertEqual(self.run_release(cli=2), 1)
