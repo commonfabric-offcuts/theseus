@@ -422,7 +422,7 @@ function unhead(entry) {
 // row goes after its title row, which stays first.
 function paintFolded(entry, item, folded, { nameOf, doc }) {
   const card = cardIn(entry);
-  if (!folded) { foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
+  if (!folded) { if (foldedRows.has(card)) card.querySelector(':scope > .message-author')?.classList.add('sr-only'); foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
   let row = foldedRows.get(card);
   if (!row) {
     row = element(doc, 'span', 'message-folded');
@@ -454,7 +454,7 @@ function paintFoldedNames(list, messages, state) {
       const card = cardIn(entry), author = card.querySelector(':scope > .message-folded > .folded-author');
       const item = messages.get(entry.dataset.id);
       const folded = item && !card.hidden && state.folded.has(item.id) && !state.earlierRows.has(item.id);
-      if (author) author.classList.toggle('sr-only', Boolean(folded && previous !== item.author_id));
+      if (author) author.classList.toggle('sr-only', Boolean(folded && previous === item.author_id));
       previous = folded ? item.author_id : null;
     }
   };
