@@ -781,6 +781,13 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as new again after the second edit`);
       assert.deepEqual(p.errors, []);
       await p.close();
+      // A page loaded afresh draws the card struck from the start, new.
+      const r = await open(read, device, read, a.line, 'window.holdReads = true');
+      assert.deepEqual(await strikeOf(r, words(a.line)).then(seen => ({ text: seen.text, struck: seen.struck })), { text: STRUCK + ' Deployed.', struck: ['85'] },
+        `${width}: loaded afresh, the card is drawn struck`);
+      assert.equal(await r.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), false, `${width}: and new`);
+      assert.deepEqual(r.errors, []);
+      await r.close();
       // The topic the person had not read: only the new words, once, nothing struck.
       const q = await open(fresh, device, fresh, b.line, 'window.holdReads = true');
       if (device === 'phone' && width !== 390) await q.send('Emulation.setDeviceMetricsOverride', { width, height: 740, deviceScaleFactor: 1, mobile: true });
