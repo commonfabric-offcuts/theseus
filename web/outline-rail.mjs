@@ -2,7 +2,8 @@
 // item 272; docs/rails.md): every outcome, folded but for the one being read,
 // so what is new anywhere shows at a glance. An outcome's row is its light,
 // its name and where it stands, and the whole row opens its Conversation and
-// its topics (Opened tidies every other away); folded, it carries
+// its topics (Opened tidies every other away). On a phone a folded outcome
+// first opens its topics without moving (item 654); folded, it carries
 // the count of everything new inside it; open, its own row counts its
 // Conversation and its Build topics (the right rail's), since each topic row
 // under it shows its own. The topic rows are today's
@@ -359,7 +360,7 @@ export class OutlineRail {
       if (!plainClick(event)) return;
       event.preventDefault();
       if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
-      if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
+      if (true) {
         if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
           // must not close it. The tree has already selected the pressed row.
@@ -367,6 +368,7 @@ export class OutlineRail {
           this.setOpen(outcome, true);
           return;
         }
+        this.open(this.nameTarget(outcome), outcome.item.title);
         return;
       }
       const open = !this.isOpen(outcome.id);

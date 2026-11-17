@@ -27,8 +27,8 @@ tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
 its scroll, the current page and every other outcome's fold stay as they were.
 A tap on an open outcome goes to its Conversation, with its topics still open.
 A topic tap goes straight to the topic. On a laptop a click still goes to the
-Conversation and toggles its topics; Return keeps its existing way. When Core says the outcome
-has no Conversation, it opens the outcome's page instead. There is no fold
+Conversation and toggles its topics; Return keeps its existing way. When Core
+says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
 triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
@@ -114,8 +114,7 @@ rail.
   on the pencil opens the New topic line. ↑ from the first outcome lands on
   the Outcomes heading's pencil, where Return opens the New outcome line.
   ⌘Return starts a new message in the row's topic or the outcome's
-  Conversation. A click or a tap on a row leaves
-  the keys on it, wearing their ring (item 462), including a phone tap that
+  Conversation. A click or a tap on a row leaves the keys on it, wearing their ring (item 462), including a phone tap that
   only expands a collapsed outcome (item 654). A "Keys" line under the
   outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys
