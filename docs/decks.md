@@ -40,7 +40,9 @@ Tab or ⇧Tab, put back by ⌘Z, left picked by ⌘⌫ or Escape, and a card bei
 written that Return opens or ⌘↑ ⌘↓ move. Opening a card by click or touch, writing in it, and closing it with
 Escape or Done keep the page where it is (item 644). Rendering, saving and
 setting the caret do not reveal the whole card; only navigation between cards
-asks for a new place. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
+asks for a new place. If permission is refused while writing, the full page
+keeps its height while the writing controls are away, so closing the retained
+card cannot pull the page up from its end. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
 act a key starts reads the rule, whichever path paints the card.
 
 | act | laptop | phone |

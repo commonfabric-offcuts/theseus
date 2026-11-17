@@ -308,12 +308,12 @@ async function run() {
       // measuring the inline act first, then start a separate hold for the sheet.
       const inlineTrail = await p.evaluate(() => { item644.running = false; return item644; });
       assert.ok(inlineTrail.frames.every(y => Math.abs(y-inlineTrail.start) <= 1), `inline writing holds the page: ${JSON.stringify(inlineTrail)}`);
-      for (let n = 0; n < 16 && await p.evaluate(() => Boolean(document.activeElement.closest('.composer'))); n++) {
+      for (let n = 0; n < 16 && await p.evaluate(() => Boolean(document.activeElement.closest('input,textarea,select,dialog,.composer,[contenteditable],[role=menu]'))); n++) {
         const old = await p.evaluate(() => { window.item644Focus = document.activeElement; return document.activeElement.id; });
         await p.keyboard.press(engine === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab');
         await until(p, () => document.activeElement !== window.item644Focus, `Tab leaves ${old}`);
       }
-      assert.equal(await p.evaluate(() => Boolean(document.activeElement.closest('.composer'))), false, 'Tab left writing for the page shortcut');
+      assert.equal(await p.evaluate(() => Boolean(document.activeElement.closest('input,textarea,select,dialog,.composer,[contenteditable],[role=menu]'))), false, 'Tab left writing for the page shortcut');
       await p.evaluate(() => {
         window.item644 = { start: scrollY, frames: [], running: true };
         const read = () => { const t = window.item644; t.frames.push(scrollY); if (t.running) requestAnimationFrame(read); };
