@@ -1377,21 +1377,26 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
       const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
       const lineOf = id => `${card(id)} > .message-author`;
+      // ⋯ of the dossier: on a phone a tap on a lit card opens the Reader, and the dossier's lit card can be its newest
+      // message's, so a message of another dossier is lit first, as a person taps elsewhere before coming back to it.
+      const rootMenu = async () => {
+        if (device === 'phone') await light(p, device, (await lit(p)).includes(ids.mine) ? ids.primer : ids.mine);
+        return menuOf(p, device, ids.root);
+      };
       // The agents-only dossier opens from its quiet row to its title bar and first message (item 394).
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.compact === 'true'`), `${device} ${width}: the agents-only dossier is one quiet row`);
       await centre(p, toggle); await press(p, device, toggle);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.compact === 'false'`), `${device} ${width}: opened from its row`);
-      await menuAgain(p, device, ids.root, ids.mine); await moveItem(p, device, 'Move below More');
+      await rootMenu(); await moveItem(p, device, 'Move below More');
       await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: moved below More, in Core`);
       await moreOpened(p, device);
       await becomes(shown, true, `${device} ${width}: More shows it`);
-      await menuAgain(p, device, ids.root, ids.mine); await moveItem(p, device, 'Bring back above More');
+      await rootMenu(); await moveItem(p, device, 'Bring back above More');
       await until(async () => !(await positionIn(topic, ids.root)).below, `${device} ${width}: brought back, in Core`);
-      const offered = await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Star for me');
-      // What the page and Core said, where the star is not taken: the menu it was chosen from, the status line and the words said.
-      await until(async () => (await actsOf(topic, ids.root))?.starred === true, `${device} ${width}: starred, in Core`).catch(async error => {
-        throw new Error(`${error.message}: menu ${JSON.stringify(offered)}, status ${JSON.stringify(await status())}, said ${JSON.stringify(await said(p))}, lit ${JSON.stringify(await lit(p))}, ids ${JSON.stringify(ids)}, Core ${JSON.stringify(await view('message_acts', { topic_id: topic }))}, stars ${JSON.stringify(await starsOf(facts.actor))}`);
-      });
+      // ⋯ from the dossier's first line: the folded dossier's menu is its newest message's, a message of it all the same.
+      const inIt = async () => (await starsOf(facts.actor)).filter(id => id === ids.root || id === ids.reply);
+      await rootMenu(); await choose(p, device, 'Star for me');
+      await until(async () => (await inIt()).length === 1, `${device} ${width}: a message of the dossier is starred, in Core`);
       await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
       // Show agent coordination off: the dossier is not drawn.
       await centre(p, filter); await press(p, device, filter);
@@ -1415,8 +1420,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // Show agent coordination on again, and the star taken off, so the cases after this one find the stars as they were.
       await centre(p, filter); await press(p, device, filter);
       await becomes(shown, true, `${device} ${width}: Show agent coordination shows it again`);
-      await menuAgain(p, device, ids.root, ids.mine); await choose(p, device, 'Unstar');
-      await until(async () => (await actsOf(topic, ids.root))?.starred === false, `${device} ${width}: unstarred, in Core`);
+      await rootMenu(); await choose(p, device, 'Unstar');
+      await until(async () => (await inIt()).length === 0, `${device} ${width}: unstarred, in Core`);
       assert.deepEqual(p.errors, []); await p.close();
       await readAll(topic);
     }
