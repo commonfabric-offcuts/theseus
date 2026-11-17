@@ -189,8 +189,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     depart: () => events.push(['depart']), stay: () => events.push(['stay']),
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
-    Reader: class { constructor() { return reader; } },
-    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
+    Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
+    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -202,8 +202,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName, enableFreshness,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('stackFeed' in value) stackFeed = value.stackFeed; if ('here' in value) here = value.here; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
@@ -4368,4 +4368,89 @@ test('on the conversation page a reply folded in its stack is never reported rea
   await settle(); await settle();
   assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
   assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
+});
+
+
+async function starred655() {
+  const f = fixture();
+  await f.initialize();
+  Object.assign(f.reader, { dialog: { open: false }, show() { this.dialog.open = true; }, paintPending() {}, paintRecipients() {} });
+  f.registry.neighbors = async () => null;
+  f.registry.recoveryCandidates = async () => ({ items: [], nextCursor: null });
+  const source = { instance_id: 'fixture', source_ref: { kind: 'message', id: 'old-root' }, topic_id: 't1', seq: 1, body: 'The unnamed first line.\nMore words.', attachments: [] };
+  const p = { token: 1, surface: 'reader', mode: 'reply', source, editors: { reply: { ...f.editor, offered: true } } };
+  f.registry.current = p;
+  const feed = { dossierName: () => null, arrange() {} };
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, stackFeed: feed });
+  let position = { root_id: 'old-root', name: null, has_other_messages: true };
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'stack_positions') return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id, stack_position: position }] };
+    if (name === 'topic_messages' && args.message_ids) return { instance_id: 'fixture', items: [{ id: position.root_id, body: 'The unnamed first line.', attachments: [] }] };
+    return read(name, args, options);
+  };
+  return { f, p, source, feed, setPosition: value => { position = value; } };
+}
+
+test('item 655 B1 unloaded unnamed roots and replies use the first line while singletons keep the topic fallback', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'an unloaded root with replies has the dossier first line');
+  setPosition({ root_id: 'old-root', has_other_messages: false, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), null, 'a singleton does not acquire a dossier title');
+  source.source_ref.id = 'old-reply';
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'a reply uses its root, not its own words');
+});
+
+test('item 655 B2 freshness follows unloaded rename clear join split and loaded singleton without a stale cached name', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: { text: 'Old name' } });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'Old name');
+  f.enableFreshness({});
+  for (const [position, expected] of [
+    [{ root_id: 'old-root', has_other_messages: true, name: { text: 'Renamed elsewhere' } }, 'Renamed elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+    [{ root_id: 'joined-root', has_other_messages: true, name: { text: 'Joined elsewhere' } }, 'Joined elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+  ]) {
+    setPosition(position);
+    await f.fresh.options.refresh('acts', 2, (name, args) => f.api.view(name, args), () => true);
+    assert.equal(f.readerDossierName(source), expected, 'freshness must refresh the unloaded source title too');
+  }
+  p.dossierName = 'Old cached name';
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
+});
+
+for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
+  const { f, p, source } = await starred655();
+  source.source_ref.id = 'old-reply';
+  const view = f.api.view;
+  f.api.view = async (name, ...args) => { if (name === failedRead) throw Error('Transient lookup refusal'); return view(name, ...args); };
+  await f.present(p);
+  assert.equal(f.reader.dialog.open, true, 'metadata failure must not hide the source');
+  assert.equal(f.reader.presentation.source, source);
+  assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
+});
+
+test('item 655 B4 title return clears Only new after preservation succeeds, while dismissal and refused close keep it', async () => {
+  const { f, p, source } = await starred655();
+  const here = { page: true, onlyNew: true, items: new Map(), view: null };
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, here });
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  f.reader.presentation = p;
+  assert.equal(await f.reader.callbacks.close(null, 'close'), true);
+  assert.equal(here.onlyNew, true, 'ordinary dismissal preserves the filter');
+  f.registry.current = p;
+  f.registry.close = async () => false;
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), false);
+  assert.equal(here.onlyNew, true, 'refused preservation changes no filter');
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
+  assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
 });
