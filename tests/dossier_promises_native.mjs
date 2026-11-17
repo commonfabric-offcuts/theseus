@@ -11,7 +11,7 @@ export async function promiseChecks(api, helpers) {
   const write = (root, args, op) => control({ method: 'stack_act', sender: 'aim-core', kind: 'stack.cover', message_id: root, operation_id: op, args });
   const held = async (topic, root) => {
     const read = await control({ method: 'acts_as', reader: facts.actor, topic_id: topic });
-    return read.acts.items.find(x => x.message_id === root)?.cover;
+    return read.acts.items.find(x => x.message_id === root)?.acts?.cover;
   };
   const make = async phase => {
     const topic = `promise-717-${phase}-${++serial}`;
@@ -56,7 +56,12 @@ export async function promiseChecks(api, helpers) {
     if (baseline) for (const [width, shape] of sizes) {
       const p = await open(`${topic}-${width}`, shape, topic, ids.root);
       for (const theme of ['light', 'dark']) { await scheme(p, theme); await centre(p, covers(ids.root)); await shot(p, `717-base-feed-${width}-${theme}`);
-        await openReader(p, shape.startsWith('phone') ? 'phone' : 'laptop', ids.answer, text); await press(p, shape.startsWith('phone') ? 'phone' : 'laptop', '#reader-cover > summary');
+        // The payload citation stays visible even after reading folds its source message.
+        const device = shape.startsWith('phone') ? 'phone' : 'laptop';
+        const citation = covers(ids.root) + ' .cover-payload .cover-src';
+        await centre(p, citation); await press(p, device, citation);
+        await until(() => p.evaluate('document.querySelector("#reader").open'), 'the visible source citation opens the Reader');
+        await press(p, device, '#reader-cover > summary');
         await shot(p, `717-base-reader-${width}-${theme}`); await closeReader(p, shape.startsWith('phone') ? 'phone' : 'laptop'); }
       await p.close();
     }
