@@ -360,6 +360,7 @@ class StarCoverMergeCase(StackCase):
         pos = self.position(later)
         self.assertEqual((pos["root_id"], pos["placed"], pos["place_revision"]), (root, 1.5, 1))
         self.assertEqual([(x["message_id"], x["placed"]) for x in pos["places"]], [(later, 2.5)])
+        self.assertIn("starred", pos, "a partial position retains the reader star field")
         self.assertEqual(pos["starred"], [later])
         self.assertEqual(pos["cover"]["stands"], "Roof ready")
         self.assertEqual(pos["cover_revision"], 1)
