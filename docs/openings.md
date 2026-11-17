@@ -124,7 +124,10 @@ An outcome has one owner (`owner_id`) and at most one coordinator
 (`coordinator_id`, chosen at creation from the team; removing them from the
 team clears it). Both organise the outcome: they change its team, and, beside
 each topic's creator, rename and archive any of its topics, say where any of
-them stands and change who takes part in them. Only the owner hands the
+them stands and remove participants. Any reader may add a person or agent
+to an existing topic with `participation.set` and choose the outcome's coordinator
+with `workspace.coordinator_set` ([agent-settings.md](agent-settings.md)).
+Only the owner hands the
 outcome on (`workspace.owner_set`), and the owner can never be removed from the
 team, by the coordinator or anyone else. The `wakes` notice for agents whose
 work waits in the outcome while wakes are not going out goes to the owner

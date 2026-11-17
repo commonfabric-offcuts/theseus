@@ -30,10 +30,12 @@ conversation's topic opens this page.
 
 ## Who is in it
 
-The coordinator is `workspaces.coordinator_id`, chosen by the owner with
+The coordinator is `workspaces.coordinator_id`, chosen at creation with
 `workspace.create`'s `coordinator` or `workspace.coordinator_set` (target
 `{workspace_id}`, expected `{workspace_revision}`, args `{actor_id: ID | null}`;
-the actor must be on the team). The conversation's participants are always the
+the chosen actor must be enabled and on the team). Any reader of the outcome
+may choose its coordinator, under their own identity, regardless of role
+([agent-settings.md](agent-settings.md)). The conversation's participants are always the
 team's people plus the coordinator, kept so by `workspace.create`,
 `workspace.coordinator_set` and `workspace.member_set` in the same act. So the
 coordinator is woken by every message there, every person reads it, and any
@@ -86,7 +88,7 @@ ask (`reply_to` = the ask), gives it a 👍 (a person's 👍 on a plain ask to
 them answers it yes; taking the 👍 back makes it wait again unless they
 replied to it meanwhile; [thumbs.md](thumbs.md#a-thumbs-up-answers-an-ask)), or
 leaves the team and so can no longer read the conversation; nothing else
-clears it. A coordinator the owner replaces stays
+clears it. A coordinator someone replaces stays
 on the team and still owes its asks.
 The conversation's `topic_waiting` rows follow the open asks, so attention and
 the sidebar read its waits as for any topic. The Conversation row on the outcome's page,

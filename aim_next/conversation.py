@@ -136,10 +136,11 @@ class Conversation:
         return topic["version"] + 1
 
     def _command_participation_set(self, db, actor, envelope):
-        topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=True)
+        args = envelope.get("args", {})
+        # Adding someone needs reading, never an owner/coordinator role. Removal keeps its management rule.
+        topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=args.get("present") is not True)
         self._conversation_participation_refused(topic)
         _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
-        args = envelope.get("args", {})
         present = args.get("present")
         if not isinstance(present, bool):
             raise Refusal("INVALID_ARGUMENT", "Participation must be explicitly true or false")

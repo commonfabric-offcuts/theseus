@@ -31451,6 +31451,90 @@
     "native": "rail",
     "case": "rail item 654 laptop"
    }
+  },
+  {
+   "item": 610,
+   "act": "Any outcome reader chooses its coordinator under its own identity",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "# Any reader chooses who coordinates, recorded under this caller's own identity.",
+     "if workspace[\"owner_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", \"Only the owner chooses\")"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 610,
+   "act": "Any topic reader adds a person or agent to an existing topic",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "manage=args.get(\"present\") is not True)",
+     "manage=True)"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 610,
+   "act": "Settings acts are recorded as their caller, never as the owner",
+   "break": [
+    [
+     "aim_next/store.py",
+     "db.execute(\"INSERT INTO operations VALUES (?,?,?,?,?)\", (actor, op_id, fingerprint, kind, _json(receipt)))",
+     "db.execute(\"INSERT INTO operations VALUES (?,?,?,?,?)\", (\"owner\" if kind in (\"workspace.coordinator_set\", \"participation.set\") else actor, op_id, fingerprint, kind, _json(receipt)))"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 610,
+   "act": "An added topic member is stored and receives the topic",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "member, int(present), epoch, responsibility, revision))",
+     "member, 0, epoch, responsibility, revision))"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 610,
+   "act": "The participant CLI verb sends its recorded Core command",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "result = self.command(\"participation.set\", {\"topic_id\": topic[\"id\"]},",
+     "return\n        result = self.command(\"participation.set\", {\"topic_id\": topic[\"id\"]},"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
+  },
+  {
+   "item": 610,
+   "act": "An unavailable coordinator refuses without changing the outcome",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "chosen = self._recipients(db, [chosen])[0]",
+     "_identifier(chosen, \"actor_id\")"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
   }
  ]
 }
