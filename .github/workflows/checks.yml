@@ -75,8 +75,13 @@ jobs:
     needs: plan
     runs-on: macos-26
     # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
-    # 45 on a18e8b1e. Units, deploy refusals and wake replay keep 45.
-    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 75 || 45 }}
+    # 45 on a18e8b1e. Units, deploy refusals and wake replay had 45.
+    # TEMPORARY (17 Nov), both numbers:
+    # - 60, not 45: python-units alone now runs 42 to 44 minutes in the one units job, so 45 cancels it. Item 665
+    #   splits the units job into shards with limits read from measured times, and removes this raise.
+    # - 90, not 75: train 33's browser shard 1 reached 74.2 step-minutes and was cancelled at 75. Item 666 deals the
+    #   browser steps over four shards by measured minutes, and removes this raise.
+    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 90 || 60 }}
     strategy:
       fail-fast: false
       matrix:
