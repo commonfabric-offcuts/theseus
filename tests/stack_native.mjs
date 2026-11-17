@@ -7240,11 +7240,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           assert.ok(f.name > 20, `${device} ${width}: the tab keeps room for its name beside the glyphs: ${JSON.stringify(f)}`);
           // Hidden by touch the glyphs reserve nothing (warp #7317): at rest the tab reaches at least as far as once
           // selected, where ⋯ takes its room on the folder, and its name is at least as wide; and on a phone that room
-          // is ⋯'s alone, not cut back for two glyphs folded into ⋯.
+          // is ⋯'s alone, not cut back for two glyphs folded into ⋯: once selected the tab gives back at most what ⋯
+          // needs, reaching either as far as at rest or to ⋯'s room, its curved corner from ⋯ (warp #7317, B3).
           if (device === 'phone' && theme === 'light') {
             const r = resting[width], menu = f.tools.find(t => t.tool === 'menu');
             assert.ok(r.tab.right >= f.tab.right - .5 && r.name >= f.name - .5,
               `phone ${width}: at rest the tab and its name are at least as wide as once selected: ${JSON.stringify({ rest: { tab: r.tab, name: r.name }, selected: { tab: f.tab, name: f.name } })}`);
+            assert.ok(f.tab.right >= Math.min(r.tab.right, menu.left - f.corner) - .5,
+              `phone ${width}: once selected the tab gives back at most the room ⋯ needs, reaching ${Math.min(r.tab.right, menu.left - f.corner)}: ${JSON.stringify({ rest: r.tab, selected: f.tab, corner: f.corner, menu })}`);
             assert.ok(menu.left - r.tab.right <= menu.width, `phone ${width}: at rest the tab reaches to within one glyph of ⋯: ${JSON.stringify({ rest: r.tab, menu })}`);
             observations.push({ name: 'title bar at rest', engine, device, width, tab: r.tab, name: r.name, selectedName: f.name, gapToMenu: menu.left - r.tab.right });
           }
@@ -7260,43 +7263,101 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 473, warp #7317 (D1): the title bar's ⋯ stands on the folder, never past it in the page's margin. On a phone,
   // selected by touch at 390, 375 and 320, ⋯'s right edge is at or inside the folder's right edge, clear of the tab and
   // its curved corner, 44px, and a press at its centre lands on it: once the glyphs show, the tab gives them the room
-  // they need. On a laptop under the pointer, at 1280 (three glyphs) and 760 (⋯ alone), they are inside it as before.
-  const faceFacts = (p, id) => p.evaluate(`(s=>{const f=s.getBoundingClientRect(),tab=s.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(),
+  // they need, and no more (B3: it reaches as far as at rest, or to ⋯'s room, its curved corner from ⋯). Each way a
+  // touch shows them is its own state, each read at every width (B4, the release-70 states rule): a reply selected (the
+  // focus in the dossier, its first message not lit), the dossier selected (its first message lit, the focus there),
+  // the dossier selected with the focus gone from it (lit alone), and ⋯'s menu open. On a laptop under the pointer, at
+  // 1280 (three glyphs) and 760 (⋯ alone), they are inside it as before.
+  const faceFacts = (p, id) => p.evaluate(`(s=>{const f=s.getBoundingClientRect(),tab=s.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(),t=s.querySelector(':scope > .stack-tools'),
     corner=parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize);
     return {folder:{left:f.left,right:f.right},tab:{left:tab.left,right:tab.right},corner,overflow:document.documentElement.scrollWidth>innerWidth,
-      tools:[...s.querySelector(':scope > .stack-tools').children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();
+      shown:Number(getComputedStyle(t).opacity)===1,headLit:Boolean(s.querySelector(':scope > [data-id] .stack-head-card.lit')),focusWithin:s.matches(':focus-within'),
+      menuOpen:Boolean(t.querySelector('[aria-expanded=true]')),
+      tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();
         return {tool:b.dataset.tool,left:r.left,right:r.right,width:r.width,height:r.height,hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})}})(document.querySelector('#messages .reply-stack[data-stack="${id}"]'))`);
   await check('reading stacks the title bar\'s ⋯ sits on the folder\'s face, inside its right edge, selected by touch at 390, 375 and 320 pixels and under the pointer on a laptop, in light and dark', async () => {
-    const seen = [];
+    const seen = [], PHONE = [390, 375, 320];
+    const stack = id => `#messages .reply-stack[data-stack="${id}"]`;
+    const pictured = async (p, device, width, state, extra = {}) => {
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const f = await faceFacts(p, extra.id);
+        await shot(p, `title-bar-face-${device}-${width}-${state.replace(/\W+/g, '-')}-${theme}`);
+        seen.push({ device, width, theme, state, rest: extra.rest, ...f });
+        observations.push({ name: 'title bar on the folder', engine, device, width, theme, state, ...f });
+      }
+      await dossierTheme(p, 'light');
+    };
     for (const device of Object.keys(DEVICES)) {
       const topic = `title-bar-face-${device}`, ids = await barDossierSeed(topic);
       const p = await open(topic, device, topic, ids.root);
       await away(p);
-      for (const width of device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width, 760]) {
-        await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
-        await showTools(p, device, ids.root);
-        for (const theme of ['light', 'dark']) {
-          await dossierTheme(p, theme);
-          const f = await faceFacts(p, ids.root);
-          await shot(p, `title-bar-face-${device}-${width}-${theme}`);
-          seen.push({ device, width, theme, ...f });
-          observations.push({ name: 'title bar on the folder', engine, device, width, theme, ...f });
+      if (device === 'laptop') {
+        for (const width of [DEVICES.laptop.width, 760]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.laptop, width });
+          await showTools(p, device, ids.root);
+          await pictured(p, device, width, 'under the pointer', { id: ids.root });
         }
-        await dossierTheme(p, 'light');
+      } else {
+        // At rest at each width first, nothing selected, as the tab stands with its glyphs hidden.
+        const rest = {};
+        for (const width of PHONE) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, stack(ids.root));
+          await until(async () => (await toolsShown(p, ids.root)) === false, `phone ${width}: at rest the glyphs are hidden`);
+          rest[width] = await faceFacts(p, ids.root);
+        }
+        const reply = await p.evaluate(`${JSON.stringify([ids.r2, ids.r1].map(id => [id, words(id)]))}.find(([,w])=>document.querySelector(w)?.getClientRects().length)?.[0]??null`);
+        assert.ok(reply, 'phone: a reply of the dossier shows its words, to be tapped');
+        for (const width of PHONE) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, stack(ids.root));
+          // A reply selected: the focus is in the dossier, its first message not lit.
+          await light(p, device, reply);
+          await until(() => toolsShown(p, ids.root), `phone ${width}: a reply selected shows the title bar's ⋯`);
+          await pictured(p, device, width, 'a reply selected', { id: ids.root, rest: rest[width] });
+          // The dossier selected: a tap on who began it lights its first message, and the focus goes there.
+          await tap(p, `${stack(ids.root)} > [data-id] .stack-head > .stack-who`);
+          await until(async () => (await faceFacts(p, ids.root)).headLit, `phone ${width}: the tap selects the dossier`);
+          await pictured(p, device, width, 'the dossier selected', { id: ids.root, rest: rest[width] });
+          // The dossier selected, the focus gone from it: its first message lit alone shows the glyphs.
+          await p.evaluate('document.activeElement?.blur()');
+          await until(async () => { const f = await faceFacts(p, ids.root); return f.headLit && !f.focusWithin; }, `phone ${width}: the dossier lit, the focus gone from it`);
+          await pictured(p, device, width, 'the dossier selected, the focus gone', { id: ids.root, rest: rest[width] });
+          // ⋯'s menu open.
+          await tap(p, toolOf(ids.root, 'menu'));
+          await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `phone ${width}: ⋯ opens its menu`);
+          await pictured(p, device, width, 'its menu open', { id: ids.root, rest: rest[width] });
+          await p.key('Escape');
+          await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `phone ${width}: the menu is put away`);
+        }
       }
       assert.deepEqual(p.errors, []); await p.close();
     }
-    // Every width and theme is pictured before any is judged.
+    // Every state, width and theme is pictured before any is judged.
     for (const f of seen) {
-      const where = `${f.device} ${f.width} ${f.theme}`, all = JSON.stringify(f);
-      assert.ok(f.tools.some(t => t.tool === 'menu'), `${where}: ⋯ shows: ${all}`);
+      const where = `${f.device} ${f.width} ${f.state} ${f.theme}`, all = JSON.stringify(f);
+      assert.ok(f.shown && f.tools.some(t => t.tool === 'menu'), `${where}: ⋯ shows: ${all}`);
       for (const t of f.tools) {
         assert.ok(t.right <= f.folder.right + .5, `${where}: ${t.tool}'s right edge (${t.right}) is at or inside the folder's right edge (${f.folder.right}): ${all}`);
         assert.ok(t.left >= f.tab.right + f.corner - .5, `${where}: ${t.tool} is clear of the tab and its curved corner: ${all}`);
-        assert.ok(t.hit, `${where}: a press at ${t.tool}'s centre lands on it: ${all}`);
+        // With its menu open, the menu may stand over ⋯'s centre.
+        if (f.state !== 'its menu open') assert.ok(t.hit, `${where}: a press at ${t.tool}'s centre lands on it: ${all}`);
         if (f.device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${where}: ${t.tool} is 44px to touch: ${all}`);
       }
+      if (f.device === 'phone') {
+        const menu = f.tools.find(t => t.tool === 'menu'), reach = Math.min(f.rest.tab.right, menu.left - f.corner);
+        assert.ok(f.tab.right >= reach - .5, `${where}: the tab gives back at most the room ⋯ needs, reaching ${reach}: ${all}`);
+      }
       assert.equal(f.overflow, false, `${where}: nothing scrolls sideways`);
+    }
+    // Each touch state is the one it names: a reply selected holds the focus in the dossier with its first message
+    // unlit, and the dossier selected with the focus gone lights its first message with no focus in the dossier.
+    for (const f of seen.filter(s => s.device === 'phone')) {
+      const where = `phone ${f.width} ${f.state} ${f.theme}`;
+      if (f.state === 'a reply selected') assert.ok(f.focusWithin && !f.headLit && !f.menuOpen, `${where}: the focus in the dossier alone: ${JSON.stringify(f)}`);
+      if (f.state === 'the dossier selected, the focus gone') assert.ok(f.headLit && !f.focusWithin && !f.menuOpen, `${where}: its first message lit alone: ${JSON.stringify(f)}`);
+      if (f.state === 'its menu open') assert.ok(f.menuOpen, `${where}: ⋯'s menu open: ${JSON.stringify(f)}`);
     }
   });
 
