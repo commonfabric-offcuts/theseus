@@ -4468,7 +4468,8 @@ test('item 655 B1 a loaded root whose replies are still outside the page agrees 
 });
 
 test('item 655 B2 an older dossier lookup cannot reverse a newer freshness answer', async () => {
-  const { f, p, source } = await starred655();
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: source.source_ref.id, name: { text: 'Latest confirmed name' } });
   const entered = defer(), held = defer(), view = f.api.view;
   let first = true;
   f.api.view = async (name, ...args) => {
@@ -4481,7 +4482,7 @@ test('item 655 B2 an older dossier lookup cannot reverse a newer freshness answe
   held.resolve({ instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id,
     stack_position: { root_id: source.source_ref.id, name: { text: 'Stale old name' } } }] });
   await old;
-  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'the later lookup wins even when the older one finishes last');
+  assert.equal(f.readerDossierName(source), 'Latest confirmed name', 'the later lookup wins even when the older one finishes last');
 });
 
 test('item 655 B3 a metadata failure from an abandoned opening cannot paint over the newer Reader', async () => {
