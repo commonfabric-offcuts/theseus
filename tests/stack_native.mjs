@@ -1387,6 +1387,49 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   };
   const SEVEN = ['a2', 'c1', 'b2', 'c2', 'a3', 'b3', 'a4'].map(key => key + ':card');
 
+  // Item 561's Reader title for a reply in a dossier whose first message the page has not loaded, which item 550 draws
+  // as one stack, placed by the reader: at first load, after the Earlier messages that loads an older reply, and after
+  // the one that loads the first message; unnamed, and then named (minted, then renamed while the Reader is open).
+  const placedTop = async (q, seeded) => (await shipyardLook(q, seeded))?.head === (await stacks(q, seeded))[0];
+  const placedTab = (p, id) => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(card(id))})?.closest('.reply-stack');return s?{stack:s.dataset.stack,name:s.querySelector('.stack-head .stack-name')?.textContent??null,named:Boolean(s.querySelector('.stack-head .stack-named'))}:null})()`);
+  const placedStages = [[0, 'a1', 9], [1, 'old', 10], [2, 'root', 11]];
+  for (const named of [false, true]) {
+    await check(`reading stacks a placed dossier whose first message is above the page titles the Reader as its one stack's tab, through Earlier messages, ${named ? 'named' : 'unnamed'} (items 561, 550)`, async () => {
+      for (const device of Object.keys(DEVICES)) {
+        const topic = `stack-placed-title-${named ? 'named' : 'unnamed'}-${device}`, ids = await shipyardSeed(topic);
+        const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+        const words = 'Sailcloth store';
+        if (named) assert.equal((await control({ method: 'stack_act', sender: 'aim-ux', kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-mint`, args: { name: words, minted: true } })).status, 'committed');
+        assert.equal((await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.root, operation_id: `${topic}-place`, args: { key: 1000000 } })).status, 'committed');
+        const p = await open(topic, device, topic, ids.near1);
+        const seen = [];
+        let name = words;
+        for (const [stage, head, count] of placedStages) {
+          if (stage) await earlierPage(p, device);
+          await becomes(async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await placedTop(p, ids)]; }, [head, 'Placed here by you', true], `${device} stage ${stage}: one placed stack under ${head}, on top`);
+          const tab = await placedTab(p, ids.a4);
+          await openReader(p, device, ids.a4, 'Monday suits');
+          let title = null;
+          try { await becomes(async () => (await titleOf(p)).text, tab.name, `${device} stage ${stage}: the Reader's title is the tab's name`); } finally { title = (await titleOf(p)).text; }
+          const aside = await p.evaluate(`document.querySelector('#reader-aside .aside-count').textContent`);
+          if (named && stage === 0) {
+            name = 'Sailcloth store, renamed';
+            await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-rename`, args: { name } });
+            await becomes(async () => (await titleOf(p)).text, name, `${device}: renamed while the Reader is open on a reply whose first message is not loaded, the title follows`);
+          }
+          seen.push({ stage, tab: { ...tab, stack: names[tab.stack] }, title, aside });
+          await closeReader(p, device);
+        }
+        const firsts = ['The chandlery has an empty shelf.', 'The loft above the rope store is dry.', 'Where should the shipyard keep the spare sailcloth?'].map(body => messagePreview({ body }));
+        assert.deepEqual(seen, placedStages.map(([stage, head, count]) => {
+          const tabName = named ? (stage === 0 ? words : name) : firsts[stage];
+          return { stage, tab: { stack: head, name: tabName, named: named && stage === 0 }, title: tabName, aside: String(count) };
+        }), `${device}: ${JSON.stringify(seen)}`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+    });
+  }
+
   await check('reading stacks a dossier whose first message is above the page stays as the reader left it when Earlier messages loads an older reply to that first message, then the first message: open, its newest seven held, its earlier-messages row as it was (item 550)', async () => {
     for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
       const at = `${device} ${width}px`, topic = `stack-dossier-earlier-${device}-${width}`, ids = await shipyardSeed(topic);
