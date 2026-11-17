@@ -134,6 +134,8 @@ class BrowserShards(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(sys, 'argv', ['combine', str(shards), str(out)]), \
                     redirect_stdout(io.StringIO()) as printed, self.assertRaises(SystemExit) as ended:
                 exec(compile(code, str(WORKFLOW), 'exec'), {})
+            if not out.exists():
+                return ended.exception.code, None, None, plan
             summary = json.loads(out.read_text())
             summary_path = root / 'judge.json'
             summary_path.write_text(json.dumps(summary))
@@ -151,7 +153,7 @@ class BrowserShards(unittest.TestCase):
     def cancellation_input(self):
         fixture = self.cancellation()
         return [{'run_id': fixture['run_id'], 'attempt': fixture['attempt'], 'head_sha': 'a' * 40,
-                 'id': 1234, 'name': fixture['name'], 'conclusion': 'cancelled',
+                 'id': 1234, 'commit': 'a' * 40, 'name': fixture['name'], 'conclusion': 'cancelled',
                  'started_at': '2026-11-17T14:08:30Z', 'completed_at': '2026-11-17T15:23:40Z',
                  'log': fixture['log']}]
 
@@ -176,6 +178,7 @@ class BrowserShards(unittest.TestCase):
                 self.assertEqual(sum(s['passed'] for s in kept), 4)
                 self.assertEqual(len(summary['cancelled_shards']), 1)
                 self.assertEqual(self.provenance['cancelled_shards'], summary['cancelled_shards'])
+                self.assertEqual(summary['finished_at'], fixture['cancelled_at'])
 
     def test_cancelled_unreached_steps_stay_missing_and_results_never_make_a_sample(self):
         code, summary, printed, _ = self.combine(absent=(0,), narrow=True,
@@ -218,24 +221,58 @@ const github = {rest: {actions: {listJobsForWorkflowRunAttempt: 'attempt-jobs', 
   request: async (route, args) => { requests.push([route, args]);
     if (args.job_id === 3456) throw new Error('logs unavailable');
     return {data: input.jobs[0].log}; }};
-const context = {repo: {owner:'owner', repo:'repo'}, runId:44099688612, sha:'a'.repeat(40)};
+const context = {repo: {owner:'owner', repo:'repo'}, runId:44099688612, sha:'a'.repeat(40),
+  payload: {pull_request: {head: {sha: 'b'.repeat(40)}}}};
 const core = {warning: () => {}};
 const original = fs.writeFileSync;
 fs.writeFileSync = (path, data) => { written = JSON.parse(data); };
 (async () => { await new (Object.getPrototypeOf(async function(){}).constructor)('github','context','core',input.code)(github,context,core);
   fs.writeFileSync = original; process.stdout.write(JSON.stringify({written, requests})); })().catch(e=>{console.error(e);process.exit(1)});
 '''
+        jobs = [dict(job, head_sha='b' * 40) for job in jobs]
         answer = subprocess.run(['node', '-e', harness], input=json.dumps({'jobs': jobs, 'code': code}),
-            capture_output=True, text=True, env=dict(os.environ, GITHUB_RUN_ATTEMPT='1', PLAN_SHARDS=json.dumps(self.cancelled_plan())))
+            capture_output=True, text=True, env=dict(os.environ, GITHUB_RUN_ATTEMPT='7', PLAN_SHARDS=json.dumps(self.cancelled_plan())))
         self.assertEqual(answer.returncode, 0, answer.stderr)
         result = json.loads(answer.stdout)
-        self.assertEqual(result['requests'][0][1]['attempt_number'], 1)
+        self.assertEqual(result['requests'][0][1]['attempt_number'], 7)
         self.assertEqual(result['requests'][0][1]['run_id'], 44099688612)
         self.assertEqual([r[1]['job_id'] for r in result['requests'][1:]], [1234, 3456])
         self.assertEqual(result['written'][0]['log'], jobs[0]['log'])
+        self.assertEqual(result['written'][0]['head_sha'], 'b' * 40)
+        self.assertEqual(result['written'][0]['commit'], 'a' * 40)
+        self.assertEqual(result['written'][0]['attempt'], '7')
         self.assertEqual(result['written'][1]['log'], '')
         self.assertIn('log_error', result['written'][1])
         self.assertIn('    permissions:\n      contents: read\n      actions: read', self.workflow)
+
+    def test_cancel_recovery_refuses_another_attempt_commit_or_unplanned_shard(self):
+        for field, value in (('attempt', '2'), ('run_id', '2'), ('commit', 'b' * 40), ('name', 'unknown')):
+            with self.subTest(field=field):
+                data = self.cancellation_input()
+                data[0][field] = value
+                code, summary, _, _ = self.combine(absent=(0,), narrow=True, cancelled=data, plan=self.cancelled_plan())
+                self.assertIsNone(summary)
+                self.assertIn('does not belong', code)
+
+    def test_unavailable_cancelled_log_keeps_every_unrecovered_step_missing(self):
+        data = self.cancellation_input()
+        data[0].update(log='', log_error='job logs unavailable')
+        code, summary, printed, _ = self.combine(absent=(0,), narrow=True, cancelled=data, plan=self.cancelled_plan())
+        self.assertEqual(printed['missing'], sorted(self.cancellation()['steps']))
+        self.assertEqual(summary['cancelled_shards'][0]['cancelled_at'], data[0]['completed_at'])
+        self.assertEqual(summary['cancelled_shards'][0]['log_error'], 'job logs unavailable')
+        self.assertEqual(code, 1)
+
+    def test_cancel_log_does_not_invent_unplanned_or_partial_results(self):
+        data = self.cancellation_input()
+        stamp = '2026-11-17T15:23:30Z '
+        data[0]['log'] += stamp + '{"name":"python-units","exit":0,"passed":true,"counts":{}}\n'
+        data[0]['log'] += stamp + '{"name":"native-webkit-pipeline","passed":true}\n'
+        data[0]['log'] += stamp + '{broken json}\n'
+        code, summary, printed, _ = self.combine(absent=(0,), narrow=True, cancelled=data, plan=self.cancelled_plan())
+        self.assertEqual(len(summary['cancelled_shards'][0]['recovered']), 6)
+        self.assertIn('native-webkit-pipeline', printed['missing'])
+        self.assertEqual(len([s for s in summary['steps'] if s['name'] == 'python-units']), 1)
 
     def test_combined_summary_keeps_all_required_steps_when_a_shard_reports_nothing(self):
         for absent, refused, narrow in (((), (), False), ((0,), (), False), ((), (0,), False),

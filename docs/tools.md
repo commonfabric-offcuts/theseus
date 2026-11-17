@@ -148,7 +148,7 @@ Raw verdicts are never rewritten. A step whose case failed still has `passed: fa
 
 The summary's `quarantine` says which commit it was read at (`at`), how many cases it holds (`entries`), every held case (`held`) and `green`: the quarantine was read, every step ran (the check runs each step it names), the checkout did not change, and each step passed or is green. A quarantine that was not read is never green, even when every step passed; the raw `passed` speaks for that run. The run's exit is 0 when it passed or is green, so a step with one quarantined red reports green and names the case (each such step prints a line `{"name": …, "quarantined": […], "green": …}`, and the last line names them again), and a step with any other red is red. A quarantine that cannot be read (an event with no base, as a `workflow_dispatch` run has; a commit that is not earlier; a policy git cannot show; a malformed list) quarantines nothing: `quarantine.refused` says why, and every red stays red. Without the flag nothing is read, and the summary has no `quarantine`. The deploy reads steps' raw verdicts, so a local summary held green by the quarantine does not ship a commit; a merged train's push run does, through GitHub's judgment.
 
-The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present (a shard cancelled at its time limit leaves no summary, and one refused before running leaves a summary with no commit and no steps: either way its steps are missing), every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. Every other shard's summary must name the one commit checked.
+The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present, no browser shard was cancelled, every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. A shard refused before running leaves a summary with no commit and no steps; its steps stay missing. Every other shard's summary must name the one commit checked. Cancelled browser jobs retain their logged results as described below.
 
 ### Browser shard minutes (item 666)
 
@@ -181,12 +181,34 @@ jobs plus those two jobs can queue under an account's five-job cap.
 
 The combined summary's `required` includes both the plan's steps and those
 named by the shard summaries. Every planned step with no result is named in
-`failed` and printed as `missing`, including every step of a cancelled or
+`failed` and printed as `missing`, including every unreached step of a cancelled or
 refused shard, even when surviving summaries name only their own steps. A
 missing step makes both raw and quarantine verdicts red. The deploy still
 checks the required step inventory independently. The next merged train's
 full run is the wall-clock acceptance: all four browser jobs must finish
 inside their derived limits and within five minutes of an even split.
+
+When a browser job is cancelled at its limit, combine uses GitHub's
+[workflow-job log API](https://docs.github.com/en/rest/actions/workflow-jobs#download-job-logs-for-a-workflow-run)
+to recover completed step records even if the job never uploaded an artifact.
+It lists only this run's current attempt, matches the job to the plan and event
+head (a PR's head differs from the tested merge), and records the tested commit
+separately. Only completed `name/exit/passed/counts` lines are kept. Each recovered
+result retains those values and carries `shard`, `cancelled_at`, `github_job`,
+`logged_at` and `result_source: "github-job-log"`. If the artifact also has that
+result, the two must agree and the result appears once. `cancelled_shards` in
+the summary and provenance names the job, cancellation time and recovered steps.
+The cancel time is the log's cancellation event, falling back to GitHub's job
+completion time when that line is unavailable.
+
+Train 33 (44099688612) supplies the regression: two failed and four passed
+results survive, while its ten unreached steps stay missing. Unavailable logs
+leave every unrecovered step missing and name `log_error`; a job from another
+run, attempt or plan is refused. Cancellation keeps raw and quarantine verdicts
+red even after the last step result: it cannot prove the shard finished or its
+checkout stayed unchanged. Recovered counts are diagnostic evidence, never a
+release sample or an independent release verdict. This changes the producer
+only; the protected validator and deploy retain their own completeness checks.
 
 `tools/quarantine.py count` prints the number of quarantined cases, one plain number, from this checkout's policy, or `--at COMMIT` (a ref works) from that commit's: the board reads it. A malformed list prints no number and exits 2. `tools/quarantine.py passes SUMMARY…` prints, for each quarantined case, in how many of those summaries its whole step ran with the case in it and in how many of those it passed (`10 of 10  native-colors | …`), from each step's `quarantine.cases`.
 

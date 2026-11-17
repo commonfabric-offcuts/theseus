@@ -27075,6 +27075,67 @@
    "check": {
     "python": "test_checks_browser_shards.py"
    }
+  },
+  {
+   "item": 666,
+   "act": "A cancelled browser shard keeps the six already logged train 33 results",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "                      steps.append(step)",
+     "                      pass"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A cancelled browser result names its shard and the cancellation time",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "cancelled_at=cancelled_at, result_source=",
+     "cancelled_at=None, result_source="
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancelled browser job recovery reads the current run attempt",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "attempt_number: attempt, per_page: 100",
+     "attempt_number: 1, per_page: 100"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Recovered cancelled results never become a release verdict even when no step is missing",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"tree_unchanged\": not cancelled_shards and all(d.get(\"tree_unchanged\") is True for d in timed),",
+     "\"tree_unchanged\": all(d.get(\"tree_unchanged\") is True for d in timed),"
+    ],
+    [
+     ".github/workflows/checks.yml",
+     "and not missing and not cancelled_shards,",
+     "and not missing,"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
   }
  ]
 }
