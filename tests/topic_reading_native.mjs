@@ -927,11 +927,14 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         assert.equal((await guide()).open, false, 'laptop: ? in the reply opens no guide');
         assert.equal(await p.evaluate(`document.activeElement?.id`), 'writing-body', 'laptop: the cursor stays in the reply');
         await closeReader(p, device);
-        await p.point('.guide-open');
+        // The guide's ? is at the side rail's foot, under who you are (item 628): brought into view as a person scrolls to it.
+        await centre(p, '#rail #instance-label ~ .guide-open');
+        await p.point('#rail #instance-label ~ .guide-open');
       } else {
         await tap(p, '#rail-open');
         await until(() => p.evaluate(`document.querySelector('.guide-open')?.getClientRects().length > 0`), 'phone: "☰ Topics" shows the guide\'s way in');
-        await tap(p, '.guide-open');
+        await centre(p, '#rail #instance-label ~ .guide-open');
+        await tap(p, '#rail #instance-label ~ .guide-open');
       }
       await until(async () => (await guide())?.open === true, device + ': the rail\'s "? Pointer, keys and taps" opens the guide');
       if (device === 'phone') await shot(p, 'reading-guide-phone');

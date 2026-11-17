@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
 // and 390 wide, light and dark. Every page has the logo block (the wordmark
-// with its presence dot, the workspace name, the Health link and Turn on
-// notifications) first in its rail, or first in its main column where it has
-// no rail, with the guide's "? Pointer, keys and taps" under the name
-// (docs/interaction.md), and no header
-// bar or Refresh button. On a topic page and a Conversation the rail is the
+// with its presence dot, and Turn on notifications) first in its rail, or
+// first in its main column where it has no rail, and the rail's foot (who you
+// are on which instance, the guide's "? Pointer, keys and taps" under it
+// (docs/interaction.md), and the Health link) last there (item 628), and no
+// header bar or Refresh button. On a topic page and a Conversation the rail is the
 // outline of every outcome (item 272, docs/rails.md): each outcome's light,
 // name (its Conversation) and where it stands, its topics folded under it,
 // and "N new" and "N waiting on you" across them all; moving between those
@@ -53,6 +53,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       rail: [...rail.children].filter(shown).map(name), main: [...main.children].filter(shown).map(name),
       brandIn: brand.parentElement === rail ? 'rail' : brand.parentElement === main ? 'main' : 'elsewhere',
       brand: [...brand.children].map(name), dot: Boolean(brand.querySelector('.wordmark .presence-dot')),
+      foot: [...document.getElementById('instance-label').parentElement.children].map(name),
       name: document.getElementById('instance-label').textContent,
       outcomes: document.querySelectorAll('#workspaces a').length, outcomesShown: shown(document.getElementById('outcome-navigation')),
       scroll: document.documentElement.scrollWidth, width: innerWidth, page: getComputedStyle(document.body).backgroundColor };
@@ -118,11 +119,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       if (!SIZES[size].mobile) assert.equal(topic.control, false, at + ': no "☰ Outcomes" beside the rail');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
-      assert.deepEqual(topic.rail, ['brand', 'outline'], at + ': the logo block, then the outline, and nothing else');
+      assert.deepEqual(topic.rail, ['brand', 'outline', 'rail-foot'], at + ': the logo block, then the outline, then the rail\'s foot, and nothing else');
       const drawn = await until(async () => { const seen = await outline(t); return seen.outcomes.w1?.topics.some(row => row.id === 't1') && seen; }, at + ': the outline holds this outcome, open, with its topics');
       assert.deepEqual([drawn.outcomes.w1.open, drawn.outcomes.w1.href, drawn.outcomes.w1.topics.find(row => row.id === 't1').current], [true, '?conversation=w1', 'page'],
         at + ': the outcome being read is open, its name opens its Conversation, and the open topic is marked');
-      assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'guide-open', 'health-link', 'notify'], at + ': the wordmark, then the workspace name, the guide\'s ? (docs/interaction.md) under it, the Health link and Turn on notifications');
+      assert.deepEqual(topic.brand, ['wordmark', 'notify'], at + ': the logo block is the wordmark, then Turn on notifications');
+      assert.deepEqual(topic.foot, ['instance-label', 'guide-open', 'health-link'], at + ': the rail\'s foot is the workspace name, the guide\'s ? (docs/interaction.md) under it, then the Health link');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
       assert.deepEqual([topic.outcomesShown, topic.railLabel], [false, 'Outcomes'], at + ': the outline stands for the old list of outcomes');
@@ -135,6 +137,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.deepEqual([outcome.headers, outcome.refresh, outcome.buttons], [0, false, 0], at + ': no header bar and no Refresh on the outcome page');
       assert.deepEqual([outcome.railShown, outcome.brandIn], [false, 'main'], at + ': the outcome page has no rail');
       assert.deepEqual(outcome.main.slice(0, 3), ['brand', 'outcomes-home', 'topic-header'], at + ': the logo block, ← Outcomes, then the outcome');
+      assert.equal(outcome.main.at(-1), 'rail-foot', at + ': the rail\'s foot ends the page');
       assert.ok(outcome.scroll <= outcome.width, at + `: no sideways scroll on the outcome page (${outcome.scroll} of ${outcome.width})`);
       await shot(o, `rail-outcome-${size}-${theme}`);
       if (size === 'laptop' && theme === 'light') {
@@ -147,7 +150,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const h = await open(`rail-home-${size}-${theme}`, '/', size, theme);
       await until(() => h.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))'), at + ': the outcomes are listed');
       const root = await top(h);
-      assert.deepEqual([root.headers, root.refresh, root.buttons, root.railShown, root.main[0]], [0, false, 0, false, 'brand'], at + ': the home has the logo block first and no header or Refresh');
+      assert.deepEqual([root.headers, root.refresh, root.buttons, root.railShown, root.main[0], root.main.at(-1)], [0, false, 0, false, 'brand', 'rail-foot'],
+        at + ': the home has the logo block first, the rail\'s foot last, and no header or Refresh');
       assert.ok(root.scroll <= root.width, at + `: no sideways scroll on the home (${root.scroll} of ${root.width})`);
       await shot(h, `rail-home-${size}-${theme}`);
       assert.deepEqual(h.errors, []); await h.close();
@@ -178,11 +182,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       said:t.nextElementSibling?.getAttribute('role')==='status'?t.nextElementSibling.textContent:null}})()`);
   // The outcomes shown in the outline, top to bottom.
   const outcomeOrder = p => p.evaluate(`[...document.querySelectorAll('#outline .ol-outcome')].filter(li=>!li.hidden).map(li=>li.dataset.workspaceId)`);
-  // From the workspace name, Tab to the outline's one stop.
+  // A press on the logo block beside the wordmark, where nothing is to press, starts Tab there as it does for a
+  // person. The rail may have scrolled the place being read into view, past the logo block.
+  const fromLogo = async p => {
+    const at = await p.evaluate(`(()=>{const b=document.querySelector('.brand');b.scrollIntoView({block:'nearest'});const r=b.getBoundingClientRect(),w=b.querySelector('.wordmark').getBoundingClientRect();
+      const x=r.right-6,y=w.top+w.height/2;return {x,y,on:document.elementFromPoint(x,y)===b}})()`);
+    assert.ok(at.on, 'the logo block beside the wordmark is the logo block itself, nothing to press');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+    for (const type of ['mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
+  };
+  // From the logo block, Tab to the outline's one stop.
   const tabToOutline = async p => {
-    // The rail may have scrolled the place being read into view, past the workspace name.
-    await p.evaluate("document.getElementById('instance-label').scrollIntoView({block:'center'})");
-    await p.point('#instance-label');
+    await fromLogo(p);
     for (let n = 0; n < 12 && !/^(topic|name):/.test(await keyedAt(p)); ++n) await p.key('Tab');
   };
   // Into the outline, then Home and ↓ to the row named (as keyedAt names it).
@@ -249,8 +260,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   await check('rail Tab from the logo block reaches the outline as one stop, on the topic being read: no fold triangle, the next Tab leaves it and Shift-Tab comes back', async () => {
     const p = await open('rail-tab', '/?topic=t1');
     await until(() => p.evaluate('Boolean(document.querySelector("#outline #topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), 'the outline is ready');
-    // A press on the workspace name starts Tab there, as it would for a person.
-    await p.point('#instance-label');
+    // A press on the logo block starts Tab there, as it would for a person.
+    await fromLogo(p);
     const order = [];
     for (let n = 0; n < 12 && !/^(topic|name):/.test(order.at(-1) ?? ''); ++n) { await p.key('Tab'); order.push(await keyedAt(p)); }
     // The Outcomes heading's pencil is a row of the outline (item 305), not a Tab stop of its own.
@@ -264,6 +275,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.ok(!/^(topic|name|fold):/.test(after), 'the next Tab leaves the outline: ' + after);
     await p.key('Tab', 8);
     assert.equal(await keyedAt(p), 'topic:t1', 'Shift-Tab comes back to the same row');
+    // Tab goes on from the outline to the rail's foot (item 628): past Keys, the guide's ?, then Health, and nothing of
+    // the page before them.
+    const foot = p => p.evaluate(`(e=>e?.matches('#instance-label ~ .guide-open')?'foot:guide':e?.id==='health-link'?'foot:health':null)(document.activeElement)`);
+    const on = [];
+    for (let n = 0; n < 6 && on.at(-1) !== 'foot:health'; ++n) { await p.key('Tab'); on.push(await foot(p) ?? await keyedAt(p)); }
+    assert.deepEqual(on.filter(at => at.startsWith('foot:')), ['foot:guide', 'foot:health'], 'Tab from the outline reaches the guide\'s ?, then Health: ' + on.join(' '));
+    assert.ok(on.slice(0, on.indexOf('foot:guide')).every(at => at.startsWith('outline:')), 'with nothing but the outline\'s own Keys before them: ' + on.join(' '));
     assert.deepEqual(p.errors, []);
   });
 
@@ -588,9 +606,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   });
 
   // The rail keeps its scroll through the move itself, wherever it is scrolled: here a few lines from its end, so a
-  // part above the outline that grew shorter for a moment (the logo block drawn again without the guide's ? until
-  // the next run puts it back) would pull the scroll up to the rail's new end, and the browser's scroll anchoring
-  // would then carry it on past where it was. The order is held: the page's own list is under its outcome, the rails
+  // part of the rail that grew shorter for a moment (the rail's foot under the outline drawn again without the
+  // guide's ? until the next run puts it back, item 628) would pull the scroll up to the rail's new end, and the
+  // browser's scroll anchoring would then carry it on past where it was. The order is held: the page's own list is under its outcome, the rails
   // are quiet, and the rail stands 12px from its end before the press.
   await check('rail the outline keeps its scroll when it moves in place to a topic, scrolled near the rail\'s end, and the guide\'s ? still opens the guide', async () => {
     // The outcome of the check before, so the outline holds no row more for the checks after this one.
@@ -616,10 +634,11 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.point(link);
     await until(async () => await p.evaluate(`location.search==='?topic=rail-move-t' && document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(link)})) && !document.querySelector(${JSON.stringify(link)}).closest('[inert]')`), 'the topic opens in place, its own list under its outcome');
     assert.equal(await p.evaluate("document.getElementById('rail').scrollTop"), room, 'the outline\'s scroll is where it was');
-    // The guide's ? that stood in the logo block through the move is the new page's own: one, and a press opens the guide.
-    assert.equal(await p.evaluate("document.querySelectorAll('#rail .brand .guide-open').length"), 1, 'one guide\'s ?');
-    await p.evaluate("document.getElementById('rail').scrollTop=0");
-    await p.point('#rail .brand .guide-open');
+    // The guide's ? that stood in the rail's foot through the move is the new page's own: one, and a press opens the guide.
+    assert.equal(await p.evaluate("document.querySelectorAll('#rail .guide-open').length"), 1, 'one guide\'s ?');
+    assert.equal(await p.evaluate("Boolean(document.querySelector('#rail #instance-label ~ .guide-open'))"), true, 'under the workspace name, at the rail\'s foot');
+    await p.evaluate("document.querySelector('#rail .guide-open').scrollIntoView({block:'center'})");
+    await p.point('#rail .guide-open');
     await until(() => p.evaluate("Boolean(document.querySelector('dialog.interaction-guide')?.open)"), 'a press on it opens the guide');
     assert.deepEqual(p.errors, []); await p.close();
   });
@@ -3799,7 +3818,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     return { missing, lost: edges.filter(edge => edge.to === 'page').map(edge => `${label(edge.from)} ${edge.key}`), dead, count: nodes.length };
   };
 
-  await check('rail arrows ↑ above the outline\'s first row goes on up the side rail to New outcome, the chips and the logo block, ↓ below its last row reaches Keys, and the arrows reach every control in the side rail', async () => {
+  await check('rail arrows ↑ above the outline\'s first row goes on up the side rail to New outcome, the chips and the logo block, ↓ below its last row reaches Keys and then the rail\'s foot, and the arrows reach every control in the side rail', async () => {
     for (const theme of ['light', 'dark']) {
       const p = await arrowsAt('rail-arrows-outline-' + theme, '/?topic=t1', 'laptop', theme);
       await settled(p, 'the topic is up');
@@ -3835,6 +3854,14 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.key('ArrowDown');
       assert.equal(await keyedAt(p), 'outline:Keys', `↓ below the last row (${last}) reaches Keys`);
       assert.equal(await focusInView(p), true, 'Keys comes into view');
+      // Below Keys, the rail's foot (item 628): the guide's ?, then Health under it; ↑ goes back the same way.
+      await p.key('ArrowDown');
+      assert.match(await focusAt(p), /^rail:How Theseus answers/, '↓ below Keys reaches the guide\'s ? at the rail\'s foot');
+      assert.equal(await focusInView(p), true, 'the guide\'s ? comes into view');
+      await p.key('ArrowDown');
+      assert.equal(await focusAt(p), 'rail:health-link', '↓ again reaches Health, under it');
+      await p.key('ArrowUp'); await p.key('ArrowUp');
+      assert.equal(await keyedAt(p), 'outline:Keys', '↑ twice comes back to Keys');
       await p.key('ArrowUp');
       assert.ok((await focusAt(p)).startsWith('rail:row:'), '↑ from Keys comes back to the outline');
       if (theme === 'light') {
@@ -4793,6 +4820,104 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       assert.equal(missing.scroll, true, at);
       await shot(x, `tools-missing-${width}-${theme}`);
       assert.deepEqual(x.errors, []); await x.close();
+    }
+  });
+
+  // Item 628: who you are on which instance, the guide's "? Pointer, keys and taps" and Health are the rail's foot,
+  // below the side rail's last section, in that order and with the looks they had at its top; the logo block (the
+  // wordmark with its presence dot) stays first, and no section of the rail moves. In the phone's drawer they end the
+  // drawer; on a page with no rail (the outcome's own page, the Outcomes home) they end the page. Read from the page as
+  // drawn: the column that holds the three (the rail or main), its children on show in order, the three lines, whether
+  // they sit below everything else on show in that column and one under the other, inside the screen, and their looks.
+  const footDrawn = p => p.evaluate(`(()=>{
+    const shown = e => Boolean(e) && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+    const name = e => e.id || e.classList[0] || e.tagName.toLowerCase(), box = e => e.getBoundingClientRect();
+    const label = document.getElementById('instance-label'), foot = label.parentElement, column = foot.parentElement, brand = document.querySelector('.brand');
+    const lines = [...foot.children].filter(shown), others = [...column.children].filter(e => e !== foot && shown(e)), guide = foot.querySelector('.guide-open');
+    const swatch = document.createElement('span'); swatch.style.color = 'var(--muted)'; document.body.append(swatch); const muted = getComputedStyle(swatch).color; swatch.remove();
+    return { column: column.id || column.tagName.toLowerCase(), order: [...column.children].filter(shown).map(name), lines: lines.map(name),
+      below: others.length > 0 && others.every(e => box(foot).top >= box(e).bottom - 0.5),
+      stacked: lines.every((e, at) => at === 0 || box(e).top >= box(lines[at - 1]).bottom - 0.5),
+      inside: lines.every(e => box(e).left >= -0.5 && box(e).right <= Math.min(innerWidth, box(column).right) + 0.5),
+      brand: [...brand.children].filter(shown).map(name), dot: Boolean(brand.querySelector('.wordmark .presence-dot')), brandIn: brand.parentElement === column,
+      name: label.textContent, quiet: [label, guide].every(e => e && getComputedStyle(e).color === muted),
+      guide: guide ? { named: Boolean(guide.getAttribute('aria-label') && guide.title), height: box(guide).height } : null,
+      scroll: document.documentElement.scrollWidth <= innerWidth };
+  })()`);
+  // The page at the top of the column that holds the three, then at its end, for the review.
+  const footShots = async (p, name) => {
+    await p.evaluate("(()=>{const r=document.getElementById('rail');r.scrollTop=0;scrollTo(0,0)})()");
+    await shot(p, name + '-top');
+    await p.evaluate("(()=>{const r=document.getElementById('rail');r.scrollTop=r.scrollHeight;scrollTo(0,document.documentElement.scrollHeight)})()");
+    await shot(p, name + '-end');
+  };
+  // The rail's own sections, top to bottom, as the pages with a rail of their own place them (outcome-scope.mjs RAIL_ORDER).
+  const RAIL_SEQUENCE = ['brand', 'outcomes-home', 'conversation-navigation', 'pipeline-navigation', 'topic-navigation', 'skills-navigation'];
+  await check('rail the rail\'s foot: who you are on which instance, the guide\'s ? and Health sit below the side rail\'s last section, in that order, the wordmark still first and every section in its place, on a topic, a tool\'s page and the pages with no rail, at 320, 375, 390 and on a laptop, light and dark; the guide\'s ? there opens the guide', async () => {
+    await control({ method: 'tools_seed' });
+    // Every page is read and drawn before anything is judged, so each one's shots are kept.
+    const seen = [];
+    for (const [width, theme] of TOOL_WIDTHS) {
+      const at = `${width} ${theme}`, phone = width < SIZES.laptop.width;
+      // A topic page: the outline is the rail's section, in the drawer on a phone.
+      const t = await sized(`foot-topic-${width}-${theme}`, '/?topic=t1', width, theme);
+      // On a laptop the page settles its things first; a phone keeps them behind a sheet, and its outline in the drawer.
+      if (phone) {
+        await until(() => t.evaluate('document.body?.dataset.ready==="true"').catch(() => false), at + ': the topic is up');
+        await tap(t, '#rail-open');
+        await until(async () => (await drawer(t)).open, at + ': "☰ Outcomes" opens the drawer');
+        await outlineAtRest(t, at + ': in the drawer');
+      } else await settled(t, at + ': the topic is up');
+      await footShots(t, `foot-topic-${width}-${theme}`);
+      const topic = await footDrawn(t);
+      // The guide's ? there, pressed as the size presses, opens the guide; ✕ closes it.
+      await pressAt(t, width, '#instance-label ~ .guide-open');
+      const opened = await until(() => t.evaluate("Boolean(document.querySelector('dialog.interaction-guide')?.open)"), at + ': the guide\'s ? opens the guide');
+      await pressAt(t, width, 'dialog.interaction-guide [aria-label=Close]');
+      await until(() => t.evaluate("document.querySelector('dialog.interaction-guide')?.open === false"), at + ': ✕ closes the guide');
+      seen.push({ at, phone, page: 'topic', drawn: topic, opened, errors: t.errors }); await t.close();
+      // A tool's page, whose rail ends with Skills and tools.
+      const s = await sized(`foot-tool-${width}-${theme}`, '/?workspace=kites&tool=spool-winder', width, theme);
+      await toolUp(s, at + ': the tool page is up', drawn => drawn.ready && drawn.lines.length === 3);
+      if (phone) {
+        await tap(s, '#rail-open');
+        await until(() => s.evaluate("document.getElementById('rail').classList.contains('open')"), at + ': "☰ Topics" opens the rail');
+      }
+      await toolUp(s, at + ': the rail lists the outcome\'s skills and tools', drawn => drawn.skills.length === 2);
+      await footShots(s, `foot-tool-${width}-${theme}`);
+      seen.push({ at, phone, page: 'tool', drawn: await footDrawn(s), errors: s.errors }); await s.close();
+      // The outcome's own page and the Outcomes home, which have no rail.
+      const o = await sized(`foot-outcome-${width}-${theme}`, '/?workspace=w1', width, theme);
+      await until(() => o.evaluate('document.body?.dataset.ready==="true"').catch(() => false), at + ': the outcome page is up');
+      await footShots(o, `foot-outcome-${width}-${theme}`);
+      seen.push({ at, phone, page: 'outcome', drawn: await footDrawn(o), errors: o.errors }); await o.close();
+      const h = await sized(`foot-home-${width}-${theme}`, '/', width, theme);
+      await until(() => h.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))').catch(() => false), at + ': the outcomes are listed');
+      await footShots(h, `foot-home-${width}-${theme}`);
+      seen.push({ at, phone, page: 'home', drawn: await footDrawn(h), errors: h.errors }); await h.close();
+    }
+    for (const { at, phone, page: kind, drawn, opened, errors } of seen) {
+      const where = `${at} ${kind}`;
+      assert.deepEqual(drawn.lines, ['instance-label', 'guide-open', 'health-link'], where + ': the workspace name, the guide\'s ? under it, then Health');
+      assert.deepEqual([drawn.below, drawn.stacked, drawn.inside, drawn.scroll], [true, true, true, true],
+        where + ': below everything else in its column, one under the other, inside the screen, and nothing sideways');
+      assert.equal(drawn.order.at(-1), 'rail-foot', where + ': the three end their column: ' + drawn.order.join(' '));
+      assert.equal(drawn.order[0], 'brand', where + ': the logo block still heads it: ' + drawn.order.join(' '));
+      assert.deepEqual([drawn.brandIn, drawn.brand[0], drawn.dot], [true, 'wordmark', true], where + ': the logo block starts with the wordmark and its presence dot');
+      assert.deepEqual(drawn.brand.filter(name => drawn.lines.includes(name)), [], where + ': and holds none of the three: ' + drawn.brand.join(' '));
+      assert.match(drawn.name, new RegExp('^' + facts.actor + ' · '), where + ': the workspace name is filled in');
+      assert.equal(drawn.quiet, true, where + ': the name and the guide\'s ? keep their quiet colour');
+      assert.equal(drawn.guide.named, true, where + ': the guide\'s ? is named, with its tooltip');
+      if (phone) assert.ok(drawn.guide.height >= 44, where + `: the guide's ? is a finger's target (${drawn.guide.height}px)`);
+      if (kind === 'topic') {
+        assert.deepEqual([drawn.column, drawn.order], ['rail', ['brand', 'outline', 'rail-foot']], where + ': in the rail, under the outline' + (phone ? ', at the drawer\'s end' : ''));
+        assert.equal(opened, true, where + ': the guide\'s ? opened the guide');
+      } else if (kind === 'tool') {
+        const sections = drawn.order.slice(0, -1);
+        assert.deepEqual([drawn.column, sections.at(-1)], ['rail', 'skills-navigation'], where + ': in the rail, under its last section, Skills and tools: ' + drawn.order.join(' '));
+        assert.deepEqual(sections, RAIL_SEQUENCE.filter(name => sections.includes(name)), where + ': every section keeps its place: ' + drawn.order.join(' '));
+      } else assert.equal(drawn.column, 'main', where + ': with no rail, at the page\'s end');
+      assert.deepEqual(errors, [], where);
     }
   });
 
