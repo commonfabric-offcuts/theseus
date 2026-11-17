@@ -11,8 +11,11 @@
 // A stack's head row, which stands for its first message, keeps its tab two
 // lines high whatever that message carries, starred, folded or open, at every
 // width: on a narrow tab the marks give way, whole, before who began it, and
-// the reply count always shows. A whisper of the person's carries its marks in
-// the name the browser gives its card, as every other card does.
+// the reply count always shows. A dossier at 390 points whose first message
+// carries a picture alone, selected by touch, shows its image mark beside the
+// whole name of who began it while its title bar's ⋯ stands beside the tab,
+// past its curved corner (item 473). A whisper of the person's carries its
+// marks in the name the browser gives its card, as every other card does.
 //
 // Usage: node tests/card_marks_native.mjs <Chrome for Testing> <evidence dir> [case filter]
 // A filter runs the cases whose names hold it, or any of its parts split by |;
@@ -63,10 +66,11 @@ const WORDS = { image: 'Has an image', note: 'Your private note, which only you 
 const card = id => `.message-card[data-id="${id}"]`;
 // Each engine reads a topic of its own, so what one engine's cases change the other's never see.
 const ENGINES = ['chromium', 'webkit'];
-const ids = {}, headIds = {}, whisperIds = {};
+const ids = {}, headIds = {}, whisperIds = {}, pictureIds = {};
 async function seed() {
   const facts = await control({ method: 'ready' });
-  await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' })), { id: `whisper-${engine}`, title: 'A whisper' }]) });
+  await control({ method: 'navigation_topics', topics: ENGINES.flatMap(engine => [{ id: `marks-${engine}`, title: 'Card marks' }, ...VIEWS.map((view, index) => ({ id: `heads-${engine}-${index}`, title: 'Head rows' })), { id: `whisper-${engine}`, title: 'A whisper' },
+    ...THEMES.map(theme => ({ id: `picture-${engine}-${theme}`, title: 'A picture alone' }))]) });
   for (const engine of ENGINES) {
     const topic = `marks-${engine}`, m = ids[engine] = {};
     const say = async (name, body, more = {}) => (await control({ method: 'agent_message', operation_id: `${topic}-${name}`, topic_id: topic, source: 'topic', body, ...more })).result.message_id;
@@ -116,6 +120,16 @@ async function seed() {
       await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: h.folded, operation_id: `${heads}-fold`, args: { folded: true } });
       for (const [order, name] of ['starred', 'folded', 'one', 'bare'].entries())
         await control({ method: 'agent_message', operation_id: `${heads}-answer-${name}`, topic_id: heads, reply_to: h[name], body: 'An answer from someone else.', sender: 'fixture-other-person', join: order === 0 });
+    }
+    // A dossier of its own for each theme, as the 'one' head above (a new message from the agent, whose name is 22
+    // characters, carrying a picture alone, answered by another person), read only by the case that selects it.
+    pictureIds[engine] = {};
+    for (const theme of THEMES) {
+      const topic = `picture-${engine}-${theme}`;
+      const head = (await control({ method: 'agent_message', operation_id: `${topic}-head`, topic_id: topic, source: 'topic', join: true,
+        body: 'A picture of the shelf, nothing more.', attachments: [{ name: 'one.png', image: 'one.png' }] })).result.message_id;
+      await control({ method: 'agent_message', operation_id: `${topic}-answer`, topic_id: topic, reply_to: head, body: 'A word back about the shelf.', sender: 'fixture-other-person', join: true });
+      pictureIds[engine][theme] = head;
     }
   }
   return facts;
@@ -230,6 +244,7 @@ const readHead = (p, id) => p.evaluate(selector => {
 const linesOf = parts => parts.map(part => Math.round(part.box.top)).filter((top, index, all) => all.findIndex(other => Math.abs(other - top) < 3) === index).length;
 
 const VIEWS = [[320, false], [320, true], [375, false], [375, true], [390, false], [390, true], [1280, false], [1280, true]];
+const THEMES = ['light', 'dark'];
 
 async function run() {
   const m = ids[engine], topic = `/?topic=marks-${engine}`;
@@ -377,6 +392,56 @@ async function run() {
       await writeFile(path.join(evidence, `${engine}-heads-${width}-${dark ? 'dark' : 'light'}.json`), JSON.stringify({ starred, folded, one, bare }, null, 2));
       await p.evaluate(() => scrollTo(0, 0));
       await picture(p, `heads-${width}-${dark ? 'dark' : 'light'}`);
+    });
+  }
+
+  // Item 473: the title bar's glyphs take their room from the paper past the tab's curved corner, never from the tab.
+  // At 390 a dossier whose first message carries a picture alone shows its image mark beside the whole name of who
+  // began it, at rest and once a tap selects it and its title bar shows ⋯: ⋯ is 44px, named with its tooltip, inside
+  // the window, beside the tab and clear of its corner, on the tab's line, and a press at its centre lands on it.
+  for (const theme of THEMES) {
+    await check(`picture-only head row at 390px ${theme}: selected by touch, the dossier keeps its image mark and who began it whole while its title bar's ⋯ stands beside the tab, past its corner`, async () => {
+      const p = await open(`/?topic=picture-${engine}-${theme}`, { width: 390, dark: theme === 'dark' }), id = pictureIds[engine][theme], selector = card(id);
+      await until(p, sel => document.querySelector(`${sel} > .stack-head > .stack-who`) && document.querySelectorAll(`${sel} > .stack-head .carry`).length === 1, 'the head row drawn with its mark', selector);
+      // What a person reads in the row: its parts on two lines inside the tab, the image mark whole, who began it whole,
+      // and the reply count whole.
+      const row = async state => {
+        const seen = await readHead(p, id), where = `${state}: ${seen.shape}`;
+        assert.ok(linesOf(seen.parts) <= 2, `${where}: two lines, never a third`);
+        const shown = seen.marks.filter(mark => mark.box.left >= seen.held.left - 0.5 && mark.box.right <= seen.held.right + 0.5 && mark.box.top >= seen.held.top - 0.5 && mark.box.bottom <= seen.held.bottom + 0.5);
+        assert.deepEqual(shown.map(mark => [mark.kind, mark.label]), [['image', WORDS.image]], `${where}: the image mark shows whole, named`);
+        assert.ok(shown[0].box.width >= 12 && shown[0].box.height >= 12, `${where}: a visible glyph`);
+        assert.equal(seen.who.cut, false, `${where}: who began it reads whole`);
+        assert.ok(seen.count?.whole, `${where}: the reply count reads whole`);
+        return seen;
+      };
+      // The title bar's ⋯ and the tab's corner, as drawn.
+      const tools = () => p.evaluate(sel => {
+        const section = document.querySelector(sel).closest('.reply-stack'), tools = section.querySelector(':scope > .stack-tools'), menu = tools.querySelector(':scope > [data-tool=menu]');
+        const tab = section.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(), m = menu.getBoundingClientRect(), style = getComputedStyle(tools);
+        const corner = parseFloat(getComputedStyle(section).getPropertyValue('--stack-r-tab')) * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const hit = document.elementFromPoint(m.left + m.width / 2, m.top + m.height / 2);
+        return { shown: style.visibility === 'visible' && Number(style.opacity) === 1, tab: { left: tab.left, right: tab.right, top: tab.top, bottom: tab.bottom }, corner,
+          menu: { left: m.left, right: m.right, top: m.top, bottom: m.bottom, width: m.width, height: m.height, label: menu.getAttribute('aria-label'), title: menu.title, text: menu.textContent },
+          others: [...tools.children].filter(b => b !== menu && b.getClientRects().length).length, hit: Boolean(hit && menu.contains(hit)), width: innerWidth, sideways: document.documentElement.scrollWidth > innerWidth };
+      }, selector);
+      await row('at rest');
+      assert.equal((await tools()).shown, false, 'at rest the title bar shows no glyph');
+      // A tap on who began it selects the dossier, as a person does; its title bar then shows ⋯.
+      await p.locator(`${selector} > .stack-head > .stack-who`).tap();
+      await until(p, sel => (t => t && getComputedStyle(t).opacity === '1')(document.querySelector(sel).closest('.reply-stack').querySelector(':scope > .stack-tools')), 'the tap selects the dossier and its title bar shows ⋯', selector);
+      const seen = await row('selected'), t = await tools(), where = JSON.stringify(t);
+      assert.deepEqual([t.menu.label, t.menu.title, t.menu.text, t.others], ['More for this dossier', 'More for this dossier', '⋯', 0], `⋯ alone, named with its tooltip: ${where}`);
+      assert.ok(t.menu.width >= 44 && t.menu.height >= 44, `⋯ is 44px to touch: ${where}`);
+      assert.ok(t.menu.left >= t.tab.right + t.corner - 0.5, `⋯ stands beside the tab, past its curved corner: ${where}`);
+      assert.ok(t.menu.right <= t.width + 0.5 && t.menu.top >= t.tab.top - 0.5 && t.menu.bottom <= t.tab.bottom + 0.5, `⋯ is inside the window, on the tab's line: ${where}`);
+      assert.ok(t.hit, `a press at ⋯'s centre lands on it: ${where}`);
+      assert.ok(seen.row.right <= t.menu.left, `nothing of the tab is under ⋯: ${where}`);
+      assert.equal(t.sideways, false, 'nothing scrolls sideways');
+      assert.deepEqual(p.errors, []);
+      await writeFile(path.join(evidence, `${engine}-picture-390-${theme}.json`), JSON.stringify({ seen, tools: t }, null, 2));
+      await p.evaluate(() => scrollTo(0, 0));
+      await picture(p, `picture-390-${theme}`);
     });
   }
 

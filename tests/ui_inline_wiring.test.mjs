@@ -131,7 +131,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   // Whether el is reached from root through these child steps.
   const inChain = (el, chain, root) => { let at = el; for (let i = chain.length - 1; i >= 0; i--, at = at.parent) if (!at || !isStep(at, chain[i])) return false; return at === root; };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }),
+    // The bars' glyphs (glyphs.mjs) are svg elements.
+    createElementNS: (ns, tag) => Object.assign(new Element(), { tagName: String(tag), namespaceURI: ns }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); },
     removeEventListener(name, fn) { const at = events.findIndex(([kind, n, f]) => kind === 'document-handler' && n === name && f === fn); if (at >= 0) events.splice(at, 1); },
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
@@ -4299,13 +4301,45 @@ const conversationMessages = () => [
 ];
 const ASKED = [{ ask_message_id: 'm4', on: 'fixture-person', by: 'agent-a', since_ms: TODAY, item_id: 'm1', excerpt: 'which Friday?' }];
 
+test('a covered dossier keeps its first sheet beside the title tools through an edit and a cover rewrite', async () => {
+  const list = conversationMessages();
+  list[0].acts = { cover: { stands: 'Ready for Friday', waiting: [], payload: null, owner: 'fixture-person' }, cover_revision: 1 };
+  const { f, stackOf, opens } = await conversationPage(list);
+  const parts = () => stackOf('m1').children;
+  const checkParts = stands => {
+    const [head, cover, toggle, tools, replies] = parts();
+    assert.equal(head.dataset.id, 'm1');
+    assert.equal(cover.className, 'dossier-cover');
+    assert.equal(cover.children[0].children[0].textContent, stands);
+    assert.equal(toggle.className, 'stack-toggle');
+    assert.equal(tools.className, 'stack-tools');
+    assert.deepEqual(tools.children.map(button => button.dataset.tool), ['reply', 'aside', 'menu']);
+    assert.equal(replies.className, 'stack-replies');
+    assert.equal(stackOf('m1').dataset.covered, 'true');
+  };
+  checkParts('Ready for Friday');
+  const original = parts()[1];
+  f.views.messages.set('m1', { ...f.views.messages.get('m1'), body: 'The launch now stands at Saturday.', revision: 2 });
+  f.paintViews('messages'); await settle();
+  checkParts('Ready for Friday');
+  assert.equal(parts()[1], original, 'an edit keeps the existing cover sheet');
+  const root = f.views.messages.get('m1');
+  f.views.messages.set('m1', { ...root, acts: { ...root.acts, cover: { ...root.acts.cover, stands: 'Ready for Saturday' }, cover_revision: 2 } });
+  f.paintViews('messages'); await settle();
+  checkParts('Ready for Saturday');
+  parts()[3].children[0].onclick(); await settle();
+  assert.equal(opens.at(-1)?.[0], 'm1', 'Reply still opens the dossier first message');
+});
+
 test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
   const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED });
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => stackOf(id) === stack), [true, true, true, true], 'every reply up the chain, in the one stack of the message they answer');
   assert.deepEqual(listed(f).map(child => child.dataset.id ?? 'stack'), ['m6', 'stack'], 'the stack sits where its newest message would, below the newer item on its own');
-  const [head, toggle, replies] = stack.children;
+  // The title bar's glyphs (item 473) sit between the chevron and the replies.
+  const [head, toggle, tools, replies] = stack.children;
+  assert.equal(tools.className, 'stack-tools');
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
   // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
