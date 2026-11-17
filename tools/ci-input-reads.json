@@ -4152,6 +4152,12 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_unread_landing.test.mjs": {
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_uploads.test.mjs": {
     "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870": {
       "inputs": [],

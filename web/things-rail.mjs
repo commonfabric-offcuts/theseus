@@ -675,7 +675,7 @@ export class ThingsRail {
       if (!plainClick(event) || !this.handles) return;
       event.preventDefault();
       // A press on a topic's unread count opens it at its oldest unread message (item 613).
-      const to = target.kind === 'topic' && landsOnUnread(event.target) ? { kind: 'topic', id: target.id, at: 'unread' } : target;
+      const to = target.kind === 'topic' && landsOnUnread(event.target, event) ? { kind: 'topic', id: target.id, at: 'unread' } : target;
       if (!this.wide?.matches) this.close(false);
       this.handles.open(to, title || 'that page', link);
     };

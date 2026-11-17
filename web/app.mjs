@@ -1682,8 +1682,7 @@ async function loadUntil(wanted) {
 // The New line's "More new below": the line's message read in; then it takes
 // the focus, with the line in its place below it.
 async function loadToUnread() {
-  const entry = await loadUntil(() => views.line);
-  if (entry) opened(reveal(entry)).focus();
+  return landUnreadMessage(views.line);
 }
 // What a topic's unread count leads to (item 613, docs/attention.md): the
 // oldest message still unread for the reader, as Core finds it by the rule
@@ -1696,16 +1695,28 @@ async function loadToUnread() {
 async function landOnUnread() {
   // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
   if (shell.drawer?.isOpen()) shell.drawer.close();
-  const found = await loadUntil(() => views.oldestUnread);
+  return landUnreadMessage(views.oldestUnread);
+}
+let unreadLanding = 0;
+// Both explicit ways to read the oldest unread message earn the same view
+// and the same revision-fenced mark clear. Capture before any page loads:
+// another device renewing the mark while they run must keep its newer mark.
+async function landUnreadMessage(wanted) {
+  const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
+  const current = () => request === unreadLanding && !registry.disposed;
+  const found = await loadUntil(() => wanted);
+  if (!current()) return;
   if (!found) return;
   const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
   if (root) await loadUntil(() => ({ id: root }));
+  if (!current()) return;
   const entry = entries($('messages')).find(child => child.dataset.id === id);
   if (!entry) return;
   reveal(entry, { full: true, open: true });
   const card = opened(entry);
   revealSelection(card);
   card.focus({ preventScroll: true });
+  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));
 }
 // Where the oldest unread message is, read again after each commit: reading,
 // marks and replies move it without changing the topic. During a visit the
@@ -2384,7 +2395,7 @@ async function initialize() {
   // drawer behind "☰ Topics" (rail-drawer.mjs). Cards count as seen once each
   // has had its first answer, read or refused (noteRead), so neither moves a
   // card the page has already counted.
-  Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
+  const firstReading = Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
@@ -2394,7 +2405,9 @@ async function initialize() {
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
-  if (atUnread) run(landOnUnread);
+  // This run's first marks read establishes what its reading act may clear.
+  // The older pages begin only after that baseline, as on a card already shown.
+  if (atUnread) run(() => firstReading.then(landOnUnread));
   if (anchored) {
     const card = landOn(anchored);
     run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });

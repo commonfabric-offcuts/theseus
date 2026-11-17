@@ -354,7 +354,7 @@ export class TopicRail {
       link.onclick = event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        if (landsOnUnread(event.target)) return this.open(item.id, this.title(item.id), null, 'unread');
+        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');
         return this.open(item.id, this.title(item.id), this.question(item.id));
       };
       this.links.set(item.id, link);
@@ -506,10 +506,18 @@ export const questionOf = (item, reader) => (Array.isArray(item?.asks) ? item.as
 // rule the topic's oldest unread message is found by (docs/attention.md), so
 // it counts nothing the press cannot reach.
 export const UNREAD_TIP = 'Show the oldest unread message';
-export const landsOnUnread = target => Boolean(target?.closest?.('.unread-count[data-lands]'));
+// Return activates the row's existing keyboard stop (click detail 0), rather
+// than adding an interactive child inside its link/treeitem. A pointer keeps
+// the row's ordinary destination and chooses unread by pressing its count.
+export const landsOnUnread = (target, event = null) => Boolean(target?.closest?.('.unread-count[data-lands]') ||
+  event?.detail === 0 && target?.querySelector?.('.unread-count[data-lands]'));
 export function paintMarks(host, item, reader) {
   const count = paintUnread(host, item);
-  if (count) { count.dataset.lands = 'unread'; count.title = UNREAD_TIP; }
+  if (count) {
+    count.dataset.lands = 'unread'; count.title = UNREAD_TIP;
+    const keys = document.createElement('span'); keys.className = 'sr-only';
+    keys.textContent = '. Return shows the oldest unread message'; host.append(keys);
+  }
   paintState(host, item, reader);
   paintWork(host, item, reader);
 }

@@ -648,7 +648,14 @@ however far up it is, and on to the first message of the dossier it is in, so
 the dossier is drawn whole rather than from the message; it opens the dossier,
 expands its earlier row as far as the message (docs/reply-stacks.md, "Earlier
 messages"), and brings it whole into view with the keys on it; on a phone the
-drawer closes first. Reading it on screen settles it, and the count goes. The count's tooltip says "Show the oldest
+drawer closes first. Return on a topic row with an unread count makes the same
+landing, in either rail; without a count it opens the topic as before. The
+"More new below" button also brings the message whole into its open dossier.
+These explicit reading acts capture the message's unread-mark revision before
+loading its older pages and clear only that revision once the card is shown,
+focused and on screen. A mark renewed while loading survives; a background
+page waits until shown, and leaving the card cancels that waiting clear.
+Reading it on screen settles its delivery, and the count goes. The count's tooltip says "Show the oldest
 unread message", and on a phone it answers a finger 44px each way. The count and
 the message it leads to are one rule, written once and read by both: a delivery
 pending in one of the reader's active groups (`SUBSCRIBED` and `ADDRESSED` in

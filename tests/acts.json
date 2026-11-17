@@ -26330,8 +26330,8 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (atUnread) run(landOnUnread);\n",
-     "  if (false) run(landOnUnread);\n"
+     "  if (atUnread) run(() => firstReading.then(landOnUnread));\n",
+     "  if (false) run(() => firstReading.then(landOnUnread));\n"
     ]
    ],
    "check": {
@@ -26390,7 +26390,7 @@
    "break": [
     [
      "web/topic-navigation.mjs",
-     "      if (landsOnUnread(event.target)) return this.open(item.id, this.title(item.id), null, 'unread');\n",
+     "        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');\n",
      ""
     ]
    ],
@@ -26404,8 +26404,8 @@
    "break": [
     [
      "web/topic-navigation.mjs",
-     "  if (count) { count.dataset.lands = 'unread'; count.title = UNREAD_TIP; }",
-     "  if (count) { count.dataset.lands = 'unread'; }"
+     "    count.dataset.lands = 'unread'; count.title = UNREAD_TIP;",
+     "    count.dataset.lands = 'unread';"
     ]
    ],
    "check": {
@@ -26460,7 +26460,7 @@
    "break": [
     [
      "web/things-rail.mjs",
-     "      const to = target.kind === 'topic' && landsOnUnread(event.target) ? { kind: 'topic', id: target.id, at: 'unread' } : target;\n",
+     "      const to = target.kind === 'topic' && landsOnUnread(event.target, event) ? { kind: 'topic', id: target.id, at: 'unread' } : target;\n",
      "      const to = target;\n"
     ]
    ],
@@ -26481,6 +26481,62 @@
    "check": {
     "native": "webkit-reading",
     "case": "reading unread count one press lands on the oldest unread message"
+   }
+  },
+  {
+   "item": 613,
+   "act": "An explicit unread landing clears its captured unread mark after showing the card",
+   "break": [
+    [
+     "web/app.mjs",
+     "  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "A mark renewed while an unread landing loads survives its earlier reading act",
+   "break": [
+    [
+     "web/app.mjs",
+     "  marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));",
+     "  marks.read(marks.capture(id), () => current() && card.isConnected && document.activeElement === card && onScreen(card));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "Return on an unread topic row reaches the same landing as its count, in either rail",
+   "break": [
+    [
+     "web/topic-navigation.mjs",
+     "event?.detail === 0 && target?.querySelector?.('.unread-count[data-lands]')",
+     "false && target?.querySelector?.('.unread-count[data-lands]')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
+   }
+  },
+  {
+   "item": 613,
+   "act": "More new below shows the message whole in its open dossier, never only a collapsed row",
+   "break": [
+    [
+     "web/app.mjs",
+     "  reveal(entry, { full: true, open: true });",
+     "  reveal(entry);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_unread_landing.test.mjs"
    }
   }
  ]
