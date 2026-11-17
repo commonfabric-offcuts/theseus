@@ -26136,17 +26136,17 @@
   },
   {
    "item": 635,
-   "act": "An undo held by the reader's star says why on the status line when neither the dossier's title bar nor the message the keys are on is in the window",
+   "act": "An undo held by the reader's star for a dossier the page does not draw says why on the status line",
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (!places.some(place => noteAt(place, HELD_BY_STAR, this.doc))) this.status(HELD_BY_STAR);",
-     "places.some(place => noteAt(place, HELD_BY_STAR, this.doc));"
+     "    this.status(HELD_BY_STAR);\n  }\n  // Whether a place",
+     "  }\n  // Whether a place"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks star undo"
+    "case": "reading stacks star undo hidden"
    }
   },
   {
@@ -26237,12 +26237,12 @@
   },
   {
    "item": 635,
-   "act": "⌘Z held by the reader's star says why under the message the keys are on when the dossier's title bar is out of the window",
+   "act": "⌘Z or Undo in ⋯ held by the reader's star says why under the dossier's title bar, brought into view where it is out of the window",
    "break": [
     [
      "web/stack-feed.mjs",
-     "keys && this.list.contains(keys) ? lineOf(keys) : null",
-     "null"
+     "(say(bar) || (revealSelection(bar), say(bar)))",
+     "say(bar)"
     ]
    ],
    "check": {
@@ -26252,12 +26252,27 @@
   },
   {
    "item": 635,
-   "act": "Undo in ⋯ held by the reader's star says why by the message whose ⋯ it was",
+   "act": "Undo in ⋯ held by the reader's star says why by the message whose ⋯ it was, a message of the dossier",
    "break": [
     [
      "web/stack-feed.mjs",
      "act: () => this.undo(line())",
      "act: () => this.undo()"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star is never said beside a message of another dossier, the one the keys or the ⋯ were on",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (at && this.ofDossier(at, stack) && say(at)) return;",
+     "if (at && say(at)) return;"
     ]
    ],
    "check": {

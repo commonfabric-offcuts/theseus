@@ -81,10 +81,14 @@ More" where it was (`press-note.mjs`: under the archive button, the line of
 the message whose menu it was, or the title bar the swipe crossed), and
 nothing moves on any frame. Command-Z, or Undo in ⋯, after a Bring back on a
 dossier starred since is held the same way, and nothing says it was put back.
-Undo in ⋯ says why by the message whose menu it was. Command-Z says it under
-the dossier's title bar, else under the message the keys are on, and on the
-page's status line (in the left rail on a laptop) where neither is in the
-window. A note shows under
+The words name "This dossier", so they show by the dossier the undo would have
+moved, never beside a message of another one. Undo in ⋯ on a message of that
+dossier says why by that message. Command-Z, wherever the keys are, and Undo in
+the ⋯ of a message of another dossier say it under the dossier's title bar,
+brought into view where it was out of the window, where its star shows. Where
+the page does not draw the dossier at all (an agents-only dossier while Show
+agent coordination is off), the reason goes on the page's status line (in the
+left rail on a laptop), and nothing hidden is shown for it. A note shows under
 what it is said beside, and over it where the window has no room below (a
 message near the bottom of a phone's screen). The way out is to unstar. A star and the move are
 each the reader's alone, so the hold is too: another reader's star never holds

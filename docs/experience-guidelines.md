@@ -395,9 +395,11 @@ and what was kept. It never shows an error code or an id.
   and a laptop, light and dark, and nothing moves on any frame
   ([dossier-below-more.md](dossier-below-more.md), item 635); "reading
   stacks star undo: …": Command-Z, or Undo in ⋯, after a Bring back on a
-  dossier starred since, says why by the message whose ⋯ it was, under its
-  title bar or the message the keys are on, or on the status line when those
-  are out of the window, and nothing says it was put back;
+  dossier starred since, says why by the message whose ⋯ it was when that is
+  the dossier's, else under the dossier's title bar, brought into view, and
+  never beside a message of another dossier, and nothing says it was put back;
+  "reading stacks star undo hidden: …": for a dossier the page does not draw
+  (Show agent coordination off), on the status line, showing nothing hidden;
   "reading stacks star note over: …": pressed on a message at the bottom of
   the window, the words show over it, inside the window.
 

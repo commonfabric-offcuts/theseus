@@ -301,9 +301,10 @@ export class StackFeed {
   say(words) { this.said.textContent = ''; this.said.textContent = words; }
   remember(undo) { this.undos.push(undo); if (this.undos.length > 50) this.undos.shift(); }
   // ⌘Z, or Undo in ⋯ (at: the line of the message whose menu it was, where a
-  // refusal is said). An undo that does nothing gives false: a Bring back's
-  // undo on a dossier starred since is held (setAside, item 635), and its note
-  // says why, so nothing says it was put back.
+  // refusal is said when that message is of the dossier the undo acts on). An
+  // undo that does nothing gives false: a Bring back's undo on a dossier
+  // starred since is held (setAside, item 635), and its note says why, so
+  // nothing says it was put back.
   undo(at = null) {
     const last = this.undos.pop();
     if (!last) { this.say('Nothing to put back'); return; }
@@ -700,16 +701,28 @@ export class StackFeed {
   // starred, so its title bar shows their star (item 635): Move below More
   // then does nothing, and says why.
   heldByStar(stack) { return this.state.starred.has(dossierOf(stack)); }
-  // Says why a move below More did nothing, where the press was (at: the
-  // control pressed, such as the Reader's archive button, or the line of the
-  // message whose menu it was), else under the dossier's title bar (its first
-  // message's line, for a message on its own), else where the keys are (⌘Z:
-  // the line of the message they are on), and on the page's status line where
-  // none of them is on the screen.
+  // Says why a move below More did nothing, by the dossier it would have
+  // moved, since its words say "This dossier" and "unstar it": where the press
+  // was (at: the control pressed, such as the Reader's archive button, or the
+  // line of the message whose menu it was) when that is the dossier's, else
+  // under its title bar (its first message's line, for a message on its own),
+  // brought into view where it is out of the window, and on the page's status
+  // line where the page does not draw the dossier (Show agent coordination
+  // off). Never beside a message of another dossier: ⌘Z where the keys are on
+  // one, or Undo in its ⋯.
   held(stack, at = null) {
-    const head = this.entryFor(stack.id), keys = this.doc.activeElement;
-    const places = [at, head && lineOf(cardIn(head)), keys && this.list.contains(keys) ? lineOf(keys) : null];
-    if (!places.some(place => noteAt(place, HELD_BY_STAR, this.doc))) this.status(HELD_BY_STAR);
+    const say = place => noteAt(place, HELD_BY_STAR, this.doc), head = this.entryFor(stack.id), bar = head && lineOf(cardIn(head));
+    if (at && this.ofDossier(at, stack) && say(at)) return;
+    if (bar?.getClientRects().length && (say(bar) || (revealSelection(bar), say(bar)))) return;
+    this.status(HELD_BY_STAR);
+  }
+  // Whether a place a refusal could be said by is the dossier stack is drawn
+  // from: a line of one of its messages, or a control off the list (the
+  // Reader's archive button, which acts on the Reader's message's dossier).
+  ofDossier(place, stack) {
+    if (!this.list.contains(place)) return true;
+    const found = stackOf(this.list, entryOf(this.list, place));
+    return Boolean(found) && dossierOf(found.stack) === dossierOf(stack);
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes. at: the
