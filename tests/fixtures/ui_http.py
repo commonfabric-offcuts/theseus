@@ -760,6 +760,11 @@ def main():
                         answer = tools_seed(request)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
+                    elif freshness and request["method"] == "agent_edit":
+                        # An agent's new words for a message it wrote, as its CLI's `edit` saves them (item 614),
+                        # fenced on the revision it read (1 unless given); Core may refuse it.
+                        answer = command("message.edit", request["operation_id"], {"body": request["body"]}, {"message_id": request["message_id"]},
+                                         {"message_revision": request.get("revision", 1)}, sender=request["sender"], refusable=True)
                     elif freshness and request["method"] == "agent_thumb":
                         # An agent's thumbs-up on a message, as its CLI's `thumb` gives it (docs/thumbs.md).
                         revision = store().view(request["sender"], "reactions", {"message_id": request["message_id"]})["reactions"]["thumb_revision"]

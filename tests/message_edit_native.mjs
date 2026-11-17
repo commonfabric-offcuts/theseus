@@ -707,6 +707,85 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   });
 
   // From here, item 452: the edit session in Core.
+  // An agent's correction of its own words (item 614): an edit of its message, never a second one. For the person who
+  // had read the first words, the card and the Reader show those Core says the edit took away struck through where they
+  // stood, beside the new ones, and the message is unread again; for a topic the person had not read, only the new
+  // words. Reads on screen are held, so what shows unread is what Core holds, not what this page then reads again.
+  const FIRST = 'Built on release 85, and the checks are green.', FIXED = 'Built on release 86, and the checks are green.';
+  const STRUCK = 'Built on release 85 86, and the checks are green.';
+  // Waits for read() to give want; on a timeout the failure shows what it gave instead.
+  const becomes = async (read, want, message) => {
+    let last;
+    try { await until(async () => JSON.stringify(last = await read()) === JSON.stringify(want), message); }
+    catch (error) { assert.deepEqual(last, want, message); throw error; }
+  };
+  // A card or the Reader as the person sees it: its words (the Reader's without its end line), each struck run's words,
+  // and how a struck run is drawn.
+  const strikeOf = (p, host) => p.evaluate(`(h=>h&&{text:[...h.childNodes].filter(n=>!n.classList?.contains('reader-end')).map(n=>n.textContent).join(''),struck:[...h.querySelectorAll('del.struck-words')].map(d=>d.textContent),
+    look:[...h.querySelectorAll('del.struck-words')].map(d=>{const s=getComputedStyle(d);return {through:s.textDecorationLine.includes('line-through'),title:d.title,
+      quiet:s.color!==getComputedStyle(h).color}})})(document.querySelector(${JSON.stringify(host)}))`);
+  const agentCards = p => p.evaluate(`[...document.querySelectorAll('#messages .message-card[data-id]')].filter(c=>c.textContent.includes('Built on release')).length`);
+  await check('reading edit agent correction: one card; the person who had read it sees the old words struck through beside the new ones, on the card and in the Reader, and it is unread again; a topic not yet read shows only the new words; at 320, 375 and 390 wide by touch, and on a laptop, light and dark', async () => {
+    for (const [device, width] of WIDTHS) {
+      const read = `edit-agent-read-${width}`, fresh = `edit-agent-fresh-${width}`;
+      // The person reads the agent's line before its correction in one topic, and not in the other.
+      const a = await seed(read, [['line', { sender: 'aim-core', join: true, body: FIRST, read: true }]]);
+      const b = await seed(fresh, [['line', { sender: 'aim-core', join: true, body: FIRST }]]);
+      const unreadIn = async (topic, id) => (await view('topic_messages', { topic_id: topic, message_ids: [id] })).items.find(item => item.id === id)?.unread;
+      assert.equal(await unreadIn(read, a.line), false, `${width}: read before the correction`);
+      assert.equal(await unreadIn(fresh, b.line), true, `${width}: not read before the correction`);
+      const p = await open(read, device, read, a.line, 'window.holdReads = true');
+      if (device === 'phone' && width !== 390) await p.send('Emulation.setDeviceMetricsOverride', { width, height: 740, deviceScaleFactor: 1, mobile: true });
+      assert.deepEqual(await strikeOf(p, words(a.line)), { text: FIRST, struck: [], look: [] }, `${width}: the first words, nothing struck`);
+      assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as read`);
+      // A minute later the agent corrects it, by editing it, while the page is open; and the line in the other topic.
+      const edits = [];
+      for (const [topic, id] of [[read, a.line], [fresh, b.line]]) {
+        edits.push(await control({ method: 'agent_edit', operation_id: `${topic}-edit`, sender: 'aim-core', message_id: id, body: FIXED }));
+      }
+      assert.deepEqual(edits.map(receipt => [receipt.status, receipt.error?.code ?? null, receipt.result?.revision ?? null]),
+        [['committed', null, 2], ['committed', null, 2]], `${width}: Core takes the agent's edit of its own words`);
+      // On the open page, with no reload: the same card shows 85 struck through before 86, and the message is new again.
+      await becomes(() => strikeOf(p, words(a.line)).then(seen => seen && { text: seen.text, struck: seen.struck }), { text: STRUCK, struck: ['85'] },
+        `${width}: the card shows "85" struck through before "86"`);
+      const { look } = await strikeOf(p, words(a.line));
+      assert.deepEqual(look, [{ through: true, title: 'Words you read before the author changed them', quiet: true }], `${width}: drawn struck through, quieter, with a title`);
+      assert.equal(await agentCards(p), 1, `${width}: one card, not a second message`);
+      assert.equal(await unreadIn(read, a.line), true, `${width}: Core holds it unread again`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: the card reads as new again`);
+      assert.ok(await p.evaluate('document.documentElement.scrollWidth <= innerWidth'), `${width}: nothing beyond the window`);
+      for (const scheme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        assert.equal((await strikeOf(p, words(a.line))).look[0].quiet, true, `${width} ${scheme}: the struck words are quieter`);
+        await shot(p, `edit-agent-card-${width}-${scheme}`);
+      }
+      await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      // The Reader shows the message whole, the same way.
+      await openReader(p, device, a.line, 'Built on release');
+      await becomes(() => strikeOf(p, '#source-body').then(seen => seen && { text: seen.text.trim(), struck: seen.struck }), { text: STRUCK, struck: ['85'] },
+        `${width}: the Reader shows "85" struck through before "86"`);
+      for (const scheme of ['light', 'dark']) {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        await shot(p, `edit-agent-reader-${width}-${scheme}`);
+      }
+      await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+      await closeReader(p, device === 'laptop' ? 'laptop' : 'phone');
+      assert.deepEqual(p.errors, []);
+      await p.close();
+      // The topic the person had not read: only the new words, once, nothing struck.
+      const q = await open(fresh, device, fresh, b.line, 'window.holdReads = true');
+      if (device === 'phone' && width !== 390) await q.send('Emulation.setDeviceMetricsOverride', { width, height: 740, deviceScaleFactor: 1, mobile: true });
+      assert.deepEqual(await strikeOf(q, words(b.line)), { text: FIXED, struck: [], look: [] }, `${width}: not read before: only the new words`);
+      assert.equal(await agentCards(q), 1, `${width}: one card`);
+      for (const scheme of ['light', 'dark']) {
+        await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+        await shot(q, `edit-agent-fresh-${width}-${scheme}`);
+      }
+      assert.deepEqual(q.errors, []);
+      await q.close();
+    }
+  });
+
   await check('reading edit hold: Edit sends edit_open before the field shows, an agent then reads the message without its words, and Cancel closes once and gives them back', async () => {
     const topic = 'edit-hold-laptop', ids = await edited(topic);
     const p = await open(topic, 'laptop', topic, ids.mine, EDIT_FAULTS);
