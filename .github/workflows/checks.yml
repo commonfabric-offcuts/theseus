@@ -1,7 +1,8 @@
 # The release check, run on GitHub's runners for every pull request and every
 # push to a release branch. It runs the same steps as tools/release_check.py on
 # the Mac, split across runners: the native browser modes in shards, the units
-# and the deploy refusals together, and the wake replay alone, since it is a
+# in measured whole-file shards, Node and deploy refusals separately, and the
+# wake replay alone, since it is a
 # timing measurement that a second run beside it would skew.
 #
 # The shard list is computed from tools/release_check.py itself (the plan job),
@@ -49,8 +50,7 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Three browser shards, the units and the replay make five jobs: one wave under the five-macOS-jobs-at-once cap
-  # of a personal account. Raise this once the repository is under the organization, whose cap is fifty.
+  # Browser shards keep their existing deal; unit jobs have independent limits (docs/unit-shards.md).
   BROWSER_SHARDS: 3
 
 jobs:
@@ -74,14 +74,11 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
-    # 45 on a18e8b1e. Units, deploy refusals and wake replay had 45.
-    # TEMPORARY (17 Nov), both numbers:
-    # - 60, not 45: python-units alone now runs 42 to 44 minutes in the one units job, so 45 cancels it. Item 665
-    #   splits the units job into shards with limits read from measured times, and removes this raise.
-    # - 90, not 75: train 33's browser shard 1 reached 74.2 step-minutes and was cancelled at 75. Item 666 deals the
-    #   browser steps over four shards by measured minutes, and removes this raise.
-    timeout-minutes: ${{ startsWith(matrix.name, 'browser ') && 90 || 60 }}
+    # Browser/replay limits retain their existing measurements. Unit limits are
+    # ceil((measured file/step minutes + measured setup) * 1.5), from
+    # .github/check-weights.json: file timings 44112970996, Node/setup
+    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
@@ -124,7 +121,7 @@ jobs:
           set -euo pipefail
           # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
           /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
-            --quarantine-at event
+            --quarantine-at event ${{ matrix.python_shard && format('--python-shard {0}', matrix.python_shard) || '' }}
       - name: Write this shard's receipt
         if: always()
         shell: bash
@@ -220,6 +217,8 @@ jobs:
           mkdir -p release-check
           python3 - shards release-check/summary.json <<'PY'
           import glob, hashlib, json, os, re, sys
+          sys.path.insert(0, '.')
+          from tools import release_check as check
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
@@ -243,15 +242,15 @@ jobs:
           # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
           # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
           merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
-          if len(merges) != 1:
+          if len(merges) > 1:
               sys.exit("the shards name different merges: %s" % sorted(merges))
-          merge = receipts[0].get("merge") or {}
+          merge = (receipts[0].get("merge") or {}) if receipts else {"sha": env.get("GITHUB_SHA")}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
-          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
+          if receipts and env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
               sys.exit("the PR merge has no Git first-parent commit id")
           formats = {"base_at_run" in r for r in receipts}
-          if len(formats) != 1:
+          if len(formats) > 1:
               sys.exit("the shards mix legacy and base_at_run receipt formats")
           observed = True in formats
           if observed:
@@ -265,17 +264,15 @@ jobs:
                   sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
-          if not docs or not timed:
-              sys.exit("no shard wrote a summary with a run in it")
-          # Such a refusal names no commit; every other summary must name the one commit.
+          # Even total cancellation produces a diagnostic summary naming every job.
           commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
-          if len(commits) != 1:
+          if len(commits) > 1:
               sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
-          steps = [step for d in docs for step in d.get("steps", [])]
-          names = [step["name"] for step in steps]
-          if len(names) != len(set(names)):
-              sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
-          required = sorted(set().union(*[set(d.get("required") or []) for d in docs]))
+          plan = json.loads(env.get('PLAN_SHARDS') or '[]')
+          try:
+              steps, required, jobs, missing_jobs, missing = check.combine_unit_results(docs, plan, receipts)
+          except check.Refused as error:
+              sys.exit(str(error))
           # Keep the full required inventory, but only omitted browser modes
           # are covered by the plan's explicit scope. Units and replay remain required.
           scoped = json.loads(env.get("PLAN_SCOPE") or "null")
@@ -289,19 +286,20 @@ jobs:
               covered = native - set(scoped["steps"])
               if set(scoped.get("not_run") or []) != covered or covered.intersection(names):
                   sys.exit("scoped plan disagrees with its omitted browser steps")
-          missing = [name for name in required if name not in names and name not in covered]
-          first = timed[0]
+          missing = [name for name in missing if name not in covered]
+          first = timed[0] if timed else {'tool': check.TOOL, 'commit': env.get('GITHUB_SHA')}
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
-              "started_at": min(d["started_at"] for d in timed),
-              "finished_at": max(d["finished_at"] for d in timed),
-              "steps": steps,
-              "tree_unchanged": all(d.get("tree_unchanged") is True for d in timed),
+              "started_at": min((d["started_at"] for d in timed), default=None),
+              "finished_at": max((d["finished_at"] for d in timed), default=None),
+              "steps": steps, "required": required,
+              "jobs": jobs, "missing_jobs": missing_jobs, "missing": missing,
+              "tree_unchanged": bool(timed) and all(d.get("tree_unchanged") is True for d in docs),
               "tree_after": first.get("tree_after"),
               "skipped": None,
-              "passed": all(step["passed"] for step in steps) and not missing,
+              "passed": bool(timed) and all(d.get("tree_unchanged") is True for d in docs) and all(step["passed"] for step in steps) and not missing and not missing_jobs,
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
@@ -321,7 +319,7 @@ jobs:
               # The event base each shard read its quarantine at: one, or the run is not green.
               "at": [json.loads(b) for b in sorted(bases)],
               "held": [{"step": step["name"], "case": case} for step in steps for case in (step.get("quarantine") or {}).get("held") or []],
-              "green": (not missing and combined["tree_unchanged"] and len(bases) == 1
+              "green": (not missing and not missing_jobs and combined["tree_unchanged"] and len(bases) == 1
                         and all(step["passed"] is True or held(step) for step in steps)),
           }
           json.dump(combined, open(out, "w"), indent=1)
@@ -338,7 +336,7 @@ jobs:
               "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
-              "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
+              "plan": plan,
               "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
                           "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused"),
                           "receipt": r}

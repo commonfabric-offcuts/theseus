@@ -16,7 +16,7 @@ import sys
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools import release_check as check
+from tools import release_check as check, unit_shards
 
 
 def scope_record(base, changed, chosen, notes):
@@ -28,7 +28,7 @@ def scope_record(base, changed, chosen, notes):
             'notes': notes[:20], 'why': check.scoped_words(base, chosen)}
 
 
-def plan(root, event_name, event, head, browser_shards=3, measured=None):
+def plan(root, event_name, event, head, browser_shards=3, measured=None, weights=None):
     """{shards, scoped, why}: PR scope when provable; otherwise every required step."""
     if browser_shards < 1:
         raise ValueError('at least one browser shard')
@@ -62,12 +62,15 @@ def plan(root, event_name, event, head, browser_shards=3, measured=None):
         lightest = min(loads, key=lambda b: b[0])
         lightest[0] += measured.get(name, median)
         lightest[1].append(name)
-    shards = [{'name': 'browser %d of %d (about %.0f min)' % (i + 1, browser_shards, load), 'steps': ','.join(names)}
+    shards = [{'name': 'browser %d of %d (about %.0f min)' % (i + 1, browser_shards, load), 'steps': ','.join(names), 'timeout': 75}
               for i, (load, names) in enumerate(loads) if names]
-    shards.append({'name': 'units and deploy refusals', 'steps': ','.join(check.UNIT_STEPS + (check.DEPLOY_REFUSALS,))})
-    shards.append({'name': 'wake replay', 'steps': check.WAKE_REPLAY})
+    if weights is None:
+        weights = json.loads((Path(__file__).resolve().parents[1] / '.github/check-weights.json').read_text())
+    shards.extend(unit_shards.jobs(root, weights))
+    shards.append({'name': 'wake replay', 'steps': check.WAKE_REPLAY, 'timeout': 45})
     expected = set(check.REQUIRED) - set(scoped['not_run'] if scoped else [])
-    assert sorted(s for shard in shards for s in shard['steps'].split(',')) == sorted(expected)
+    ordinary = [s for shard in shards if not shard.get('python_shard') for s in shard['steps'].split(',')]
+    assert sorted(ordinary + ['python-units']) == sorted(expected)
     return {'shards': shards, 'scoped': scoped, 'why': why}
 
 
@@ -84,8 +87,8 @@ def main(argv=None):
         event = json.loads(Path(args.event).read_text()) if args.event else {}
     except (OSError, ValueError):
         event = {}
-    measured = json.loads((root / '.github/check-weights.json').read_text())['minutes']
-    result = plan(root, args.event_name, event, args.head, args.browser_shards, measured)
+    weights = json.loads((root / '.github/check-weights.json').read_text())
+    result = plan(root, args.event_name, event, args.head, args.browser_shards, weights['minutes'], weights)
     if args.github_output:
         print('shards=' + json.dumps(result['shards']))
         print('scoped=' + json.dumps(result['scoped']))

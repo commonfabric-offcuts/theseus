@@ -465,7 +465,7 @@ class Combine(unittest.TestCase):
         out = self.root / "release-check"
         out.mkdir()
         result = subprocess.run([sys.executable, "-I", "-S", "-c", workflow_script("Fold the shards' summaries into one"),
-                                 str(shards), str(out / "summary.json")], cwd=self.repo, env=self.env, capture_output=True, text=True)
+                                 str(shards), str(out / "summary.json")], cwd=ROOT, env=self.env, capture_output=True, text=True)
         self.assertTrue((out / "summary.json").exists(), "the combine wrote no summary: %s" % result.stderr)
         return result, json.loads((out / "summary.json").read_text())
 

@@ -272,13 +272,15 @@ class OpenCase(StartLineCase):
     def test_two_opens_racing_on_one_revision_record_one_line_and_the_second_answers_with_it(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
         before = self.count()
+        # Both writers post on the fixture clock; the cut below is at its LATE.
+        # Real time eventually passes that fixed cut and otherwise makes this race red.
         racer = self.writer.parent / "racer.py"
         racer.write_text(RACING_WRITER)
         inner = [sys.executable, "-I", "-B", str(TOOL), "open", "w1", str(number), "--cli", str(CLI), "--profile", str(self.profiles["agent-a"]),
-                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--", sys.executable, "-I", "-c",
+                 "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--now", T0, "--", sys.executable, "-I", "-c",
                  "import sys; sys.stdin.read(); sys.stdout.write('The racing line.')"]
         code, result, err = self.tool("open", "w1", str(number), "--topic", "t1", "--surface", str(self.surface),
-                                      "--", sys.executable, "-I", str(racer), *inner)
+                                      "--now", T0, "--", sys.executable, "-I", str(racer), *inner)
         self.assertEqual((code, err), (0, ""), result)
         self.assertEqual((result["brief"], result["posted"], self.count()), ("The racing line.", False, before + 1))
         self.assertEqual(result["operation_id"], "start-line-w1-%d-%s" % (number, result["revision"]))

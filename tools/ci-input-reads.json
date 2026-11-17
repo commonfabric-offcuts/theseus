@@ -3802,6 +3802,28 @@
       "scope": "repository"
     }
   },
+  "tests/test_tools_unit_shards.py": {
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "61bd97de00ed1694f75989d68906ac1a62f166c943137c11160ec5120ab0964b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
+    },
+    "8835cba22c6509353b92cb2d6c41bedc71dbdc4f5822056845498ee0b5618454": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_tools_wake_replay.py": {
     "3352a2d4b6bd3de3aaf8ec3d248e99582fa1db53b1edbc5cb144bf8d2cd9784c": {
       "inputs": [],
