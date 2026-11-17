@@ -5,6 +5,26 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/compose_swipe_648_protections.mjs": {
+    "231eb206251c79b80f661fa52bd53ea0e274d31f5858268d885696017c37c900": {
+      "inputs": [
+        "tests/acts.json"
+      ],
+      "scope": "repository"
+    },
+    "8ae9a7184b71fc69a85d840944e19a26d3e20c646a055925d4d3ff1794493a42": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/conversation_native.mjs": {
     "fb4f4f72ba814b6bda44bf1a29a21516920c56464ef152149ddbc0ee8d8aa7e2": {
       "inputs": [],
