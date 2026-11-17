@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 // The topic's Team is exercised in the colors step because that page runs in
 // both Chromium and WebKit. Every press below is a native mouse click or tap.
-export async function teamBarChecks({ check, page, until, shot, control, view, facts }) {
+export async function teamBarChecks({ check, page, until, shot, control, view, facts, prefix = 'colors', onlySpelling = false }) {
   const opener = '#participants .add-chip', field = '#participants .people-add input';
   const shown = p => p.evaluate(`!document.querySelector('#participants .people-add').hidden`);
   const word = p => p.evaluate(`document.querySelector('${opener}').textContent`);
@@ -23,7 +23,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       await control({ method: 'outcome_change', operation_id: `item-643-candidate-${tag}-${suffix}`, sender: 'fixture-person', workspace_id: 'w1', member: candidate, present: true });
       const p = await page(`item-643-${tag}-${suffix}`, null, true, { beforeNavigate: setup });
       await until(() => p.evaluate(`Boolean(document.querySelector('${opener}')?.getClientRects().length)&&Boolean(document.querySelector('#participants .person-pill'))`), 'Team is drawn');
-      await until(() => p.evaluate(`!document.querySelector('#things [data-key=notebook]').hidden&&!document.querySelector('#things [data-key=images]').hidden`), 'Notebook and Images are drawn before the screenshot');
+      if (width >= 760) await until(() => p.evaluate(`!document.querySelector('#things [data-key=notebook]').hidden&&!document.querySelector('#things [data-key=images]').hidden`), 'Notebook and Images are drawn before the screenshot');
       await p.evaluate('scrollTo(0,0)'); return p;
     };
     const press = async (p, selector) => {
@@ -34,7 +34,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
     };
     const open = async p => { await press(p, opener); await until(() => shown(p), 'Add shows the choices and field');
       if (!await p.evaluate(`document.querySelector('${field}').value`)) await until(() => p.evaluate(`Boolean(document.querySelector('#participants .people-chips button[data-id="${candidate}"]'))`), 'available agent pill shows'); };
-    await check(`colors item 643 Team spelling ${tag}`, async () => {
+    await check(`${prefix} item 643 Team spelling ${tag}`, async () => {
       const p = await openPage('spelling');
       await shot(p, `item-643-${tag}-closed`);
       const caption = await p.evaluate(`(()=>{const e=document.querySelector('#people-heading');return [e.textContent,getComputedStyle(e).textTransform]})()`);
@@ -42,7 +42,8 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
       await p.close();
     });
-    await check(`colors item 643 Add becomes Done and closes without adding ${tag}`, async () => {
+    if (onlySpelling) continue;
+    await check(`${prefix} item 643 Add becomes Done and closes without adding ${tag}`, async () => {
       const p = await openPage('toggle'), before = await membership(), placed = await place(p);
       await open(p);
       await until(() => p.evaluate(`document.querySelector('${field}')===document.activeElement`), 'the field has focus');
@@ -62,7 +63,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       assert.equal(await word(p), '+ Add');
       await p.close();
     });
-    await check(`colors item 643 outside closes and inside stays open ${tag}`, async () => {
+    await check(`${prefix} item 643 outside closes and inside stays open ${tag}`, async () => {
       const p = await openPage('outside'), before = await membership();
       await open(p); await press(p, field);
       assert.equal(await shown(p), true, 'a press inside never closes');
@@ -77,7 +78,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       assert.equal(await shown(p), false);
       await p.close();
     });
-    await check(`colors item 643 agent choice stays open and adds once ${tag}`, async () => {
+    await check(`${prefix} item 643 agent choice stays open and adds once ${tag}`, async () => {
       const p = await openPage('choice'); await open(p);
       const choice = `#participants .people-chips button[data-id="${candidate}"]`;
       await press(p, choice);
@@ -91,7 +92,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       await until(async () => !(await membership()).includes(candidate), 'this case restores its added member');
       await p.close();
     });
-    await check(`colors item 643 read-only Team ${tag}`, async () => {
+    await check(`${prefix} item 643 read-only Team ${tag}`, async () => {
       const elsewhere = await control({ method: 'elsewhere_ask', operation_id: `item-643-readonly-${tag}`, body: 'Read-only Team fixture' });
       const p = await page(`item-643-${tag}-readonly`, null, true, { url: `${facts.origin}/?topic=${elsewhere.topic_id}`, beforeNavigate: setup });
       await until(() => p.evaluate(`Boolean(document.querySelector('#participants .person-pill'))`), 'read-only Team drawn');
@@ -101,7 +102,7 @@ export async function teamBarChecks({ check, page, until, shot, control, view, f
       assert.deepEqual(await fit(p), { sideways: false, out: [], small: [] });
       await p.close();
     });
-    for (const state of ['empty', 'refused', 'error', 'busy']) await check(`colors item 643 ${state} picker closes with Done or outside ${tag}`, async () => {
+    for (const state of ['empty', 'refused', 'error', 'busy']) await check(`${prefix} item 643 ${state} picker closes with Done or outside ${tag}`, async () => {
       const p = await openPage(state), before = await membership(); await open(p);
       await press(p, field); await p.send('Input.insertText', { text: `unknown-item-643-${state}` });
       if (state === 'busy') {

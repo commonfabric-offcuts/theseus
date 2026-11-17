@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { teamBarChecks } from './team_bar_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 
 // The top of a topic, Topic settings and its Team, in the real browser against
@@ -6,6 +7,7 @@ import { pngPixels } from './png-bands.mjs';
 // keyboard, pointer and phone behaviour, and one pill per person in the Team on
 // the title row's right (item 465). Every press and key is a native input event.
 export async function headerChecks({ check, page, until, control, view, facts, shot }) {
+  await teamBarChecks({ check, page, until, shot, control, view, facts, prefix: 'header', onlySpelling: true });
   const HINT = 'Open a message to read, quote, reply, or keep a private note.';
   const NOTE = 'Ongoing: each release and what comes next';
   const phone = async q => {
