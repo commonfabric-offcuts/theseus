@@ -60,13 +60,15 @@ function parentOf(item, has) {
 // filled: the ids of older messages Earlier messages loaded into the stack it
 // fills (reply-stacks.mjs, filling): each shows at that stack's end, under what
 // it showed, newest first, never folded away and never its head, so they show
-// where the button was (docs/reply-stacks.md, "One dossier, one stack"). A
+// where the button was (docs/reply-stacks.md, "One dossier, one stack"). None
+// gathers what the page already showed under it, the dossier's first message
+// among them, so nothing shown moves. A
 // stack carries them as filled, a Set; and, gathered from branches under a
 // first message the page has not loaded, the head of each branch but its own as
 // branches, a Set, each kept in view when it is folded (shown), or null.
 export function gather(items, { has = null, viewer = null, filled = new Set() } = {}) {
   const byId = new Map(items.map(item => [item.id, item]));
-  const on = has ?? (id => byId.has(id));
+  const loaded = has ?? (id => byId.has(id)), on = id => loaded(id) && !filled.has(id);
   const parent = new Map(items.map(item => [item.id, parentOf(item, on)]));
   const up = id => { const next = parent.get(id); return next && byId.has(next.id) ? next : null; };
   // Core refuses a join that would loop; a loop the page still meets (from
@@ -157,9 +159,9 @@ function dossiers(branches, headOf, { viewer = null, filled = new Set() } = {}) 
   }
   const oldest = list => list.reduce((most, branch) => (branch.head.seq < most.head.seq ? branch : most));
   return [...gathered.values()].map(found => {
-    // The head: the branch that names no other (the dossier's first message, where loaded), else the oldest head
-    // not filled in and not the reader's own, else the oldest not filled in, else the oldest.
-    const loaded = found.find(branch => !into.has(branch.id));
+    // The head: the branch that names no other (the dossier's first message, where loaded and not filled in), else
+    // the oldest head not filled in and not the reader's own, else the oldest not filled in, else the oldest.
+    const loaded = found.find(branch => !into.has(branch.id) && !filled.has(branch.id));
     const fresh = found.filter(branch => !filled.has(branch.id)), theirs = fresh.filter(branch => viewer === null || branch.head.author_id !== viewer);
     const first = loaded ?? oldest(theirs.length ? theirs : fresh.length ? fresh : found);
     const joins = new Map(found.flatMap(branch => [...branch.joins]));

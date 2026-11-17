@@ -27023,6 +27023,25 @@
     "native": "live",
     "case": "More messages shows the older messages where its button was"
    }
+  },
+  {
+   "item": 550,
+   "act": "What More loaded, the dossier's first message among it, gathers nothing the stack showed and heads nothing, so nothing shown moves",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  const loaded = has ?? (id => byId.has(id)), on = id => loaded(id) && !filled.has(id);",
+     "  const loaded = has ?? (id => byId.has(id)), on = loaded;"
+    ],
+    [
+     "web/stack-order.mjs",
+     "    const loaded = found.find(branch => !into.has(branch.id) && !filled.has(branch.id));",
+     "    const loaded = found.find(branch => !into.has(branch.id));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
   }
  ]
 }

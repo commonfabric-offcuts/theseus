@@ -139,16 +139,15 @@ export function fillFrom(list) {
 }
 
 // The messages of the dossier being filled (fillFrom) that this drawing is
-// the first to hold, older than everything loaded when More was pressed,
-// join state.filled; its first message, which heads the dossier once loaded,
-// never does. Answers whether any did.
+// the first to hold, older than everything loaded when More was pressed, its
+// first message among them, join state.filled. Answers whether any did.
 function fill(state, stacks, loaded) {
   const filling = state.filling;
   if (!filling) return false;
   const into = stacks.find(stack => stack.dossier === filling.dossier);
   let added = false;
   for (const item of into ? [into.head, ...into.replies] : []) {
-    if (filling.known.has(item.id) || item.seq >= filling.below || item.id === filling.dossier || state.filled.has(item.id)) continue;
+    if (filling.known.has(item.id) || item.seq >= filling.below || state.filled.has(item.id)) continue;
     state.filled.add(item.id); added = true;
   }
   for (const item of loaded) filling.known.add(item.id);

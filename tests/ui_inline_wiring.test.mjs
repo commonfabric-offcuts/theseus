@@ -3385,20 +3385,23 @@ test('More messages shows the older messages of the dossier it fills where its b
   views.messagesPage(page([40, 41, 42, 43].map(seq => item(seq)), 40, 1), { initial: true }); await settle();
   views.messagesPage(page([item(44, 'fixture-person')], null, 2), { live: true, cursor: views.newest }); await settle();
   const view = f.api.view;
-  f.api.view = async (name, args) => name === 'topic_messages' ? page([item(36), item(37, 'fixture-person'), item(38)], null, 2)
+  // The page More reads reaches the dossier's first message, m1, which then heads nothing and gathers nothing.
+  const first = { id: 'm1', seq: 1, author_id: 'fable', author_kind: 'agent', body: 'Where shall we meet?', topic_id: 't1', stack_position: at };
+  f.api.view = async (name, args) => name === 'topic_messages' ? page([first, item(36), item(37, 'fixture-person'), item(38)], null, 2)
     : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
   const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, entry.className, !entry.hidden]);
   const before = drawn();
   assert.deepEqual(before.map(([id]) => id), ['m40', 'm41', 'm42', 'm43', 'm44'], 'one stack, its head m40');
   await f.get('more-messages').onclick(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true]],
+  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true],
+    ['m1', 'message-card agent-card agent-green', true]],
     'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
   assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
   // Where the button was: the filled cards a run of whole cards, none overlapping another or covering the face above
   // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do.
   const faces = Object.fromEntries(entries(f.get('messages')).map(entry => [entry.dataset.id, [entry.dataset.stackFilled, entry.dataset.stackOverlap, entry.dataset.stackCovered]]));
   assert.deepEqual(faces, { m40: ['false', 'false', 'false'], m41: ['false', 'false', 'true'], m42: ['false', 'true', 'true'], m43: ['false', 'true', 'true'], m44: ['false', 'true', 'false'],
-    m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'] });
+    m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'], m1: ['true', 'false', 'false'] });
 });
 
 // Item 550's limit on the Reader's title (item 561): under a source it names the dossier, by its name, else its first

@@ -724,7 +724,11 @@ test('older messages More filled a stack with show at its end, newest first, who
   // The negative: the same messages not filled go in time order, and the oldest heads the stack.
   const [plain] = ordered(gather([...older, ...page]));
   assert.deepEqual([plain.head.id, ids(plain.replies).slice(0, 3), plain.filled.size], ['m20', ['m21', 'm22', 'm40'], 0]);
-  // The dossier's first message, loaded by More, heads it all the same.
-  const [rooted] = ordered(gather([message(1), ...older, ...page], { filled }));
-  assert.equal(rooted.head.id, 'm1');
+  // The dossier's first message, loaded by More, joins the run: it gathers nothing the page showed and heads nothing,
+  // so the stack and what it showed stay as they were, every branch head in view.
+  const [rooted] = ordered(gather([message(1), ...older, ...page], { filled: new Set(['m1', ...filled]) }));
+  assert.deepEqual([rooted.head.id, ids(rooted.replies).slice(-4)], ['m40', ['m22', 'm21', 'm20', 'm1']]);
+  assert.ok(rooted.replies.slice(0, 8).every(item => shown(rooted, item, { level: 'folded' })), 'every branch head still in view');
+  // The negative: the first message loaded otherwise heads the dossier, as 550 has it.
+  assert.equal(ordered(gather([message(1), ...older, ...page]))[0].head.id, 'm1');
 });

@@ -220,8 +220,10 @@ their acts.
   of cards a sheet gap apart that neither overlap one another nor tuck under
   the card above, so nothing already shown moves, and the
   stack keeps the head it had (`fillFrom`, `reply-stacks.mjs`; `filled` in
-  `gather`). The dossier's first message, once loaded, heads it all the same.
-  Older messages of another dossier go into its stack, in time order.
+  `gather`). What More loaded gathers nothing the stack showed under it, the
+  dossier's first message among it, which joins the run and heads nothing
+  until the page is read again; older messages of another dossier go into its
+  stack, in time order.
 - **Inside a stack.** The head stays first. Every other message in the
   stack runs oldest first, by sequence, as one run: the head's replies, each
   joined stack's messages, the replies to those, and stacks joined to a
