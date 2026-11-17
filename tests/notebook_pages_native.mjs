@@ -903,6 +903,44 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     .catch(async error => { assert.deepEqual(await box(p), want, words); throw error; });
   const cursor = (p, at) => p.evaluate(`(()=>{document.querySelector('#deck-page .deck-writing textarea').setSelectionRange(${at},${at});return true})()`);
 
+  // Item 644: a click is not a request to reveal the whole card. In particular a long
+  // card may already extend above and below the viewport when its composer opens.
+  for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) {
+    await check(`notebook item 644 ${width} ${theme}: opening, using and closing a card composer holds the page`, async () => {
+      const id = `item-644-card-${width}-${theme}`;
+      const body = '## Long card\n\n' + Array.from({length: 36}, (_, i) => `Line ${i + 1} stays where it was.`).join('\n\n') + '\n\n## Next\n\nUntouched.\n';
+      assert.equal((await control({method: 'outcome_reference', operation_id: id, item_id: id, title: 'Card composer', body})).status, 'committed');
+      const p = await page(id, null, true, {url: `${facts.origin}/?cards=${id}`, beforeNavigate: async q => {
+        await q.send('Emulation.setDeviceMetricsOverride', {width, height: 800, deviceScaleFactor: 1, mobile: width < 760});
+        await q.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: theme}]});
+        if (width < 760) await q.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1});
+      }});
+      await until(() => p.evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-words p'))"), 'the card shows');
+      // Preparation only: put the card's title just outside the viewport, its words still under the pointer.
+      await p.evaluate("(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+40,behavior:'instant'});return true})()");
+      await shot(p, `item-644-${width}-${theme}-card-before`);
+      await p.evaluate("(()=>{window.item644={start:scrollY,frames:[],running:true};const read=()=>{item644.frames.push(scrollY);if(item644.running)requestAnimationFrame(read)};read();return true})()");
+      const at = await p.evaluate("(()=>{const r=document.querySelector('#deck-page .deck-words').getBoundingClientRect();return {x:r.left+30,y:Math.max(60,r.top+20)}})()");
+      if (width < 760) {
+        await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[at]});
+        await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+      } else for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', {type,...at,button:'left',clickCount:1});
+      await until(() => p.evaluate("document.activeElement.matches('#deck-page .deck-writing textarea')"), 'the card opens under the native press');
+      await shot(p, `item-644-${width}-${theme}-card-writing`);
+      await p.send('Input.insertText', {text: 'Kept. '});
+      await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept. '), 'the words save without leaving the card');
+      await shot(p, `item-644-${width}-${theme}-card-saved`);
+      // Escape folds this card, not the page, and keeps its exact writing.
+      await p.key('Escape');
+      await until(() => p.evaluate("!document.querySelector('#deck-page .deck-writing')"), 'the card composer closes');
+      await shot(p, `item-644-${width}-${theme}-card-after`);
+      const trail = await p.evaluate('(item644.running=false,item644)');
+      assert.ok(trail.frames.every(y => Math.abs(y-trail.start) <= 1), `the page holds on every frame: ${JSON.stringify(trail)}`);
+      assert.ok((await view('memory_current', {item_id:id})).body.includes('Untouched.'), 'another card never changes');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
   // Review probes for 302 (warp): two checks to put before the first "while a card is written" case in tests/notebook_pages_native.mjs.
   const panel = p => p.evaluate("Boolean(document.querySelector('.notebook-conflict') && !document.querySelector('.notebook-conflict').hidden)");
   await check('notebook probe 302: while a card is written, an agent’s change to another card shows on the cards and asks nothing', async () => {

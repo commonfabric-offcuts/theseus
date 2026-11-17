@@ -319,7 +319,7 @@ async function run() {
       assert.equal(await p.locator('#inline-writing-body').inputValue(), 'Item 644 keeps these words. Still held.', 'closing keeps the exact writing');
       await close(p);
     });
-    for (const mode of shape === 'stacked' ? ['stacked', 'wide'] : ['stacked']) await check(`item 644 quote ${shape} ${scheme} ${mode}: quoting keeps the composer mode`, async () => {
+    for (const mode of shape === 'stacked' ? ['stacked', 'wide'] : ['stacked']) await check(`item 644 quote ${shape} ${scheme} ${mode}: quoting opens a laptop reply wide and keeps a phone stacked`, async () => {
       const p = await page(mode === 'wide' ? 'wide' : shape, scheme);
       await open(p, second);
       const geometry = () => p.evaluate(() => {
@@ -328,8 +328,13 @@ async function run() {
       });
       const before = await geometry();
       assert.equal(before.mode, mode);
-      await picture(p, 'item-644-quote-before');
+      await picture(p, `item-644-quote-${mode}-before`);
       for (const how of ['Enter', 'pill', 'menu']) {
+        if (shape === 'stacked' && mode === 'stacked' && (await geometry()).mode === 'wide') {
+          await press(p, '#reader-menu');
+          await p.getByRole('menuitem', { name: 'Stacked layout', exact: true }).click();
+          await until(p, () => document.querySelector('#reader').dataset.layout === 'stacked', 'stacked before each way of quoting');
+        }
         const passage = '#source-body > :nth-child(2)';
         await p.locator(passage).scrollIntoViewIfNeeded();
         if (p.touch) {
@@ -348,7 +353,9 @@ async function run() {
         await until(p, text => document.activeElement.id === 'writing-body' && document.querySelector('#writing-body').value.includes(text), 'the quote is in the reply', selected);
         const after = await geometry();
         await picture(p, `item-644-quote-${mode}-${how}`);
-        assert.deepEqual(after, before, `${how} keeps both the mode and the visible pane arrangement, and never moves the page`);
+        assert.equal(after.mode, shape === 'stacked' ? 'wide' : 'stacked', `${how}: a laptop quote opens wide; a phone stays stacked`);
+        assert.equal(after.page, before.page, `${how} never moves the page behind the Reader`);
+        assert.equal(shape === 'stacked' ? after.wide : after.stacked, true, `${how}: the panes have the promised arrangement`);
       }
       await close(p);
     });
