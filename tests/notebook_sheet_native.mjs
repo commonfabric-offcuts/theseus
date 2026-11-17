@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 // A Notebook page in the composer over the feed (item 396, docs/decks.md "Where it opens"), in the real browser
 // against the real server, at a laptop's width with a pointer and keys and at a phone's with touch: a page opened
@@ -235,6 +236,13 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     pg.unavailable=changes.unavailable??null;pg.imageError=changes.imageError??null;pg.revisionShown=()=>{};
     pg.writingChanged();if(changes.empty)pg.say('');
   })()`);
+  const sign642 = p => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),s=d.querySelector('.notebook-sheet-status'),r=s.getBoundingClientRect();return {words:s.querySelector('.deck-status>span')?.textContent??'',below:[...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-views,.notebook-sheet-full,.notebook-sheet-close')].every(e=>e.getBoundingClientRect().bottom<=r.top+.5)}})()`);
+  const faults642 = (before,after,sign,head,expectedWords) => {
+    const faults=[];
+    if(JSON.stringify(before)!==JSON.stringify(after))faults.push({before,after});
+    if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||(expectedWords&&head.cut)||head.sideways)faults.push({sign,head});
+    return faults;
+  };
   for (const [stateName, changes, expectedWords] of statusStates642) {
     await check(`notebook item 642 ${stateName}: Text Cards and Draft keep their boxes while the saving words change, at 320 375 390 and laptop in light and dark`, async () => {
       const id=await topicPage('Steady card buttons',cardsBody),failures=[];
@@ -260,10 +268,9 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
           await frame642(p);const before=await boxes642(p);
           await render642(p,changes);await frame642(p);
           const after=await boxes642(p),head=await sheetHead(p);
-          const sign=await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),s=d.querySelector('.notebook-sheet-status'),r=s.getBoundingClientRect();return {words:s.querySelector('.deck-status>span')?.textContent??'',below:[...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-views,.notebook-sheet-full,.notebook-sheet-close')].every(e=>e.getBoundingClientRect().bottom<=r.top+.5)}})()`);
+          const sign=await sign642(p);
           await shot(p,`item-642-${stateName}-${width}-${theme}`);
-          if(JSON.stringify(before)!==JSON.stringify(after))failures.push({width,theme,before,after});
-          if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||(expectedWords&&head.cut)||head.sideways)failures.push({width,theme,sign,head});
+          failures.push(...faults642(before,after,sign,head,expectedWords).map(fault=>({width,theme,...fault})));
           const now=await state(p);
           assert.equal(now.box.words,writing.box.words,'item 642 status changes never change the card writing');
           assert.deepEqual(now.box.at,writing.box.at,'item 642 status changes never move its cursor');
@@ -292,16 +299,16 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         await observePage642(p);
         await listed(p,card(id),'item 642 page is listed');await press(p,card(id));await opened(p,'Typing with steady buttons',['Plan','Steps','Notes']);
         await until(()=>p.evaluate('globalThis.opened642===true'),'item 642 sheet opening has completed');
-        await p.point(`${PAGE} .deck-card .deck-words`);
+        if(!(await state(p)).box)await p.point(`${PAGE} .deck-card .deck-words`);
         await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card writing has focus');
         await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),boxes=()=>[...d.querySelectorAll('.notebook-sheet-views button')].map(b=>{const r=b.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
           const baseline=JSON.stringify(boxes());globalThis.frames642=[];globalThis.stop642=false;
           const sample=()=>{frames642.push({words:d.querySelector('.deck-status').textContent,moved:JSON.stringify(boxes())!==baseline});if(!stop642)requestAnimationFrame(sample)};requestAnimationFrame(sample)})()`);
-        const before=(await state(p)).box.words;
+        const before=(await state(p)).box.words,coreBefore=(await view('memory_current',{item_id:id})).body;
         await p.send('Input.insertText',{text:' Typed.'});
         await until(()=>p.evaluate('Boolean(globalThis.release642)'),'item 642 actual save is in flight');
         await until(()=>p.evaluate("frames642.some(f=>f.words==='Saving…')"),'item 642 Saving is painted');
-        assert.equal((await view('memory_current',{item_id:id})).body,cardsBody,'item 642 held save has not changed Core');
+        assert.equal((await view('memory_current',{item_id:id})).body,coreBefore,'item 642 held save has not changed Core');
         await p.evaluate('release642()');
         await until(()=>p.evaluate("document.querySelector('#new-message-sheet .deck-status>span')?.textContent==='Saved to Theseus'"),'item 642 confirmed save is shown');
         await frame642(p);
@@ -312,8 +319,54 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         assert.ok((await view('memory_current',{item_id:id})).body.includes(' Typed.'),'item 642 actual autosave kept the typed words');
         assert.deepEqual(p.errors,[]);
       } finally {await p.close();}
-      const current=await view('memory_current',{item_id:id});
-      assert.equal((await control({method:'memory_revise',operation_id:`item-642-reset-${width}-${theme}`,item_id:id,expected_revision:current.source_ref.revision,title:current.title,body:cardsBody})).status,'committed');
+    }
+  });
+
+  const layoutMutants642 = [
+    {name:'laptop status column',width:1440,
+      old:'grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";',
+      broken:'grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:"title views status full close";'},
+    {name:'phone status shares chips row',width:375,
+      old:'.notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}',
+      broken:'.notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}'},
+  ];
+  for(const mutant of layoutMutants642)await check(`notebook item 642 mutant ${mutant.name}: the geometry assertion fails with the CSS rule broken and passes after restoration`,async()=>{
+    const id=await topicPage('Steady card buttons',cardsBody);
+    const p=await page(`item-642-mutant-${mutant.width}`,null,true,{beforeNavigate:async q=>{
+      await q.send('Emulation.setDeviceMetricsOverride',{width:mutant.width,height:900,deviceScaleFactor:1,mobile:mutant.width<760});
+      if(mutant.width<760)await q.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    }});
+    try {
+      await observePage642(p);await listed(p,card(id),'item 642 mutant page is listed');await press(p,card(id));
+      await opened(p,'Steady card buttons',['Plan','Steps','Notes']);
+      await until(()=>p.evaluate('globalThis.opened642===true'),'item 642 mutant sheet opening is complete');
+      const css=await readFile(new URL('../web/aim.css',import.meta.url),'utf8');
+      assert.equal(css.split(mutant.old).length-1,1,'item 642 mutation changes exactly one production rule');
+      const probe=async()=>{
+        await render642(p,{});await frame642(p);const before=await boxes642(p);
+        await render642(p,{busy:true});await frame642(p);
+        return faults642(before,await boxes642(p),await sign642(p),await sheetHead(p),'Saving…');
+      };
+      assert.deepEqual(await probe(),[],'item 642 original layout control');
+      await p.evaluate(`(()=>{const link=[...document.querySelectorAll('link[rel=stylesheet]')].find(l=>new URL(l.href).pathname==='/aim.css');
+        if(!link)throw Error('item 642 production stylesheet was not found');globalThis.link642=link;link.disabled=true;
+        const style=document.createElement('style');style.id='mutant-642';style.textContent=${JSON.stringify(css.replace(mutant.old,mutant.broken))};document.head.append(style)})()`);
+      await frame642(p);
+      const applied=await p.evaluate(`(()=>{const head=document.querySelector('.notebook-sheet-head'),sign=document.querySelector('.notebook-sheet-status');return {disabled:link642.disabled,grid:getComputedStyle(head).gridTemplateAreas,basis:getComputedStyle(sign).flexBasis}})()`);
+      assert.equal(applied.disabled,true,'item 642 the mutated sheet replaced the production sheet');
+      if(mutant.width>760)assert.equal(applied.grid,'"title views status full close"','item 642 the old status column actually applied');
+      else assert.equal(applied.basis,'128px','item 642 the old phone basis actually applied');
+      const faults=await probe();let caught;
+      try {assert.deepEqual(faults,[],'item 642 buttons never move and the status has its own place');}
+      catch(error){caught=error;}
+      assert.equal(caught?.code,'ERR_ASSERTION','item 642 the same geometry assertion kills the applied CSS mutant');
+      await p.evaluate("(()=>{link642.disabled=false;document.querySelector('#mutant-642').remove()})()");
+      await frame642(p);assert.deepEqual(await probe(),[],'item 642 restored production layout control');
+      process.stdout.write(JSON.stringify({item:642,mutant:mutant.name,width:mutant.width,applied,caught:caught.message,restored:true})+'\n');
+      assert.deepEqual(p.errors,[]);
+    } finally {
+      await p.evaluate(`(()=>{if(globalThis.link642){link642.disabled=false;document.querySelector('#mutant-642')?.remove()}const pg=globalThis.page642;if(pg?.original642){pg.writing=pg.original642.writer;pg.revisionShown=pg.original642.revisionShown;pg.unavailable=null;pg.imageError=null}})()`);
+      await p.close();
     }
   });
 
@@ -398,8 +451,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     }
   });
 
-  // The head at every width a phone or a laptop gives it: on a phone the chips and the saving sign share a line
-  // only while both fit whole, and the sign takes a line of its own when they do not.
+  // The head at every width: each part stays clear; item 642 gives the saving sign
+  // its own row in every state, even when it could fit beside the chips.
   await check('notebook in the composer: the sheet\'s head stands clear at every width, its title, ↗, ✕, Text, Cards, Draft and saving sign never over one another, on phones 320 to 414 wide and on a laptop', async () => {
     const id = await topicPage('Sheet head widths', cardsBody), seen = {}, clear = {}, sizes = {};
     for (const [width, touch] of [[320, true], [360, true], [375, true], [390, true], [414, true], [761, false], [1024, false]]) {

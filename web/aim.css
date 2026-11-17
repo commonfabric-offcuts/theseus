@@ -1042,15 +1042,14 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
-/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the New message sheet, tall, its head one line on a laptop (title, Text / Cards, the saving sign, Full page, ✕), the page below it the one place that scrolls; on a phone the head takes two lines (three on the narrowest, the saving sign below the chips; what needs the person takes a line of its own below the rest at every width) and a card fills what is left, swiped through as on the full page. */
+/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the saving sign always has its own row below the title and controls. Changing its words never changes the columns or wraps the three view buttons (item 642). The page below is the one place that scrolls. */
 dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
-.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:"title views status full close";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
+.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
 .notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .notebook-sheet-views{grid-area:views;display:flex;align-items:center;gap:.25rem}.notebook-sheet-status{grid-area:status;min-width:0;max-width:16rem}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
 .notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* What needs the person (a refusal, a save paused, a device copy unavailable, with Try again or Discard my writing) is the sign's one state of no fixed size: at every width it takes a line of its own under the rest of the head, its words whole and wrapping, its buttons after them, so it is never drawn over the chips or squeezed to nothing. */
-.notebook-sheet-head:has(.deck-status>[data-save=attention]){grid-template-areas:"title views . full close" "status status status status status"}
+/* Recovery controls follow the whole notice, wrapping below it when needed. */
 .notebook-sheet-status:has(.deck-status>[data-save=attention]){max-width:none}
 .notebook-sheet-status .deck-status:has(>[data-save=attention]){flex-wrap:wrap;justify-content:flex-start;gap:.35rem .5rem}
 .notebook-sheet-status .deck-status>[data-save=attention]{flex:1 1 12rem;white-space:normal;overflow:visible;overflow-wrap:anywhere}
@@ -1074,12 +1073,11 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
 @media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
 @media(max-width:760px){
-  /* The head wraps as its parts fit whole: the title with ↗ and ✕, then Text, Cards and Draft with the saving sign beside them or, on a screen too narrow for both, on a line of its own below them. The sign's basis is fixed rather than its words', so the head keeps its lines while the words change; the time of the last save shows only while the sign has room for it beside its words. */
+  /* Title and glyphs, then the three chips, then the sign in its own row at every phone width. */
   .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}
   .notebook-sheet-title{flex:1 1 calc(100% - 6.6rem)}.notebook-sheet-views{flex:none}
-  .notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
+  .notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   @container (max-width:12rem){.notebook-sheet-status .save-time{display:none}}
-  .notebook-sheet-status:has(.deck-status>[data-save=attention]){flex-basis:100%}
   .notebook-sheet-page{padding:0 .75rem .75rem}
   .notebook-sheet-page>.deck-cards{flex:1 1 auto;min-height:0;align-items:stretch}
   .notebook-sheet-page .deck-card{min-height:0;max-height:none}
