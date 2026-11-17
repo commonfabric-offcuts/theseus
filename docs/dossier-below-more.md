@@ -12,9 +12,11 @@ dossier above More and the More line (item 465).
 
 The choice survives reloads and devices. Existing unread messages and the
 reader's own new replies do not bring it back. A newer visible message by
-someone else in the same dossier does. Read state, answers, stars and other
-readers never change. Links, search and Waiting can reveal a message without
-removing the choice. Explicit Bring back clears it.
+someone else in the same dossier does. Read state, answers and other readers
+never change. Links, search and Waiting can reveal a message without removing
+the choice. Explicit Bring back clears it, and so does the reader's star on a
+message of it; while the reader has a star in it, it stays above More for them
+(below, "A star holds it above More").
 
 ## Core
 
@@ -29,7 +31,7 @@ fencing prevents a late Undo from reversing another device's change.
 
 `stack_positions`, args `{topic_id, message_ids:[up to 100 ids]}`, returns
 `items:[{message_id, stack_position}]`. Topic-message pages also carry
-`stack_position: {root_id, through, aside_revision, below, name, name_revision, at:{messages,acts}}`,
+`stack_position: {root_id, through, aside_revision, below, name, name_revision, starred, at:{messages,acts}}`,
 where `name` and `name_revision` are the dossier's short name as its first
 message holds it (docs/reply-stacks.md), so a page holding only replies shows it.
 Membership follows the latest shared join, otherwise same-topic reply ancestry,
@@ -48,7 +50,7 @@ grows. A later read has more acts, or as many acts and more messages: while
 the acts stand still a dossier only gains messages, and a split, which can
 leave it fewer, is a later act. The page keeps the later of two reads, and
 draws the stacks again only when `root_id`, `through`, `below`,
-`aside_revision` or `name_revision` changed: a later `at` alone moves no dossier.
+`aside_revision`, `name_revision` or `starred` changed: a later `at` alone moves no dossier.
 A stack takes a position only where the page's own reading of it agrees: the
 position names the stack's first message, or that message hangs under one the
 page has not loaded and the position names none inside the stack. A join or a
@@ -67,6 +69,43 @@ new message pages carry the current position for their root. An act on a root
 the page has not loaded is sent for one stand-in kept for that root, so it
 learns the revision the act before it left: Command-Z at once after a move is
 fenced on the move's own answer, as on a loaded root.
+
+## A star holds it above More (item 635)
+
+A dossier's title bar shows the reader's star when any message of it is
+starred by them, not only its first, and a dossier whose title bar shows the
+reader's star is not moved below More for them. Move below More in its menu,
+the swipe on its title bar and the Reader's archive button show as ever; a
+press says "This dossier has a message you starred: unstar it to move it below
+More" where it was (`press-note.mjs`: under the archive button, the line of
+the message whose menu it was, or the title bar the swipe crossed), and
+nothing moves on any frame. The way out is to unstar. A star and the move are
+each the reader's alone, so the hold is too: another reader's star never holds
+yours, and yours never holds theirs. Starring a message in a dossier the reader
+moved below More brings it back above More for them, in the same act; taking
+the star off later leaves it above More.
+
+Core holds this for every entry point, the page's, an agent's and the CLI's,
+which all send `stack.aside`:
+
+- `stack.aside` below More is refused as `STARRED_IN_DOSSIER`, with that
+  sentence, when the dossier holds a message the reader starred and can see;
+  nothing is recorded. Bring back is never refused.
+- `message.star` with `starred: true` on a message of a dossier the reader
+  moved below More records their Bring back (`through: null`, its next
+  `aside_revision`) in the same transaction, and its result says so:
+  `brought_back: {root_id, aside_revision}`. The reader is told once, at the
+  last row.
+- A position names the reader's starred messages of the dossier, oldest
+  first, loaded on the page or not: `starred: [message ids]`, which the title
+  bar's star reads for those the page has not loaded (`starredDossiers` in
+  `web/stack-order.mjs`; the page's own acts for those it has). A position
+  naming one is never `below`, so a starred stack someone joins into a
+  dossier below More keeps it above More for that reader (item 368).
+
+The page checks the same rule before sending anything, so a press on a
+dossier whose title bar shows the star moves nothing even for a frame; Core's
+refusal, for a star the page has not read yet, is said in the same place.
 
 Schema 38 adds `aside` to the existing act table plus reply/join edge indexes.
 Upgrade preserves act ids, revisions and the sequence high-water mark. Downgrade

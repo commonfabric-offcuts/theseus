@@ -2500,7 +2500,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on });",
+     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
      ""
     ]
    ],
@@ -6930,7 +6930,7 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);",
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && starsOf(a) === starsOf(b) : !b);",
      "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],
@@ -13656,8 +13656,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"],\n",
-     ""
+     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"], \"starred\": starred,\n",
+     "                               \"starred\": starred,\n"
     ]
    ],
    "check": {
@@ -19890,8 +19890,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -25971,6 +25971,122 @@
    ],
    "check": {
     "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core refuses Move below More for a dossier holding a message the reader starred, with its reason, at every entry point",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if value[\"through\"] is not None and starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):\n                raise Refusal(*HELD_BY_STAR)",
+     "            if False:\n                raise Refusal(*HELD_BY_STAR)"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Starring a message in a dossier below More brings it back above More for that reader, in the same act",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "back = self._brought_back(db, actor, message) if kind == \"star\" and value[\"starred\"] else None",
+     "back = None"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 368,
+   "act": "A position naming the reader's star in the dossier is never below More, so a starred stack joined into it keeps it above More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"below\": through is not None and not starred and (others is None or others <= through),",
+     "\"below\": through is not None and (others is None or others <= through),"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The page counts a dossier starred by the reader for any message of it, loaded or named unloaded by Core",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "if ([stack.head, ...stack.replies].some(item => actsOf(item).starred === true) || (position?.starred ?? []).some(id => !has(id))) found.add(dossierOf(stack));",
+     "if (actsOf(stack.head).starred === true) found.add(dossierOf(stack));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The title bar shows the reader's star when any message of the dossier is starred by them",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const marked = state.starred.has(dossierOf(stack));",
+     "const marked = starred;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star title bar"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Move below More on a dossier whose title bar shows the reader's star moves nothing and says why where it was pressed",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star hold"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A Core refusal of the move, for a star the page has not read, is said where it was pressed",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (error?.receipt?.error?.code === 'STARRED_IN_DOSSIER') this.held(stack, at);",
+     "if (false) this.held(stack, at);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star unloaded"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A star in a dossier below More shows it back above More on the page at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "this.act('message.star', item, { starred: on }, []);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star brings back"
    }
   }
  ]

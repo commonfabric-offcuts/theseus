@@ -340,8 +340,9 @@ their acts.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack and the marks of what that message carries (an image,
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
-  the message itself is new, ★ if starred,
-  how many replied and who, and how many replies are new. The tab is two
+  the message itself is new, ★ if the reader starred any message of the
+  dossier, not only its first (item 635: a later reply, or one the page has
+  not loaded, which the dossier's position names), how many replied and who, and how many replies are new. The tab is two
   lines high: the short name, then the rest on one line that never wraps to
   a third (`stack-look.css`). When that line is short of room, who replied
   and what is new give way first, then the marks, whole glyphs dropped from
@@ -816,7 +817,12 @@ many messages move with it, those of every stack drawn from the dossier
 (item 378, docs/reader.md);
 Command-Z undoes a move. The page's New message composer at rest sits just
 above More, under the last dossier shown above it (item 465). Existing unread messages and your own replies leave
-it there; a newer visible reply from someone else brings it back. Links can
+it there; a newer visible reply from someone else brings it back. A dossier
+whose title bar shows your star (any message of it you starred) stays above
+More for you (item 635, docs/dossier-below-more.md): the swipe on its title
+bar, Move below More and the Reader's archive button show as ever, and a
+press says why where it was, moving nothing; starring a message in a dossier
+below More brings it back above More, for you. Links can
 show its messages without clearing your choice. More is a boundary for the
 stack keys and their menu items: ⌘↑ ⌘↓ move a stack past, and ⇧⌘↑ ⇧⌘↓ join
 it to, the stack shown beside it on its own side of More (`sideOf`), so a

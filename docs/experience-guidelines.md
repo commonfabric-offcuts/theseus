@@ -388,6 +388,12 @@ and what was kept. It never shows an error code or an id.
 - `tests/topic_header_native.mjs` (`native-header`): "header a chip pressed
   after someone else changed where it stands, before the page has read it, is
   refused in plain words, and theirs stands".
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks star hold: …": Move below More on a dossier holding a
+  message the reader starred, from its menu and the Reader's archive button,
+  says why in plain words where it was pressed, at 320, 375 and 390 points
+  and a laptop, light and dark, and nothing moves on any frame
+  ([dossier-below-more.md](dossier-below-more.md), item 635).
 
 ## One link per area
 
