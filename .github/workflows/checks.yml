@@ -305,15 +305,16 @@ jobs:
           # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
           # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
           merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
-          if len(merges) != 1:
+          if len(merges) > 1:
               sys.exit("the shards name different merges: %s" % sorted(merges))
-          merge = receipts[0].get("merge") or {}
+          # With no receipts, retain only the event commit for diagnostics. No checkout, tree or PR parent is proven.
+          merge = (receipts[0].get("merge") or {}) if receipts else {"sha": env.get("GITHUB_SHA")}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
-          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
+          if receipts and env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
               sys.exit("the PR merge has no Git first-parent commit id")
           formats = {"base_at_run" in r for r in receipts}
-          if len(formats) != 1:
+          if len(formats) > 1:
               sys.exit("the shards mix legacy and base_at_run receipt formats")
           observed = True in formats
           if observed:
@@ -327,11 +328,10 @@ jobs:
                   sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
-          if not docs or not timed:
-              sys.exit("no shard wrote a summary with a run in it")
+          # Recovery and the missing-step inventory must not depend on any sibling finishing.
           # Such a refusal names no commit; every other summary must name the one commit.
           commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
-          if len(commits) != 1:
+          if len(commits) > 1:
               sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
           steps = [step for d in docs for step in d.get("steps", [])]
           # A timed-out job may never upload its summary. Its job log still holds completed run_step records.
@@ -382,19 +382,19 @@ jobs:
           planned = {name for shard in json.loads(env.get("PLAN_SHARDS") or "[]") for name in shard["steps"].split(",")}
           required = sorted(planned.union(*[set(d.get("required") or []) for d in docs]))
           missing = [name for name in required if name not in names]
-          first = timed[0]
+          first = timed[0] if timed else {"tool": "theseus-release-check", "commit": env.get("GITHUB_SHA")}
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
               "required": required,
-              "started_at": min([d["started_at"] for d in timed] + [j["started_at"] for j in cancelled]),
-              "finished_at": max([d["finished_at"] for d in timed] + [j["cancelled_at"] for j in cancelled_shards]),
+              "started_at": min([d["started_at"] for d in timed] + [j["started_at"] for j in cancelled], default=None),
+              "finished_at": max([d["finished_at"] for d in timed] + [j["cancelled_at"] for j in cancelled_shards], default=None),
               "steps": steps,
-              "tree_unchanged": not cancelled_shards and all(d.get("tree_unchanged") is True for d in timed),
+              "tree_unchanged": bool(timed) and not cancelled_shards and all(d.get("tree_unchanged") is True for d in timed),
               "tree_after": first.get("tree_after"),
               "skipped": None,
-              "passed": all(step["passed"] for step in steps) and not missing and not cancelled_shards,
+              "passed": bool(timed) and all(step["passed"] for step in steps) and not missing and not cancelled_shards,
               "cancelled_shards": cancelled_shards,
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],

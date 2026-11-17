@@ -201,6 +201,14 @@ the summary and provenance names the job, cancellation time and recovered steps.
 The cancel time is the log's cancellation event, falling back to GitHub's job
 completion time when that line is unavailable.
 
+Recovery also works when no sibling has a finished summary: all other artifacts
+may be absent or contain only refusals. Combine still writes the recovered
+results and the plan's complete missing-step inventory. With no receipts it
+names the event commit for diagnostics, leaving the merge tree and parents
+unknown; it never substitutes the event's PR base for a Git-read parent. With
+no finished summary it claims no unchanged checkout and both verdicts stay red.
+If no job times are available, the summary's start and finish times are null.
+
 Train 33 (44099688612) supplies the regression: two failed and four passed
 results survive, while its ten unreached steps stay missing. Unavailable logs
 leave every unrecovered step missing and name `log_error`; a job from another

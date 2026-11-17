@@ -27124,13 +27124,41 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"tree_unchanged\": not cancelled_shards and all(d.get(\"tree_unchanged\") is True for d in timed),",
+     "\"tree_unchanged\": bool(timed) and not cancelled_shards and all(d.get(\"tree_unchanged\") is True for d in timed),",
      "\"tree_unchanged\": all(d.get(\"tree_unchanged\") is True for d in timed),"
     ],
     [
      ".github/workflows/checks.yml",
      "and not missing and not cancelled_shards,",
      "and not missing,"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancellation recovery retains results when every shard artifact is absent",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "if len(merges) > 1:",
+     "if len(merges) != 1:"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancellation recovery and missing steps survive when every supplied summary is a refusal",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "          # Recovery and the missing-step inventory must not depend on any sibling finishing.",
+     "          if not timed:\n              sys.exit(\"no shard wrote a summary with a run in it\")"
     ]
    ],
    "check": {
