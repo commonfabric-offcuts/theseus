@@ -1101,6 +1101,223 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 635 (and 368, built here): a dossier holding a message the reader starred. Its title bar shows their star
+  // when any message of it is starred by them, not only its first; Move below More, in its menu and on the Reader's
+  // archive button, shows as ever and refuses with the reason "has a message you starred", said where it was pressed,
+  // and nothing moves; starring a message in a dossier below More brings it back above More. A star and the move are
+  // each the reader's alone, so the hold is too. On a laptop and by a finger at 320, 375 and 390, light and dark.
+  const HELD = 'This dossier has a message you starred: unstar it to move it below More';
+  const STAR_WIDTHS = [['laptop', 1280], ['phone', 320], ['phone', 375], ['phone', 390]];
+  const sizedTo = async (p, device, width) => { if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width }); };
+  // The title bar's star of the stack a message is in: shown, its words, and whether it stays inside the title bar.
+  const titleStar = (p, id) => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(card(id))})?.closest('.reply-stack'),row=s?.querySelector('.stack-head'),star=row?.querySelector(':scope > .stack-star');
+    if(!star||!star.getClientRects().length)return {shown:false};const r=star.getBoundingClientRect(),h=row.getBoundingClientRect();
+    return {shown:true,text:star.textContent,inside:r.left>=h.left-0.5&&r.right<=h.right+0.5&&r.top>=h.top-0.5&&r.bottom<=h.bottom+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  // The words a refused press says, where they show: under (or over) what was pressed (near), inside the window
+  // with its 16px gutter, read out (role=status), and nothing scrolling sideways.
+  const pressNote = (p, near) => p.evaluate(`(()=>{const n=document.querySelector('.press-note'),a=document.querySelector(${JSON.stringify(near)});if(!n||!n.getClientRects().length)return null;
+    const r=n.getBoundingClientRect(),b=a?.getBoundingClientRect();
+    return {text:n.textContent,role:n.getAttribute('role'),inside:r.left>=15.5&&r.right<=innerWidth-15.5&&r.top>=0&&r.bottom<=innerHeight,
+      near:Boolean(b)&&(Math.abs(r.top-b.bottom-6)<=1.5||Math.abs(b.top-r.bottom-6)<=1.5),inDialog:Boolean(n.closest('dialog')),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  // Every frame from now until heldFrames: whether the dossier ever left its place above More (its section gone, or
+  // More drawn, which this topic has only for it). A refused press moves nothing on any frame.
+  const watchHeld = (p, id) => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack');window.__held={frames:0,moved:0};
+    const look=()=>{const h=window.__held;if(!h)return;h.frames++;if(!s.isConnected||document.querySelector('#messages .stack-more'))h.moved++;requestAnimationFrame(look)};requestAnimationFrame(look)})()`);
+  const heldFrames = p => p.evaluate(`new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const h=window.__held;window.__held=null;done(h)})))`);
+  const positionIn = async (topic, id) => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
+  const starSeed = topic => seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A note on the gate hinges.' }],
+    ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
+    ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
+    ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'Two coats, then the trim.' }]]);
+
+  await check('reading stacks star title bar: a star on a later message lights the dossier\'s title bar, unstarring the last starred message clears it, and another reader\'s star or one outside the dossier never lights it', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-title-star-${device}-${width}`;
+      const ids = await seed(topic, [['other', { sender: other, join: true, addressees: [facts.actor], body: 'The shed list.' }],
+        ['otherReply', { sender: other, reply_to: 'other', addressees: [facts.actor], body: 'Nails and a level.' }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'Two coats, then the trim.' }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      // Another reader's star, on the later reply: theirs alone, never on this reader's title bar.
+      await control({ method: 'stack_act', sender: 'aim-ux', kind: 'message.star', message_id: ids.two, operation_id: `${topic}-theirs`, args: { starred: true } });
+      assert.equal((await actsOf(topic, ids.two, 'aim-ux'))?.starred, true, `${device} ${width}: another reader starred the later reply, in Core`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'the page is at rest');
+      assert.deepEqual(await titleStar(p, ids.root), { shown: false }, `${device} ${width}: another reader's star never lights yours`);
+      // A star outside the dossier lights its own dossier's title bar only.
+      await menuOf(p, device, ids.otherReply); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.otherReply))?.starred === true, `${device} ${width}: the star outside it is in Core`);
+      await becomes(async () => (await titleStar(p, ids.other)).shown, true, `${device} ${width}: the other dossier's title bar shows its star`);
+      assert.deepEqual(await titleStar(p, ids.root), { shown: false }, `${device} ${width}: a star outside the dossier does not light it`);
+      // The reader's star on a later message, by its ⋯: the title bar shows it, though its first message is not starred.
+      await menuOf(p, device, ids.two); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === true, `${device} ${width}: Core holds the reader's star on the later reply`);
+      assert.equal((await actsOf(topic, ids.root))?.starred ?? false, false, `${device} ${width}: its first message is not starred`);
+      await becomes(async () => { const t = await titleStar(p, ids.root); return [t.shown, t.text, t.inside, t.sideways]; }, [true, '★ Starred', true, false],
+        `${device} ${width}: a star on a later message lights the title bar, inside it, nothing scrolling sideways`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-title-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Two stars, then each taken off: the title bar shows while any is left.
+      await menuOf(p, device, ids.one); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.one))?.starred === true, `${device} ${width}: a second star`);
+      await menuOf(p, device, ids.two); await choose(p, device, 'Unstar');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: the later star is taken off, in Core`);
+      await twoFrames(p);
+      assert.equal((await titleStar(p, ids.root)).shown, true, `${device} ${width}: with one star left the title bar still shows it`);
+      await menuOf(p, device, ids.one); await choose(p, device, 'Unstar');
+      await until(async () => (await actsOf(topic, ids.one))?.starred === false, `${device} ${width}: the last star is taken off, in Core`);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: unstarring the last starred message clears the title bar`);
+      assert.equal((await titleStar(p, ids.other)).shown, true, `${device} ${width}: the other dossier keeps its star`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading stacks star hold: Move below More in a starred dossier\'s menu and the Reader\'s archive button show as ever and say why where they were pressed, moving nothing on any frame; another reader\'s star does not hold it and unstarring frees it', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-hold-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      // Where ⋯ was opened: the line of the message whose menu it is.
+      const line = `${card(ids.two)} > .message-author`;
+      // A star outside the dossier, which holds nothing of it, and the reader's own star on its later reply, by its ⋯.
+      await menuOf(p, device, ids.lone); await choose(p, device, 'Star for me');
+      await menuOf(p, device, ids.two); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === true && (await actsOf(topic, ids.lone))?.starred === true, `${device} ${width}: Core holds both stars`);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
+      await watchHeld(p, ids.two);
+      // The menu's Move below More shows as ever; pressed, it says why under the title bar, and nothing moves.
+      const offered = await menuOf(p, device, ids.two);
+      if (device === 'phone') { assert.ok(offered.includes('Move or join…'), `${width}: the phone's sheet offers its moves`); await choose(p, device, 'Move or join…'); await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].some(b=>b.firstChild.textContent==='Move below More')`), `${width}: the moves sheet`); }
+      else assert.ok(offered.includes('Move below More'), `laptop: the menu offers Move below More: ${offered}`);
+      await choose(p, device, 'Move below More');
+      await until(async () => (await pressNote(p, line))?.text === HELD, `${device} ${width}: the menu's press says why`);
+      assert.deepEqual(await pressNote(p, line), { text: HELD, role: 'status', inside: true, near: true, inDialog: false, sideways: false },
+        `${device} ${width}: said by the message whose ⋯ it was, where it was pressed, inside the window`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-hold-menu-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // The Reader's archive button shows as it does today, and a press, twice, says why under it.
+      await openReader(p, device, ids.two, 'Two coats');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: the next press took the words away`);
+      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,pressed:b.getAttribute('aria-pressed'),count:b.querySelector('.aside-count').textContent}))(document.querySelector('#reader-aside'))`);
+      await becomes(button, { shown: true, name: 'Move below More: 3 messages', title: 'Move below More: 3 messages', pressed: 'false', count: '3' }, `${device} ${width}: the archive button shows as ever`);
+      for (const n of [1, 2]) {
+        await press(p, device, '#reader-aside');
+        await until(async () => (await pressNote(p, '#reader-aside'))?.text === HELD, `${device} ${width}: press ${n} says why`);
+      }
+      assert.deepEqual(await pressNote(p, '#reader-aside'), { text: HELD, role: 'status', inside: true, near: true, inDialog: true, sideways: false },
+        `${device} ${width}: said under the archive button, in the Reader`);
+      assert.deepEqual(await button(), { shown: true, name: 'Move below More: 3 messages', title: 'Move below More: 3 messages', pressed: 'false', count: '3' }, `${device} ${width}: the button is as it was, not pressed`);
+      assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#reader'))`), true, `${device} ${width}: the focus stays in the Reader`);
+      assert.ok((await readerOn(p))?.startsWith('Two coats'), `${device} ${width}: the Reader stays on the message`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-hold-reader-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out');
+      const frames = await heldFrames(p);
+      assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+      assert.deepEqual([(await actsOf(topic, ids.root))?.aside ?? null, (await positionIn(topic, ids.root)).below], [null, false], `${device} ${width}: Core holds no move`);
+      // Another reader's star does not hold this reader's move; unstarring the reader's own frees it.
+      await control({ method: 'stack_act', sender: 'aim-ux', kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs`, args: { starred: true } });
+      await press(p, device, '#reader-star');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: the Reader's star takes the reader's star off, in Core`);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: the title bar shows no star, though another reader starred a message`);
+      await press(p, device, '#reader-aside');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: unstarred, the dossier moves below More, in Core`);
+      await until(async () => (await button()).pressed === 'true', `${device} ${width}: the button shows it moved`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: and says nothing against it`);
+      await closeReader(p, device);
+      await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length)`), false, `${device} ${width}: the dossier is below More`);
+      assert.equal((await positionIn(topic, ids.lone)).below, false, `${device} ${width}: the starred message outside it stays where it is`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading stacks star brings back: starring a message in a dossier below More, by its ⋯ or the Reader\'s star, brings the dossier back above More for that reader alone', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-back-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      // Above More: drawn, and before More where More is drawn.
+      const above = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(section)}),m=document.querySelector('#messages .stack-more');
+        return Boolean(s?.getClientRects().length)&&(!m||Boolean(s.compareDocumentPosition(m)&Node.DOCUMENT_POSITION_FOLLOWING))})()`);
+      const moreOpen = async () => { if (await p.evaluate(`document.querySelector('#messages .stack-more')?.getAttribute('aria-expanded')!=='true'`)) { await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more'); } };
+      const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      // Another reader put it below More too: theirs stays.
+      await control({ method: 'stack_act', sender: 'aim-ux', kind: 'stack.aside', message_id: ids.root, operation_id: `${topic}-theirs`, args: { through: await newest() } });
+      for (const way of ['menu', 'reader']) {
+        await openReader(p, device, ids.two, 'Two coats');
+        await press(p, device, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width} ${way}: moved below More, in Core`);
+        await closeReader(p, device);
+        await becomes(above, false, `${device} ${width} ${way}: the dossier is below More`);
+        await moreOpen();
+        await becomes(async () => Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length`)), true, `${device} ${width} ${way}: More shows it`);
+        if (way === 'menu') { await menuOf(p, device, ids.two); await choose(p, device, 'Star for me'); }
+        else { await openReader(p, device, ids.two, 'Two coats'); await press(p, device, '#reader-star'); }
+        await until(async () => { const at = await positionIn(topic, ids.root); return !at.below && at.through === null; }, `${device} ${width} ${way}: the star brought it back above More, in Core`);
+        assert.equal((await actsOf(topic, ids.two))?.starred, true, `${device} ${width} ${way}: and the message is starred`);
+        assert.notEqual((await actsOf(topic, ids.root, 'aim-ux'))?.aside ?? null, null, `${device} ${width} ${way}: another reader's move stands`);
+        if (way === 'reader') {
+          await becomes(() => p.evaluate(`(b=>[b.getAttribute('aria-label'),b.getAttribute('aria-pressed')])(document.querySelector('#reader-aside'))`), ['Move below More: 3 messages', 'false'], `${device} ${width}: the archive button offers the move again`);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-back-reader-${device}-${width}-${theme}`); }
+          await dossierTheme(p, 'light');
+          await closeReader(p, device);
+        }
+        await becomes(above, true, `${device} ${width} ${way}: the dossier is above More again, on the page`);
+        await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width} ${way}: its title bar shows the star`);
+        if (way === 'menu') {
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-back-menu-${device}-${width}-${theme}`); }
+          await dossierTheme(p, 'light');
+          // Unstarred, it stays above More: the star brought it back, and the move is not made again by itself.
+          await menuOf(p, device, ids.two); await choose(p, device, 'Unstar');
+          await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: unstarred, in Core`);
+          assert.equal((await positionIn(topic, ids.root)).below, false, `${device} ${width}: unstarred, it stays above More`);
+          await becomes(above, true, `${device} ${width}: and on the page`);
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // A star Core holds on a message the page has not loaded (made on another device, on a dossier longer than the
+  // page) lights the title bar of each stack the page draws of that dossier and holds the move; Earlier messages,
+  // which loads the starred message, draws its star once; taken off on another device, the move goes.
+  await check('reading stacks star unloaded: a star on a message of the dossier the page has not loaded lights its title bar and holds the move, before and after Earlier messages loads it', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-star-unloaded-${device}`;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The fence plan, from the start.', read: true }],
+        ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Fence post ' + i, read: true }])]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r0, operation_id: `${topic}-star`, args: { starred: true } });
+      const p = await open(topic, device, topic, ids.r34);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r0))}))`), false, `${device}: the starred message is outside the loaded page`);
+      await becomes(async () => (await titleStar(p, ids.r34)).shown, true, `${device}: the title bar shows the star Core holds on a message not loaded`);
+      await menuOf(p, device, ids.r34);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(async () => (await pressNote(p, `${card(ids.r34)} > .message-author`))?.near, `${device}: the move says why, by the message whose ⋯ it was`);
+      assert.equal((await pressNote(p, `${card(ids.r34)} > .message-author`)).text, HELD);
+      assert.equal((await positionIn(topic, ids.root)).below, false, `${device}: Core holds no move`);
+      const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+      for (let page = 0; !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r0))}))`); page++) {
+        assert.ok(page < 3, `${device}: Earlier messages reaches the starred message`);
+        const count = await cards();
+        await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+        await until(async () => (await cards()) > count, `${device}: Earlier messages reads an older page`);
+      }
+      await becomes(() => p.evaluate(`[...document.querySelectorAll('#messages .stack-head > .stack-star')].filter(e=>e.getClientRects().length).length`), 1, `${device}: the whole dossier loaded is one stack, its title bar starred once`);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r0, operation_id: `${topic}-unstar`, args: { starred: false } });
+      await becomes(async () => (await titleStar(p, ids.r34)).shown, false, `${device}: taken off on another device, the title bar shows no star`);
+      await menuOf(p, device, ids.r34);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device}: unstarred, the dossier moves below More`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
   // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
@@ -4109,13 +4326,22 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await readerOn(p), null, 'phone: the tap opened no Reader');
     // A starred message is not folded: a swipe right on it writes nothing and leaves it whole. Acts go to Core in
     // order, so once a later swipe's fold is in Core, any fold the starred one had sent would be there before it.
-    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: topic + '-star-one', args: { starred: true } });
-    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))})?.dataset.starred === 'true'`), 'phone: three shows starred');
-    await drag(card(ids.one), 20, 160);
+    // The starred message is the dossier's last reply, three, as this case first had it (item 368, built by 635): a
+    // star keeps its dossier above More, so its title bar swiped right moves nothing below More either, and says why.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.three, operation_id: topic + '-star-three', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.three))})?.dataset.starred === 'true'`), 'phone: three shows starred');
+    await drag(card(ids.three), 20, 160);
     await drag(card(ids.two), 20, 160);
     await until(async () => await foldOf(topic, ids.two), 'phone: the later swipe on two lands in Core');
-    assert.equal(await foldOf(topic, ids.one), false, 'phone: the starred message swiped right is not folded in Core');
-    assert.deepEqual(await folded(p, ids.one), { row: false, words: null, whole: true }, 'phone: and its card is whole');
+    assert.equal(await foldOf(topic, ids.three), false, 'phone: the starred message swiped right is not folded in Core');
+    assert.deepEqual(await folded(p, ids.three), { row: false, words: null, whole: true }, 'phone: and its card is whole');
+    const titleBar = `#messages .reply-stack[data-stack="${ids.root}"] .message-card[data-id="${ids.root}"] > .stack-head`;
+    await drag(titleBar, 20, 160);
+    await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent === ${JSON.stringify(HELD)}`), 'phone: the title bar swiped right says why it stays above More');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'phone: nothing is out');
+    assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, false, 'phone: Core holds the dossier with the starred reply above More');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.three))})?.getClientRects().length) && !document.querySelector('#messages .stack-more')`), true,
+      'phone: the starred reply stays on the page, above More');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

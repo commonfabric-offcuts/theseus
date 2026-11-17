@@ -1294,9 +1294,11 @@ function paintReaderTitle() {
   const p = registry?.current;
   if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
 }
+// A dossier holding a message the reader starred stays above More (item 635): the button shows as ever, and a
+// press says why under it, moving nothing.
 function asideFromReader() {
   const offer = readerAside();
-  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false, at: $('reader-aside') });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
