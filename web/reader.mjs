@@ -631,7 +631,7 @@ export class Reader {
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
-    if (false) {
+    if (!this.narrow.matches && this.layout.mode !== 'wide') {
       this.layout.setMode('wide'); this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
