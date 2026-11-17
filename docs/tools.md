@@ -216,16 +216,35 @@ real `bin/aim-next` of a copy of the code.
 
 Before a build starts, its builder says in one line what it will build, written
 against the surface the item touches as it is that minute, and the outcome's
-owner can correct it in one line before the work goes the wrong way. The
-record is kept in Theseus itself: the line is a message, the operation that
-posted it names the item's revision, and the owner's answer is their 👍 or
-their reply to it.
+owner can correct it before the work goes the wrong way. The record is kept in
+Theseus itself: each line is a message, the operation that posted it names the
+item's revision (and the reply it answers), and the owner's answer is their 👍
+on it or what they write under it.
+
+The default, named here and on every line: a start line is a notice with a
+default, not a question (warp, codex #6643). Under every line stands the
+sentence
+
+> a 👍, or nothing by H:MM, builds it as written; anything you write, I rewrite the line and post it again
+
+where H:MM is that post's window end, in Pacific time. The window is 15
+minutes (`--window` changes it): the item's sources set no length, and 15
+minutes is the time after which a default the owner was told of stands, on
+the owner's standing rule for calls. The end is the post's time and the
+window, rounded up to the minute, so the time stated is never earlier than
+the end. The tool never decides what a word means: the owner's 👍 on the
+newest line, or that line's window ending with nothing written under it,
+builds it as written; anything they write is a correction, worked into the
+line by the writer and posted again with the window restarted.
 
 ```sh
 tools/start_line.py open OUTCOME N --topic TOPIC --cli LIVE/bin/aim-next --profile /abs/agent.json --surface LIVE \
-  [--user-facing] [--every-feature] [--owner-decides] -- WRITER [ARG...]
-tools/start_line.py cut OUTCOME N --cli LIVE/bin/aim-next --profile /abs/agent.json
+  [--user-facing] [--every-feature] [--owner-decides] [--window MINUTES] [--now ISO] -- WRITER [ARG...]
+tools/start_line.py cut OUTCOME N --cli LIVE/bin/aim-next --profile /abs/agent.json [--now ISO]
 ```
+
+`--now` is the time it is, ISO 8601 with its offset; left out, it is the
+clock. Both verbs take it, so the window is read against a time passed in.
 
 `open` runs when a build slot opens for item N: after its piece enters Build in
 TOPIC and before its builder starts. WRITER is the headless brief-writer, any
@@ -239,20 +258,23 @@ Edit is held from agents without its words: it is never given to the writer
 as a message with no words, so `open` answers exit 2, runs no writer and posts
 nothing, and the next `open` once the edit is saved or left writes from it.
 
-The line is posted in TOPIC, about item N (`--subject item:N`), followed by a
-sentence naming the item. The brief is written for every build; who is told
+The line is posted in TOPIC, about item N (`--subject item:N`), with the
+sentence under it, then a sentence naming the item and the window's end as
+an ISO time with its offset ("Its window ends 2026-11-16T16:36-08:00."),
+which the cut reads back. The brief is written for every build; who is told
 is one rule:
 
 - to the owner, as a tell, when the item is theirs: they raised it, or one of
-  the messages it came from is theirs. Their message says "👍 or no answer
-  builds it as written; a reply of one line becomes what it builds." An item
-  someone else raised from someone else's message is not theirs.
+  the messages it came from is theirs. An item someone else raised from
+  someone else's message is not theirs.
 - to the owner when `--owner-decides` says the build holds a product decision
   they own;
 - to the owner when the `--every-feature` switch is on and `--user-facing` says
   the build is a user-facing feature;
 - otherwise to nobody: it is kept with the item's work, and the owner is not
-  told ("Kept with the item's work; nobody is asked.").
+  told ("Kept with the item's work; the owner is not told."). It still
+  carries the sentence and its window, and should the owner write under it,
+  the line worked again goes to them.
 
 One operation per revision of the item's words: `start-line-OUTCOME-N-REV`,
 where REV is the first twelve hex digits of the sha256 of the item's title, its
@@ -275,39 +297,52 @@ different payload under the same operation (`OPERATION_PAYLOAD_MISMATCH`), and
 the second run answers with the line recorded (`posted: false`).
 Operations are the poster's own, so the coordinator opens every start line.
 
-`cut` reads the start line of the item's current words and the owner's answer
-from Theseus. It reads the start line's topic from the start line on, page by
-page to its end, so an answer after a hundred other messages is still read.
-Only the owner's 👍 and replies count. The cut reads what Theseus records about
-them (the 👍 on the line, each reply to it, and its lines), never what a
-reply's words mean: no list of words tells a yes from a correction ("Fine by
-me" from "Just for me"), so no reply is taken for a yes and dropped, and none
-stands in for the line it answers.
+Then `open` works in what the owner wrote. Every reply of the owner's under
+any start line of the revision, whatever its words and however many lines,
+is a correction: the writer is given the item as before, the newest line and
+the reply word for word, and prints the line as it should now read (the line
+unchanged, if what they wrote changes nothing; that is the writer's call). It
+is posted again in the line's topic as a reply to theirs, to the owner as a
+tell, with the sentence and a window restarted from `--now`. Each such line
+is its own operation, `start-line-OUTCOME-N-REV-re-REPLY`, one per (revision,
+reply answered), so a retry finds it and never posts it twice, and the
+revision's lines and the replies they answer are found by those operations,
+never by their words. Replies are worked in oldest first, each into the line
+the one before it made; a reply written under an older line once a newer one
+stands is worked into the newest. A reply its author has open in Edit is held
+from agents without its words: `open` answers exit 2 and runs no writer for
+it until they save or leave the edit. Only the owner's replies count; another
+member's words under a line are worked into nothing.
 
-- With no reply, the owner's 👍 on the line is `thumbs-up` and nothing is
-  `silence`; both build the line as written (`brief` is the line).
-- With replies of one line each, the answer is `reply`: every one of them,
-  oldest first, is in `answers` (`message_id`, `words`), and the brief carries
-  them word for word with the line they answer, whatever they say and even
-  when the owner also gave the line a 👍: `The start line read "LINE"; OWNER
-  answered it: "FIRST", then "SECOND"`. Whoever reads the brief (the coordinator, then the builder)
-  reads what the owner meant, a worded yes, a correction, a no or a question.
-- A reply of more than one line, at any place among them, refuses the cut
-  (exit 1) with its message named, to be read and cut by hand.
+`cut` reads the item's current revision from Theseus: its start lines and the
+replies under them, page by page through the topic from the first line on, so
+an answer after a hundred other messages is still read. It builds only from
+the newest line:
 
-With no start line for the item's current words (none was opened, or its
-words changed since) the cut is refused: open one first. A reply the owner has
-open in Edit is held from agents without its words; it is never read as a
-reply with no words, so the cut answers exit 2 until they save or leave the
-edit. A later preview posted as a reply to the start line is recorded against
-the same revision.
+- a reply of the owner's that no line works in yet (any words, held in Edit
+  or not): no build, exit 1, naming the reply; `open` posts the line again
+  with it;
+- the owner's 👍 on the newest line: `thumbs-up`, the line built as written,
+  before its window ends; a 👍 on an older line, or anyone else's, counts for
+  nothing;
+- the newest line's window over, with nothing written under it:
+  `window-ended`, the line built as written. The end of an older line's
+  window starts nothing once a newer line stands;
+- otherwise no build, exit 1: "waiting until H:MM", the newest line's end.
+
+The cut posts nothing. With no start line for the item's current words (none
+was opened, or its words changed since) the cut is refused: open one first. A
+later preview posted as a reply to the start line is recorded against the
+same revision.
 
 Each verb prints one JSON object: `item`, `revision`, `operation_id`,
-`message_id`, `topic_id`, `owner` and the brief (`brief`; `open` adds
-`owners_item`, `to_owner`, `posted` and, when it posted, `surface_commit`;
-`cut` adds `written`, `answer` and, for a reply, `answers`). Exit 0 done, 1
-refused with one line on stderr and nothing posted, 2 Theseus could not be read
-or did not record the post, which is never read as "nothing there".
+`message_id`, `topic_id`, `owner`, `brief` (the newest line) and
+`window_ends`; `open` adds `owners_item`, `to_owner`, `posted` (the first
+line, and `surface_commit` when it posted) and `rewrites` (each line it
+posted again: `reply`, `message_id`, `posted`, `surface_commit`); `cut` adds
+`answer` and `lines`. Exit 0 done, 1 refused or waiting with one line on
+stderr and nothing posted, 2 Theseus could not be read or did not record the
+post, which is never read as "nothing there".
 
 It is a tool with its own record (`skills/start-line.json`), homed in the
 outcome it serves, so its check, `tests/test_tools_start_line.py`, runs in the

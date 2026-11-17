@@ -24634,62 +24634,6 @@
   },
   {
    "item": 603,
-   "act": "The owner's one-line reply to the start line becomes the brief, carried with the line it answers",
-   "break": [
-    [
-     "tools/start_line.py",
-     "brief=carried(written, owner, answers))",
-     "brief=written)"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
-   "act": "Only the owner's thumbs-up is a thumbs-up on the start line",
-   "break": [
-    [
-     "tools/start_line.py",
-     "thumb.get(\"actor_id\") == owner",
-     "True"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
-   "act": "Only the owner's replies to the start line are carried as their answer",
-   "break": [
-    [
-     "tools/start_line.py",
-     "item.get(\"author_id\") == owner",
-     "True"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
-   "act": "An owner's reply of more than one line refuses the cut rather than building as written",
-   "break": [
-    [
-     "tools/start_line.py",
-     "if \"\\n\" in words:",
-     "if False:"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
    "act": "A refusal Theseus recorded spends only its own operation: the revision's next one posts the line, once",
    "break": [
     [
@@ -24788,20 +24732,6 @@
   },
   {
    "item": 603,
-   "act": "A message held in Edit by its author is never read as one with no words: open and cut answer could-not-read",
-   "break": [
-    [
-     "tools/start_line.py",
-     "if source.get(\"withheld\"):",
-     "if False:"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
    "act": "The cut reads the owner's replies past the first page of the start line's topic",
    "break": [
     [
@@ -24816,12 +24746,12 @@
   },
   {
    "item": 603,
-   "act": "A worded yes never becomes the brief alone: the line it answers stays in it",
+   "act": "A message held in Edit by its author is never read as one with no words: open answers could-not-read and runs no writer on it",
    "break": [
     [
      "tools/start_line.py",
-     "brief=carried(written, owner, answers))",
-     "brief=answers[-1][\"words\"])"
+     "if source.get(\"withheld\"):",
+     "if False:"
     ]
    ],
    "check": {
@@ -24830,12 +24760,12 @@
   },
   {
    "item": 603,
-   "act": "No reply is read as a yes and dropped: a reply with no letter or digit, such as an emoji, is carried like any other",
+   "act": "Only the owner's 👍 builds: someone else's 👍 on the line builds nothing before its window ends",
    "break": [
     [
      "tools/start_line.py",
-     "    if answers:\n",
-     "    if any(any(c.isalnum() for c in answer[\"words\"]) for answer in answers):\n"
+     "thumb.get(\"actor_id\") == owner",
+     "True"
     ]
    ],
    "check": {
@@ -24844,12 +24774,12 @@
   },
   {
    "item": 603,
-   "act": "Every reply of the owner's is carried, oldest first: none is chosen over another",
+   "act": "Only the owner's replies are corrections: someone else's words under a line are worked into nothing",
    "break": [
     [
      "tools/start_line.py",
-     "answers.append({\"message_id\": reply[\"id\"], \"words\": words})",
-     "answers[:] = [{\"message_id\": reply[\"id\"], \"words\": words}]"
+     "message.get(\"author_id\") == owner",
+     "True"
     ]
    ],
    "check": {
@@ -24858,12 +24788,222 @@
   },
   {
    "item": 603,
-   "act": "A reply is carried though the owner also gave the line a thumbs-up",
+   "act": "Every start line carries the sentence under it: a 👍, or nothing by H:MM, builds it as written; anything you write, I rewrite the line and post it again",
    "break": [
     [
      "tools/start_line.py",
-     "    if answers:\n",
-     "    if answers and not any(thumb.get(\"actor_id\") == owner for thumb in (start.get(\"reactions\") or {}).get(\"thumbs\", [])):\n"
+     "        line, SENTENCE % clock(end), number,",
+     "        line, \"\", number,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The sentence states its window's end in Pacific time",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    return end.astimezone(PACIFIC)",
+     "    return end.astimezone(timezone.utc)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The window's end is rounded up to the minute, so the time stated is never earlier than the end",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    if end.second or end.microsecond:\n",
+     "    if False:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The window is 15 minutes by default",
+   "break": [
+    [
+     "tools/start_line.py",
+     "WINDOW = 15\n",
+     "WINDOW = 20\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Silence builds nothing before the newest line's window ends: the cut waits until H:MM",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    elif now >= end:\n",
+     "    elif True:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The window restarts on a re-post: the line posted again states a window from now, not the first line's",
+   "break": [
+    [
+     "tools/start_line.py",
+     "        words = body(line, number, item, True, window_end(now, window))",
+     "        words = body(line, number, item, True, window_of(newest, lines[-1][\"message_id\"]))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The old line's deadline never counts once a newer line stands: only the newest line's window ends a wait",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    end = window_of(start, newest[\"message_id\"])",
+     "    end = window_of(read_message(cli, lines[0][\"message_id\"]), newest[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A 👍 on an older line builds nothing: only the owner's 👍 on the newest line does",
+   "break": [
+    [
+     "tools/start_line.py",
+     "for thumb in (start.get(\"reactions\") or {})",
+     "for thumb in (read_message(cli, lines[0][\"message_id\"]).get(\"reactions\") or {})"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A worded reply is never taken as a yes: while no line works it in, the cut builds nothing, on a 👍 or a window over",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    if pending:\n        raise Refused(",
+     "    if False:\n        raise Refused("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Whatever the owner writes is worked in and posted again, never carried or dropped",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    for reply, rewrite in pending:\n",
+     "    for reply, rewrite in []:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A reply of more than one line is a correction like any other: worked in and posted again, never refused or skipped",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    for reply, rewrite in pending:\n",
+     "    for reply, rewrite in [(r, o) for r, o in pending if \"\\n\" not in read_message(cli, r[\"id\"])[\"body\"].strip()]:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A line posted again is keyed by (revision, reply answered), so a retry never posts it twice",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    operation = \"%s-re-%s\" % (revision_operation, reply_id)",
+     "    operation = \"%s-re-%s-%d\" % (revision_operation, reply_id, datetime.now().microsecond)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A line posted again answers the owner's reply in its thread",
+   "break": [
+    [
+     "tools/start_line.py",
+     "number, owner, reply[\"id\"])",
+     "number, owner)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A line posted again goes to the owner as a tell",
+   "break": [
+    [
+     "tools/start_line.py",
+     "rewrite_operation(revision_operation, reply[\"id\"]), number, owner, reply[\"id\"])",
+     "rewrite_operation(revision_operation, reply[\"id\"]), number, None, reply[\"id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The writer is given the owner's words to work in",
+   "break": [
+    [
+     "tools/start_line.py",
+     "(newest[\"body\"].split(\"\\n\", 1)[0], owner, said)",
+     "(newest[\"body\"].split(\"\\n\", 1)[0], owner, \"\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Each reply is worked into the newest line, the one the reply before it made",
+   "break": [
+    [
+     "tools/start_line.py",
+     "        newest = read_message(cli, lines[-1][\"message_id\"])\n        commit = surface_commit(surface)",
+     "        newest = read_message(cli, lines[0][\"message_id\"])\n        commit = surface_commit(surface)"
     ]
    ],
    "check": {
