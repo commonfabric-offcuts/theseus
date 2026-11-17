@@ -355,6 +355,24 @@ class ScopedFullRun(ReleaseCase):
         self.recorded(record(commit=C, previous=A, items=[609], measurements=scoped(full_judgment="judged")))
         self.refused_attach(judgment(head=C), "JUDGMENT_NOT_PENDING", 21)
 
+    def test_one_attach_serves_a_record_both_scoped_and_on_a_judged_tree_and_a_second_is_refused(self):
+        # Items 588 and 608 together (tests/test_tools_deploy.py, DeployScopedJudgedTree): the push run of the deployed
+        # commit is both the scoped run's full run and that commit's own judgment, so it is attached once.
+        both = dict(scoped(), judged_tree={"judged_commit": B, "commit": C, "tree": A, "judgment": "pending"})
+        self.recorded(record(commit=C, previous=A, items=[609], measurements=both))
+        before = [item for item in self.releases()["items"] if item["release"] == 21][0]
+        code, answer = self.attach(judgment(head=C), 21)
+        self.assertEqual((code, answer.get("attached")), (0, True), answer)
+        after = [item for item in self.releases()["items"] if item["release"] == 21][0]
+        self.assertEqual(after["hosted_judgment"], judgment(head=C))
+        self.assertEqual({k: v for k, v in after.items() if k != "hosted_judgment"}, {k: v for k, v in before.items() if k != "hosted_judgment"})
+        self.assertEqual((after["measurements"]["scoped"]["full_judgment"], after["measurements"]["judged_tree"]["judgment"]),
+                         ("pending", "pending"), "the record stays as it was written")
+        self.assertIn("never changes", self.refused_attach(judgment(head=C, conclusion="failure"), "RELEASE_JUDGED", 21))
+        self.refused_attach(judgment(head=B), "JUDGMENT_OF_ANOTHER_COMMIT", 21)
+        health = self.store.view("owner", "health", {})["release"]
+        self.assertEqual((health["release"], health["scoped"]["judgment"]), (21, "judged"))
+
 
 class HealthOfAScopedRelease(ReleaseCase):
     """Item 608: the Health view's latest release, for a release deployed on a scoped run, says how many browser steps

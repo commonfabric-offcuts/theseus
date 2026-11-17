@@ -4743,5 +4743,101 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["release_piece"]["commit"], older)
 
 
+
+class DeployScopedJudgedTree(KnownRedsFiles, DeployCase):
+    """Items 588 and 608 together: a small fix's scoped summary of another commit J whose tree is the deployed commit
+    C's (GitHub's merge of the pull request) is taken as either alone is, and the record keeps both: the scoped run's
+    full run and C's own judgment are pending, and one attach serves both (test_releases.ScopedFullRun). A summary of
+    a commit with another tree is refused, and so is one whose scope the deploy does not confirm; neither records a
+    judged tree."""
+
+    def setUp(self):
+        super().setUp()
+        self.known_setup()
+        import test_tools_release_check as checks
+        self.checks = checks
+        self.live = checks.scoped_repository(self.config.live)
+
+    def written(self, name="00-release-check"):
+        # The known reds' own reader of a step's evidence, whose read tools/ci-input-reads.json already declares.
+        return DeployRefusesKnownReds.evidence_of(self, name)
+
+    def twin(self, commit):
+        """Another commit with commit's tree, on the live commit, as GitHub's merge of a pull request is to its head."""
+        git = lambda *args: subprocess.run(["git", "-C", str(self.config.live)] + list(args), check=True, capture_output=True,
+                                           text=True).stdout.strip()
+        tree = git("rev-parse", commit + "^{tree}")
+        twin = git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit-tree", tree, "-p", self.live,
+                   "-m", "github's merge of the pull request")
+        self.assertNotEqual(twin, commit)
+        return twin, tree
+
+    def scoped_twin(self, files=None):
+        """A commit changing files (the health fix) on the live commit, and a passed summary scoped to native-health of
+        its twin, the commit with its tree that the run checked."""
+        files = files or self.checks.HEALTH_FIX
+        commit = self.checks.scoped_change(self.config.live, self.live, files)
+        twin, tree = self.twin(commit)
+        written = self.checks.scoped_summary(twin, self.live, ["native-health"], sorted(files))
+        self.summary.write_text(json.dumps(written))
+        return commit, twin, tree, written
+
+    def test_a_scoped_summary_of_a_commit_with_the_same_tree_is_taken_and_the_record_keeps_both_pending(self):
+        commit, twin, tree, _ = self.scoped_twin()
+        self.planned(GitHost(self.config, line=(self.live, commit)), sha=commit, number=89)
+        written = self.written()
+        self.assertEqual((written["passed"], written["reasons"], written["scoped"]), (True, [], "a small fix"))
+        self.assertEqual(written["judged"], {"judged_commit": twin, "commit": commit, "tree": tree})
+        record = self.written("02-release")["record"]
+        measured = record["measurements"]
+        self.assertEqual(record["commit"], commit)
+        self.assertEqual(measured["release_check"]["commit"], twin, "the counts are the judged run's")
+        self.assertEqual(measured["scoped"]["full_judgment"], "pending")
+        self.assertEqual(measured["scoped"]["steps"], ["native-health"])
+        self.assertEqual(measured["judged_tree"], {"judged_commit": twin, "commit": commit, "tree": tree, "judgment": "pending"})
+        self.assertTrue(deploy.releases.judgment_pending(measured))
+
+    def test_a_scoped_summary_of_a_commit_with_another_tree_is_refused_and_records_no_judged_tree(self):
+        commit = self.checks.scoped_change(self.config.live, self.live, self.checks.HEALTH_FIX)
+        other = self.checks.scoped_change(self.config.live, self.live, dict(self.checks.HEALTH_FIX, **{"docs/health.md": "# Other\n"}))
+        self.summary.write_text(json.dumps(self.checks.scoped_summary(other, self.live, ["native-health"], sorted(self.checks.HEALTH_FIX))))
+        host = GitHost(self.config, line=(self.live, commit))
+        refusal = self.refused(host, sha=commit)
+        self.assertIn("the release check ran on %s, not %s" % (other, commit), refusal)
+        self.assertIn("is not %s's tree" % commit, refusal)
+        self.assertNotIn("judged", self.written())
+        self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+
+    def test_a_summary_of_the_same_tree_whose_scope_the_deploy_does_not_confirm_is_refused_and_records_no_judged_tree(self):
+        # The fix touches the reply's colour too, which native-colors reads, and the scoped run did not run native-colors.
+        files = dict(self.checks.HEALTH_FIX, **{"web/aim.css": self.checks.SCOPED_CSS.replace("color:black", "color:#222").replace("color:blue", "color:navy")})
+        commit, _, _, _ = self.scoped_twin(files=files)
+        host = GitHost(self.config, line=(self.live, commit))
+        refusal = self.refused(host, sha=commit)
+        self.assertIn("but what changed since then touches native-colors, which it did not run", refusal)
+        self.assertNotIn("judged", self.written())
+        self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+
+    def test_known_reds_are_taken_for_it_as_for_any_scoped_summary_and_the_record_keeps_both_pending(self):
+        commit = self.checks.scoped_change(self.config.live, self.live, self.checks.HEALTH_FIX)
+        twin, _ = self.twin(commit)
+        written = self.checks.scoped_summary(twin, self.live, ["native-health"], sorted(self.checks.HEALTH_FIX))
+        case = DeployScopedKnownReds.HEALTH_CASE
+        health = native_run(self.candidate, "native-health", failed=(case,), passed=("health a page at a time",), exit=1)
+        health["argv"] = ["/usr/bin/node", release_check.PERSISTENCE, "/x/chrome", str(self.candidate / "native" / "health"), "--health"]
+        written["steps"] = [health if step["name"] == "native-health" else step for step in written["steps"]]
+        written["passed"] = False
+        self.summary.write_text(json.dumps(written))
+        live = self.live_summary("live-check", ("native-health", dict(failed=(case,), passed=("health a page at a time",))), commit=self.live)
+        self.listing(("native-health", case, live), ("native-colors", RED_CASE, None), live_commit=self.live)
+        self.planned(GitHost(self.config, line=(self.live, commit)), sha=commit, known_reds=self.known, number=89)
+        written = self.written()
+        self.assertEqual([red["taken_by"] for red in written["known_reds"]["accepted"]], ["live"])
+        self.assertEqual([red["step"] for red in written["known_reds"]["not_run"]], ["native-colors"])
+        self.assertEqual(written["judged"]["judged_commit"], twin)
+        self.assertTrue(any(line.startswith("known red not run: native-colors") for line in self.known_lines()))
+        measured = self.written("02-release")["record"]["measurements"]
+        self.assertEqual((measured["scoped"]["full_judgment"], measured["judged_tree"]["judgment"]), ("pending", "pending"))
+
 if __name__ == "__main__":
     unittest.main()

@@ -164,6 +164,9 @@ landed since. Only a record whose train is ordinary and pending, whose
 release's commit (`JUDGMENT_OF_ANOTHER_COMMIT`), the same judgment again
 returns the one attached (`"attached": false`), and another is refused with
 `RELEASE_JUDGED`. The store refuses to update or delete a judgment.
+A scoped release deployed on another commit's run with its tree has both
+`scoped` and `judged_tree` pending, and one attach serves both: the push run
+on its commit is its full run and its own judgment at once.
 
 A record never changes: the store refuses to update or delete one. Writing the
 same record again returns the one already there (`"recorded": false`), so a
