@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { sameNotebookButtons } from './notebook_button_geometry.mjs';
 
 // A Notebook page in the composer over the feed (item 396, docs/decks.md "Where it opens"), in the real browser
 // against the real server, at a laptop's width with a pointer and keys and at a phone's with touch: a page opened
@@ -239,7 +240,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
   const sign642 = p => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),s=d.querySelector('.notebook-sheet-status'),r=s.getBoundingClientRect();return {words:s.querySelector('.deck-status>span')?.textContent??'',below:[...d.querySelectorAll('.notebook-sheet-title,.notebook-sheet-views,.notebook-sheet-full,.notebook-sheet-close')].every(e=>e.getBoundingClientRect().bottom<=r.top+.5)}})()`);
   const faults642 = (before,after,sign,head,expectedWords) => {
     const faults=[];
-    if(JSON.stringify(before)!==JSON.stringify(after))faults.push({before,after});
+    if(!sameNotebookButtons(before,after))faults.push({before,after});
     if(sign.words!==expectedWords||!sign.below||head.overlaps.length||head.covered.length||head.off.length||head.small.length||(expectedWords&&head.cut)||head.sideways)faults.push({sign,head});
     return faults;
   };
@@ -301,9 +302,10 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
         await until(()=>p.evaluate('globalThis.opened642===true'),'item 642 sheet opening has completed');
         if(!(await state(p)).box)await p.point(`${PAGE} .deck-card .deck-words`);
         await until(()=>p.evaluate("document.activeElement.matches('.deck-writing textarea')"),'item 642 card writing has focus');
-        await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),boxes=()=>[...d.querySelectorAll('.notebook-sheet-views button')].map(b=>{const r=b.getBoundingClientRect();return [r.x,r.y,r.width,r.height]});
-          const baseline=JSON.stringify(boxes());globalThis.frames642=[];globalThis.stop642=false;
-          const sample=()=>{frames642.push({words:d.querySelector('.deck-status').textContent,moved:JSON.stringify(boxes())!==baseline});if(!stop642)requestAnimationFrame(sample)};requestAnimationFrame(sample)})()`);
+        await p.evaluate(`(()=>{const sameBoxes=${sameNotebookButtons.toString()};
+          const d=document.querySelector('#new-message-sheet'),boxes=()=>[...d.querySelectorAll('.notebook-sheet-views button')].filter(b=>!b.hidden).map(b=>{const r=b.getBoundingClientRect();return {words:b.textContent,x:r.x,y:r.y,width:r.width,height:r.height}});
+          const baseline=boxes();globalThis.frames642=[];globalThis.stop642=false;
+          const sample=()=>{const after=boxes(),moved=!sameBoxes(baseline,after);frames642.push({words:d.querySelector('.deck-status').textContent,moved,...(moved?{before:baseline,after}:{})});if(!stop642)requestAnimationFrame(sample)};requestAnimationFrame(sample)})()`);
         const before=(await state(p)).box.words,coreBefore=(await view('memory_current',{item_id:id})).body;
         await p.send('Input.insertText',{text:' Typed.'});
         await until(()=>p.evaluate('Boolean(globalThis.release642)'),'item 642 actual save is in flight');
