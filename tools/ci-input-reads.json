@@ -125,6 +125,12 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/notebook_sheet_native.mjs": {
+    "3faa4c1ea47d9ea796920590eb11f2e94682f285023c4ab9eb240ffdbdc69156": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/reader_images_native.mjs": {
     "b18fe37654baa75ab83f386a6567cb7d21cd67b421aca1f4e2d2b931382c370b": {
       "inputs": [],
