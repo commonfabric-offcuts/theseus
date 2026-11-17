@@ -1783,7 +1783,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.equal(await keyedAt(p), row, `${what}: and ${back === 'ArrowDown' ? '↓' : '↑'} comes back to it`);
   };
 
-  await check('rail a press on an outline row opens its place in place with the keys kept on the row, wearing their ring: ↑ and ↓ go on from it and → into the page, for another outcome, a topic and the Conversation of the outcome being read; Return keeps the keys there too; back lands on the page\'s heading with no ring; at 390 the drawer closes and opens again on the row tapped, ringed', async () => {
+  await check('rail a press on an outline row opens its place in place with the keys kept on the row, wearing their ring: ↑ and ↓ go on from it and → into the page, for another outcome, a topic and the Conversation of the outcome being read; Return keeps the keys there too; back lands on the page\'s heading with no ring; at 390 the drawer closes and opens again on the row tapped, ringed; item 654 phone expands before navigation', async () => {
     await control({ method: 'light_outcome', outcome: 'rail-ring-o', title: 'Ring outcome', topic: { id: 'rail-ring-t', title: 'Ring topic' } });
     const p = await open('rail-ring', '/?topic=t1');
     await settled(p, 'the topic is up');
@@ -1890,6 +1890,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await tap(phone, '#rail-open');
     await until(async () => (await drawer(phone)).open, '"☰ Outcomes" opens the drawer');
     await phone.evaluate(`document.querySelector('${name}').scrollIntoView({block:'center'})`);
+    await tap(phone, name);
+    await until(async () => (await outline(phone)).outcomes['rail-ring-o'].open, 'item 654: the first tap expands');
+    assert.equal((await drawer(phone)).open, true, 'item 654: expansion keeps the drawer open');
+    assert.equal(await phone.evaluate('location.search'), '?topic=t1', 'item 654: expansion keeps the current page');
     await tap(phone, name);
     await arrived(phone, '?conversation=rail-ring-o', null, 'the tapped outcome\'s Conversation opens');
     assert.equal((await drawer(phone)).open, false, 'the drawer is closed');
@@ -2490,7 +2494,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
 
   // Items 148 and 320 come last: their outcomes, and the questions left waiting in them,
   // would change what the checks before them count and push their rows down the outline.
-  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question', async () => {
+  await check('rail outcome clicks toggle topics and waiting opens the exact unloaded question; item 654 phone opens Conversation without folding', async () => {
     for (const size of ['laptop', 'phone']) {
       const oid='rail-toggle-'+size, tid=oid+'-topic';
       await control({method:'light_outcome',outcome:oid,title:'Outcome toggle '+size,topic:{id:tid,title:'Question beyond the first page'}});
@@ -2517,13 +2521,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await until(async()=>(await outline(p)).outcomes[oid]?.open,'outcome starts expanded');
       await p.evaluate(`document.querySelector(${JSON.stringify(name)}).scrollIntoView({block:'center'})`);
       await press(name);
-      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&!(await outline(p)).outcomes[oid]?.open,'click both opens Conversation and folds topics');
+      await until(async()=>(await outline(p)).outcomes[oid]?.current==='page'&&(await outline(p)).outcomes[oid]?.open===(size==='phone'),'Conversation opens; a phone keeps topics open, a laptop folds');
       await showRail();
-      await press(name);
-      await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
-      await showRail();
-      await press(name);
-      await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      if(size==='phone') {
+        // Folding remains the keys' act on a phone; a tap on an open outcome navigates.
+        await p.key('ArrowLeft',4);
+        await until(async()=>!(await outline(p)).outcomes[oid]?.open,'the keys fold topics on the phone');
+      } else {
+        await press(name);
+        await until(async()=>(await outline(p)).outcomes[oid]?.open,'second click expands topics');
+        await press(name);
+        await until(async()=>!(await outline(p)).outcomes[oid]?.open,'third click folds topics');
+      }
       // The keys are on the outcome's row, as after any press in the outline (item 462); at 390 the drawer, opened again, is on it.
       await showRail();
       await pressedRow(p,'name:'+oid,size+': the third click');

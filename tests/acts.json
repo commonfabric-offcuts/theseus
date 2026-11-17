@@ -5881,7 +5881,7 @@
   },
   {
    "item": 320,
-   "act": "Clicking an open outcome folds its topics and preserves that choice while opening its Conversation",
+   "act": "On a laptop, clicking an open outcome folds its topics and preserves that choice while opening its Conversation",
    "break": [
     [
      "web/outline-rail.mjs",
@@ -5891,7 +5891,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "outcome clicks toggle"
+    "case": "rail item 654 laptop"
    }
   },
   {
@@ -26990,6 +26990,66 @@
    ],
    "check": {
     "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 654,
+   "act": "A collapsed phone outcome expands its topics without navigating",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (!this.isOpen(outcome.id)) {\n          // This link expanded in place:",
+     "if (false) {\n          // This link expanded in place:"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 654 w320"
+   }
+  },
+  {
+   "item": 654,
+   "act": "A phone expansion leaves the drawer open",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "          event.stopPropagation();\n          this.setOpen(outcome, true);",
+     "          this.setOpen(outcome, true);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 654 w320"
+   }
+  },
+  {
+   "item": 654,
+   "act": "An open phone outcome navigates to its Conversation on the second tap",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "        this.open(this.nameTarget(outcome), outcome.item.title);\n        return;\n      }\n      const open",
+     "        return;\n      }\n      const open"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 654 w320"
+   }
+  },
+  {
+   "item": 654,
+   "act": "The expand-only tap is confined to phone width; laptop clicks still navigate and toggle",
+   "break": [
+    [
+     "web/outline-rail.mjs",
+     "if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {",
+     "if (true) {"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 654 laptop"
    }
   }
  ]

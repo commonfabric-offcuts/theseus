@@ -347,7 +347,9 @@ export class OutlineRail {
     topics.append(own);
     outcome = { id, item, li, row, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
       parts: { host, more, retry, message, done, archived } };
-    // The name opens its Conversation. A click or a tap also folds its topics
+    // On a phone a collapsed outcome first opens its topics here (item 654),
+    // with no move and no drawer close; the next tap opens its Conversation.
+    // On a laptop the name opens its Conversation. A click also folds its topics
     // when they are open and opens them when folded (item 320), and that
     // choice holds through the move; Return, the keys' press, opens the
     // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
@@ -357,6 +359,17 @@ export class OutlineRail {
       if (!plainClick(event)) return;
       event.preventDefault();
       if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
+      if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
+        if (!this.isOpen(outcome.id)) {
+          // This link expanded in place: the drawer's bubbling link listener
+          // must not close it. The tree has already selected the pressed row.
+          event.stopPropagation();
+          this.setOpen(outcome, true);
+          return;
+        }
+        this.open(this.nameTarget(outcome), outcome.item.title);
+        return;
+      }
       const open = !this.isOpen(outcome.id);
       this.clickedExpansion = {id:outcome.id, open};
       this.setOpen(outcome, open);
