@@ -4050,6 +4050,16 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_folder_colour.test.mjs": {
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_inline_wiring.test.mjs": {
     "efe949599c388362215021285147d03542ac3e05d69fa8fb9690f57c9a828b25": {
       "inputs": [],

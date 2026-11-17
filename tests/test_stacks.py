@@ -138,6 +138,19 @@ class FoldCase(StackCase):
         # A fold leaves the reader's star, and every other act, as it was.
         self.assertEqual((self.acts(message)["starred"], self.acts(message)["star_revision"]), (False, 0))
 
+    def test_an_act_names_the_newest_act_its_reader_had_heard_of_in_the_topic_before_it(self):
+        first, second = self.post(), self.post()
+        folded = self.committed(self.fold(first))
+        self.assertEqual(folded.get("acts_before"), 0, "the topic's first act follows none")
+        # Another reader's own act is theirs alone: this reader never hears of it.
+        self.committed(self.star(second, actor="agent-a"))
+        self.assertEqual(self.committed(self.fold(second)).get("acts_before"), folded["acts_version"])
+        # A short name is the topic's: this reader hears of it.
+        named = self.committed(self.name(second, "Plan"))
+        unfolded = self.committed(self.fold(first, on=False, revision=1))
+        self.assertEqual(unfolded.get("acts_before"), named["acts_version"])
+        self.assertNotIn("acts_before", self.committed(self.fold(first, on=False, revision=2)), "an act that records nothing names no act")
+
     def test_a_fold_is_fenced_on_its_revision_and_a_retry_answers_what_was_recorded(self):
         message = self.post()
         first = self.fold(message, op="fold-once")
