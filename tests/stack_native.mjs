@@ -34,6 +34,54 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   const dossierTheme = (p, theme) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
   const dossierFold = (topic, id, on = true) => control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: `${topic}-${id}-${on}`, args: { folded: on } });
 
+  // Item 645: use the same messages in each state, with sender changes and a
+  // whole card between folded runs. Capture the base before asserting the new rule.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const state of ['folded', 'opened']) await check(`reading item 645 ${state} consecutive sender names at ${device} ${theme}`, async () => {
+      const topic = `sender-645-${state}-${device}-${theme}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original stays whole.' }],
+        ['a', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First folded words.' }],
+        ['b', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second folded words.' }],
+        ['c', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Another sender keeps its name.' }],
+        ['whole', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A whole card breaks the folded run.' }],
+        ['d', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First after the whole card.' }],
+        ['e', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second after the whole card.' }],
+      ]);
+      for (const name of ['a', 'b', 'c', 'd', 'e']) await dossierFold(topic, ids[name]);
+      const p = await open(topic, device, topic, ids.root);
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
+      const read = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+        visible=e=>!!e&&!!e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';
+        return Object.fromEntries(Object.entries(ids).map(([name,id])=>{const e=c(id),a=e.querySelector(':scope > .message-folded > .folded-author');
+          return [name,{folded:e.dataset.folded==='true',name:visible(a)?a.textContent:'',words:e.querySelector(':scope > .message-folded > .folded-words')?.textContent??null,
+            wholeName:visible(e.querySelector(':scope > .message-author'))?e.querySelector(':scope > .message-author').textContent:null}]}))})()`);
+      const before = await read();
+      await centre(p, card(ids.b)); await away(p);
+      await shot(p, `item-645-${state}-${device}-${theme}-folded`);
+      if (state === 'opened') {
+        // Press the words: a suppressed name must not remove the row's target.
+        const target = card(ids.b) + ' > .message-folded > .folded-words';
+        await centre(p, target); await press(p, input, target);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.folded==='false'`), 'opening the repeated sender shows the whole card');
+        await until(async () => (await view('message_acts', { topic_id: topic })).items.some(x => x.message_id === ids.b && x.acts.folded === false), 'the native unfold is kept in Core');
+        const after = await read();
+        await shot(p, `item-645-opened-${device}-${theme}-whole`);
+        assert.ok(after.b.wholeName?.includes(other), 'opening a message shows its sender name again');
+        assert.equal(after.a.name, other, 'opening its neighbour keeps the first folded sender');
+        assert.equal(after.e.name, '', 'opening elsewhere leaves the other folded run grouped');
+        assert.equal(await readerOn(p), null, 'unfolding opens no Reader');
+      }
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].name), [other,'','aim-ux',other,''], 'only the first of consecutive folded messages from one sender shows its name; a sender change or whole card starts a new run');
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].words), ['First folded words.','Second folded words.','Another sender keeps its name.','First after the whole card.','Second after the whole card.'], 'folded words stay exact and in order');
+      assert.ok(before.root.wholeName?.includes(other) && before.whole.wholeName?.includes(other), 'whole messages retain their names');
+      assert.equal(await p.evaluate('document.documentElement.scrollWidth>innerWidth'), false, 'no horizontal overflow');
+      observations.push({ name: `item 645 ${state}`, device, theme, before });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
   await check('reading dossier look overlaps visible cards by 12px without covering their words, including wrapped roots', async () => {
     for (const device of Object.keys(DEVICES)) for (const wrapped of [false, true]) {
       const topic = `dossier-layers-${device}-${wrapped}`, ids = await dossierSeed(topic, wrapped);
