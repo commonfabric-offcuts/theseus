@@ -138,7 +138,9 @@ def run(root, shard=None, weights=None):
     selected = set(bins[chosen[0] - 1]['files'] if chosen else files)
     file_times = {}
     planned = unittest.TestSuite(TimedModule(tests, path, file_times) for path, tests in modules.items() if path in selected)
-    if not planned.countTestCases():
+    # Initializers and hook-suppressed files can complete a partition without
+    # tests; the combiner requires a positive count across all partitions.
+    if not chosen and not planned.countTestCases():
         raise ValueError('Python shard selected no tests')
     result = unittest.TextTestRunner(verbosity=2, resultclass=TimedResult).run(planned)
     slowest = sorted(result.times, key=lambda t: (-t['seconds'], t['test']))[:25]

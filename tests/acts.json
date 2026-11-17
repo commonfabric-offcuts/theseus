@@ -27117,6 +27117,62 @@
    "check": {
     "python": "test_tools_unit_shards.py"
    }
+  },
+  {
+   "item": 665,
+   "act": "An empty initializer, module or hook-suppressed file still completes its planned Python partition",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "if not chosen and not planned.countTestCases():",
+     "if not planned.countTestCases():"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Only partitioned Python accepts a completed zero-test unittest report",
+   "break": [
+    [
+     "tools/release_check.py",
+     "allow_empty=bool(python_shard)",
+     "allow_empty=False"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Completed empty partitions combine with nonempty partitions without losing Python",
+   "break": [
+    [
+     "tools/release_check.py",
+     "p['counts'].get('tests', -1) >= 0",
+     "p['counts'].get('tests', -1) > 0"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "All Python partitions together must run at least one test",
+   "break": [
+    [
+     "tools/release_check.py",
+     "'passed': counts['tests'] > 0 and all(",
+     "'passed': all("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
   }
  ]
 }

@@ -129,6 +129,12 @@ That harness writes two lines per case to the step's log: `{"case": NAME, "start
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1), unless every failure in it is a case the quarantine holds (`--quarantine-at`, below).
 
+A Python file partition may complete with zero tests (for example, an empty
+package initializer). It still reports `Ran 0 tests` / `OK`, timings and exact
+file coverage. The combined Python step requires every partition and at least
+one test in total; an unpartitioned empty run still refuses
+([unit-shards.md](unit-shards.md)).
+
 Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several. The WebKit modes load playwright-core from `--playwright`, else `AIM_PLAYWRIGHT_CORE`, else the one version under `~/Library/Caches/deno/npm/registry.npmjs.org/playwright-core/`; it refuses when there are none or several, or the directory is not playwright-core.
 
 `--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step it ran passed and the checkout did not change; a run that skipped steps says so in `skipped` (above). A refused run writes a summary with `refused` and `passed: false`, unless `--out` is the reason, so a refusal never changes the checkout.

@@ -219,14 +219,15 @@ def node_units(root):
     return sorted(str(path.relative_to(root)) for path in (root / "tests").glob("*.test.mjs"))
 
 
-def python_counts(text):
+def python_counts(text, allow_empty=False):
+    """Read unittest's completed result; only file partitions may be empty."""
     ran = re.findall(r"^Ran (\d+) tests? in ", text, re.M)
     status = re.findall(r"^(OK|FAILED)(?: \((.*)\))?$", text, re.M)
     counts = {"tests": int(ran[-1]) if ran else 0, "status": status[-1][0] if status else None}
     for part in (status[-1][1].split(", ") if status and status[-1][1] else []):
         key, _, value = part.partition("=")
         counts[key] = int(value)
-    passed = counts["tests"] > 0 and counts["status"] == "OK"
+    passed = bool(ran) and (counts["tests"] > 0 or allow_empty) and counts["status"] == "OK"
     return counts, passed
 
 
@@ -600,7 +601,8 @@ def combine_unit_results(docs, plan, receipts):
                     counts[key] = sum(p['counts'].get(key, 0) for p in parts)
             steps.append({'name': 'python-units', 'tool': 'unittest', 'counts': counts,
                           'exit': max(p.get('exit', 1) for p in parts),
-                          'passed': all(p.get('passed') is True and p['counts'].get('tests', 0) > 0 for p in parts),
+                          'passed': counts['tests'] > 0 and all(
+                              p.get('passed') is True and p['counts'].get('tests', -1) >= 0 for p in parts),
                           'shards': parts})
     names = [step['name'] for step in steps]
     if len(names) != len(set(names)):
@@ -724,7 +726,8 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
         def one(name):
             if name == "python-units":
                 result = run_step(name, [python, str(REPO / "tools/unit_shards.py"), "--root", str(root)]
-                                  + (["--shard", python_shard] if python_shard else []), root, out, python_counts, "unittest")
+                                  + (["--shard", python_shard] if python_shard else []), root, out,
+                                  lambda text: python_counts(text, allow_empty=bool(python_shard)), "unittest")
                 for line in Path(result['log']).read_text(errors='replace').splitlines():
                     if line.startswith('{"unit_shards": 1,'):
                         telemetry = json.loads(line)

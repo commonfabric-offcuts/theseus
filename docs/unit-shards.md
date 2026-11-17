@@ -20,6 +20,15 @@ suppressed by a hook contribute no tests. No unplanned synthetic filename is
 added to a shard's receipt. Package files use the same measured median as any
 new file, and their partition receipts combine with exact coverage checks.
 
+A planned partition may discover zero tests: an empty initializer, an empty
+module or a file suppressed by a package hook still belongs in the inventory.
+It completes with unittest's `Ran 0 tests` / `OK`, its exact file receipt and
+timings. Only partitioned Python accepts that result; an unpartitioned empty
+run still refuses. Combining requires every planned receipt, disjoint exact
+file coverage, successful partitions and a positive total test count. An empty
+partition is completed work; an absent partition remains missing, and an
+entirely empty suite cannot pass.
+
 Each Python process writes its partition (index, total and files), count, wall
 time, file times and 25 slowest tests. Its unittest names and result lines stay
 compatible with the release evidence readers. The combined summary holds one
