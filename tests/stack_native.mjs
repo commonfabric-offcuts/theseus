@@ -1125,6 +1125,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const look=()=>{const h=window.__held;if(!h)return;h.frames++;if(!s.isConnected||document.querySelector('#messages .stack-more'))h.moved++;requestAnimationFrame(look)};requestAnimationFrame(look)})()`);
   const heldFrames = p => p.evaluate(`new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const h=window.__held;window.__held=null;done(h)})))`);
   const positionIn = async (topic, id) => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
+  // ⋯ of a message again: on a phone a tap on the message already lit opens the Reader (openReader), so another
+  // message is lit first, as a person taps elsewhere before coming back to it.
+  const menuAgain = async (p, device, id, elsewhere) => {
+    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere);
+    return menuOf(p, device, id);
+  };
   const starSeed = topic => seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A note on the gate hinges.' }],
     ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
     ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
@@ -1188,7 +1194,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
       await watchHeld(p, ids.two);
       // The menu's Move below More shows as ever; pressed, it says why under the title bar, and nothing moves.
-      const offered = await menuOf(p, device, ids.two);
+      const offered = await menuAgain(p, device, ids.two, ids.lone);
       if (device === 'phone') { assert.ok(offered.includes('Move or join…'), `${width}: the phone's sheet offers its moves`); await choose(p, device, 'Move or join…'); await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].some(b=>b.firstChild.textContent==='Move below More')`), `${width}: the moves sheet`); }
       else assert.ok(offered.includes('Move below More'), `laptop: the menu offers Move below More: ${offered}`);
       await choose(p, device, 'Move below More');
@@ -1220,6 +1226,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       // Another reader's star does not hold this reader's move; unstarring the reader's own frees it.
       await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs`, args: { starred: true } });
       await press(p, device, '#reader-star');
+      await becomes(async () => [...await p.evaluate(`(b=>[b.getAttribute('aria-pressed'),b.title])(document.querySelector('#reader-star'))`), await said(p)],
+        ['false', 'Star for me', 'Star taken off'], `${device} ${width}: the Reader's star is pressed off, on the page`);
       await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: the Reader's star takes the reader's star off, in Core`);
       await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: the title bar shows no star, though another reader starred a message`);
       await press(p, device, '#reader-aside');
@@ -1255,7 +1263,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await becomes(above, false, `${device} ${width} ${way}: the dossier is below More`);
         await moreOpen();
         await becomes(async () => Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length`)), true, `${device} ${width} ${way}: More shows it`);
-        if (way === 'menu') { await menuOf(p, device, ids.two); await choose(p, device, 'Star for me'); }
+        if (way === 'menu') { await menuAgain(p, device, ids.two, ids.lone); await choose(p, device, 'Star for me'); }
         else { await openReader(p, device, ids.two, 'Two coats'); await press(p, device, '#reader-star'); }
         await until(async () => { const at = await positionIn(topic, ids.root); return !at.below && at.through === null; }, `${device} ${width} ${way}: the star brought it back above More, in Core`);
         assert.equal((await actsOf(topic, ids.two))?.starred, true, `${device} ${width} ${way}: and the message is starred`);
@@ -1272,7 +1280,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-back-menu-${device}-${width}-${theme}`); }
           await dossierTheme(p, 'light');
           // Unstarred, it stays above More: the star brought it back, and the move is not made again by itself.
-          await menuOf(p, device, ids.two); await choose(p, device, 'Unstar');
+          await menuAgain(p, device, ids.two, ids.lone); await choose(p, device, 'Unstar');
           await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: unstarred, in Core`);
           assert.equal((await positionIn(topic, ids.root)).below, false, `${device} ${width}: unstarred, it stays above More`);
           await becomes(above, true, `${device} ${width}: and on the page`);
