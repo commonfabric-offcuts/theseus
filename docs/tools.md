@@ -278,35 +278,36 @@ Operations are the poster's own, so the coordinator opens every start line.
 `cut` reads the start line of the item's current words and the owner's answer
 from Theseus. It reads the start line's topic from the start line on, page by
 page to its end, so an answer after a hundred other messages is still read.
-Only the owner's 👍 and replies count, and each reply is one of:
+Only the owner's 👍 and replies count. The cut reads what Theseus records about
+them (the 👍 on the line, each reply to it, and its lines), never what a
+reply's words mean: no list of words tells a yes from a correction ("Fine by
+me" from "Just for me"), so no reply is taken for a yes and dropped, and none
+stands in for the line it answers.
 
-- a yes: only words that say yes and the words around them ("Yes, go ahead.",
-  "Ship it!", "Looks good, thanks", "✅ Go ahead"), or no letter or digit at all
-  (a 👍 typed as a reply). It changes nothing.
-- not a brief: more than one line, a question (it holds a `?`), or only words
-  that say no or wait ("No, not yet.", "Hold on", "🚫 Don't").
-- a correction: any other one line, such as "Yes, but in metres on the reel
-  page too."
+- With no reply, the owner's 👍 on the line is `thumbs-up` and nothing is
+  `silence`; both build the line as written (`brief` is the line).
+- With replies of one line each, the answer is `reply`: every one of them,
+  oldest first, is in `answers` (`message_id`, `words`), and the brief carries
+  them word for word with the line they answer, whatever they say and even
+  when the owner also gave the line a 👍: `The start line read "LINE"; OWNER
+  answered it: "FIRST", then "SECOND"`. Whoever reads the brief (the coordinator, then the builder)
+  reads what the owner meant, a worded yes, a correction, a no or a question.
+- A reply of more than one line, at any place among them, refuses the cut
+  (exit 1) with its message named, to be read and cut by hand.
 
-The replies are read oldest first. The newest correction becomes the brief
-(`answer: "correction"`, with its message), and a later yes never takes it back.
-A reply that is not a brief, with no newer correction or yes after it, refuses
-the cut (exit 1) with its message named, to be read and cut by hand: it is
-never built as written and never becomes the brief. With no correction, the
-owner's 👍 on the line or a yes reply is `thumbs-up`, and nothing is
-`silence`; both build the line as written. With no start line for the item's
-current words (none was opened, or its words changed since) the cut is
-refused: open one first. A reply the owner has open in Edit is held from
-agents without its words; it is never read as a reply with no words, so the
-cut answers exit 2 until they save or leave the edit. A later preview posted
-as a reply to the start line is recorded against the same revision.
+With no start line for the item's current words (none was opened, or its
+words changed since) the cut is refused: open one first. A reply the owner has
+open in Edit is held from agents without its words; it is never read as a
+reply with no words, so the cut answers exit 2 until they save or leave the
+edit. A later preview posted as a reply to the start line is recorded against
+the same revision.
 
 Each verb prints one JSON object: `item`, `revision`, `operation_id`,
 `message_id`, `topic_id`, `owner` and the brief (`brief`; `open` adds
 `owners_item`, `to_owner`, `posted` and, when it posted, `surface_commit`;
-`cut` adds `written` and `answer`). Exit 0 done, 1 refused with one line on
-stderr and nothing posted, 2 Theseus could not be read or did not record the
-post, which is never read as "nothing there".
+`cut` adds `written`, `answer` and, for a reply, `answers`). Exit 0 done, 1
+refused with one line on stderr and nothing posted, 2 Theseus could not be read
+or did not record the post, which is never read as "nothing there".
 
 It is a tool with its own record (`skills/start-line.json`), homed in the
 outcome it serves, so its check, `tests/test_tools_start_line.py`, runs in the

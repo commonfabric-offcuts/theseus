@@ -39,6 +39,13 @@ sys.stdout.write(line)
 sys.exit(code)
 '''
 LINE = "The string page shows each kite's string length beside its name; the reel page stays as it is."
+
+
+def carried(*words, owner="owner"):
+    """The brief a cut gives for the owner's replies to LINE: the line, then each reply word for word, oldest first."""
+    return 'The start line read "%s"; %s answered it: %s' % (LINE, owner, ", then ".join('"%s"' % said for said in words))
+
+
 # A writer that, while it writes, runs a second open of the same item, whose line is recorded first: two opens racing
 # on one revision.
 RACING_WRITER = '''import subprocess, sys
@@ -345,58 +352,51 @@ class CutCase(StartLineCase):
         self.ok("thumb", opened["message_id"], "--off", actor="owner")
         self.assertEqual(self.cut_ok(number)["answer"], "silence", "a thumb taken back is no answer")
 
-    def test_an_owners_one_line_reply_becomes_the_brief_against_the_same_revision(self):
+    def test_an_owners_one_line_reply_is_carried_with_the_line_against_the_same_revision(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
         opened = self.opened(number)
-        self.reply(opened["message_id"], "👍")
-        self.assertEqual((self.cut_ok(number)["answer"], self.cut_ok(number)["brief"]), ("thumbs-up", LINE))
         corrected = self.reply(opened["message_id"], "Lengths in metres, on the reel page too.")
         cut = self.cut_ok(number)
-        self.assertEqual((cut["answer"], cut["brief"], cut["written"], cut.get("answer_message_id"), cut["revision"], cut["operation_id"]),
-                         ("correction", "Lengths in metres, on the reel page too.", LINE, corrected, opened["revision"], opened["operation_id"]))
+        self.assertEqual((cut["answer"], cut["brief"], cut["written"], cut.get("answers"), cut["revision"], cut["operation_id"]),
+                         ("reply", carried("Lengths in metres, on the reel page too."), LINE,
+                          [{"message_id": corrected, "words": "Lengths in metres, on the reel page too."}], opened["revision"], opened["operation_id"]))
         self.assertEqual(self.message(corrected)[5], opened["message_id"], "his correction answers the start line of that revision")
+        # Every reply of his is carried, oldest first: which one stands is read by whoever reads the brief, not chosen here.
         newer = self.reply(opened["message_id"], "Lengths in metres, on the string page only.")
-        self.assertEqual((self.cut_ok(number)["brief"], self.cut_ok(number).get("answer_message_id")), ("Lengths in metres, on the string page only.", newer))
+        cut = self.cut_ok(number)
+        self.assertEqual((cut["brief"], [answer["message_id"] for answer in cut.get("answers")]),
+                         (carried("Lengths in metres, on the reel page too.", "Lengths in metres, on the string page only."), [corrected, newer]))
+        # A reply of more than one line refuses the cut, whatever comes after it.
         longer = self.reply(opened["message_id"], "Hmm, two things.\nFirst the reel page, then the shelf.")
+        self.reply(opened["message_id"], "Lengths in metres.")
         code, result, err = self.cut(number)
         self.assertEqual((code, result), (1, None))
-        self.assertIn("refused: owner's reply %s to the start line of %d is more than one line" % (longer, number), err)
+        self.assertIn("refused: owner's reply %s to the start line of %d is more than one line: read it and cut the brief by hand"
+                      % (longer, number), err)
 
-    def test_an_owners_reply_that_only_says_yes_builds_as_written_and_never_becomes_the_brief(self):
-        number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
-        opened = self.opened(number)
-        for words in ("Yes, go ahead.", "Ship it!", "Looks good, thanks", "ok", "\u2705 Go ahead", "Good as written \U0001f44d"):
+    def test_no_reply_is_read_by_its_words_each_is_carried_word_for_word_with_the_line(self):
+        # The cut never reads what a reply means: a worded yes never becomes the brief alone (the line stays in it), and
+        # a correction made of small words is never read as a yes and dropped. A no, a wait, a question and a typed
+        # emoji are carried the same way, for whoever reads the brief.
+        for n, words in enumerate(("Yes, go ahead.", "Yes, that's what I want", "No problem, go ahead", "Makes sense", "Awesome",
+                                   "Fine by me", "Great work, ship it", "\U0001f44d", "Just for me", "Off for now", "On for all",
+                                   "No, not yet.", "Hold on", "Metres or feet?", "\U0001f6ab Don\u2019t", "\u274c")):
             with self.subTest(words=words):
+                number = self.add("Kite page %d" % n, "Show kite page %d." % n, actor="owner")
+                opened = self.opened(number)
                 said = self.reply(opened["message_id"], words)
                 cut = self.cut_ok(number)
-                self.assertEqual((cut["answer"], cut["brief"], cut.get("answer_message_id")), ("thumbs-up", LINE, None), said)
-        # A yes with words of its own is a correction, and a yes after a correction never takes it back.
-        corrected = self.reply(opened["message_id"], "Yes, but in metres on the reel page too.")
-        self.reply(opened["message_id"], "Yes, go ahead.")
-        cut = self.cut_ok(number)
-        self.assertEqual((cut["answer"], cut["brief"], cut.get("answer_message_id"), cut["written"]),
-                         ("correction", "Yes, but in metres on the reel page too.", corrected, LINE))
+                self.assertEqual((cut["answer"], cut["brief"], cut.get("answers"), cut["written"]),
+                                 ("reply", carried(words), [{"message_id": said, "words": words}], LINE))
 
-    def test_an_owners_reply_that_says_no_or_asks_names_nothing_to_build_and_refuses_the_cut(self):
+    def test_a_reply_is_carried_though_the_owner_also_gave_the_line_a_thumbs_up(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
         opened = self.opened(number)
-        for words, said in (("No, not yet.", "says not to build it as written and names nothing to build"),
-                            ("\U0001f6ab Don\u2019t", "says not to build it as written and names nothing to build"),
-                            ("Hold on", "says not to build it as written and names nothing to build"),
-                            ("Metres or feet?", "asks a question"), ("Is this right?", "asks a question")):
-            with self.subTest(words=words):
-                reply = self.reply(opened["message_id"], words)
-                code, result, err = self.cut(number)
-                self.assertEqual((code, result), (1, None), err)
-                self.assertIn("refused: owner's reply %s to the start line of %d %s: read it and cut the brief by hand"
-                              % (reply, number, said), err)
-        # A newer yes answers past it, and builds as written.
-        self.reply(opened["message_id"], "Ok, go ahead.")
+        self.ok("thumb", opened["message_id"], actor="owner")
         self.assertEqual((self.cut_ok(number)["answer"], self.cut_ok(number)["brief"]), ("thumbs-up", LINE))
-        self.reply(opened["message_id"], "Wait")
-        corrected = self.reply(opened["message_id"], "Lengths in feet, not metres.")
+        said = self.reply(opened["message_id"], "Just for me")
         cut = self.cut_ok(number)
-        self.assertEqual((cut["answer"], cut["brief"], cut.get("answer_message_id")), ("correction", "Lengths in feet, not metres.", corrected))
+        self.assertEqual((cut["answer"], cut["brief"], cut.get("answers")), ("reply", carried("Just for me"), [{"message_id": said, "words": "Just for me"}]))
 
     def test_a_reply_the_owner_has_open_in_edit_is_not_read_until_they_leave_the_edit(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
@@ -408,7 +408,8 @@ class CutCase(StartLineCase):
         self.assertIn("could not read: owner has %s open in Edit; it is read once they save or leave the edit" % corrected, err)
         release()
         cut = self.cut_ok(number)
-        self.assertEqual((cut["answer"], cut["brief"], cut.get("answer_message_id")), ("correction", "Lengths in metres, on the reel page too.", corrected))
+        self.assertEqual((cut["answer"], cut["brief"], cut.get("answers")),
+                         ("reply", carried("Lengths in metres, on the reel page too."), [{"message_id": corrected, "words": "Lengths in metres, on the reel page too."}]))
 
     def test_the_cut_reads_the_owners_reply_past_the_first_page_of_the_topic(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
@@ -419,7 +420,8 @@ class CutCase(StartLineCase):
         start = self.sql("SELECT seq FROM messages WHERE id=?", (opened["message_id"],))[0][0]
         self.assertGreater(self.sql("SELECT count(*) FROM messages WHERE topic_id='t1' AND seq>?", (start,))[0][0], 100)
         cut = self.cut_ok(number)
-        self.assertEqual((cut["answer"], cut["brief"], cut.get("answer_message_id")), ("correction", "Lengths in metres, on the reel page too.", corrected))
+        self.assertEqual((cut["answer"], cut["brief"], cut.get("answers")),
+                         ("reply", carried("Lengths in metres, on the reel page too."), [{"message_id": corrected, "words": "Lengths in metres, on the reel page too."}]))
 
     def test_the_cut_refuses_when_the_items_current_words_have_no_start_line(self):
         number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")

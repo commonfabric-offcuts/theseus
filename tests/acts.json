@@ -24634,12 +24634,12 @@
   },
   {
    "item": 603,
-   "act": "The owner's one-line reply to the start line becomes the brief",
+   "act": "The owner's one-line reply to the start line becomes the brief, carried with the line it answers",
    "break": [
     [
      "tools/start_line.py",
-     "result.update(brief=words, answer=\"correction\"",
-     "result.update(brief=written, answer=\"correction\""
+     "brief=carried(written, owner, answers))",
+     "brief=written)"
     ]
    ],
    "check": {
@@ -24662,26 +24662,12 @@
   },
   {
    "item": 603,
-   "act": "Only the owner's reply to the start line is read as a correction",
+   "act": "Only the owner's replies to the start line are carried as their answer",
    "break": [
     [
      "tools/start_line.py",
      "item.get(\"author_id\") == owner",
      "True"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
-   "act": "A reply with no words, such as a typed thumbs-up, builds as written",
-   "break": [
-    [
-     "tools/start_line.py",
-     "if plain and not any(token in NO for token in tokens)",
-     "if tokens and plain and not any(token in NO for token in tokens)"
     ]
    ],
    "check": {
@@ -24830,12 +24816,12 @@
   },
   {
    "item": 603,
-   "act": "An owner's reply that only says yes builds as written and never becomes the brief",
+   "act": "A worded yes never becomes the brief alone: the line it answers stays in it",
    "break": [
     [
      "tools/start_line.py",
-     "if plain and not any(token in NO for token in tokens)",
-     "if not tokens"
+     "brief=carried(written, owner, answers))",
+     "brief=answers[-1][\"words\"])"
     ]
    ],
    "check": {
@@ -24844,12 +24830,12 @@
   },
   {
    "item": 603,
-   "act": "An owner's reply that only says no or wait names nothing to build, so the cut refuses",
+   "act": "No reply is read as a yes and dropped: a reply with no letter or digit, such as an emoji, is carried like any other",
    "break": [
     [
      "tools/start_line.py",
-     "if plain:\n        return \"no\"\n",
-     ""
+     "    if answers:\n",
+     "    if any(any(c.isalnum() for c in answer[\"words\"]) for answer in answers):\n"
     ]
    ],
    "check": {
@@ -24858,12 +24844,12 @@
   },
   {
    "item": 603,
-   "act": "An owner's reply that asks a question is not a brief, so the cut refuses",
+   "act": "Every reply of the owner's is carried, oldest first: none is chosen over another",
    "break": [
     [
      "tools/start_line.py",
-     "if \"?\" in words:\n        return \"question\"\n",
-     ""
+     "answers.append({\"message_id\": reply[\"id\"], \"words\": words})",
+     "answers[:] = [{\"message_id\": reply[\"id\"], \"words\": words}]"
     ]
    ],
    "check": {
@@ -24872,26 +24858,12 @@
   },
   {
    "item": 603,
-   "act": "A yes after the owner's correction never takes the correction back",
+   "act": "A reply is carried though the owner also gave the line a thumbs-up",
    "break": [
     [
      "tools/start_line.py",
-     "unbuilt, said_yes = None, True",
-     "unbuilt, said_yes, correction = None, True, None"
-    ]
-   ],
-   "check": {
-    "python": "test_tools_start_line.py"
-   }
-  },
-  {
-   "item": 603,
-   "act": "A reply that is not a brief stops the cut only until a newer correction or yes answers past it",
-   "break": [
-    [
-     "tools/start_line.py",
-     "unbuilt, correction = None, (reply[\"id\"], words)",
-     "correction = (reply[\"id\"], words)"
+     "    if answers:\n",
+     "    if answers and not any(thumb.get(\"actor_id\") == owner for thumb in (start.get(\"reactions\") or {}).get(\"thumbs\", [])):\n"
     ]
    ],
    "check": {
