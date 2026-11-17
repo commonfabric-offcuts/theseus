@@ -45,9 +45,9 @@ TOPIC_POSITION_SCHEMA = [
     "WHERE c.scope_kind='topic' AND c.scope_id=t.id AND c.resource_kind='topic' AND c.resource_id=t.id ORDER BY c.seq LIMIT 1),0),t.id) AS position FROM topics t) "
     "UPDATE topics SET list_position=(SELECT position FROM ranked WHERE ranked.id=topics.id)",
     "CREATE TABLE topic_position_clock (singleton INTEGER PRIMARY KEY CHECK(singleton=1), value INTEGER NOT NULL)",
-    "INSERT INTO topic_position_clock SELECT 1,1000000000 FROM topics",
+    "INSERT INTO topic_position_clock SELECT 1,coalesce(max(list_position),0) FROM topics",
     "CREATE TRIGGER topic_position_insert AFTER INSERT ON topics BEGIN "
-    "UPDATE topic_position_clock SET value=value-1 WHERE singleton=1; "
+    "UPDATE topic_position_clock SET value=value+1 WHERE singleton=1; "
     "UPDATE topics SET list_position=(SELECT value FROM topic_position_clock WHERE singleton=1) WHERE id=NEW.id; END",
     "DROP INDEX workspace_topic_order",
     "CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',list_position DESC,id DESC)",
