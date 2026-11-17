@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
+import { startCardScrollProbe, cardScrollHeld } from './card_scroll_probe.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages are listed on the right rail of a topic (All of this outcome) and of
@@ -930,10 +931,28 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       const host = surface === 'page' ? '#deck-page' : '#new-message-sheet .notebook-sheet-page:not([hidden])';
       const evaluate = expression => p.evaluate(expression.replaceAll('#deck-page', host));
       await until(() => evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-card'))"), 'the card shows');
+      if (surface === 'sheet') {
+        // B1: prove the instrument sees the actual overflow owner, including a
+        // transient jump. The spacer makes this control apply to empty cards too.
+        const control = await evaluate(`new Promise(resolve=>{
+          const owner=document.querySelector('#deck-page'), top=owner.scrollTop;
+          const spacer=document.createElement('div');spacer.style.cssText='flex:none;height:1200px';owner.append(spacer);
+          owner.scrollTop=0;
+          const trail=(${startCardScrollProbe.toString()})();
+          owner.scrollTop=350;
+          const applied=owner.scrollTop;
+          requestAnimationFrame(()=>{
+            owner.scrollTop=0;
+            requestAnimationFrame(()=>{trail.running=false;spacer.remove();owner.scrollTop=top;resolve({applied,trail});});
+          });
+        })`);
+        assert.equal(control.applied, 350, 'B1: the 350px mutation applied to the sheet scroll owner');
+        assert.equal(cardScrollHeld(control.trail), false, 'B1: the every-frame predicate must reject the transient sheet-page jump');
+      }
       // Preparation only: put the card's title just outside the viewport, its words still under the pointer.
       await evaluate(`(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+${state === 'empty' ? -60 : 40},behavior:'instant'});return true})()`);
       await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-before`);
-      await evaluate("(()=>{const ports=()=>[scrollY,document.querySelector('.notebook-sheet-pages')?.scrollTop??0,document.querySelector('#new-message-sheet')?.scrollTop??0];window.item644={start:ports(),frames:[],running:true};const read=()=>{item644.frames.push(ports());if(item644.running)requestAnimationFrame(read)};read();return true})()");
+      await evaluate(`(window.item644=(${startCardScrollProbe.toString()})(),true)`);
       await evaluate("(document.addEventListener('click',()=>window.item644Pressed=true,{once:true}),true)");
       const at = await evaluate("(()=>{const r=document.querySelector('#deck-page .deck-card').getBoundingClientRect();return {x:r.left+30,y:Math.max(60,r.top+Math.min(80,r.height/2))}})()");
       if (width < 760) {
@@ -946,7 +965,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         assert.equal((await view('memory_current', {item_id:id})).body, body, 'read-only makes no revision');
         await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-after`);
         const trail = await evaluate('(item644.running=false,item644)');
-        assert.ok(trail.frames.every(at => at.every((y,i) => Math.abs(y-trail.start[i])<=1)), JSON.stringify(trail));
+        assert.ok(cardScrollHeld(trail), JSON.stringify(trail));
         assert.deepEqual(p.errors, []); await p.close(); return;
       }
       await until(() => evaluate("document.activeElement.matches('#deck-page .deck-writing textarea')"), 'the card opens under the native press');
@@ -969,7 +988,7 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await until(() => evaluate("!document.querySelector('#deck-page .deck-writing')"), 'the card composer closes');
       await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-after`);
       const trail = await evaluate('(item644.running=false,item644)');
-      assert.ok(trail.frames.every(at => at.every((y,i) => Math.abs(y-trail.start[i])<=1)), `the page holds on every frame: ${JSON.stringify(trail)}`);
+      assert.ok(cardScrollHeld(trail), `the page holds on every frame: ${JSON.stringify(trail)}`);
       if (state !== 'empty') assert.ok((await view('memory_current', {item_id:id})).body.includes('Untouched.'), 'another card never changes');
       assert.deepEqual(p.errors, []); await p.close();
     });
