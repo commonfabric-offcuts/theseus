@@ -631,9 +631,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const a=t.getBoundingClientRect(),b=r.getBoundingClientRect();return a.top>=b.top&&a.bottom<=b.bottom?r.scrollTop:-1})()`);
     assert.ok(room > 0, 'the rail scrolls at this height, with the topic in view');
     assert.equal(await p.evaluate("(r=>r.scrollHeight-r.clientHeight-r.scrollTop)(document.getElementById('rail'))"), 12, 'and stands 12px from its end');
+    // Every state the rail's foot passes through in the move, as the page changes the rail (item 628): the workspace
+    // name, the guide's ? under it, and the foot last in the rail.
+    await p.evaluate(`(()=>{const rail=document.getElementById('rail'),seen=window.footSeen=[];
+      const look=()=>{const l=document.getElementById('instance-label');seen.push({name:l?.textContent??null,guide:Boolean(rail.querySelector('#instance-label ~ .guide-open')),last:Boolean(l)&&l.parentElement===rail.lastElementChild})};
+      look();new MutationObserver(look).observe(rail,{childList:true,subtree:true,characterData:true});return true})()`);
     await p.point(link);
     await until(async () => await p.evaluate(`location.search==='?topic=rail-move-t' && document.body.dataset.ready==='true' && Boolean(document.querySelector(${JSON.stringify(link)})) && !document.querySelector(${JSON.stringify(link)}).closest('[inert]')`), 'the topic opens in place, its own list under its outcome');
     assert.equal(await p.evaluate("document.getElementById('rail').scrollTop"), room, 'the outline\'s scroll is where it was');
+    const states = await p.evaluate('window.footSeen');
+    assert.ok(states.length > 1, 'the move changed the rail while it was watched: ' + states.length);
+    assert.deepEqual(states.filter(at => at.name !== states[0].name || !at.guide || !at.last), [],
+      'through the move the foot never lost the workspace name, the guide\'s ? or its place at the rail\'s end');
     // The guide's ? that stood in the rail's foot through the move is the new page's own: one, and a press opens the guide.
     assert.equal(await p.evaluate("document.querySelectorAll('#rail .guide-open').length"), 1, 'one guide\'s ?');
     assert.equal(await p.evaluate("Boolean(document.querySelector('#rail #instance-label ~ .guide-open'))"), true, 'under the workspace name, at the rail\'s foot');
