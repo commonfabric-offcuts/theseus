@@ -7218,9 +7218,13 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     return {whole:c.dataset.earlier!=='true'&&Boolean(r),plain:Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2))),
       focused:document.activeElement===c,onScreen:b.top>=0&&b.bottom<=innerHeight,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
   const unreadOn = { whole: true, plain: true, focused: true, onScreen: true, sideways: false };
-  const unreadDrawer = async (p, device) => {
+  const unreadDrawer = async (p, device, waiting = null) => {
     if (device === 'laptop') return;
-    await centre(p, '#rail-open'); await tap(p, '#rail-open');
+    await centre(p, '#rail-open');
+    if (waiting) assert.equal(await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(waiting))});
+      if(!c?.getClientRects().length)return false;const b=c.getBoundingClientRect();return b.bottom>0&&b.top<innerHeight})()`), false,
+      'the trip to the drawer leaves the waiting reply off screen, so it still needs its badge press');
+    await tap(p, '#rail-open');
     await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), 'the outline drawer opens');
   };
   for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
@@ -7231,10 +7235,19 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         addressees: [facts.actor], body: 'Check the frost cloth before Friday.', read: true })).result.message_id;
       await control({ method: 'mark', operation_id: deep + '-mark', message_ids: [reminder], marked: true });
       const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The vines need twine by Friday.' });
+      // On a phone the person returns to the header to open the drawer. The
+      // default dossier shows latest + unread, so putting it just below that
+      // header would read its waiting reply on the way back and legitimately
+      // remove the badge before the second press. Keep that trip among read
+      // cards; the pending reply must still need the second press to reach it.
+      for (let n = 0; n < 12; n++) await control({ method: 'agent_message', operation_id: deep + '-read-cover-' + n,
+        topic_id: deep, source: 'topic', sender: other, addressees: [facts.actor],
+        body: `Read note ${n + 1}: the spare pots are in the shed.`, read: true });
       const p = await open(deep, device, calm, made[0].result.message_id);
       await unreadDrawer(p, device);
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='2'`), 'the badge counts both the explicit mark and the delivery');
-      await centre(p, unreadCount(deep)); await press(p, device, unreadCount(deep));
+      await centre(p, unreadCount(deep));
+      if (device === 'laptop') await p.point(unreadCount(deep)); else await tap(p, unreadCount(deep));
       await becomes(() => unreadLook(p, reminder), unreadOn, 'the first press shows the older marked message whole and plain');
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-marked-${device}-${theme}`); }
       try {
@@ -7253,14 +7266,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread });
       await traceSecond('before opening');
       try {
-        await unreadDrawer(p, device);
+        await unreadDrawer(p, device, ids.target);
         await traceSecond('drawer opened');
+        assert.equal((await view('topic_unread', { topic_id: deep })).oldest_unread?.id, ids.target,
+          'returning to the drawer has not already read the pending reply');
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
         await centre(p, unreadCount(deep));
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-second-count-${device}-${theme}`); }
         await traceSecond('badge centred');
-        await press(p, device, unreadCount(deep));
+        if (device === 'laptop') await p.point(unreadCount(deep)); else await tap(p, unreadCount(deep));
         await traceSecond('badge pressed');
         await becomes(() => unreadLook(p, ids.target), unreadOn, 'the next press reaches the later pending delivery');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-second-landed-${device}-${theme}`); }
       } catch (error) {
         await traceSecond('failed');
         await shot(p, `unread-second-failed-${device}`);
