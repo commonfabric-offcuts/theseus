@@ -26467,6 +26467,21 @@
    "check": {
     "node": "tests/ui_rails.test.mjs"
    }
+  },
+  {
+   "item": 613,
+   "act": "A tap on a topic's count lands with the light and the keys on its message: the mouse move WebKit sends after a finger's press only places the pointer, however it last stood, and lights no card under it",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "      if (this.touch) pointer = null;\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading unread count one press lands on the oldest unread message"
+   }
   }
  ]
 }

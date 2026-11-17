@@ -99,8 +99,14 @@ export class MessageMenu {
       if (entry && entry === this.lit) this.passages.point(event, entry);
     });
     // What was lit when the press began: the press itself focuses the card,
-    // which lights it, before its click arrives.
-    doc.addEventListener('pointerdown', event => { reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit; }, true);
+    // which lights it, before its click arrives. A finger's press leaves the
+    // pointer no place, so the mouse move WebKit sends after it only places
+    // it, however the pointer last stood (item 613: a tap on a topic's count
+    // lands on its message, and that move must not light the card under it).
+    doc.addEventListener('pointerdown', event => {
+      reverseTab = null; this.touch = event.pointerType === 'touch'; this.before = this.lit;
+      if (this.touch) pointer = null;
+    }, true);
     // A press on a word of the card's own reaction line acts, and opens nothing,
     // but for a tap on the 👍 count: on a phone that lights the card, which
     // names who (the bar's 👍 thumbs it).

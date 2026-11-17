@@ -7174,14 +7174,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         missed.push(`${device}: ${error.message}`); await p.close(); continue;
       }
       observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target, ids.root) });
-      // Still there in both themes. The keys are a laptop's: by touch the focus the landing gave the message is only
-      // recorded afterwards (Safari's engine moves it on after a tap), since a finger has no keys for it to serve.
+      // Still there in both themes, with the keys and the light on it: no card the finger was over takes them
+      // (WebKit sends a mouse move after a tap, which only places the pointer).
       for (const theme of ['light', 'dark']) {
         await dossierTheme(p, theme);
-        const look = await landed(p, deep, ids.target, ids.root);
-        if (touch) observations.push({ name: 'unread count lands, focus after', engine, device, theme, focused: look.focused,
-          active: await p.evaluate(`(()=>{const a=document.activeElement;return a?a.tagName+'#'+a.id+'.'+a.className+' '+(a.dataset?.id??''):null})()`) });
-        assert.deepEqual(look, { ...want(deep), ...(touch ? { focused: look.focused } : {}) }, `${device} ${theme}: still there`);
+        assert.deepEqual(await landed(p, deep, ids.target, ids.root), want(deep), `${device} ${theme}: still there`);
+        assert.deepEqual(await p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id)`), [ids.target], `${device} ${theme}: only the message is lit`);
         await shot(p, `unread-landed-${device}-${theme}`);
       }
       await dossierTheme(p, 'light');
