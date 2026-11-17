@@ -204,9 +204,11 @@ After recording a verified new release, the deploy fast-forwards the configured
 `release_branch` on the live checkout's `origin` remote to the recorded commit
 and reads the branch back from the remote. Its `12-release-branch.json` evidence
 keeps the branch, old head, shipped head and read-back; only an equal read-back
-is success. The move is never forced: divergence, a failed push or an unreadable
-or unequal read-back exits non-zero, leaving the live release and its record
-as written. With no configured branch, the evidence says it was not moved;
+is success. An ancestry check and an explicit lease on the fetched old head
+permit only a fast-forward from that unchanged head. A missing branch is never
+created, even if deleted between fetch and push; any intervening move refuses.
+Divergence, a failed push or an unreadable or unequal read-back exits non-zero,
+leaving the live release and its record as written. With no configured branch, the evidence says it was not moved;
 a dry run, refused deploy or restart never moves it. This evidence is separate
 from the immutable release record, which already states what went live.
 

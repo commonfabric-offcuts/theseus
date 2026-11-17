@@ -99,7 +99,13 @@ class ReleaseBranch(DeployCase):
         written = next(i for i, argv in enumerate(self.calls) if "record-release" in argv)
         self.assertGreater(push, written, "publish only after the verified release is recorded")
         self.assertTrue(any("ls-remote" in argv for argv in self.calls[push + 1:]), "read back from the remote")
-        self.assertFalse(any(arg.startswith(("+", "--force")) for arg in self.calls[push]))
+        self.assert_no_unconditional_force(self.calls[push])
+
+    def assert_no_unconditional_force(self, argv):
+        # The explicit old-head lease and the ancestry check together permit only a fast-forward.
+        self.assertNotIn("--force", argv)
+        self.assertNotIn("-f", argv)
+        self.assertFalse(any(arg.startswith("+") for arg in argv))
 
     def test_without_release_branch_evidence_says_not_moved_and_no_branch_is_guessed(self):
         self.raw.pop("release_branch")
@@ -188,7 +194,8 @@ class ReleaseBranch(DeployCase):
         self.assertFalse(evidence["success"])
         self.assertIn("push", evidence["refused"])
         self.assertEqual(self.host.written[0]["commit"], self.new)
-        self.assertFalse(any(arg.startswith(("+", "--force")) for argv in self.calls for arg in argv))
+        for argv in self.calls:
+            self.assert_no_unconditional_force(argv)
 
     def test_missing_remote_branch_is_refused_and_not_created(self):
         self.git("update-ref", "-d", "refs/heads/release/live73", bare=True)

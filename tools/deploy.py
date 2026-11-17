@@ -900,7 +900,8 @@ def publish_release_branch(config, sha, evidence):
 
     The release is already live and recorded. Any refusal leaves that record alone. Fetching the exact branch
     reads its old head and brings its history here for the ancestry check; no cached remote-tracking ref is trusted.
-    A normal push enforces fast-forward again at the remote if another writer races this check.
+    The ancestry check permits only a fast-forward, and an explicit lease makes the remote compare the fetched
+    head atomically. A normal push alone could recreate a branch deleted since fetch, or overwrite a rewind.
     """
     result = {"branch": config.release_branch, "remote": "origin", "old_head": None, "new_head": sha,
               "read_back": None, "moved": False, "success": False}
@@ -925,7 +926,7 @@ def publish_release_branch(config, sha, evidence):
         require(follows(config, old, sha), "release branch %s at %s is not an ancestor of shipped head %s; "
                 "the branch was not moved (never forced)" % (config.release_branch, old, sha))
         if old != sha:
-            git("push", "push", "--porcelain", "origin", sha + ":" + ref)
+            git("push", "push", "--porcelain", "--force-with-lease=" + ref + ":" + old, "origin", sha + ":" + ref)
             result["moved"] = True
         read = git("read-back", "ls-remote", "--exit-code", "--refs", "origin", ref)
         rows = [line.split() for line in read.splitlines()]

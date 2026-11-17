@@ -27040,7 +27040,7 @@
    "break": [
     [
      "tools/deploy.py",
-     "git(\"push\", \"push\", \"--porcelain\", \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
      "git(\"push\", \"push\", \"--porcelain\", \"--force\", \"origin\", sha + \":\" + ref)"
     ]
    ],
@@ -27070,6 +27070,20 @@
      "tools/deploy.py",
      "        record(evidence, \"12-release-branch\", result)\n        return",
      "        return  # mutant: no evidence for an unconfigured branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A release branch deleted or moved after fetch is not recreated or overwritten; publication refuses and keeps the release record",
+   "break": [
+    [
+     "tools/deploy.py",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"origin\", sha + \":\" + ref)"
     ]
    ],
    "check": {
