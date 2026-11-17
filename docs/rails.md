@@ -183,6 +183,12 @@ the guide's ? and Health sit below the side rail's last section …", at 320,
 outcome's page, the Outcomes home and a Notebook page's cards, where ↓ below
 the last card goes on to the guide's ?; `health_native.mjs` (`native-health`,
 `native-webkit-health`), "health lit at the foot of the side rail …".
+Every page's run moves the foot to the end of the rail again, so a drawn page
+never shows where the shell put the outline; what that placement holds is the
+move in place itself, where the rail is put back in the order the shell first
+gave it and the foot stays last throughout. That is checked by "rail the
+outline keeps its scroll when it moves in place to a topic …", which watches
+every state of the rail in the move.
 
 ## The right rail
 

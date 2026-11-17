@@ -26326,7 +26326,7 @@
   },
   {
    "item": 628,
-   "act": "Who you are on which instance, the guide's ? and Health are the side rail's foot, below its last section, with the wordmark still first",
+   "act": "The outline goes into the side rail above its foot, so through a move in place the rail's foot stays at the rail's end and the rail keeps its scroll near its end",
    "break": [
     [
      "web/in-place-navigation.mjs",
@@ -26336,7 +26336,7 @@
    ],
    "check": {
     "native": "rail",
-    "case": "rail's foot: who you are on which instance"
+    "case": "the outline keeps its scroll when it moves in place to a topic"
    }
   },
   {
