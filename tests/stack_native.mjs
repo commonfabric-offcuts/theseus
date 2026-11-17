@@ -7,6 +7,7 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { promiseChecks } from './dossier_promises_native.mjs';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -14,6 +15,7 @@ import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
   const { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES } = helpers;
+  await promiseChecks({ check, until, view, control, shot, facts, observations, engine }, helpers);
   const other = 'aim-core';
   // Item 429: the static material uses the actual feed renderer and isolated
   // Core records. Palette probes recolor that rendered face only; they do
