@@ -212,8 +212,8 @@ An action sits on the surface where its work happens.
 
 The topic's Team says "Team". + Add becomes Done while the possible agent
 pills and field show; Done or a click outside closes them without adding the
-filter's words. `tests/team_bar_native.mjs` (native-whispers and
-native-webkit-whispers), the "item 643" cases, holds this at 320, 375, 390 and
+filter's words. `tests/team_bar_native.mjs` (native-colors and
+native-webkit-colors), the "item 643" cases, holds this at 320, 375, 390 and
 laptop widths in light and dark, including empty, refused, error, busy and
 read-only states. `tests/ui_people.test.mjs` holds drag-out and focus behavior.
 

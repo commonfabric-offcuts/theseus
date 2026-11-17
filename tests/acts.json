@@ -27003,8 +27003,8 @@
     ]
    ],
    "check": {
-    "native": "whispers",
-    "case": "whispers item 643 Team spelling"
+    "native": "colors",
+    "case": "colors item 643 Team spelling"
    }
   },
   {
@@ -27018,8 +27018,8 @@
     ]
    ],
    "check": {
-    "native": "webkit-whispers",
-    "case": "whispers item 643 Team spelling"
+    "native": "webkit-colors",
+    "case": "colors item 643 Team spelling"
    }
   },
   {
@@ -27033,8 +27033,8 @@
     ]
    ],
    "check": {
-    "native": "whispers",
-    "case": "whispers item 643 Add becomes Done"
+    "native": "colors",
+    "case": "colors item 643 Add becomes Done"
    }
   },
   {
@@ -27048,8 +27048,8 @@
     ]
    ],
    "check": {
-    "native": "webkit-whispers",
-    "case": "whispers item 643 Add becomes Done"
+    "native": "webkit-colors",
+    "case": "colors item 643 Add becomes Done"
    }
   },
   {
@@ -27063,8 +27063,8 @@
     ]
    ],
    "check": {
-    "native": "whispers",
-    "case": "whispers item 643 outside closes"
+    "native": "colors",
+    "case": "colors item 643 outside closes"
    }
   },
   {
@@ -27078,8 +27078,8 @@
     ]
    ],
    "check": {
-    "native": "webkit-whispers",
-    "case": "whispers item 643 outside closes"
+    "native": "webkit-colors",
+    "case": "colors item 643 outside closes"
    }
   }
  ]

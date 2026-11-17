@@ -249,19 +249,13 @@ function paintNamed({ host, opener }, named, remove, answers, nameOf) {
 export class PeoplePanel {
   // read, when given, answers who is here now, read again once when a change
   // is not confirmed, so the panel says what it found.
-  constructor({ host, label, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null, candidates = () => [], opened = () => {}, dismissible = false }) {
+  constructor({ host, label, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null, candidates = () => [], opened = () => {} }) {
     Object.assign(this, { host, label, fixed, add, remove, named, light, pill, read, candidates, opened });
     this.busy = false; this.error = ''; this.people = []; this.manage = false; this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.opener = element('button', { type: 'button', className: 'choice-chip add-chip', textContent: '+ Add' });
     this.opener.setAttribute('aria-expanded', 'false'); this.opener.title = label;
     this.opener.onclick = () => this.toggle();
-    // The topic's Team uses Done while its controls show. A second, hidden
-    // CSS label reserves + Add's width so neither the Team nor subtitle moves.
-    if (dismissible) {
-      this.openerWord = element('span', { textContent: '+ Add' });
-      this.opener.replaceChildren(this.openerWord);
-    }
     this.input = element('input', { type: 'text', autocomplete: 'off', placeholder: 'Find a name', enterKeyHint: 'done' });
     this.input.setAttribute('aria-label', 'Find someone to add');
     this.choices = element('div', { className: 'state-chips people-chips' });
@@ -290,26 +284,12 @@ export class PeoplePanel {
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
     host.replaceChildren(this.chips, this.row, this.notice);
-    if (dismissible) {
-      const doc = host.ownerDocument ?? document;
-      const inside = target => this.opener.contains(target) || this.row.contains(target);
-      let outsidePress = false;
-      doc.addEventListener('pointerdown', event => {
-        outsidePress = !this.row.hidden && event.button === 0 && event.isPrimary !== false && !inside(event.target);
-      }, true);
-      doc.addEventListener('click', event => {
-        const startedOutside = outsidePress; outsidePress = false;
-        // Close before the outside control acts; keep its focus and default.
-        if (startedOutside && !this.row.hidden && !inside(event.target)) this.toggle(false, false);
-      }, true);
-    }
   }
 
   // open: show or hide the people who can be added; closing gives the focus back to "+ Add".
-  toggle(open = this.row.hidden, restoreFocus = true) {
+  toggle(open = this.row.hidden) {
     this.row.hidden = !open; this.opener.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (this.openerWord) { this.openerWord.textContent = open ? 'Done' : '+ Add'; this.opener.title = open ? 'Done' : this.label; }
-    if (open) { this.opened(); this.paintChoices(); this.input.focus(); } else if (restoreFocus) this.opener.focus();
+    if (open) { this.opened(); this.paintChoices(); this.input.focus(); } else this.opener.focus();
   }
 
   // The people not yet in, narrowed by what the filter holds.
@@ -361,7 +341,7 @@ export class PeoplePanel {
     this.paintChips(shown);
     // "+ Add" stays the same node after the pills, so a repaint never takes its focus.
     if (manage) { if (this.opener.parentNode !== this.chips) this.chips.append(this.opener); }
-    else { this.opener.remove(); this.toggle(false, false); }
+    else { this.opener.remove(); this.row.hidden = true; this.opener.setAttribute('aria-expanded', 'false'); }
     this.paintChoices();
     this.notice.textContent = this.error; this.notice.hidden = !this.error;
     this.host.hidden = false;
