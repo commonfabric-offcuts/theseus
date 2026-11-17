@@ -3432,6 +3432,12 @@
       "scope": "repository"
     }
   },
+  "tests/test_tools_deploy_branch.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_tools_mutant.py": {
     "19ac346a6321609a83544a0fa288aa146e473845f67bea2ed59f117633675143": {
       "inputs": [
