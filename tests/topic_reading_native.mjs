@@ -125,15 +125,17 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // (webkit_native.mjs), so there it happens just before the tap.
   const tap = async (p, selector, at = 'corner', during = null) => {
     const aim = await until(() => p.evaluate(`new Promise(done=>{const t=document.querySelector(${JSON.stringify(selector)}),
-      rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),
-      look=()=>{const b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
-        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
+      rect=()=>{const b=t&&(${at === 'first'}?t.getClientRects()[0]:t.getBoundingClientRect());return b?{x:b.x,y:b.y,width:b.width,height:b.height}:null},
+      tapStableTolerancePx=0.5,same=(a,b)=>Boolean(a&&b)&&['x','y','width','height'].every(key=>Math.abs(a[key]-b[key])<=tapStableTolerancePx),
+      look=()=>{const tapViewportTolerancePx=0.5,b=rect();if(!b)return {b};const x=${at === 'corner'}?b.x+Math.min(12,b.width/2):b.x+b.width/2,y=${at === 'corner'}?b.y+Math.min(12,b.height/2):b.y+b.height/2,
+        h=document.elementFromPoint(x,y);return {b,x,y,inside:x>=tapViewportTolerancePx&&y>=tapViewportTolerancePx&&x<=innerWidth-tapViewportTolerancePx&&y<=innerHeight-tapViewportTolerancePx,hit:t.contains(h)?'':h?h.tagName.toLowerCase()+'.'+h.className:'nothing'}};
       if(document.hidden)return done(look());
       const first=rect();requestAnimationFrame(()=>{const second=rect();requestAnimationFrame(()=>done(same(first,second)&&same(second,rect())?look():null))})})`),
-      `${selector} holds its place across two frames before a tap`);
+      `${selector} holds its place across two frames before a tap (tapStableTolerancePx=0.5)`);
     const { b, x, y } = aim;
-    assert.ok(b && b.width > 0 && b.height > 0, `visible target ${selector}`);
-    assert.ok(aim.inside, `${selector} is inside the window before a tap`);
+    const tapVisibleTolerancePx = 0.5;
+    assert.ok(b && b.width > tapVisibleTolerancePx && b.height > tapVisibleTolerancePx, `visible target ${selector} (tapVisibleTolerancePx=0.5)`);
+    assert.ok(aim.inside, `${selector} is inside the window before a tap (tapViewportTolerancePx=0.5)`);
     assert.equal(aim.hit, '', `${selector} is covered by ${aim.hit} where it would be tapped`);
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     if (during) await during();

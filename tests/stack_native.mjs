@@ -1131,6 +1131,54 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
       answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
   };
+  // #7715: named tolerances apply to every measured edge/extent below. A 2px
+  // moving-target mutant still fails the shared tapStableTolerancePx=0.5 check.
+  const viewportEdgeTolerancePx655 = 1, visibleExtentTolerancePx655 = 0.5;
+  const proof655 = async (p, state, expected, image) => {
+    for (const theme of ['light', 'dark']) {
+      await dossierTheme(p, theme);
+      const actual = await p.evaluate(`import('/message-format.mjs').then(({drawnText})=>{const d=document.querySelector('#reader'),c=document.querySelector('#source-body'),r=d.getBoundingClientRect();
+        return {open:d.open,title:document.querySelector('#reader-title').textContent,source:drawnText(c),readable:c.textContent,
+          notice:document.querySelector('#reader-notice').textContent,noticeShown:!document.querySelector('#reader-notice').hidden&&Boolean(document.querySelector('#reader-notice').getClientRects().length),writing:document.querySelector('#writing-body').value,
+          onlyNew:document.querySelector('#messages').classList.contains('only-new'),box:{left:r.left,right:r.right,width:r.width},viewport:innerWidth}})`);
+      for (const [key, value] of Object.entries(expected)) assert.equal(actual[key], value, `${state} ${theme}: ${key}`);
+      if (expected.source) assert.ok(actual.readable.startsWith(expected.source.split('\n')[0]), `${state} ${theme}: source words are painted`);
+      if (['B3-position', 'B3-root'].includes(state)) {
+        assert.match(actual.notice, /Dossier name could not be read/, `${state} ${theme}: failure notice says why`);
+        assert.equal(actual.noticeShown, true, `${state} ${theme}: failure notice is visible`);
+      }
+      if (actual.open) {
+        assert.ok(actual.box.width > visibleExtentTolerancePx655 && actual.box.left >= -viewportEdgeTolerancePx655 && actual.box.right <= actual.viewport + viewportEdgeTolerancePx655,
+          `${state} ${theme}: Reader fits (viewportEdgeTolerancePx655=1, visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual.box)}`);
+      }
+      observations.push({ name: 'item 655 state', state, theme, engine, expected, actual, tolerances: { viewportEdgeTolerancePx655, visibleExtentTolerancePx655 } });
+      await shot(p, image + '-' + theme);
+    }
+  };
+  const returned655 = async (p, id, state, image) => {
+    for (const theme of ['light', 'dark']) {
+      await dossierTheme(p, theme);
+      const actual = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c?.getBoundingClientRect();return {shown:Boolean(c?.getClientRects().length),top:r?.top,bottom:r?.bottom,height:innerHeight}})()`);
+      assert.ok(actual.shown && actual.top < actual.height - visibleExtentTolerancePx655 && actual.bottom > visibleExtentTolerancePx655,
+        `${state} ${theme}: source in view (visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual)}`);
+      observations.push({ name: 'item 655 returned source', state, engine, theme, actual, tolerances: { visibleExtentTolerancePx655 } });
+      await shot(p, image + '-' + theme);
+    }
+  };
+  // Passive frame sampling catches a transient repaint too. Never calls a
+  // product handler or uses the sample to pace the native gesture.
+  const trace655 = p => p.evaluate(`(()=>{window.item655Frames=[];window.item655Tracing=true;const frame=()=>{
+    if(!item655Tracing)return;item655Frames.push({open:document.querySelector('#reader').open,
+      onlyNew:document.querySelector('#messages').classList.contains('only-new'),source:document.querySelector('#source-body').textContent,
+      title:document.querySelector('#reader-title').textContent,notice:document.querySelector('#reader-notice').textContent});requestAnimationFrame(frame)};requestAnimationFrame(frame)})()`);
+  const traced655 = async (p, state, expected) => {
+    const frames = await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>{item655Tracing=false;done(item655Frames)})))');
+    assert.ok(frames.length >= 2, state + ': actual frames were sampled');
+    for (const frame of frames) for (const [key, value] of Object.entries(expected))
+      if (key === 'source') assert.ok(frame.source.startsWith(value), state + ': no transient source replacement');
+      else assert.equal(frame[key], value, `${state}: every frame keeps ${key}`);
+    observations.push({ name: 'item 655 every frame', state, engine, expected, frames });
+  };
   // Item 655: an old starred reply is outside the page's loaded range. The first dossier and the
   // topic deliberately have different names, and Starred is pressed from a different topic.
   for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
@@ -1164,23 +1212,20 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`), topic, 'the reply belongs to its own topic');
         assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.second))}))`), false, 'the dossier root is outside the loaded page');
         const title = await titleOf(p);
-        for (const theme of ['light', 'dark']) {
-          await dossierTheme(p, theme);
-          await shot(p, `item-655-${rule}-${width}-${theme}-starred`);
-        }
+        await proof655(p, rule + '-unloaded', { open: true, ...(rule.endsWith('name') ? { title: 'Second dossier' } : {}), source: 'The starred reply in the second dossier.' }, `item-655-${rule}-${width}-starred`);
         if (rule.endsWith('name')) assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
         await until(() => p.evaluate('window.fetchesOut === 0'), 'the title return has finished its reads');
         for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-${rule}-${width}-${theme}-after-close`); }
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
-        const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack'),r=c.getBoundingClientRect();
-          return {name:s?.querySelector('.stack-name')?.textContent,inside:r.top<innerHeight&&r.bottom>0,topic:new URL(location.href).searchParams.get('topic')}})()`);
-        assert.equal(landed.inside, true, 'the returned dossier is in view');
+        const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack');
+          return {name:s?.querySelector('.stack-name')?.textContent,topic:new URL(location.href).searchParams.get('topic')}})()`);
         assert.equal(landed.topic, topic, 'the return never goes to the topic left before Starred');
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-${rule}-${width}-${theme}-dossier`); }
+        await returned655(p, ids.star, rule + '-return', `item-655-${rule}-${width}-dossier`);
         await openReader(p, device, ids.star, 'The starred reply in the second dossier.');
         assert.equal((await titleOf(p)).text, 'Second dossier', 'opening the same reply from its dossier agrees');
+        await proof655(p, rule + '-loaded', { open: true, title: 'Second dossier', source: 'The starred reply in the second dossier.' }, `item-655-${rule}-${width}-loaded`);
         assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === ids.star)?.acts.starred, true, 'navigation never takes the star off');
         assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.first, ids.second] })).items.every(i => i.stack_position.below === false), true, 'navigation moves neither dossier below More');
         assert.deepEqual(p.errors, []);
@@ -1242,26 +1287,96 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             ]) {
               await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: root, operation_id: topic + '-' + suffix, args: { name } });
               await becomes(async () => (await titleOf(p)).text, expectedName, 'freshness follows an unloaded dossier rename or cleared name');
+              await proof655(p, 'B2-' + suffix, { open: true, title: expectedName, source: 'Unloaded dossier reply.' }, `item-655-B2-${suffix}-${width}`);
             }
             await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.else, operation_id: topic + '-other-name', args: { name: 'Joined dossier name' } });
             await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-join', args: { into: ids.else } });
             await becomes(async () => (await titleOf(p)).text, 'Joined dossier name', 'freshness follows the new root after a join');
+            await proof655(p, 'B2-join', { open: true, title: 'Joined dossier name', source: 'Unloaded dossier reply.' }, `item-655-B2-join-${width}`);
             await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-split', args: { into: null } });
             await becomes(async () => (await titleOf(p)).text, 'Unnamed dossier first line.', 'a split drops the old joined name');
+            await proof655(p, 'B2-split', { open: true, title: 'Unnamed dossier first line.', source: 'Unloaded dossier reply.' }, `item-655-B2-split-${width}`);
           }
         }
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-${rule}-${width}-${theme}-reader`); }
+        const sourceWords = target === ids.root ? 'Unnamed dossier first line.\nThe rest stays as written.' : 'Unloaded dossier reply.';
+        const expectedTitle = bad || rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.';
+        await proof655(p, rule, { open: true, source: sourceWords, title: expectedTitle }, `item-655-review-${rule}-${width}-reader`);
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'the title closes the Reader');
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))})?.getClientRects().length)`), 'the title reveals the same source');
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-${rule}-${width}-${theme}-return`); }
-        if (!bad) {
-          await openReader(p, device, target, target === ids.root ? 'Unnamed dossier first line.' : 'Unloaded dossier reply.');
-          assert.equal((await titleOf(p)).text, rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', 'opening from the dossier agrees after every state change');
+        await returned655(p, target, rule + '-return', `item-655-review-${rule}-${width}-return`);
+        await openReader(p, device, target, target === ids.root ? 'Unnamed dossier first line.' : 'Unloaded dossier reply.');
+        await becomes(async () => (await titleOf(p)).text, rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', 'opening from the dossier agrees after every state change');
+        await proof655(p, bad ? 'B3-recovered' : rule + '-loaded', { open: true, source: sourceWords, title: rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', notice: '' }, `item-655-review-${rule}-${width}-loaded`);
+        if (rule === 'single') {
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: target, operation_id: topic + '-single-name', args: { name: 'Named singleton' } });
+          await becomes(async () => (await titleOf(p)).text, 'Named singleton', 'a loaded singleton can be named');
+          await proof655(p, 'single-named', { open: true, title: 'Named singleton', source: sourceWords }, `item-655-single-named-${width}`);
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: target, operation_id: topic + '-single-clear', args: { name: '' } });
+          await becomes(async () => (await titleOf(p)).text, 'Reading ' + topic, 'clearing the loaded singleton never revives its cached name');
+          await proof655(p, 'single-cleared', { open: true, title: 'Reading ' + topic, source: sourceWords }, `item-655-single-cleared-${width}`);
         }
         assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === target)?.acts.starred, true, 'no title read or return unstars the source');
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }
+
+      if (rule === 'B1-root') {
+        // The root is on the newest page; all its members predate that page.
+        // Joining the older branch into it creates this real Core membership.
+        const partial = topic + '-partial', members = await seed(partial, [
+          ['old', { sender: other, addressees: [facts.actor], body: 'Older joined branch.' }],
+          ['reply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'Reply outside the root page.' }],
+          ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Partial page filler ${n}.`, read: true }]),
+          ['root', { sender: other, addressees: [facts.actor], body: 'Loaded root with older members.' }],
+        ]);
+        await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: members.old, operation_id: partial + '-join', args: { into: members.root } });
+        const q = await open(partial, device, partial, members.root);
+        try {
+          if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(members.reply))}))`), false, 'the members are outside the loaded page');
+          await openReader(q, device, members.root, 'Loaded root with older members.');
+          await proof655(q, 'B1-loaded', { open: true, source: 'Loaded root with older members.', title: 'Loaded root with older members.' }, `item-655-B1-loaded-${width}`);
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: members.root, operation_id: partial + '-name', args: { name: 'Named loaded root' } });
+          await becomes(async () => (await titleOf(q)).text, 'Named loaded root', 'loaded root follows its name');
+          await proof655(q, 'B1-loaded-named', { open: true, title: 'Named loaded root' }, `item-655-B1-loaded-named-${width}`);
+          assert.deepEqual(q.errors, []);
+        } finally { await q.close(); }
+      }
+      if (rule === 'B2-fresh' || rule === 'B3-position') {
+        const q = await open(topic + '-late', device, topic, ids.f33, 'window.holdReads=true;');
+        try {
+          if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          const net = await network(q, true);
+          let once = true;
+          net.hold(payload => once && payload?.name === 'stack_positions' && payload.args?.message_ids?.includes(target) && (once = false, true));
+          await openStar655(q, device, target);
+          const held = await until(() => net.held()[0], 'the old opening metadata is held');
+          net.hold(null);
+          // A native second opening supersedes the first; no application handler
+          // is invoked by the test. The late response must change no newer Reader.
+          await openReader(q, device, ids.f33, 'Independent later message 33.');
+          if (rule === 'B2-fresh') {
+            await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-late-name', args: { name: 'Newest confirmed dossier name' } });
+            await closeReader(q, device);
+            await openStar655(q, device, target);
+            await becomes(async () => (await titleOf(q)).text, 'Newest confirmed dossier name', 'a newer opening gets the latest name');
+            const stale = await view('stack_positions', { topic_id: topic, message_ids: [target] });
+            stale.items.find(i => i.message_id === target).stack_position.name.text = 'Stale late name';
+            await trace655(q);
+            await net.answer(held, 200, stale);
+            await until(() => q.evaluate('window.fetchesOut === 0'), 'the late answer has finished');
+            await proof655(q, 'B2-late', { open: true, title: 'Newest confirmed dossier name', source: 'Unloaded dossier reply.' }, `item-655-B2-late-${width}`);
+            await traced655(q, 'B2-late', { open: true, title: 'Newest confirmed dossier name', source: 'Unloaded dossier reply.' });
+          } else {
+            await trace655(q);
+            await net.answer(held, 503, { error: { code: 'DATABASE_BUSY', message: 'Abandoned dossier metadata failed.' } });
+            await until(() => q.evaluate('window.fetchesOut === 0'), 'the abandoned failure has finished');
+            await proof655(q, 'B3-abandoned', { open: true, source: 'Independent later message 33.', title: 'Reading ' + topic, notice: '' }, `item-655-B3-abandoned-${width}`);
+            await traced655(q, 'B3-abandoned', { open: true, source: 'Independent later message 33.', title: 'Reading ' + topic, notice: '' });
+          }
+          assert.deepEqual(q.errors, []);
+        } finally { await q.close(); }
+      }
     });
     await check(`reading item 655 B4-return at ${width}: a settled Conversation dossier returns through Only new`, async () => {
       const name = `item-655-conversation-${width}`;
@@ -1282,12 +1397,31 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await openStar655(p, device, root);
         await until(async () => (await readerOn(p))?.startsWith('Settled starred conversation item.'), 'Starred opens the settled source without resetting the filter');
         assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), true, 'opening alone keeps the chosen filter');
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-B4-${width}-${theme}-reader`); }
+        await proof655(p, 'B4-open', { open: true, source: 'Settled starred conversation item.', onlyNew: true }, `item-655-review-B4-${width}-reader`);
+        await trace655(p);
+        await closeReader(p, device);
+        await proof655(p, 'B4-dismissed', { open: false, onlyNew: true }, `item-655-review-B4-${width}-dismissed`);
+        await traced655(p, 'B4-dismissed', { onlyNew: true });
+        await openStar655(p, device, root);
+        await until(async () => (await readerOn(p))?.startsWith('Settled starred conversation item.'), 'the settled source opens again');
+        // A real local preservation failure, armed before native typing. No
+        // close handler is replaced; restoring storage allows the same close.
+        await p.evaluate(`(()=>{window.item655Transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Item 655 quota failure','QuotaExceededError');return item655Transaction.apply(this,args)}})()`);
+        try {
+          await press(p, device, '#writing-body');
+          await p.send('Input.insertText', { text: 'Exact writing kept on refused title return.' });
+          await trace655(p);
+          await press(p, device, '#reader-title .reader-topic');
+          await until(() => p.evaluate(`document.querySelector('#reader-notice').textContent.includes('Not closed: this device could not keep your writing')`), 'the failed preservation refuses title return');
+          await proof655(p, 'B4-refused', { open: true, onlyNew: true, source: 'Settled starred conversation item.', writing: 'Exact writing kept on refused title return.' }, `item-655-review-B4-${width}-refused`);
+          await traced655(p, 'B4-refused', { open: true, onlyNew: true, source: 'Settled starred conversation item.' });
+        } finally { await p.evaluate('IDBDatabase.prototype.transaction=item655Transaction'); }
         await press(p, device, '#reader-title .reader-topic');
         await until(async () => await readerOn(p) === null, 'the title closes the Reader');
         assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), false, 'the title return clears Only new so its settled source can show');
         await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(root))})?.getClientRects().length)`), 'the settled dossier is revealed');
-        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-B4-${width}-${theme}-return`); }
+        await proof655(p, 'B4-return', { open: false, onlyNew: false }, `item-655-review-B4-${width}-return-page`);
+        await returned655(p, root, 'B4-return', `item-655-review-B4-${width}-return`);
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }
     });
