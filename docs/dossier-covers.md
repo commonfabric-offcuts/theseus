@@ -162,16 +162,24 @@ words and weight, never with a fill or a coloured edge.
 
 In the Reader, a message of a dossier with a cover shows it as one quiet line
 above the message: where it stands and its payload's pill, whether or not the
-dossier's first message is loaded. A press opens the whole sheet. On a phone the line gives way while the reply is being written,
+dossier's first message is loaded. A press opens the whole sheet, for that
+message only: any other message, or the same one opened again, starts at the
+closed line, and so does a message whose dossier becomes another or whose cover
+goes and comes back. The line follows the cover while the Reader is open, the
+owner's Done included. On a phone the line gives way while the reply is being written,
 so the message keeps its lines ([reader.md](reader.md)).
 
 ## Checks
 
 `tests/test_dossier_covers.py` covers storage, merging, revisions and their
 refusals, Done by 👍 and by a named reply (and by no one else, and never by a
-reply nobody named, a question included), the whisper rule, the cover riding
-with every message's place and reaching no reader outside the first message,
-an outsider, and the verb. `tests/test_migrations.py` (`CoverStepCase`) covers
+reply nobody named, a question included), the earlier of the two when both
+happened, in either order, with a later 👍 recording nothing, the whisper rule,
+the cover riding with every message's place and reaching no reader outside the
+first message, an outsider, and the verb with each of its options (the
+payload's link and kind among them) and its refusals. `tests/test_migrations.py` (`CoverStepCase`) covers
 the step. The page is covered by the `reading covers …` cases in
 `tests/stack_native.mjs`, in both engines, among them a dossier whose first
-message is more than a page behind its newest reply.
+message is more than a page behind its newest reply, the Reader's sheet
+opening only where it is pressed (at 320, 375 and 390 and on a laptop), and the
+open Reader's line following a rewrite and the owner's 👍.

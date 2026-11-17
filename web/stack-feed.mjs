@@ -673,12 +673,12 @@ export class StackFeed {
     return head.typed?.text || (stack.replies.length ? head.name : '') || null;
   }
   // The cover of the dossier a message is in, as its folder shows it (item 624, stackCover: from its place when its
-  // first message is not loaded), with the topic its links go to; null for a message on its own, one no stack drawn
-  // holds, and a dossier with no cover.
+  // first message is not loaded), with the topic its links go to and the dossier's first message (rootId); null for a
+  // message on its own, one no stack drawn holds, and a dossier with no cover.
   dossierCover(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     const cover = stack ? stackCover(stack) : null;
-    return cover ? { cover, topicId: stack.head.topic_id } : null;
+    return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.

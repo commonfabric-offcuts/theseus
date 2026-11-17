@@ -26419,6 +26419,140 @@
     "native": "reading",
     "case": "reading covers a dossier whose first message is more than a page behind"
    }
+  },
+  {
+   "item": 624,
+   "act": "The Reader's cover sheet opens for the message it was pressed on: the same message opened again, or the next one, starts at the closed line",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (!same) this.$('reader-cover').open = false;",
+     "    if (false) this.$('reader-cover').open = false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader's cover sheet opens only where it is pressed"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The Reader's open cover sheet closes when its message's dossier becomes another or its cover goes, and stays open as its cover changes",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }",
+     "    if (dossier !== (this.coverDossier ?? null)) { this.coverDossier = dossier; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader's cover sheet opens only where it is pressed"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The open Reader's cover line follows the cover: an agent's rewrite and the owner's thumbs-up given and taken back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "  paintTitle(source, topics = this.topics ?? []) {\n    this.paintCover(source);\n",
+     "  paintTitle(source, topics = this.topics ?? []) {\n"
+    ],
+    [
+     "web/reader.mjs",
+     "    if (!same) this.$('reader-cover').open = false;\n    this.paintTitle(source, topics);",
+     "    if (!same) this.$('reader-cover').open = false;\n    this.paintCover(source);\n    this.paintTitle(source, topics);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the open Reader's cover line follows the cover"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb writes the payload's link",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "**({\"link\": options.link} if options.link else {}), ",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb writes the payload's kind",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "**({\"kind\": options.kind} if options.kind else {}),\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb refuses a payload's link, kind or message given with no payload, never reading it as a plain read",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "named = options.payload is not None or options.payload_from or options.link or options.kind or options.done_by",
+     "named = options.payload is not None or options.done_by"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb says when a write changed nothing",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "\"wrote\" if result[\"changed\"] else \"no change to\"",
+     "\"wrote\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Done is the earlier of the owner's thumbs-up and their named word, in either order",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "return min(found, key=lambda each: each[:2])[2]",
+     "return max(found, key=lambda each: each[:2])[2]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner's thumbs-up that changes no Done records no new cover row",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            if value[\"payload\"].get(\"done\") == done:\n                continue\n",
+     "            if False:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
   }
  ]
 }

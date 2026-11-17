@@ -343,6 +343,9 @@ export class Reader {
     this.opener = next;
     this.disarm();
     this.topics = topics;
+    // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
+    // opened again, starts at the cover's one line (paintCover).
+    if (!same) this.$('reader-cover').open = false;
     this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
@@ -993,15 +996,20 @@ export class Reader {
   // top of the message, where it stands and its payload's pill, that opens to
   // the whole sheet. None for a message no dossier with a cover holds. On a
   // phone it gives way while the reply is written (aim.css), so the message
-  // keeps its lines.
+  // keeps its lines. Painted with the title, so it follows the cover while the
+  // Reader is open; a sheet opened stays open as its cover changes, and closes
+  // when the message's dossier is another or its cover goes (show() closes it
+  // for each message opened).
   paintCover(source) {
     const found = source?.source_ref?.kind === 'message' ? this.callbacks.dossierCover?.(source) ?? null : null;
+    const host = this.$('reader-cover'), line = this.$('reader-cover-line');
+    const dossier = found?.rootId ?? null;
+    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
     const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId } : null;
     // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
     const key = found ? coverKey(found.cover, context) : '';
     if ((this.coverShown ?? '') === key) return;
     this.coverShown = key;
-    const host = this.$('reader-cover'), line = this.$('reader-cover-line');
     host.hidden = !found;
     for (const node of [...host.children]) if (node !== line) node.remove();
     if (!found) { line.replaceChildren(); return; }
