@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-"""Editing a message (items 228 and 452, docs/message-edit.md).
+"""Editing a message (items 228, 452 and 614, docs/message-edit.md).
 
-A message's row never changes. An edit by its author, a person, appends the
-message's next revision to `message_revisions`; revision 1 is the row's own
-words. Every read of a message's words, whole or as a preview or excerpt,
+A message's row never changes. An edit by its author, a person or an agent,
+appends the message's next revision to `message_revisions`; revision 1 is the
+row's own words. Every read of a message's words, whole or as a preview or excerpt,
 goes through the one words helper below (words, words_at, current_words), so
 everything that shows a message shows its latest words, and
 tests/test_message_words.py fails on any other read of messages.body.
 
 The helper is also where an agent view marks the words it hands out: the
 boundary (Store._hand_over) takes the marks out and records, per agent, the
-highest revision of each person's message it was handed (message_exposures).
+highest revision of each message by someone else it was handed (message_exposures).
 An edit sends a correction only to an agent reader that was handed the words
 before (or any agent reader of a message sent before exposures were kept):
 a delivery of the message at the new revision, in a delivery group of its own
@@ -20,6 +20,13 @@ thumbed away. Only an ack of its own id, a newer correction of the same
 message, or the agent losing the message settles it. People never get one.
 Every reader, people and agents, gets an actor-scoped `edit` change keyed by
 the message at its new revision.
+
+An agent's edit (item 614) also keeps, for each person who had read the
+message (their delivery of it settled), the revision they had read, in the
+same table (message_exposures, a person's row), and makes the message unread
+for them again. A view then gives that person, and nobody else, the words they
+had read and no longer stand (`struck`), so their page shows them struck
+through beside the new words. A person's edit does neither.
 
 While its author has it open in Edit (its one edit session), a message is
 held from agents: their views show it without its words, and their
@@ -135,6 +142,31 @@ OPEN, CLOSE, PROBE = "\ue000", "\ue001", "\ue002"
 def _hold_ms():
     from .contract import LIMITS
     return LIMITS["edit_hold_ms"]
+
+
+# Item 614: agents edit their own words, so an agent's message handed to another agent is recorded too. The first post
+# of a release that holds it says where that record begins (as stacks.record_wait_start does for item 475): an agent's
+# message before it counts as handed at revision 1 to every agent reader, as a message at or below the horizon does.
+AGENT_FROM_KEY = "agent_exposure_from_seq.614"
+
+
+def record_agent_exposure_start(db, seq):
+    """Called by every post (Conversation._publish) with its message's sequence: the first one says where agents'
+    messages begin to be recorded as handed; every later one leaves it as it is."""
+    db.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)", (AGENT_FROM_KEY, str(seq)))
+
+
+def _counted_handed(kind, seq, horizon, agent_from):
+    """Whether revision 1 of a message counts as handed to every agent reader with no record: a person's message at or
+    below the horizon (version 41), or an agent's message from before AGENT_FROM_KEY (or with none yet)."""
+    if kind == "human":
+        return seq <= horizon
+    return agent_from is None or seq < agent_from
+
+
+def _agent_from(db):
+    row = db.execute("SELECT value FROM metadata WHERE key=?", (AGENT_FROM_KEY,)).fetchone()
+    return int(row[0]) if row else None
 
 
 def held_ids(db, now):
@@ -297,8 +329,9 @@ def handed(db, current, answer):
 
 def growing(db, actor, pairs):
     """The pairs that grow what the actor is known to have been handed, one per message at its highest revision: the
-    message is a person's, the revision is above the one recorded (0 when none), and it is not revision 1 of a
-    message at or below the horizon, which counts as handed already."""
+    message is someone else's, the revision is above the one recorded (0 when none), and it is not revision 1 of a
+    message that counts as handed already (_counted_handed: a person's at or below the horizon, an agent's from before
+    agents' messages were recorded)."""
     if not pairs:
         return []
     highest = {}
@@ -306,11 +339,13 @@ def growing(db, actor, pairs):
         if isinstance(message_id, str):
             highest[message_id] = max(number, highest.get(message_id, 0))
     horizon = db.execute("SELECT coalesce(max(seq),0) FROM message_edit_horizon").fetchone()[0]
-    rows = db.execute("SELECT m.id,m.seq,a.kind,coalesce(e.revision,0) AS known FROM messages m JOIN actors a ON a.id=m.author_id "
+    agent_from = _agent_from(db)
+    rows = db.execute("SELECT m.id,m.seq,m.author_id,a.kind,coalesce(e.revision,0) AS known FROM messages m JOIN actors a ON a.id=m.author_id "
                       "LEFT JOIN message_exposures e ON e.actor_id=? AND e.message_id=m.id WHERE m.id IN (SELECT value FROM json_each(?))",
                       (actor, json.dumps(sorted(highest)))).fetchall()
     return [(row["id"], highest[row["id"]]) for row in rows
-            if row["kind"] == "human" and highest[row["id"]] > row["known"] and not (highest[row["id"]] == 1 and row["seq"] <= horizon)]
+            if row["author_id"] != actor and highest[row["id"]] > row["known"]
+            and not (highest[row["id"]] == 1 and _counted_handed(row["kind"], row["seq"], horizon, agent_from))]
 
 
 # The words helper. Each is SQL for the messages row named alias: its current words, their revision (1 when never
@@ -376,11 +411,125 @@ def quoted_revision(db, message_id, quote_source, excerpt):
         raise Refusal("INVALID_QUOTE", "The excerpt must preserve the referenced source's words")
 
 
+# What a person who had read a message sees once its agent author edits it (item 614): the words they had read that the
+# latest words no longer hold, each placed where it stood. Words are runs of letters and digits, and each other mark
+# stands alone, so "85," becoming "86," strikes "85" and keeps the comma; a change of spacing alone shows nothing. The
+# words compared are what lies between the two texts' common start and end, by the shortest edit (Myers), which costs
+# little for a correction of a few words. Bounded, since a message's words reach a megabyte: a middle part of more than
+# STRUCK_TOKENS words, or one that needs more than STRUCK_EDITS words changed, is one change; at most STRUCK_CUTS places
+# are given, and each place's words are cut to STRUCK_CHARS characters.
+TOKENS = re.compile(r"\s+|\w+|[^\w\s]")
+STRUCK_TOKENS = 20000
+STRUCK_EDITS = 400
+STRUCK_CUTS = 50
+STRUCK_CHARS = 1000
+
+
+def _units(text):
+    """text's length as a page counts it, in UTF-16 code units."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _runs(a, b):
+    """[(i1, i2, j)]: each run of a[i1:i2] that the shortest edit from a to b takes away, j the place in b where it
+    stood; None when it needs more than STRUCK_EDITS words changed."""
+    n, m = len(a), len(b)
+    frontier, trace = {1: 0}, []
+    for d in range(min(n + m, STRUCK_EDITS) + 1):
+        trace.append(dict(frontier))
+        for k in range(-d, d + 1, 2):
+            x = frontier[k + 1] if k == -d or (k != d and frontier[k - 1] < frontier[k + 1]) else frontier[k - 1] + 1
+            y = x - k
+            while x < n and y < m and a[x] == b[y]:
+                x, y = x + 1, y + 1
+            frontier[k] = x
+            if x >= n and y >= m:
+                return _walk_back(trace, n, m)
+    return None
+
+
+def _walk_back(trace, x, y):
+    """The runs taken away, from the edit's trace, walked back from its end."""
+    taken = []
+    for d in range(len(trace) - 1, -1, -1):
+        frontier, k = trace[d], x - y
+        before = k + 1 if k == -d or (k != d and frontier[k - 1] < frontier[k + 1]) else k - 1
+        px = frontier[before]
+        py = px - before
+        while x > px and y > py:
+            x, y = x - 1, y - 1
+        if d > 0 and x != px:
+            taken.append((px, py))
+        x, y = px, py
+    # Words taken away one after another in a are one change: only words put in can lie between them in b.
+    runs = []
+    for i, j in reversed(taken):
+        if runs and runs[-1][1] == i:
+            runs[-1] = (runs[-1][0], i + 1, runs[-1][2])
+        else:
+            runs.append((i, i + 1, j))
+    return runs
+
+
+def struck_words(old, new):
+    """[{at, words}]: each run of old's words that new no longer holds, where it stood in new. at is a place in new,
+    counted in UTF-16 code units as a page counts its text: the struck words go just before the character there (at
+    new's length: after its end). In order of at, never two at one place."""
+    a, b = TOKENS.findall(old), TOKENS.findall(new)
+    start = 0
+    while start < len(a) and start < len(b) and a[start] == b[start]:
+        start += 1
+    end = 0
+    while end < len(a) - start and end < len(b) - start and a[len(a) - 1 - end] == b[len(b) - 1 - end]:
+        end += 1
+    middle_a, middle_b = a[start:len(a) - end], b[start:len(b) - end]
+    runs = None if len(middle_a) + len(middle_b) > STRUCK_TOKENS else _runs(middle_a, middle_b)
+    if runs is None:
+        runs = [(0, len(middle_a), 0)] if middle_a else []
+    places = [_units("".join(b[:start]))]
+    for token in middle_b:
+        places.append(places[-1] + _units(token))
+    cuts = []
+    for i1, i2, j in runs:
+        words = "".join(middle_a[i1:i2]).strip()
+        if not words:
+            continue
+        if len(words) > STRUCK_CHARS:
+            words = words[:STRUCK_CHARS] + "\u2026"
+        if cuts and cuts[-1]["at"] == places[j]:
+            cuts[-1]["words"] += " " + words
+        else:
+            cuts.append({"at": places[j], "words": words})
+    return cuts[:STRUCK_CUTS]
+
+
+def struck(db, actor, message_id, revision_now, words_now, shown=None):
+    """What one reader sees struck through on one message, or None: for a person whose row of message_exposures (written
+    by the message's agent author's edit, item 614) names a revision they had read below the latest, {revision, cuts}
+    with cuts from struck_words; shown, when the reader is given only the first words (a card's excerpt), keeps the
+    cuts that fall within them. None for an agent, a message never edited, or a person with no such row."""
+    if revision_now <= 1:
+        return None
+    row = db.execute("SELECT e.revision FROM message_exposures e JOIN actors a ON a.id=e.actor_id AND a.kind='human' "
+                     "WHERE e.actor_id=? AND e.message_id=?", (actor, message_id)).fetchone()
+    if row is None or row[0] >= revision_now:
+        return None
+    before = words_at(db, message_id, row[0], plain=True)
+    if before is None:
+        return None
+    cuts = struck_words(before[0], words_now)
+    if shown is not None:
+        cuts = [cut for cut in cuts if cut["at"] < _units(shown)]
+    return {"revision": row[0], "cuts": cuts} if cuts else None
+
+
 EDIT_ARGUMENTS = "Name one message and its new words"
 SESSION_ARGUMENTS = "Name one message and this edit's holder"
 DRAFT_ARGUMENTS = "Name one message, this edit's holder, its words and the revision they start from"
-ONLY_PEOPLE = "Only people edit messages"
-ONLY_AUTHOR = "Only the person who wrote a message edits it"
+# Only a person opens a message in Edit, which holds it from agents while they write; an agent saves its new words
+# at once (message.edit), and so opens no session (item 614).
+ONLY_PEOPLE = "Only people open a message in Edit; an agent saves its new words with message.edit"
+ONLY_AUTHOR = "Only whoever wrote a message edits it"
 UNCHANGED = "These are the message's words already; nothing was edited"
 EMPTY = "A message needs writing or an attachment"
 TAKEN = "This edit is open on another device"
@@ -389,12 +538,13 @@ BASE = "base_revision is one of the message's revisions"
 
 
 class MessageEdit:
-    def _editable(self, db, actor, message_id, reached=True):
-        """Slice 1's checks 1 to 4, in order: the actor reaches the message (a whisper outside them, or a message they
-        cannot read, is refused as an unknown id), is a person, wrote it, and its outcome is not kept to read (skipped by
+    def _editable(self, db, actor, message_id, reached=True, people=True):
+        """The checks after the words' size, in order: the actor reaches the message (a whisper outside them, or a
+        message they cannot read, is refused as an unknown id), is a person when people is true (an edit session's
+        commands; message.edit passes False, item 614), wrote it, and its outcome is not kept to read (skipped by
         message.edit_close, so a hold can always be ended)."""
         message = self._message_access(db, actor, _identifier(message_id, "message_id"))
-        if self._actor(db, actor)["kind"] != "human":
+        if people and self._actor(db, actor)["kind"] != "human":
             raise Refusal("FORBIDDEN", ONLY_PEOPLE)
         if message["author_id"] != actor:
             raise Refusal("FORBIDDEN", ONLY_AUTHOR)
@@ -410,8 +560,8 @@ class MessageEdit:
             raise Refusal("INVALID_ARGUMENT", EDIT_ARGUMENTS)
         body = _body(args["body"])
         holder = _identifier(args["holder"], "holder") if "holder" in args else None
-        # 1-4. Reach, a person, the author, an outcome not reached.
-        message = self._editable(db, actor, target["message_id"])
+        # 2-4. Reach, the author (a person or an agent, item 614), an outcome not reached.
+        message = self._editable(db, actor, target["message_id"], people=False)
         # 5. Fenced on the revision the editor started from.
         now_words, current, _ = current_words(db, message["id"], plain=True)
         _revision(envelope["expected"], "message_revision", current)
@@ -436,9 +586,11 @@ class MessageEdit:
         readers = self._message_readers(db, message, actor)
         reader_agents = [reader for reader in readers if reader != actor and self._actor_kind(db, reader) == "agent"]
         # Only an agent that was handed the old words is corrected: one with an exposure of the message, or any reader
-        # of a message sent at or below the horizon, before exposures were kept.
-        below = db.execute("SELECT m.seq<=(SELECT coalesce(max(seq),0) FROM message_edit_horizon) FROM messages m WHERE m.id=?",
-                           (message["id"],)).fetchone()[0]
+        # of a message that counts as handed with no record (a person's at or below the horizon, before exposures were
+        # kept; an agent's from before agents' messages were recorded, item 614).
+        sent = db.execute("SELECT m.seq,a.kind FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (message["id"],)).fetchone()
+        below = _counted_handed(sent["kind"], sent["seq"],
+                                db.execute("SELECT coalesce(max(seq),0) FROM message_edit_horizon").fetchone()[0], _agent_from(db))
         exposed = [agent for agent in reader_agents if below or db.execute(
             "SELECT 1 FROM message_exposures WHERE actor_id=? AND message_id=?", (agent, message["id"])).fetchone()]
         for agent in exposed:
@@ -459,9 +611,47 @@ class MessageEdit:
                               "WHERE d.message_id=? AND d.state='held' AND g.kind='correction'", (message["id"],)).fetchall():
             if row[0] not in reader_agents:
                 self._settle_held_corrections(db, row[0], message["id"])
+        # An agent's edit makes the message unread again for each person who had read it, and keeps what they had
+        # read, so their page shows it struck through beside the new words (item 614). A person's edit does neither.
+        unread_again = self._unread_again(db, message, readers, actor, current) if self._actor_kind(db, actor) == "agent" else 0
         for reader in readers:
             self._change(db, "actor", reader, "edit", message["id"], number)
-        return dict(result, corrections=len(exposed)), [{"kind": "message", "id": message["id"], "version": number}]
+        return (dict(result, corrections=len(exposed), unread_again=unread_again),
+                [{"kind": "message", "id": message["id"], "version": number}])
+
+    def _unread_again(self, db, message, readers, editor, revision):
+        """For each person among the readers who had read the message when its agent author edited it (item 614):
+        their record of it is their delivery of its first revision, settled (by reading it on screen, a read-through,
+        a reply, a 👍 or an ack). Keeps the revision they had read (a person's row of message_exposures, which only
+        grows), and makes that same delivery pending again where it counts, as an arrival, so the message is unread
+        for them and the New line finds it. A message between others (sent by name to others, not answering theirs)
+        was settled for them when it was sent, not read, and is never unread for them: it is left as it is. Returns
+        how many people had read it."""
+        row = db.execute("SELECT m.addressees,p.author_id AS answers FROM messages m LEFT JOIN messages p ON p.id=m.reply_to WHERE m.id=?",
+                         (message["id"],)).fetchone()
+        addressees = json.loads(row["addressees"])
+        count = 0
+        for reader in readers:
+            if reader == editor or self._actor_kind(db, reader) != "human":
+                continue
+            if addressees and reader not in addressees and reader != row["answers"]:
+                continue
+            delivery = db.execute("SELECT d.id,d.seq,d.group_id,d.state,g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id "
+                                  "WHERE d.message_id=? AND d.recipient_id=? AND d.revision=1", (message["id"], reader)).fetchone()
+            if delivery is None or delivery["state"] != "acknowledged":
+                continue
+            db.execute("INSERT INTO message_exposures(actor_id,message_id,revision) VALUES (?,?,?) "
+                       "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)", (reader, message["id"], revision))
+            count += 1
+            if not delivery["active"]:
+                # Left with a subscription since closed: nothing counts there, so it is not unread again.
+                continue
+            db.execute("UPDATE deliveries SET state='pending' WHERE id=?", (delivery["id"],))
+            db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=min(coalesce(first_pending_seq,?),?) WHERE id=?",
+                       (delivery["seq"], delivery["seq"], delivery["group_id"]))
+            self._eligibility_changed(db, reader, 1)
+            self._change(db, "actor", reader, "delivery", delivery["id"], 1)
+        return count
 
     def _settle_held_corrections(self, db, agent, message_id):
         """Settle the agent's corrections of a message that are held (it is still open in Edit on another device). A held
@@ -487,7 +677,7 @@ class MessageEdit:
     def _command_message_edit_open(self, db, actor, envelope):
         """Open the message's one edit session on this device's holder, or take it over from another device, and hold
         the message from agents. A session that was saved or closed starts again from the current words; an open one,
-        held or lapsed, keeps its draft and base, so any device resumes it."""
+        held or lapsed, keeps its draft and base, so any device resumes it. Only a person opens one (ONLY_PEOPLE)."""
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"message_id"} or set(args) != {"holder"}:
             raise Refusal("INVALID_ARGUMENT", SESSION_ARGUMENTS)

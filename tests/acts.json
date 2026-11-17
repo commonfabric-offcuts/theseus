@@ -10662,16 +10662,16 @@
   },
   {
    "item": 228,
-   "act": "Only people edit messages",
+   "act": "Only people open a message in Edit",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if self._actor(db, actor)[\"kind\"] != \"human\":",
+     "if people and self._actor(db, actor)[\"kind\"] != \"human\":",
      "if False:"
     ]
    ],
    "check": {
-    "python": "test_message_edit.py"
+    "python": "test_agent_edit.py"
    }
   },
   {
@@ -10764,8 +10764,8 @@
    "break": [
     [
      "aim_next/cli.py",
-     "        if item.get(\"correction\"):\n            # A person edited",
-     "        if False:\n            # A person edited"
+     "        if item.get(\"correction\"):\n            # Its author edited",
+     "        if False:\n            # Its author edited"
     ]
    ],
    "check": {
@@ -12542,7 +12542,7 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     " and not (highest[row[\"id\"]] == 1 and row[\"seq\"] <= horizon)]",
+     "\n            and not (highest[row[\"id\"]] == 1 and _counted_handed(row[\"kind\"], row[\"seq\"], horizon, agent_from))]",
      "]"
     ]
    ],
@@ -13437,11 +13437,11 @@
   },
   {
    "item": 452,
-   "act": "Only a person's message is recorded as handed, so an agent's read of an agent's words writes nothing",
+   "act": "An agent's read of its own message records nothing and writes nothing",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if row[\"kind\"] == \"human\" and highest",
+     "if row[\"author_id\"] != actor and highest",
      "if highest"
     ]
    ],
@@ -25971,6 +25971,188 @@
    ],
    "check": {
     "python": "test_outcome_ends.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits its own message in place",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "message = self._editable(db, actor, target[\"message_id\"], people=False)",
+     "message = self._editable(db, actor, target[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits only a message it wrote",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if message[\"author_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)",
+     "        if False:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"struck\"] = None if item[\"withheld\"] else struck(",
+     "item[\"struck\"] = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through in the Reader",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "seen = None if held or current <= 1 else struck(",
+     "seen = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had not read it sees only the new words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if delivery is None or delivery[\"state\"] != \"acknowledged\":",
+     "if delivery is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes the message unread again for a person who had read it",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "db.execute(\"UPDATE deliveries SET state='pending' WHERE id=?\", (delivery[\"id\"],))",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person's edit strikes nothing and leaves the message read",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if self._actor_kind(db, actor) == \"agent\" else 0",
+     "if True else 0"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The struck words are what was last read, not the revision before",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
+     "ON CONFLICT(actor_id,message_id) DO NOTHING"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Another agent's read of an agent's message is recorded, and corrected on an edit",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return agent_from is None or seq < agent_from",
+     "    return True"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words sit where they stood, counted as a page counts",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return len(text.encode(\"utf-16-le\")) // 2",
+     "    return len(text)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card's excerpt strikes only what it shows",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        cuts = [cut for cut in cuts if cut[\"at\"] < _units(shown)]",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The CLI's edit is fenced on the revision read",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "{\"body\": self.text()}, {\"message_revision\": options.expected})",
+     "{\"body\": self.text()}, {\"message_revision\": 1})"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The brief says a correction to one's own words is an edit",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "fix words you wrote, in place: a correction to your own words is an edit",
+     "fix words you wrote, in place"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
    }
   }
  ]

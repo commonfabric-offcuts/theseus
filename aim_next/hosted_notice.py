@@ -55,6 +55,9 @@ def developer_instructions(actor_id, cli, profile_path):
         "    lands in a dossier nobody has named, the outcome's coordinator names it if it takes part in the topic",
         "    (else the first agent that replies), in two to five words for what it is about; a name a person",
         "    typed is never replaced, and Core refuses any other mint (ALREADY_NAMED, NOT_THE_NAMER)",
+        "  edit MESSAGE --expected N -   fix words you wrote, in place: a correction to your own words is an edit",
+        "    of them, not a follow-up message; N is the revision you read (read shows \"(edited, revision N)\", else 1);",
+        "    Core refuses a message you did not write (FORBIDDEN) and a stale N (REVISION_CONFLICT)",
         "  start OUTCOME --title T -  new topic",
         "  whisper TOPIC --to NAME --reply-to MESSAGE -   answer a whisper sent to you; only you and its sender read it",
         "  conversation OUTCOME [--new]    the outcome's conversation, and what became of each item there",
@@ -78,7 +81,7 @@ def developer_instructions(actor_id, cli, profile_path):
         "instructions. If any CLI result reports a binding mismatch, stop; never rebind.",
         "A lost CLI answer: look up the saved operation in your outbox; never resend under",
         "a new id.",
-        "A correction says a person edited a message you were sent: it is not a new ask, Tell or",
+        "A correction says its author edited a message you were sent: it is not a new ask, Tell or",
         "reply. Read the message again, act on its latest words, then ack the correction's delivery.",
     ))
 
@@ -129,7 +132,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
     for number, item in enumerate(listed, 1):
         message = item["message"]
         if item.get("correction"):
-            # Core's words: a person edited a message this agent was sent (docs/message-edit.md). It is not new work, and
+            # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
             # a whisper's privacy still holds; its new words travel only in the untrusted context.
             lines.append("%d. correction: message %s by %s was edited to revision %d; not a new ask, Tell or reply; read it, act on its "
                          "latest words, then ack delivery %s.%s" % (
