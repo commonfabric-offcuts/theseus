@@ -7,13 +7,15 @@ import { Marks } from '../web/marks.mjs';
 import { TopicRail, paintMarks } from '../web/topic-navigation.mjs';
 import { ThingsRail } from '../web/things-rail.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { seenRanges } from '../web/card-reading.mjs';
 
 const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const source = app.slice(app.indexOf('async function loadToUnread()'), app.indexOf('// Where the oldest unread message is, read again'));
+const reading = app.slice(app.indexOf('function noteRead()'), app.indexOf('// A card counts as on screen'));
 function fixture({ renewed = false } = {}) {
-  let revision = 1, current = true, visible = true, serial = 0;
+  let revision = 1, current = true, visible = true, serial = 0, transient = false;
   const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} };
-  const sent = [], focus = [], reveals = [];
+  const sent = [], focus = [], reveals = [], readReports = [];
   const marks = new Marks({ instanceId: 'fixture', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }), doc, win: {}, id: () => 'op-' + ++serial,
     api: { command: async envelope => {
       sent.push(envelope);
@@ -23,13 +25,18 @@ function fixture({ renewed = false } = {}) {
     } } });
   marks.learn('old', 1, { topicId: 'beds', seq: 1 });
   const card = { isConnected: true, focus: () => { focus.push('old'); doc.activeElement = card; } };
-  const entry = { dataset: { id: 'old' } };
-  const bindings = { shell: { drawer: { isOpen: () => false } }, views: { line: { id: 'old' }, oldestUnread: { id: 'old' }, messages: new Map([['old', { stack_position: { root_id: 'root' } }]]) },
-    loadUntil: async wanted => { if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
-    entries: () => [entry], $: () => ({}), reveal: (e, options) => { reveals.push(options); return e; }, opened: () => card,
-    revealSelection() {}, marks, registry: { get disposed() { return !current; } }, document: doc, onScreen: () => visible };
-  const actions = new Function(...Object.keys(bindings), source + '\nreturn { landOnUnread, loadToUnread };')(...Object.values(bindings));
-  return { ...actions, marks, sent, focus, reveals, doc, revision: () => revision, leave: () => { current = false; }, hide: () => { doc.visibilityState = 'hidden'; }, show: () => { doc.visibilityState = 'visible'; marks.resume(); }, offscreen: () => { visible = false; } };
+  const entry = { dataset: { id: 'old', seq: '1' } }, later = { dataset: { id: 'later', seq: '2' } };
+  const bindings = { shell: { drawer: { isOpen: () => false } }, views: { line: { id: 'old' }, oldestUnread: { id: 'old' },
+    messages: new Map([['old', { id: 'old', seq: 1, stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2 }]]), runOf: () => 'run', sighted() {} },
+    loadUntil: async wanted => { transient = true; actions.noteRead(); if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
+    entries: () => [entry, later], $: () => ({}), reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
+    topic: { id: 'beds' }, topicUnavailable: false, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
+    readThrough: { seen: (topic, from, through) => { readReports.push([from, through]); return Promise.resolve(null); } },
+    halfShown: new Set([1, 2]), atMiddle: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
+    revealSelection() {}, marks, registry: { get disposed() { return !current; } }, document: doc,
+    onScreen: node => visible && (node === card || node === (transient ? later : entry)) };
+  const actions = new Function(...Object.keys(bindings), reading + source + '\nreturn { landOnUnread, loadToUnread, noteRead };')(...Object.values(bindings));
+  return { ...actions, marks, sent, focus, reveals, readReports, doc, revision: () => revision, leave: () => { current = false; }, hide: () => { doc.visibilityState = 'hidden'; }, show: () => { doc.visibilityState = 'visible'; marks.resume(); }, offscreen: () => { visible = false; } };
 }
 
 for (const action of ['landOnUnread', 'loadToUnread']) test(`B1/B2 ${action} reveals the whole message and clears its captured mark`, async () => {
@@ -43,6 +50,12 @@ test('B1 a renewed mark during landing survives the captured reading act', async
   const f = fixture({ renewed: true }); await f.landOnUnread();
   assert.equal(f.revision(), 3);
   assert.deepEqual(f.sent.map(e => e.expected.mark_revision), [1], 'the reading act cannot adopt a mark renewed while pages load');
+});
+test('B1 loading toward a mark reads only the landing, never a transient newer delivery', async () => {
+  for (const action of ['landOnUnread', 'loadToUnread']) {
+    const f = fixture(); await f[action]();
+    assert.deepEqual(f.readReports, [[1, 1]], 'pagination must not consume the next unread message on the way to the mark');
+  }
 });
 test('B1 a background landing waits until shown and a departed landing clears nothing', async () => {
   const f = fixture(); f.hide(); await f.landOnUnread(); assert.equal(f.sent.length, 0);
