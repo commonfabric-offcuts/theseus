@@ -269,6 +269,25 @@ export function drawnBelow(stack, here = () => null) {
   return ![stack.head, ...stack.replies].some(item => here(item) === place);
 }
 
+// The dossier a stack is drawn from: Core's first message of it (positionOf),
+// or the stack's own head where Core sent no position. A dossier whose first
+// message the page has not loaded is drawn as more than one stack.
+export const dossierOf = stack => positionOf(stack)?.root_id ?? stack.id;
+
+// The dossiers the reader starred a message in (item 635), by dossierOf: one
+// a stack drawn from it shows a starred message of (its acts as the page shows
+// them), or one whose position names a message the reader starred that the
+// page has not loaded (has(id), Core's word for the rest). Its title bar shows
+// the reader's star, and Move below More is refused while it does.
+export function starredDossiers(stacks, has) {
+  const found = new Set();
+  for (const stack of stacks) {
+    const position = positionOf(stack);
+    if ([stack.head, ...stack.replies].some(item => actsOf(item).starred === true) || (position?.starred ?? []).some(id => !has(id))) found.add(dossierOf(stack));
+  }
+  return found;
+}
+
 // A dossier's place as Core holds it for the reader (positionOf): its first
 // message and the revision of their stack.aside act on it, which each Move
 // below More and Bring back that changes it raises, made on any device. Acts

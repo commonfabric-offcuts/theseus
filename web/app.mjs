@@ -1255,8 +1255,10 @@ function paintReaderStar() {
   const button = $('reader-star'), item = readerFeedItem();
   button.hidden = !item;
   if (!item) return;
-  const starred = Boolean(stackFeed.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me';
-  button.textContent = starred ? '★' : '☆';
+  const starred = Boolean(stackFeed.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me', glyph = starred ? '★' : '☆';
+  // Its text is replaced only when it changes: Safari sends no click for a press whose text left the page before the
+  // release, and a repaint held for a press runs at that release (press-hold.mjs).
+  if (button.textContent !== glyph) button.textContent = glyph;
   button.setAttribute('aria-pressed', String(starred));
   button.setAttribute('aria-label', words); button.title = words;
 }
@@ -1278,7 +1280,9 @@ function paintReaderAside() {
   button.hidden = !offer;
   if (!offer) return;
   const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
-  button.querySelector('.aside-count').textContent = String(offer.count);
+  // The number kept where it has not changed, as the star's glyph is (paintReaderStar).
+  const count = button.querySelector('.aside-count'), shown = String(offer.count);
+  if (count.textContent !== shown) count.textContent = shown;
   button.setAttribute('aria-pressed', String(offer.below));
   button.setAttribute('aria-label', words); button.title = words;
 }
@@ -1299,9 +1303,11 @@ function paintReaderTitle() {
   const p = registry?.current;
   if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
 }
+// A dossier holding a message the reader starred stays above More (item 635): the button shows as ever, and a
+// press says why under it, moving nothing.
 function asideFromReader() {
   const offer = readerAside();
-  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false, at: $('reader-aside') });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.

@@ -44,6 +44,13 @@ message too: the page reads its acts with the loaded messages', and again
 whenever they change (`TopicViews.showAlone`), so a star made on another
 device shows there as well.
 
+Painted again, the star's glyph and the archive button's number below keep
+their text where it has not changed (`paintReaderStar`, `paintReaderAside`):
+Safari sends no click for a press whose text left the page before the
+release, and a repaint held for a press (`press-hold.mjs`) runs at that
+release, so a press on either while the page read something was lost there
+(item 635).
+
 Beside the star, an archive glyph with a number is Move below More for the
 message's whole dossier (item 378): the same act as the card's ⋯ Move below
 More (`StackFeed.setAside`), and the number is how many messages move below
@@ -60,7 +67,15 @@ an older message, or of another topic, from an About link) or a message Core
 sent no place for, which ⋯ offers no move either: moving on to one of these
 from a message it showed for, the button goes; a 44 pixel target under a finger (`paintReaderAside` in
 `web/app.mjs`, `StackFeed.asideOffer`). Pressed, it shows the move at once,
-while Core has it; a refusal puts it back unpressed and the page says why. A
+while Core has it; a refusal puts it back unpressed and the page says why.
+A dossier holding a message the reader starred (its title bar shows their
+star, item 635) is not moved: the button shows as ever, and a press says
+"This dossier has a message you starred: unstar it to move it below More"
+just under it, over the message, moving nothing and keeping the focus on the
+button; the next press or key takes the words away. Unstarring (the star
+beside it) frees it. A star given in the Reader to a message of a dossier
+below More brings the dossier back above More, and the button offers the move
+again. A
 phone's header has no room for ←, the title with its star and this button,
 ↑ ↓, ⋯ and ✕ in one row of 44 pixel targets, so there (480 pixels wide or
 less) the title, its star and the archive button take a second row, and who

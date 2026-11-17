@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT, starredDossiers, dossierOf } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -533,4 +533,33 @@ test('the newest seven are counted when the dossier is drawn open: a message arr
   assert.deepEqual(earlierOf(eleven, 'folded', { held: 'm4' }), []);
   // Not held (drawn open for the first time): the last seven, as before.
   assert.deepEqual(ids(earlierOf(eleven, 'open')), ['m1', 'm2', 'm3', 'm4']);
+});
+
+// Item 635: a dossier's title bar shows the reader's star when any message of it is starred by them, and the move
+// below More is refused while it does. The page reads its loaded messages' acts as it shows them, and Core's position
+// (starred) for the messages it has not loaded.
+test('a dossier the reader starred any message of: a later reply, one Core names unloaded, never another reader\'s or one outside it', () => {
+  const at = (root, starred = []) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, starred, at: { messages: 0, acts: 1 } });
+  const items = [message(1, { stack_position: at('m1') }), message(2, { reply_to: 'm1', stack_position: at('m1') }),
+    message(3, { reply_to: 'm2', stack_position: at('m1') }), message(4, { stack_position: at('m4') }), message(5, { reply_to: 'm4', stack_position: at('m4') })];
+  const has = id => items.some(item => item.id === id);
+  const starring = (id, on = true) => items.map(item => (item.id === id ? { ...item, acts: { starred: on, star_revision: 1 } } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(items), has)], [], 'no star, no dossier starred');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m3')), has)], ['m1'], 'a star on its latest reply, not only its first message');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m1')), has)], ['m1'], 'its first message\'s star as before');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m3', false)), has)], [], 'unstarred, it shows none');
+  // Core names a star of the reader's on a message the page has not loaded: the dossier is starred.
+  const named = items.map(item => (item.stack_position.root_id === 'm4' ? { ...item, stack_position: at('m4', ['m9']) } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(named), has)], ['m4'], 'a star Core names on a message not loaded');
+  // Core's word on a message the page has loaded gives way to the page's own acts: taken off here, it shows none.
+  const stale = starring('m3', false).map(item => (item.stack_position.root_id === 'm1' ? { ...item, stack_position: at('m1', ['m3']) } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(stale), has)], [], 'a star taken off on the page, before Core is read again');
+  // Another reader's star is never in this reader's acts or position; a star outside a dossier stars only its own.
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m5')), has)], ['m4'], 'a star in one dossier never stars another');
+  // A dossier drawn as two stacks (its first message not loaded): both stacks are the one dossier.
+  const parted = [message(6, { reply_to: 'm0', stack_position: at('m0') }), message(7, { reply_to: 'm0', stack_position: at('m0') }),
+    message(8, { reply_to: 'm7', stack_position: at('m0'), acts: { starred: true, star_revision: 1 } })];
+  const stacks = stacksOf(parted);
+  assert.equal(stacks.length, 2);
+  assert.deepEqual([stacks.map(dossierOf), [...starredDossiers(stacks, id => parted.some(item => item.id === id))]], [['m0', 'm0'], ['m0']]);
 });

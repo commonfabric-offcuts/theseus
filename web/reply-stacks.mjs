@@ -21,7 +21,7 @@
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover } from './stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
@@ -116,7 +116,7 @@ export function topOf(list, entry) {
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
-    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });
+    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });
   return states.get(list);
 }
 
@@ -362,7 +362,8 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // The head's row, set into its card: its short name (renamed in place), who
 // started the stack and the marks of what that first message carries (an
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
-// replied and who, and what is new.
+// replied and who, and what is new. starred: the reader starred a message of
+// the dossier, any of them (item 635, starredDossiers), not only its first.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
@@ -502,6 +503,8 @@ function paintStack(section, stack, byId, context) {
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen);
+  // The title bar shows the reader's star when any message of the dossier is starred by them (item 635).
+  const marked = state.starred.has(dossierOf(stack));
   if (open && headBefore && !starred && !state.folded.has(stack.id) && !state.whole.has(stack.id)) state.earlierRows.add(stack.id);
   const kept = item => {
     if (state.kept.has(item.id)) return true;
@@ -510,7 +513,7 @@ function paintStack(section, stack, byId, context) {
   };
   head.hidden = false;
   if (!single) opened(head);
-  const shown = single ? { name: messagePreview(stack.head) } : paintHead(cardIn(head), stack, { open, starred, state, unread, nameOf, doc });
+  const shown = single ? { name: messagePreview(stack.head) } : paintHead(cardIn(head), stack, { open, starred: marked, state, unread, nameOf, doc });
   p.toggle.dataset.state = level;
   Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(coordination && level === 'head' && state.renaming !== stack.id) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
@@ -621,6 +624,8 @@ export function arrangeStacks(list, messages, options = {}) {
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
   const stacks = ordered(gather(loaded, { viewer }));
   state.stacks = stacks;
+  // The dossiers whose title bar shows the reader's star, and which Move below More refuses (item 635).
+  state.starred = starredDossiers(stacks, id => messages.has(id));
   state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
   state.coordination = new Set(stacks.filter(stack => coordinationStack(stack, quiet)).map(stack => stack.id));

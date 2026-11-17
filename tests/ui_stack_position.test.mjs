@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { laterPosition, positionOf } from '../web/stack-order.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 const position = (messages, acts, extra = {}) => ({ root_id:'root', through:4, aside_revision:1, below:true, at:{messages,acts}, ...extra });
+test('cover revisions and unloaded dossier stars each refresh partial stacks without stale reads reversing either', () => {
+  const views = new TopicViews({ instanceId:'i', topicId:'t' });
+  const cover = { stands:'Materials chosen', waiting:[], payload:null };
+  const start = position(4,1,{ below:false, cover, cover_revision:1, starred:[] });
+  for (const id of ['reply-a', 'reply-b']) views.messages.set(id, { id, stack_position:start });
+  const stars = position(4,2,{ ...start, at:{messages:4,acts:2}, starred:['unloaded-root'] });
+  assert.equal(views.learnPositions([{ message_id:'reply-a', stack_position:stars }]), true, 'a star alone refreshes the title bar');
+  const changed = { ...stars, at:{messages:4,acts:3}, cover:{ ...cover, stands:'Roof repaired' }, cover_revision:2 };
+  assert.equal(views.learnPositions([{ message_id:'reply-b', stack_position:changed }]), true, 'a cover alone refreshes the sheet');
+  assert.equal(views.learnPositions([{ message_id:'reply-a', stack_position:start }]), false, 'an old page reverses neither');
+  for (const id of ['reply-a', 'reply-b']) assert.deepEqual(views.messages.get(id).stack_position, changed);
+  const later = { ...changed, at:{messages:4,acts:4} };
+  assert.equal(views.learnPositions([{ message_id:'reply-a', stack_position:later }]), false, 'a watermark alone redraws nothing');
+});
 test('an old page cannot hide a revived dossier or undo a newer join', () => {
   const revived = position(8,2,{below:false});
   assert.equal(laterPosition(revived, position(7,2)), revived);

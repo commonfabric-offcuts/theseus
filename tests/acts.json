@@ -2500,7 +2500,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on });",
+     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
      ""
     ]
    ],
@@ -6926,12 +6926,12 @@
   },
   {
    "item": 355,
-   "act": "A position read again at a later snapshot of the same place moves no dossier and draws no stack again",
+   "act": "A position read again whose first message, through, below or aside revision changed draws the stacks again",
    "break": [
     [
      "web/topic-views.mjs",
-     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);",
-     "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -6940,12 +6940,12 @@
   },
   {
    "item": 355,
-   "act": "A position read again whose first message, through, below or aside revision changed draws the stacks again",
+   "act": "A position read again at a later snapshot of the same place moves no dossier and draws no stack again",
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'cover_revision'];"
+     "const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && starsOf(a) === starsOf(b) : !b);",
+     "const samePlace = (a, b) => JSON.stringify(a) === JSON.stringify(b);"
     ]
    ],
    "check": {
@@ -13656,8 +13656,8 @@
    "break": [
     [
      "aim_next/stacks.py",
-     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"],\n",
-     ""
+     "                               \"name\": acts[\"name\"], \"name_revision\": acts[\"name_revision\"], \"starred\": starred,\n",
+     "                               \"starred\": starred,\n"
     ]
    ],
    "check": {
@@ -19890,8 +19890,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -28428,6 +28428,313 @@
    ],
    "check": {
     "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core refuses Move below More for a dossier holding a message the reader starred, with its reason, at every entry point",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if value[\"through\"] is not None and starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):\n                raise Refusal(*HELD_BY_STAR)",
+     "            if False:\n                raise Refusal(*HELD_BY_STAR)"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Starring a message in a dossier below More brings it back above More for that reader, in the same act",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "back = self._brought_back(db, actor, message) if kind == \"star\" and value[\"starred\"] else None",
+     "back = None"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 368,
+   "act": "A position naming the reader's star in the dossier is never below More, so a starred stack joined into it keeps it above More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"below\": through is not None and not starred and (others is None or others <= through),",
+     "\"below\": through is not None and (others is None or others <= through),"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The page counts a dossier starred by the reader for any message of it, loaded or named unloaded by Core",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "if ([stack.head, ...stack.replies].some(item => actsOf(item).starred === true) || (position?.starred ?? []).some(id => !has(id))) found.add(dossierOf(stack));",
+     "if (actsOf(stack.head).starred === true) found.add(dossierOf(stack));"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_order.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The title bar shows the reader's star when any message of the dossier is starred by them",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "const marked = state.starred.has(dossierOf(stack));",
+     "const marked = starred;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star title bar"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Move below More on a dossier whose title bar shows the reader's star moves nothing and says why where it was pressed",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star hold"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A star in a dossier below More shows it back above More on the page at once",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
+     "this.act('message.star', item, { starred: on }, []);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star brings back"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core's refusal of the move, for a star the page has not read, is said with its reason and the dossier stays above More",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "raise Refusal(*HELD_BY_STAR)",
+     "pass"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star refused by Core"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The Reader's star keeps its glyph's text when painted again, so a press a repaint lands during is taken",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (button.textContent !== glyph) button.textContent = glyph;",
+     "  button.textContent = glyph;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the Reader's star and archive button take a press that a repaint lands during"
+   }
+  },
+  {
+   "item": 635,
+   "act": "The Reader's archive button keeps its number's text when painted again, so a press a repaint lands during is taken",
+   "break": [
+    [
+     "web/app.mjs",
+     "  if (count.textContent !== shown) count.textContent = shown;",
+     "  count.textContent = shown;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks the Reader's star and archive button take a press that a repaint lands during"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing, and says why where it was asked for",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }",
+     "if (below && undoable && this.heldByStar(stack)) { this.held(stack, at); return false; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star for a dossier the page does not draw says why on the status line",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    this.status(HELD_BY_STAR);\n  }\n  // Whether a place",
+     "  }\n  // Whether a place"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo hidden"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star does not say it was put back",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (last(at) !== false) this.say('Put back');",
+     "last(at); this.say('Put back');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows over what it is said beside where the window has no room below, at each width in the browser",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = true;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star note over"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows over what it is said beside where the window has no room below",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = true;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows under what it is said beside where the window has room below",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "A press note shows under what it is said beside where the window has room on neither side",
+   "break": [
+    [
+     "web/press-note.mjs",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE || at.top - GAP - height < EDGE;",
+     "const below = at.bottom + GAP + height <= view.innerHeight - EDGE;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_press_note.test.mjs"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Core never refuses a Bring back, even of a dossier holding the reader's star",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "            if value[\"through\"] is not None and starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):",
+     "            if starred_in(db, actor, message[\"topic_id\"], StackRoots(db, actor)).get(message[\"id\"]):"
+    ]
+   ],
+   "check": {
+    "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "⌘Z or Undo in ⋯ held by the reader's star says why under the dossier's title bar, brought into view where it is out of the window",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "(say(bar) || (revealSelection(bar), say(bar)))",
+     "say(bar)"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Undo in ⋯ held by the reader's star says why by the message whose ⋯ it was, a message of the dossier",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "act: () => this.undo(line())",
+     "act: () => this.undo()"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "An undo held by the reader's star is never said beside a message of another dossier, the one the keys or the ⋯ were on",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "if (at && this.ofDossier(at, stack) && say(at)) return;",
+     "if (at && say(at)) return;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
    }
   }
  ]

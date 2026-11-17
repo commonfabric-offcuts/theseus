@@ -321,6 +321,11 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   is the same act, labelled with how many messages move with it (the whole dossier's, every stack the page draws of it)
   (item 378). Your own replies leave it there; a new reply from
   someone else brings it back. Other messages still swipe to fold individually.
+  A dossier holding a message you starred stays above More for you (item
+  635): the swipe, Move below More and the archive button show as ever, and a
+  press says "This dossier has a message you starred: unstar it to move it
+  below More" where it was, moving nothing; starring a message in a dossier
+  below More brings it back.
 - **Where the keys do nothing.** In writing (a text field, the Reader, a
   composer) and in a pop-up the keys are the writing's: ⌘← and ⌘→ are the
   line's start and end, ⌘↑ and ⌘↓ the writing's, and no stack moves. A pane not on screen (the
