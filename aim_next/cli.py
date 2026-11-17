@@ -180,7 +180,7 @@ LEGACY_VERBS = ("binding", "view", "command")
 HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
-         "| owner OUTCOME ACTOR "
+         "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B [--go-ahead] | --tells A,B] [--part] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B [--go-ahead] | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--operation ID] [--attach FILE]... TEXT|- "
@@ -321,6 +321,9 @@ def _parser():
     coordinator.add_argument("outcome")
     coordinator.add_argument("name", nargs="?")
     coordinator.add_argument("--none", action="store_true")
+    participant = verb("participant")
+    participant.add_argument("topic")
+    participant.add_argument("name")
     conversation = verb("conversation")
     conversation.add_argument("outcome")
     conversation.add_argument("--new", action="store_true")
@@ -810,6 +813,12 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs):
                               {"workspace_revision": workspace["version"]})
         self.out.plain("%s answers in the conversation of %s" % (result["coordinator_id"], result["workspace_id"])
                        if result["coordinator_id"] else "nobody answers in the conversation of %s yet" % result["workspace_id"])
+
+    def do_participant(self):
+        topic = self.view("topic", {"topic_id": self.options.topic})["topic"]
+        result = self.command("participation.set", {"topic_id": topic["id"]},
+                              {"actor_id": self.options.name, "present": True}, {"topic_revision": topic["version"]})
+        self.out.plain("%s takes part in %s" % (result["actor_id"], result["topic_id"]))
 
     def do_conversation(self):
         options = self.options

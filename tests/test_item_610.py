@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest import mock
 
 import test_agent_verbs as verbs
 
@@ -59,7 +60,7 @@ class Item610(verbs.AgentVerbCase):
 
     def test_item_610_each_cli_verb_plain_and_json_retains_caller_and_retry_receipt(self):
         for verb, destination, member, json_mode in (
-                ("coordinator", "w1", "agent-b", False), ("coordinator", "w1", "agent-a", True),
+                ("coordinator", "w1", "owner", False), ("coordinator", "w1", "agent-a", True),
                 ("participant", "t1", "outsider", False), ("participant", "t1", "other-reader", True)):
             with self.subTest(verb=verb, json=json_mode):
                 before = set(self.saved("agent-b"))
@@ -70,6 +71,10 @@ class Item610(verbs.AgentVerbCase):
                 receipt = self.store.view("agent-b", "operation", {"operation_id": op})
                 self.committed(receipt)
                 self.recorded_by_caller(op, receipt)
+                if verb == "coordinator":
+                    self.assertEqual(self.sql("SELECT coordinator_id FROM workspaces WHERE id='w1'"), [(member,)])
+                else:
+                    self.assertEqual(self.sql("SELECT active FROM topic_participants WHERE topic_id='t1' AND actor_id=?", (member,)), [(1,)])
                 if json_mode:
                     self.assertEqual(json.loads(out.splitlines()[-1]), receipt)
                 else:
@@ -96,6 +101,31 @@ class Item610(verbs.AgentVerbCase):
             self.rejected(self.request(kind, "agent-a"), "INVALID_RECIPIENT")
             self.assertEqual(self.public_state(), state)
             self.sql("UPDATE actors SET enabled=1 WHERE id='agent-a'")
+
+    def test_item_610_cli_refusals_write_no_setting_or_membership(self):
+        for verb, destination in (("coordinator", "w1"), ("participant", "t1")):
+            for actor, member, error in (("agent-b", "missing", "INVALID_RECIPIENT"),
+                                          ("outsider", "agent-a", "FORBIDDEN")):
+                with self.subTest(verb=verb, error=error):
+                    state = self.public_state()
+                    code, out, err = self.run_cli(verb, destination, member, actor=actor)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn(error, err)
+                    self.assertEqual(self.public_state(), state)
+            # Another act wins between the verb's read and write: its captured revision still fences it.
+            original = verbs.Store.command
+
+            def changed(store, actor, envelope):
+                table, record = ("workspaces", "w1") if verb == "coordinator" else ("topics", "t1")
+                self.sql("UPDATE " + table + " SET version=version+1 WHERE id=?", (record,))
+                return original(store, actor, envelope)
+
+            with mock.patch.object(verbs.Store, "command", changed):
+                code, out, err = self.run_cli(verb, destination, "agent-b", actor="agent-b")
+            self.assertEqual((code, out), (2, ""))
+            self.assertIn("REVISION_CONFLICT", err)
+            self.assertEqual(self.sql("SELECT coordinator_id FROM workspaces WHERE id='w1'"), [("agent-a",)])
+            self.assertEqual(self.sql("SELECT active FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-b'"), [])
 
 
 if __name__ == "__main__":
