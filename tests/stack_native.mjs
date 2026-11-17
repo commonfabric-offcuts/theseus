@@ -1381,7 +1381,33 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(after.gaps.length, 1, `${name}: the older cards are one even run: ${seen}`);
       assert.ok(after.gaps[0] > 0 && Math.abs(after.first - (before.lastBottom + after.gaps[0])) <= 1, `${name}: the first older card follows the last shown as each follows the one before: ${seen}`);
       assert.equal(after.sideways, false, `${name}: nothing runs off the side`);
-      observations.push({ name: 'Earlier messages shows a dossier\'s older replies where the button was', engine, device: name, before, after });
+      // Pressed again (re-review B1): the last card above the button is now o5, a card of its own of that same
+      // dossier. What the second press loads of it (o4..o1 and its first message) comes in below o5 too, newest
+      // first, the same even run; nothing shown moves, and the stack higher up still takes none of it.
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const last = older.at(-1), oldest = ['o4', 'o3', 'o2', 'o1', 'root'];
+      const again = () => p.evaluate(`(()=>{const key=${key},box=e=>e.getBoundingClientRect(),card=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]');
+        const o=card(${JSON.stringify(ids[last])}),x=card(${JSON.stringify(ids.x)}),a=card(${JSON.stringify(ids.a5)}),s=a.closest('.reply-stack'),old=${JSON.stringify(oldest.map(k => ids[k]))}.map(card).filter(Boolean);
+        const run=[o,...old],gaps=run.slice(1).map((e,i)=>Math.round(box(e).top-box(run[i]).bottom));
+        return {lastTop:Math.round(box(o).top),xTop:Math.round(box(x).top),aTop:Math.round(box(a).top),head:key(s?.dataset.stack??null),count:s?.querySelector('.stack-count')?.textContent??null,
+          loaded:old.length,shown:old.filter(e=>box(e).height>0).length,order:old.every((e,i)=>!i||box(e).top>box(old[i-1]).top),below:old.every(e=>box(e).top>=box(o).bottom),
+          into:[...new Set(old.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],gaps:[...new Set(gaps)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const pressed = await again();
+      assert.equal(pressed.loaded, 0, `${name}: before the second press none of the oldest five is loaded: ${JSON.stringify(pressed)}`);
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`${JSON.stringify(oldest.map(k => ids[k]))}.every(id=>document.querySelector('#messages [data-id="'+id+'"]'))`), `${name}: Earlier messages, pressed again, loads the oldest five`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const twice = await again();
+      await p.evaluate(`document.querySelector('#messages [data-id="${ids[last]}"]').scrollIntoView({block:'start'})`);
+      await shots(2);
+      const seen2 = JSON.stringify({ pressed, twice });
+      assert.ok([['lastTop'], ['xTop'], ['aTop']].every(([k]) => Math.abs(twice[k] - pressed[k]) <= 1), `${name}: pressed again, the cards already shown hold still: ${seen2}`);
+      assert.deepEqual([twice.head, twice.count], ['a1', before.count], `${name}: pressed again, the stack higher up keeps its head and its count: ${seen2}`);
+      assert.deepEqual([twice.shown, twice.order, twice.below], [5, true, true], `${name}: pressed again, each of the oldest five shows below o5, newest first: ${seen2}`);
+      assert.deepEqual(twice.into, [null], `${name}: pressed again, none goes into the stack higher up, or into a stack of its own: ${seen2}`);
+      assert.deepEqual(twice.gaps, after.gaps, `${name}: pressed again, they follow o5 as the first press's cards follow one another: ${seen2}`);
+      assert.equal(twice.sideways, false, `${name}: pressed again, nothing runs off the side`);
+      observations.push({ name: 'Earlier messages shows a dossier\'s older replies where the button was', engine, device: name, before, after, pressed, twice });
       assert.deepEqual(p.errors, []); await p.close();
     }
   });

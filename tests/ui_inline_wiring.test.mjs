@@ -3434,6 +3434,18 @@ test('More messages shows every older message it loads where its button was, tho
     'what was shown keeps its order and how it shows; below it, every older message, newest first, each shown');
   assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(6, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
     'the stack higher up keeps its head and its messages: no older reply goes into it, or into a stack of its own');
+  // Pressed again, the last card above the button is m6, a card of its own of that same dossier: the next older
+  // replies (m2..m5) show below it too, newest first, as cards of their own, and nothing shown moves; none goes into
+  // the stack higher up (the second press is where the fault showed, fix round's re-review B1).
+  const shown = drawn();
+  assert.deepEqual(shown.at(-1), ['m6', true], 'm6, a card of its own, is the last card above More');
+  f.api.view = async (name, args) => name === 'topic_messages' ? page(run(2, 5, seq => item(seq, 'm1', 'm1')), null, 1)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...shown, ['m5', true], ['m4', true], ['m3', true], ['m2', true]],
+    'pressed again: what was shown keeps its order, and below it every older message, newest first, each shown');
+  assert.deepEqual([['m37', 'm38', 'm39', 'm40', 'm41'].map(stackOf), run(2, 35, seq => stackOf('m' + seq)).filter(Boolean)], [Array(5).fill('m37'), []],
+    'pressed again, the stack higher up still keeps its head and its messages alone');
 });
 
 // Item 550, its fix round's B2: in a stack gathered under a first message the page has not loaded (m1), the message
