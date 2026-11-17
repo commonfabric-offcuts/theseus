@@ -2685,8 +2685,6 @@ function topicName(id) {
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
 async function openDestination(target, title, from = null) {
-  // The open topic's unread count lands on its oldest unread message here (item 613).
-  if (target.kind === 'topic' && target.at === 'unread' && topic && views && target.id === topic.id) return run(landOnUnread);
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
     // A message the page shows is landed on first, its stack opened; the

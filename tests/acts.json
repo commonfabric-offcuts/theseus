@@ -26341,21 +26341,6 @@
   },
   {
    "item": 613,
-   "act": "Pressed on the open topic's own row, the count lands on its oldest unread message in place",
-   "break": [
-    [
-     "web/app.mjs",
-     "  if (target.kind === 'topic' && target.at === 'unread' && topic && views && target.id === topic.id) return run(landOnUnread);\n",
-     ""
-    ]
-   ],
-   "check": {
-    "native": "reading",
-    "case": "reading unread count one press lands on the oldest unread message"
-   }
-  },
-  {
-   "item": 613,
    "act": "Landing on the oldest unread message reads in its dossier's first message too, so the dossier is drawn whole and the message shows in its place behind the earlier row, expanded as far as it",
    "break": [
     [
