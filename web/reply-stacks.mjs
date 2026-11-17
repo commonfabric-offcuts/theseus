@@ -422,7 +422,7 @@ function unhead(entry) {
 // row goes after its title row, which stays first.
 function paintFolded(entry, item, folded, { nameOf, doc }) {
   const card = cardIn(entry);
-  if (!folded) { foldedRows.get(card)?.remove(); card.querySelector(':scope > .message-author')?.classList.add('sr-only'); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
+  if (!folded) { foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
   let row = foldedRows.get(card);
   if (!row) {
     row = element(doc, 'span', 'message-folded');
