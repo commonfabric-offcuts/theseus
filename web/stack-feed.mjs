@@ -748,7 +748,7 @@ export class StackFeed {
   swipeAct(target, folds, through = false) {
     const gesture = this.gestureTarget(target);
     if (!gesture) return false;
-    if (gesture.whole && folds) return this.setAside(gesture.found.stack, true, { at: target.closest('.stack-head') });
+    if (gesture.whole && folds) return this.setAside(gesture.found.stack, true);
     if (gesture.whole && !folds && positionOf(gesture.found.stack)?.below) return this.setAside(gesture.found.stack, false);
     if (!gesture.item) return false;
     return through && folds ? this.foldThrough(gesture.found.stack, gesture.item) : this.setFold(gesture.item, folds, { focus: false });

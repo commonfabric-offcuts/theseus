@@ -2,8 +2,9 @@
 // nothing, set just under the control pressed or the dossier's title bar it
 // acted on, over the page, so nothing on the page moves for it. It is read
 // out as it shows (role=status). It goes at the person's next press or key,
-// and when another note is said; never on a timer. One note at a time, per
-// document.
+// and when another note is said; never on a timer. It takes no press itself
+// (aim.css: pointer-events none), so a press where it shows lands on what is
+// under it. One note at a time, per document.
 const shown = new WeakMap();
 // The room kept from the window's edges (the page's phone gutter), and from
 // what it is said beside.
