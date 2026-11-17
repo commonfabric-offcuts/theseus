@@ -227,6 +227,8 @@
    its absolutely positioned tab still belongs to the folder, not the card. */
 .reply-stack:not(.only-new *) .stack-replies>[data-id]{position:relative}
 .reply-stack:not(.only-new *) .stack-replies>[data-stack-overlap=true]{margin-top:calc(-1 * var(--stack-overlap))}
+/* What More messages filled the stack with: whole cards a sheet gap apart (reply-stacks.mjs, stack.filled). */
+.reply-stack:not(.only-new *) .stack-replies>[data-stack-filled=true]{margin-top:var(--stack-sheet-gap)}
 /* The overlap covers only this extra material, never the last words or a
    control. A wrapped entry puts that material on its actual visible face. */
 .reply-stack:not(.only-new *) :is(.message-card[data-stack-covered=true],.message-fold[data-stack-covered=true]>.message-card){padding-bottom:calc(1rem + var(--stack-overlap))}

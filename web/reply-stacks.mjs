@@ -613,13 +613,18 @@ function paintStack(section, stack, byId, context) {
   reconcile(p.replies, desired);
   // Presentation only: overlap adjacent visible faces, never a provenance
   // line. Hidden replies neither consume an edge nor separate two faces.
+  // Item 550: what More messages filled the stack with (stack.filled) is a
+  // run of whole cards a sheet gap apart, below the faces it showed: none
+  // overlaps another or covers the face above it, so nothing above moves
+  // and each card follows the one before as the first follows the last.
   for (const entry of [head, ...desired]) if (entry.dataset.id) {
     entry.dataset.stackOverlap = 'false'; entry.dataset.stackCovered = 'false';
+    entry.dataset.stackFilled = String(Boolean(stack.filled?.has(entry.dataset.id)));
   }
   let previousFace = open ? head : null;
   for (const entry of desired) {
     if (entry.hidden) continue;
-    if (!entry.dataset.id) { previousFace = null; continue; }
+    if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }
     entry.dataset.stackOverlap = String(Boolean(previousFace));
     if (previousFace) previousFace.dataset.stackCovered = 'true';
     previousFace = entry;

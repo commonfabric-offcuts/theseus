@@ -27008,6 +27008,21 @@
    "check": {
     "python": "test_stacks.py"
    }
+  },
+  {
+   "item": 550,
+   "act": "What More messages filled a stack with is a run of whole cards below what it showed, none overlapping or covering the card above, so nothing shown moves",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "    if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }",
+     "    if (!entry.dataset.id) { previousFace = null; continue; }"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "More messages shows the older messages where its button was"
+   }
   }
  ]
 }

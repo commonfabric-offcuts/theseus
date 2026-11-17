@@ -3394,6 +3394,11 @@ test('More messages shows the older messages of the dossier it fills where its b
   assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true]],
     'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
   assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
+  // Where the button was: the filled cards a run of whole cards, none overlapping another or covering the face above
+  // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do.
+  const faces = Object.fromEntries(entries(f.get('messages')).map(entry => [entry.dataset.id, [entry.dataset.stackFilled, entry.dataset.stackOverlap, entry.dataset.stackCovered]]));
+  assert.deepEqual(faces, { m40: ['false', 'false', 'false'], m41: ['false', 'false', 'true'], m42: ['false', 'true', 'true'], m43: ['false', 'true', 'true'], m44: ['false', 'true', 'false'],
+    m38: ['true', 'false', 'false'], m37: ['true', 'false', 'false'], m36: ['true', 'false', 'false'] });
 });
 
 // Item 550's limit on the Reader's title (item 561): under a source it names the dossier, by its name, else its first

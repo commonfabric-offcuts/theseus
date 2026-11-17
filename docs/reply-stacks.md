@@ -216,7 +216,9 @@ their acts.
   the reader's own has one as its head). More messages fills the stack shown
   last above it: the older messages it loads that are of that stack's
   dossier show at the stack's end, where the button was, newest first, each
-  whole at every level and never behind the earlier-messages row, and the
+  whole at every level and never behind the earlier-messages row, as a run
+  of cards a sheet gap apart that neither overlap one another nor tuck under
+  the card above, so nothing already shown moves, and the
   stack keeps the head it had (`fillFrom`, `reply-stacks.mjs`; `filled` in
   `gather`). The dossier's first message, once loaded, heads it all the same.
   Older messages of another dossier go into its stack, in time order.
