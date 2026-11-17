@@ -476,3 +476,14 @@ phone shows: the keyboard's own height and animation, the browser's bars
 appearing and going, and the caret being kept in view by the system. In
 WebKit, Tab moves only between fields and links unless Option is held, as in
 Safari; the check presses Option-Tab there.
+
+Item 648's bounded continuation checks (`tests/compose_swipe_648_protections.mjs`,
+`native-compose`, case names beginning "item 648 protections", "item 648 access"
+and "item 648 ledger") exercise the access guards through real HTTP refusal and
+state responses, native Retry access and read-only writing, negative gestures,
+and the ledger's actual binding-removal break with byte-for-byte restoration.
+The HTTP seams measure client behavior; they do not claim a backend permission
+transition. WebKit's phone-width input is desktop wheel with native taps. The
+unavailable native WebKit finger path remains harness item 720. Final physical
+phone acceptance is Tony's swipe on the coordinator's working preview, pending
+before independent review. Measured geometry uses named tolerances (#7715).

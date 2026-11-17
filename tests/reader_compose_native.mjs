@@ -22,6 +22,7 @@
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
 import { composeSwipe648 } from './compose_swipe_648.mjs';
+import { composeSwipe648Protections, observe648 } from './compose_swipe_648_protections.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -116,7 +117,8 @@ let browser, engine;
 // at: the fixture the page reads, the cases' own unless one says otherwise.
 async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, optionsOverride = {}) {
   const options = SHAPES[shape];
-  const context = await browser.newContext({ ...options, ...optionsOverride, colorScheme: scheme });
+  const { observeSwipe648 = false, ...contextOptions } = optionsOverride;
+  const context = await browser.newContext({ ...options, ...contextOptions, colorScheme: scheme });
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
   const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
@@ -124,6 +126,7 @@ async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, op
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
+  if (observeSwipe648) await observe648(p);
   await p.goto(at.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
@@ -287,6 +290,7 @@ const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySe
 
 async function run() {
   await composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine });
+  await composeSwipe648Protections({ check, page, open, press, until, picture, close, control, facts, engine, root, evidence });
   // Items 602 and 601 (tests/menu_glyphs.mjs): each item of the Reader's ⋯ shows its glyph before its words, in each
   // state an item has, at a phone's 320, 375 and 390 by touch and on a laptop, light and dark. Each width and theme
   // reads in a topic of its own, so what its acts change (a mark, a fold) is no other case's.

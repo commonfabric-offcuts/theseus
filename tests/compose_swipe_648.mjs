@@ -42,12 +42,12 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       const writing = await p.locator(field).inputValue();
       const audience = state === 'empty' ? '#inline-who-chip' : '#who-chip';
       const destination = await p.locator(audience).textContent();
-      let release;
+      let release, foldAttempts = 0;
       const gate = new Promise(resolve => { release = resolve; });
       if (state === 'busy' || state === 'refused') await p.route('**/api/command', async route => {
         if (route.request().postDataJSON()?.kind !== 'message.fold') return route.continue();
         await gate;
-        if (state === 'refused') return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: { code: 'STALE_REVISION', message: 'The message changed. Try folding it again.', retryable: false } }) });
+        if (state === 'refused' && ++foldAttempts === 1) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: { code: 'STALE_REVISION', message: 'The message changed. Try folding it again.', retryable: false } }) });
         return route.continue();
       });
       // Named tolerance: screenshots and containment allow 2 CSS pixels for engine rounding.
@@ -87,15 +87,25 @@ export async function composeSwipe648({ check, page, open, press, until, picture
           if (state === 'refused') await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded !== 'true', 'refusal restores the message', id);
           else await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded === 'true', 'the fold remains drawn', id);
         } else await until(p, () => document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the gesture has settled');
+        if (state === 'refused') {
+          await picture(p, 'item648-refused-rollback');
+          const recovered = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold');
+          // A native vertical wheel starts a new gesture; no timed gap/sleep.
+          if (!(engine === 'chromium' && p.touch)) await p.mouse.wheel(0, 60);
+          await swipe();
+          await (await recovered).finished();
+          await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded === 'true', 'a new native swipe recovers the refused fold', id);
+        }
+        assert.equal(await p.locator('#reader').evaluate(e => e.open), state !== 'empty', 'the Reader stays open throughout its fold');
         const folds = sent.filter(e => e.kind === 'message.fold');
-        assert.equal(folds.length, foldRequest ? 1 : 0, 'only the eligible right swipe issues one fold');
+        assert.equal(folds.length, state === 'refused' ? 2 : foldRequest ? 1 : 0, 'only eligible swipes issue one fold each, including refused recovery');
         if (folds.length) assert.deepEqual([folds[0].target.message_id, folds[0].args], [id, { folded: true }], 'only the message under the gesture folds');
         assert.equal(await p.locator(field).inputValue(), writing, 'exact writing is kept');
         assert.equal(await p.locator(audience).textContent(), destination, 'the destination is kept');
         assert.equal(sent.some(e => ['message.send', 'submission.prepare', 'note.save'].includes(e.kind)), false, 'nothing sent or saved as a private note');
         const acts = (await control({ method: 'acts_as', reader: facts.actor, topic_id: topic })).acts;
         const folded = acts.items.find(row => row.message_id === id)?.acts.folded ?? false;
-        assert.equal(folded, Boolean((foldRequest && state !== 'refused') || state === 'folded'), 'Core holds exactly the expected fold');
+        assert.equal(folded, Boolean(foldRequest || state === 'folded'), 'Core holds exactly the expected fold');
         assert.equal(sent.some(e => e.kind === 'message.fold' && e.target.message_id === other), false, 'the other message is untouched');
         const foreign = await control({ method: 'acts_as', reader: facts.agent, topic_id: topic });
         assert.equal(foreign.acts.items.find(row => row.message_id === id)?.acts.folded ?? false, false, 'another actor has no fold');
