@@ -7274,6 +7274,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const p = await open(topic, device, topic, ids.root);
       await away(p);
       if (device === 'laptop') {
+        // → past ⋯ lands on the right rail's place, as from the messages: once the rail has drawn its rows.
+        await until(() => p.evaluate("[...document.querySelectorAll('#things [role=treeitem]')].some(e=>e.checkVisibility())"), 'laptop: the right rail shows its rows');
         const seen = [await keyFrom(p, ids.root, 'menu', 'ArrowLeft'), await keyFrom(p, ids.root, 'aside', 'ArrowLeft'), await keyFrom(p, ids.root, 'reply', 'ArrowLeft'),
           await keyFrom(p, ids.root, 'reply', 'ArrowRight'), await keyFrom(p, ids.root, 'aside', 'ArrowRight'), await keyFrom(p, ids.root, 'menu', 'ArrowRight')];
         assert.deepEqual(seen, ['aside', 'reply', 'chevron', 'aside', 'menu', 'right rail'],
