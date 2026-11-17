@@ -549,6 +549,66 @@ def write_summary(out, summary):
     return out / "summary.json"
 
 
+def combine_unit_results(docs, plan, receipts):
+    """Fold Python partitions into one required step; name absent planned jobs.
+
+    The plan is an obligation even when a cancelled job wrote no summary. File
+    coverage is checked before adding counts, so half a suite is never Python.
+    """
+    required = sorted(set(name for job in plan for name in job['steps'].split(',')) |
+                      {name for doc in docs for name in doc.get('required', [])})
+    steps = [step for doc in docs for step in doc.get('steps', [])]
+    partitions = [job for job in plan if job.get('python_shard')]
+    jobs, missing_jobs, parts = [], [], []
+    for job in plan:
+        name = job.get('name', job['steps'])
+        matches = [(doc, receipt) for doc, receipt in zip(docs, receipts)
+                   if (receipt.get('shard') or {}).get('name') == name]
+        # Older receipts/tests name only the single step, without a job name.
+        if not matches and 'name' not in job:
+            matches = [(doc, receipt) for doc, receipt in zip(docs, receipts)
+                       if [step['name'] for step in doc.get('steps', [])] == job['steps'].split(',')]
+        present = len(matches) == 1
+        if present:
+            doc, _ = matches[0]
+            present = sorted(s['name'] for s in doc.get('steps', [])) == sorted(job['steps'].split(','))
+            if job.get('python_shard'):
+                index, total = map(int, job['python_shard'].split('/'))
+                actual = doc.get('python_shard') or {}
+                present = (present and actual.get('index') == index and actual.get('total') == total
+                           and sorted(actual.get('files', [])) == sorted(job['files']))
+                if present:
+                    parts.append(dict(doc['steps'][0], partition=actual))
+        jobs.append({'name': name, 'steps': job['steps'].split(','), 'missing': not present,
+                     **({'python_shard': job['python_shard']} if job.get('python_shard') else {})})
+        if not present:
+            missing_jobs.append(name)
+    if partitions:
+        python_results = sum(step['name'] == 'python-units' for step in steps)
+        steps = [step for step in steps if step['name'] != 'python-units']
+        expected = [job['python_shard'] for job in partitions]
+        files = [path for job in partitions for path in job['files']]
+        total = len(partitions)
+        coverage = (set(expected) == {'%d/%d' % (i, total) for i in range(1, total + 1)}
+                    and len(files) == len(set(files))
+                    and len(parts) == python_results)
+        if len(parts) == total and coverage:
+            counts = {'tests': sum(p['counts']['tests'] for p in parts),
+                      'status': 'OK' if all(p['counts'].get('status') == 'OK' for p in parts) else 'FAILED'}
+            for key in ('skipped', 'failures', 'errors', 'expected failures', 'unexpected successes'):
+                if any(key in p['counts'] for p in parts):
+                    counts[key] = sum(p['counts'].get(key, 0) for p in parts)
+            steps.append({'name': 'python-units', 'tool': 'unittest', 'counts': counts,
+                          'exit': max(p.get('exit', 1) for p in parts),
+                          'passed': all(p.get('passed') is True and p['counts'].get('tests', 0) > 0 for p in parts),
+                          'shards': parts})
+    names = [step['name'] for step in steps]
+    if len(names) != len(set(names)):
+        raise Refused('a step ran in two shards: %s' % sorted(n for n in set(names) if names.count(n) > 1))
+    missing = sorted(set(required) - set(names))
+    return steps, required, jobs, missing_jobs, missing
+
+
 def live_commit(cli, profile):
     """The live release's commit, read with the live agent CLI (--base), run by the system interpreter as the live code is."""
     try:
@@ -579,7 +639,7 @@ def quarantined(steps):
 
 
 def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None, base=None, report=None, live=None,
-          quarantine_at=None, scoped=None):
+          quarantine_at=None, scoped=None, python_shard=None):
     """Run every step serially (or only those named) and write summary.json; returns the summary.
 
     live: the live commit; when nothing changed since it is a path the skippable steps could see, they are skipped and
@@ -597,6 +657,14 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
     unknown = sorted(set(names) - set(REQUIRED))
     if unknown or not names:
         raise Refused("--only names steps the release check does not have: %s" % (unknown or "none"))
+    if python_shard is not None:
+        from tools import unit_shards
+        try:
+            unit_shards.partition(python_shard)
+        except ValueError as error:
+            raise Refused(str(error))
+        if names != ['python-units']:
+            raise Refused('--python-shard runs only python-units')
     if repeats < 1:
         raise Refused("--repeats is at least 1")
     skipped, ran_all, scoped_record = None, None, None
@@ -655,7 +723,18 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
 
         def one(name):
             if name == "python-units":
-                return run_step(name, [python, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], root, out, python_counts, "unittest")
+                result = run_step(name, [python, "-I", str(REPO / "tools/unit_shards.py"), "--root", str(root)]
+                                  + (["--shard", python_shard] if python_shard else []), root, out, python_counts, "unittest")
+                for line in Path(result['log']).read_text(errors='replace').splitlines():
+                    if line.startswith('{"unit_shards": 1,'):
+                        telemetry = json.loads(line)
+                        result['timing'] = telemetry['timing']
+                        if python_shard:
+                            result['python_shard'] = telemetry['python_shard']
+                # The hosted job log as well as the artifact carries the timing report.
+                if 'timing' in result:
+                    print(json.dumps({'python_shard': result.get('python_shard'), 'timing': result['timing']}), flush=True)
+                return result
             if name == "node-units":
                 return run_step(name, [node, "--test", "--test-reporter=tap"] + node_units(root), root, out, node_counts, "node --test")
             if name == DEPLOY_REFUSALS:
@@ -707,6 +786,8 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
                "started_at": started, "finished_at": now(), "required": list(REQUIRED), "steps": steps,
                "tree_unchanged": unchanged, "tree_after": {"head": after, "changes": changes},
                "passed": unchanged and [s["name"] for s in steps] == names and all(s["passed"] for s in steps)}
+    if python_shard is not None:
+        summary['python_shard'] = steps[0].get('python_shard')
     if only is not None:
         summary["only"] = names
     if skipped is not None:
@@ -887,6 +968,7 @@ def main(argv=None):
     parser.add_argument("--node", default=shutil.which("node"))
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--only")
+    parser.add_argument("--python-shard", metavar="INDEX/TOTAL")
     parser.add_argument("--live", metavar="COMMIT")
     parser.add_argument("--scoped", metavar="COMMIT")
     parser.add_argument("--cli")
@@ -903,7 +985,7 @@ def main(argv=None):
                         only=[name for name in args.only.split(",") if name] if args.only is not None else None,
                         base=(args.cli, args.profile) if args.base else None,
                         report=(args.cli, args.profile, args.report) if args.report else None, live=args.live,
-                        quarantine_at=args.quarantine_at, scoped=args.scoped)
+                        quarantine_at=args.quarantine_at, scoped=args.scoped, python_shard=args.python_shard)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         # Recorded only where the run itself could have written, so a refusal never changes the checkout.

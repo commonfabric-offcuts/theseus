@@ -79,6 +79,11 @@ The view adds `deployed_ms` (the same time in epoch milliseconds),
  "native": {"pass": 208, "total": 208, "steps": {"journal": {"pass": 10, "total": 10}, "...": {}}}}
 ```
 
+Hosted Python jobs are partitions of one `python-units` step, not extra release
+checks. The combined summary adds their disjoint test counts once; a missing
+partition leaves that required step missing and the deploy refuses it
+([unit-shards.md](unit-shards.md)).
+
 A release the deploy took with known reds (docs/tools.md, "Known reds": browser
 cases the live release fails too) also lists them; their cases stay counted as
 failed in `native`:

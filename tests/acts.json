@@ -26991,6 +26991,62 @@
    "check": {
     "python": "test_tools_start_line.py"
    }
+  },
+  {
+   "item": 665,
+   "act": "A cancelled unit job and every unreported required step are named missing",
+   "break": [
+    [
+     "tools/release_check.py",
+     "missing = sorted(set(required) - set(names))",
+     "missing = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Python passes only when every planned file shard reports",
+   "break": [
+    [
+     "tools/release_check.py",
+     "if len(parts) == total and coverage:",
+     "if parts and coverage:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Python files run once across the partitions",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "if path in selected)",
+     "if True)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Every Python run reports its slowest tests even after failure",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "slowest = sorted(result.times, key=lambda t: (-t['seconds'], t['test']))[:25]",
+     "slowest = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
   }
  ]
 }

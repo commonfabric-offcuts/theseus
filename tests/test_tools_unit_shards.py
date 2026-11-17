@@ -78,5 +78,162 @@ class UnitJobSummary(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
 
 
+    def python_plan(self):
+        return [{'name': 'python %s' % i, 'steps': 'python-units',
+                 'python_shard': '%s/2' % i, 'files': ['tests/test_%s.py' % i]} for i in (1, 2)]
+
+    def python_result(self, i, passed=True, files=None):
+        partition = {'index': i, 'total': 2, 'files': files or ['tests/test_%s.py' % i]}
+        step = {'name': 'python-units', 'exit': int(not passed), 'passed': passed,
+                'counts': {'tests': i, 'status': 'OK' if passed else 'FAILED'},
+                'timing': {'wall_seconds': i, 'slowest_tests': [{'test': 'test_%s' % i, 'seconds': i}]}}
+        self.shard('python %s' % i, [step], ['python-units'], partition)
+
+    def test_all_python_shards_make_one_step_with_the_whole_count(self):
+        self.python_result(1)
+        self.python_result(2)
+        result, combined = self.combine(self.python_plan())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(combined['passed'])
+        self.assertEqual(combined['missing'], [])
+        self.assertEqual(combined['missing_jobs'], [])
+        self.assertEqual([s['name'] for s in combined['steps']], ['python-units'])
+        step = combined['steps'][0]
+        self.assertEqual(step['counts']['tests'], 3)
+        self.assertEqual(len(step['shards']), 2)
+        self.assertEqual([j['name'] for j in combined['jobs']], ['python 1', 'python 2'])
+
+    def test_missing_python_shard_cannot_be_passed_or_quarantined(self):
+        self.python_result(1)
+        result, combined = self.combine(self.python_plan())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(combined['missing_jobs'], ['python 2'])
+        self.assertEqual(combined['missing'], ['python-units'])
+        self.assertFalse(combined['passed'])
+        self.assertFalse(combined['quarantine']['green'])
+        self.assertFalse(any(s['passed'] for s in combined['steps']))
+        # The unchanged release/deploy reader still refuses the missing required step.
+        path = self.root / 'combined.json'
+        path.write_text(json.dumps(combined))
+        reasons = release_check.verify_summary(path, self.sha)
+        self.assertIn('the release check did not run python-units', reasons)
+
+    def test_a_failed_python_shard_fails_the_single_step(self):
+        self.python_result(1)
+        self.python_result(2, passed=False)
+        result, combined = self.combine(self.python_plan())
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(combined['steps'][0]['passed'])
+        self.assertEqual(combined['missing'], [])
+
+    def test_wrong_or_overlapping_file_coverage_is_refused(self):
+        self.python_result(1)
+        self.python_result(2, files=['tests/test_1.py'])
+        result, combined = self.combine(self.python_plan())
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(combined['passed'])
+        self.assertIn('python-units', combined['missing'])
+
+    def test_no_summaries_still_names_every_missing_job(self):
+        result, combined = self.combine(self.python_plan())
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(combined['missing_jobs'], ['python 1', 'python 2'])
+        self.assertEqual(combined['missing'], ['python-units'])
+
+
+class PythonReleaseAdapter(unittest.TestCase):
+    def test_release_summary_keeps_partition_wall_time_and_slowest_tests(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            telemetry = {'unit_shards': 1, 'tests': 2,
+                         'python_shard': {'index': 1, 'total': 2, 'files': ['tests/test_a.py']},
+                         'timing': {'wall_seconds': 4.5, 'slowest_tests': [{'test': 'test_one', 'seconds': 4.0}]}}
+            log = out / 'python-units.log'
+            log.write_text('Ran 2 tests in 4.5s\n\nOK\n' + json.dumps(telemetry) + '\n')
+            result = {'name': 'python-units', 'passed': True, 'exit': 0,
+                      'counts': {'tests': 2, 'status': 'OK'}, 'log': str(log)}
+            sha = 'a' * 40
+            with mock.patch.object(release_check, 'preflight', return_value=sha), \
+                    mock.patch.object(release_check, 'tools_of', return_value={}), \
+                    mock.patch.object(release_check, 'tree', return_value=(sha, '')), \
+                    mock.patch.object(release_check, 'run_step', return_value=result) as runner:
+                summary = release_check.check(ROOT, out, '/chrome', sys.executable, '/node',
+                                              only=['python-units'], python_shard='1/2')
+                self.assertEqual(summary['python_shard'], telemetry['python_shard'])
+                self.assertEqual(summary['steps'][0]['timing'], telemetry['timing'])
+                self.assertEqual(runner.call_args[0][1][-2:], ['--shard', '1/2'])
+                with self.assertRaises(release_check.Refused):
+                    release_check.check(ROOT, out, '/chrome', sys.executable, '/node',
+                                        only=['node-units'], python_shard='1/2')
+
+
+class PythonFileShards(unittest.TestCase):
+    def test_shards_equal_one_process_and_print_timings_on_pass_and_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'tests').mkdir()
+            for name in ('a', 'b', 'c'):
+                (root / 'tests' / ('test_%s.py' % name)).write_text(
+                    'import unittest\nclass Case(unittest.TestCase):\n'
+                    ' def test_one(self): self.assertTrue(True)\n'
+                    ' def test_two(self): self.assertTrue(True)\n')
+            def run(*extra):
+                answer = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/unit_shards.py'),
+                                         '--root', str(root)] + list(extra), capture_output=True, text=True)
+                self.assertEqual(answer.returncode, 0, answer.stderr)
+                timing = json.loads(answer.stdout.splitlines()[-1])
+                self.assertGreater(timing['timing']['wall_seconds'], 0)
+                self.assertTrue(timing['timing']['slowest_tests'])
+                self.assertIn('Slowest 25 tests', answer.stderr)
+                return timing
+            whole = run()
+            parts = [run('--shard', '%s/2' % i) for i in (1, 2)]
+            self.assertEqual(sum(p['tests'] for p in parts), whole['tests'])
+            self.assertEqual(whole['tests'], 6)
+            names = [t['test'] for p in parts for t in p['timing']['slowest_tests']]
+            self.assertEqual(len(names), len(set(names)))
+            self.assertEqual(sorted(names), sorted(t['test'] for t in whole['timing']['slowest_tests']))
+            (root / 'tests/test_a.py').write_text('import unittest\nclass Case(unittest.TestCase):\n def test_bad(self): self.fail("red")\n')
+            bad = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/unit_shards.py'), '--root', str(root)],
+                                 capture_output=True, text=True)
+            self.assertEqual(bad.returncode, 1)
+            self.assertIn('Slowest 25 tests', bad.stderr)
+            self.assertTrue(json.loads(bad.stdout.splitlines()[-1])['timing']['slowest_tests'])
+
+    def test_measured_plan_deals_new_files_and_sets_independent_limits(self):
+        from tools import unit_shards
+        weights = json.loads((ROOT / '.github/check-weights.json').read_text())
+        planned = unit_shards.jobs(ROOT, weights)
+        python = [job for job in planned if job.get('python_shard')]
+        expected = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'tests').glob('test_*.py'))
+        files = [f for job in python for f in job['files']]
+        self.assertEqual(sorted(files), expected)
+        self.assertEqual(len(files), len(set(files)))
+        self.assertTrue(all(job['files'] for job in python))
+        self.assertEqual([j['steps'] for j in planned if not j.get('python_shard')], ['node-units', 'deploy-refusals'])
+        import math
+        config = weights['units']
+        measured = config['python_minutes']
+        fallback = sorted(measured.values())[len(measured) // 2]
+        for job in planned:
+            minutes = (sum(measured.get(f, fallback) for f in job['files']) if job.get('python_shard')
+                       else config['minutes'][job['steps']])
+            self.assertEqual(job['timeout'], math.ceil((minutes + config['setup_minutes']) * 1.5))
+            if job.get('python_shard'):
+                self.assertLess(minutes, 20)
+        bins = unit_shards.deal(['a', 'b', 'c', 'new'], {'a': 10, 'b': 8, 'c': 2}, 2)
+        self.assertEqual(sorted(f for b in bins for f in b['files']), ['a', 'b', 'c', 'new'])
+        self.assertEqual(unit_shards.deal(['new', 'c', 'b', 'a'], {'a': 10, 'b': 8, 'c': 2}, 2), bins)
+
+    def test_invalid_shards_refuse_before_running(self):
+        for shard in ('0/2', '3/2', '1/0', 'x', '1/1/1'):
+            answer = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/unit_shards.py'), '--shard', shard],
+                                    capture_output=True, text=True)
+            self.assertEqual(answer.returncode, 2)
+            self.assertIn('refused:', answer.stderr)
+            self.assertNotIn('Ran ', answer.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

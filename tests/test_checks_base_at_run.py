@@ -78,7 +78,7 @@ class ChecksBaseAtRunCase(unittest.TestCase):
         out.mkdir()
         env = dict(self.env, GITHUB_EVENT_NAME=event, PLAN_SHARDS=json.dumps([{'steps': 'python-units'}, {'steps': 'node-units'}]))
         result = subprocess.run([sys.executable, '-I', '-S', '-c', script("Fold the shards' summaries into one"),
-                                 str(shards), str(out / 'summary.json')], cwd=self.repo, env=env, capture_output=True, text=True)
+                                 str(shards), str(out / 'summary.json')], cwd=WORKFLOW.parents[2], env=env, capture_output=True, text=True)
         return result, out
 
     def test_receipt_preserves_event_base_and_reads_actual_git_parent(self):
