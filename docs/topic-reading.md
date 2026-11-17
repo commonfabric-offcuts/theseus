@@ -14,7 +14,11 @@ only, through indexes keyed by message. The first three come from
 - `unread`: true while the message waits in one of the reader's unread groups,
   the same deliveries the counts and the New line read. The reader's own
   messages are never unread. Marks are not folded in: the page has its own
-  (`web/marks.mjs`).
+  (`web/marks.mjs`). An agent's edit of its own message makes it unread again
+  for each person who had read it, and their item then carries `struck`, the
+  words they had read that the edit took away
+  ([message-edit.md](message-edit.md), "An agent's edit, for the people who
+  had read it").
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
   null. A reply is in its parent's topic, and the reader always sees their own
   messages, whispers included, so it never names a message they cannot read.
