@@ -300,13 +300,14 @@ export class StackFeed {
   // Says what just happened, for a screen reader.
   say(words) { this.said.textContent = ''; this.said.textContent = words; }
   remember(undo) { this.undos.push(undo); if (this.undos.length > 50) this.undos.shift(); }
-  // ⌘Z, or Undo in ⋯. An undo that does nothing gives false: a Bring back's
+  // ⌘Z, or Undo in ⋯ (at: the line of the message whose menu it was, where a
+  // refusal is said). An undo that does nothing gives false: a Bring back's
   // undo on a dossier starred since is held (setAside, item 635), and its note
   // says why, so nothing says it was put back.
-  undo() {
+  undo(at = null) {
     const last = this.undos.pop();
     if (!last) { this.say('Nothing to put back'); return; }
-    if (last() !== false) this.say('Put back');
+    if (last(at) !== false) this.say('Put back');
   }
   // Shows an act on the message at once and sends it after the acts before it.
   // Answered, refused or not settled, it is no longer drawn over what Core
@@ -702,11 +703,13 @@ export class StackFeed {
   // Says why a move below More did nothing, where the press was (at: the
   // control pressed, such as the Reader's archive button, or the line of the
   // message whose menu it was), else under the dossier's title bar (its first
-  // message's line, for a message on its own), and on the page's status line
-  // where none of them is on the screen.
+  // message's line, for a message on its own), else where the keys are (⌘Z:
+  // the line of the message they are on), and on the page's status line where
+  // none of them is on the screen.
   held(stack, at = null) {
-    const head = this.entryFor(stack.id);
-    if (!noteAt(at, HELD_BY_STAR, this.doc) && !noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc)) this.status(HELD_BY_STAR);
+    const head = this.entryFor(stack.id), keys = this.doc.activeElement;
+    const places = [at, head && lineOf(cardIn(head)), keys && this.list.contains(keys) ? lineOf(keys) : null];
+    if (!places.some(place => noteAt(place, HELD_BY_STAR, this.doc))) this.status(HELD_BY_STAR);
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes. at: the
@@ -727,7 +730,7 @@ export class StackFeed {
     // Core refuses it too, for a star the page has not read yet (made on another device): its reason is
     // said on the status line as any refusal is (failed), and the dossier shows where Core holds it.
     this.act('stack.aside', item, { through });
-    if (undoable) this.remember(() => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through }));
+    if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, at }));
     this.arrange();
     // Focus goes to More where the page's one view draws it (Only new does
     // not); there the dossier keeps it, on the first message the view draws.
@@ -855,6 +858,8 @@ export class StackFeed {
     const items = [{ label: starred ? 'Unstar' : 'Star for me', glyph: starred ? 'starred' : 'star', act: () => this.star(item) }];
     if (!found) return { first: items, last: [] };
     const { stack } = found, state = this.state;
+    // Where a refusal of the stack's moves is said: the line of the message whose menu it is.
+    const line = () => lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     if (found.head && stack.replies.length) {
       items.push({ label: 'Rename', glyph: 'pencil', act: () => this.startRename(stack) });
       const open = state.levels.get(stack.id) === 'open';
@@ -868,7 +873,7 @@ export class StackFeed {
     const moves = [
       // Item 601: Move below More shows the Reader's archive tray, Bring back above More the tray with an arrow out.
       ...(positionOf(stack) ? [{ label: positionOf(stack).below ? 'Bring back above More' : 'Move below More', glyph: positionOf(stack).below ? 'back' : 'archive',
-        act: () => this.setAside(stack, !positionOf(stack).below, { at: lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id))) }) }] : []),
+        act: () => this.setAside(stack, !positionOf(stack).below, { at: line() }) }] : []),
       { label: 'Move its stack up', keys: '⌘↑', glyph: 'up', act: () => this.move(entry, 'up') },
       { label: 'Move its stack down', keys: '⌘↓', glyph: 'down', act: () => this.move(entry, 'down') },
       ...(stack.replies.length && foldStep({ level: levelOf(state, stack.id) }, 'fold') ? [{ label: 'Fold its stack', keys: '←', glyph: 'chevron', act: () => this.fold(entry, 'fold') }] : []),
@@ -876,7 +881,7 @@ export class StackFeed {
       { label: 'Join the stack above', keys: '⇧⌘↑', glyph: 'joinup', act: () => this.join(entry, 'up') },
       { label: 'Join the stack below', keys: '⇧⌘↓', glyph: 'joindown', act: () => this.join(entry, 'down') },
       ...(stack.placed !== null ? [{ label: 'Let new replies move it', glyph: 'unpin', act: () => this.unplace(stack) }] : []),
-      ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', glyph: 'undo', act: () => this.undo() }] : []),
+      ...(this.undos.length ? [{ label: 'Undo', keys: '⌘Z', glyph: 'undo', act: () => this.undo(line()) }] : []),
     ];
     return { first: items, last: phone ? [{ label: 'Move or join…', glyph: 'move', act: () => more(moves) }] : moves };
   }

@@ -80,9 +80,11 @@ press says "This dossier has a message you starred: unstar it to move it below
 More" where it was (`press-note.mjs`: under the archive button, the line of
 the message whose menu it was, or the title bar the swipe crossed), and
 nothing moves on any frame. Command-Z, or Undo in ⋯, after a Bring back on a
-dossier starred since is held the same way: the note shows under the
-dossier's title bar, or, where that is out of the window, the reason goes on
-the page's status line, and nothing says it was put back. A note shows under
+dossier starred since is held the same way, and nothing says it was put back.
+Undo in ⋯ says why by the message whose menu it was. Command-Z says it under
+the dossier's title bar, else under the message the keys are on, and on the
+page's status line (in the left rail on a laptop) where neither is in the
+window. A note shows under
 what it is said beside, and over it where the window has no room below (a
 message near the bottom of a phone's screen). The way out is to unstar. A star and the move are
 each the reader's alone, so the hold is too: another reader's star never holds

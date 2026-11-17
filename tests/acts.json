@@ -26121,7 +26121,7 @@
   },
   {
    "item": 635,
-   "act": "Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing, and says why under its title bar",
+   "act": "Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing, and says why where it was asked for",
    "break": [
     [
      "web/stack-feed.mjs",
@@ -26136,12 +26136,12 @@
   },
   {
    "item": 635,
-   "act": "An undo held by the reader's star says why on the status line when the dossier's title bar is out of the window",
+   "act": "An undo held by the reader's star says why on the status line when neither the dossier's title bar nor the message the keys are on is in the window",
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (!noteAt(at, HELD_BY_STAR, this.doc) && !noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc)) this.status(HELD_BY_STAR);",
-     "if (!noteAt(at, HELD_BY_STAR, this.doc)) noteAt(head && lineOf(cardIn(head)), HELD_BY_STAR, this.doc);"
+     "if (!places.some(place => noteAt(place, HELD_BY_STAR, this.doc))) this.status(HELD_BY_STAR);",
+     "places.some(place => noteAt(place, HELD_BY_STAR, this.doc));"
     ]
    ],
    "check": {
@@ -26155,8 +26155,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "if (last() !== false) this.say('Put back');",
-     "last(); this.say('Put back');"
+     "if (last(at) !== false) this.say('Put back');",
+     "last(at); this.say('Put back');"
     ]
    ],
    "check": {
@@ -26233,6 +26233,36 @@
    ],
    "check": {
     "python": "test_stack_aside.py"
+   }
+  },
+  {
+   "item": 635,
+   "act": "⌘Z held by the reader's star says why under the message the keys are on when the dossier's title bar is out of the window",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "keys && this.list.contains(keys) ? lineOf(keys) : null",
+     "null"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
+   }
+  },
+  {
+   "item": 635,
+   "act": "Undo in ⋯ held by the reader's star says why by the message whose ⋯ it was",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "act: () => this.undo(line())",
+     "act: () => this.undo()"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks star undo"
    }
   }
  ]
