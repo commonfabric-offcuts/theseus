@@ -979,3 +979,9 @@ menu, moves it below More messages like any other dossier ([Put a dossier
 aside](#put-a-dossier-aside)), and it keeps its quiet row
 there. With Show agent coordination off, agent coordination below More is
 hidden as well and More counts only the dossiers it would show.
+
+A card Earlier messages keeps apart below its button is still part of the
+dossier drawn above it. It repeats neither that dossier's cover sheet nor its
+cover pills, even when a later press loads the dossier's first message there.
+The dossier already drawn keeps its cover. A genuinely lone loaded message,
+including a dossier's only loaded reply, keeps its cover pills (merge B3).

@@ -741,8 +741,10 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
   // A card with no folder whose cover says something shows it as pills under who wrote it (item 624): a message on
   // its own, or a dossier's one reply loaded while its first message is above the page, which takes its dossier's
-  // cover from its place (stackCover). Any other message shows none: a folder has its cover as its sheet instead.
-  const lone = new Map(stacks.filter(stack => !stack.replies.length).map(stack => [stack.id, stack]));
+  // cover from its place (stackCover). A card More kept apart belongs to the dossier already drawn above it,
+  // not a lone loaded message: it repeats neither that dossier's sheet nor its pills, even on a later press
+  // that loads the first message itself. Any other message shows none: a folder has its cover as its sheet instead.
+  const lone = new Map(stacks.filter(stack => !stack.replies.length && !state.apart.has(stack.id)).map(stack => [stack.id, stack]));
   for (const [id, entry] of byId) paintCoverPills(cardIn(entry), lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null, { viewer, nameOf, topicId: messages.get(id)?.topic_id });
   // A star shows on its card wherever it is (stack-look.css).
   for (const [id, entry] of byId) { const starred = String(Boolean(messages.get(id)?.acts?.starred)); if (cardIn(entry).dataset.starred !== starred) cardIn(entry).dataset.starred = starred; }

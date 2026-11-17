@@ -29302,6 +29302,36 @@
    "check": {
     "node": "tests/ui_inline_wiring.test.mjs"
    }
+  },
+  {
+   "item": 550,
+   "act": "More keeps a dossier cover once: older replies kept apart below its button repeat neither its sheet nor its pills, even when another press loads its root",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "!stack.replies.length && !state.apart.has(stack.id)",
+     "!stack.replies.length"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading stacks Earlier messages shows every older message"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More keeps a dossier cover once: older replies kept apart below its button repeat neither its sheet nor its pills, even when another press loads its root",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "!stack.replies.length && !state.apart.has(stack.id)",
+     "!stack.replies.length"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "reading stacks Earlier messages shows every older message"
+   }
   }
  ]
 }
