@@ -85,8 +85,12 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
       // page, More goes away as it is aimed at, and the list is looked at again rather than More pressed.
       try { await press(p, more); } catch (error) { if ((await look()).more) throw error; continue; }
       // More while the list is being read again does nothing (outcome-references.mjs): once the read is done, More
-      // is pressed again unless it brought the page.
-      await until(async () => { const at = await look(); return at.here || at.rows > now.rows || at.more; }, `${said}, after More`);
+      // is pressed again unless it brought the page. The right rail's More shows on, in its place, while the read it
+      // asked for is under way, and every press of it reads the rail again for more pages (things-rail.mjs): its
+      // read is done once more rows show or More has gone. Pressed again before then, the rows that read draws in
+      // move under the pointer, and the press opens one of them.
+      const rail = selector.startsWith('#things');
+      await until(async () => { const at = await look(); return at.here || at.rows > now.rows || (rail ? !at.more : at.more); }, `${said}, after More`);
     }
   };
   // A pointer on a control in view; the topic's own Notebook is at the end of the feed, scrolled to as a reader would.

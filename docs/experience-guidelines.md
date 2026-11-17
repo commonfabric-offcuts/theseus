@@ -227,8 +227,15 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   and dark, in Chrome and Safari's engine: each mark is in the card's line on
   the time's line, never a control, and a card with all three keeps a one-line
   author line; "head rows at …" checks a stack's head row keeps its reply count
-  whole beside them ([topic-reading.md](topic-reading.md), "What a card
-  carries").
+  whole beside them, and "picture-only head row at 390px …" that a selected
+  dossier's image mark and who began it stay whole beside its title bar's ⋯
+  ([topic-reading.md](topic-reading.md), "What a card carries");
+  `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
+  stacks hidden title bar glyphs reserve nothing …", at 320 by touch hidden
+  glyphs keep no width from a dossier's name, and "reading stacks the title
+  bar's ⋯ sits on the folder's face …", ⋯ stays inside the folder's right edge,
+  the tab giving back no more than ⋯ needs, at 320, 375 and 390 each way a
+  touch shows it and on a laptop, light and dark.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
@@ -292,7 +299,8 @@ content needs: a title line is about a sentence wide, and a few sentences about
 ## No coloured left edges
 
 Nothing is marked by a coloured edge or bar down one side. A card's colour
-covers its whole face.
+covers its whole face, and a dossier's colour, its first poster's when that
+is an agent, covers its folder and its title bar, and nothing else (item 477).
 
 - Node units, `tests/ui_author_colors.test.mjs`: "nothing on the page wears a
   colored left edge or bar", "an agent's card is colored across its whole face,
@@ -300,6 +308,9 @@ covers its whole face.
 - `tests/reader_colors_native.mjs` (`native-colors`, `native-webkit-colors`):
   the hovered card is black on both sides, with no edge or bar, measured from
   screenshot pixels.
+- `tests/ui_folder_colour.test.mjs`: "the coloured folder covers a whole
+  face"; `tests/stack_native.mjs`, "reading stacks a dossier an agent began
+  wears its colour …", measures no edge on the folder or its tab.
 
 ## Colours come from the theme's tokens
 
