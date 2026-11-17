@@ -10,9 +10,9 @@ const carried = yours => [yours?.note === true, yours?.reply === true];
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 // What places a dossier for the reader (docs/dossier-below-more.md): its first
 // message, through, below and the revision of the act that set them, and the
-// revision of the dossier's name, which every part of it shows (item 470). A
-// position's snapshot (at) says only when it was read.
-const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];
+// revisions of the dossier's name and its cover, which every part of it shows
+// (items 470, 624). A position's snapshot (at) says only when it was read.
+const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });

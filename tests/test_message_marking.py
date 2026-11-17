@@ -84,6 +84,8 @@ class SweepCase(test_message_exposure.HeldOutcomeCase):
                                                                            if self.sql("SELECT topic_id FROM messages WHERE id=?", (message,))[0][0] == "t1"][:5]}))
         calls += [("stack_namer", {"message_id": message}) for message in messages
                   if self.sql("SELECT topic_id FROM messages WHERE id=?", (message,))[0][0] == "t1"][:5]
+        calls += [("dossier_cover", {"message_id": message}) for message in messages
+                  if self.sql("SELECT topic_id FROM messages WHERE id=?", (message,))[0][0] == "t1"][:5]
         calls += [("delivery", {"delivery_id": delivery}) for delivery in deliveries]
         return calls
 

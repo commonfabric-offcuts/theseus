@@ -142,8 +142,9 @@ card with none folded away, → gives the focus to its speech bubble. ⌘← and
 fold and show the same way, ⌘→ going down to the first child of a card whose
 children show, and the browser never takes them for Back and Forward on the
 cards. Past the first card or the last, ↑ or ↓ goes on to what lies that way
-on the page: the bar above the cards, the header (docs/interaction.md, "The
-arrows everywhere"). With nothing focused the arrows stay the deck's, picking
+on the page: the bar above the cards, the header, and below the last card the
+rail's foot that ends the page (docs/rails.md, "The rail's foot";
+docs/interaction.md, "The arrows everywhere"). With nothing focused the arrows stay the deck's, picking
 a card.
 ⇧⌘← folds every card's children away and ⇧⌘→ shows them all again. ↑ and ↓ pass over
 folded cards, a phone's swipe holds only the cards that show, and the count

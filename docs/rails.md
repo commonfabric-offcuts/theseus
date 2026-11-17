@@ -159,6 +159,37 @@ each other …", item 547). A reply whose send is not confirmed holds no move
 (`docs/replies-in-doubt.md`; "rail a reply whose send is not confirmed holds no
 move …").
 
+### The rail's foot
+
+The side rail ends with its foot (item 628): who you are on which instance,
+the guide's "? Pointer, keys and taps" under it, and Health, below the rail's
+last section (the outline on a topic and a Conversation, Skills and tools on a
+page whose rail lists the outcome's sections), with the looks they had at its
+top: one under the other on a laptop, and on a phone the name on its own line
+with the guide's ? and Health side by side under it; the name and the guide's ? in
+the quiet colour, Health in its own, lit in the alert colour while something
+needs attention, and opening Health. The logo block, the wordmark with its
+presence dot and Turn on notifications, stays at the top, and no section
+moves. In the phone's drawer the foot ends the drawer; on a page with no rail
+(the Outcomes home, an outcome's own page, Health) it ends the page. The keys
+reach it last in the rail: Tab after the outline's Keys, and ↓ below Keys
+(docs/interaction.md). `index.html` draws it last in the rail; the shell puts
+the outline above it (`in-place-navigation.mjs`), and `placeBrand`
+(`outcome-scope.mjs`) moves it to the end of the main column where the page
+has no rail. Checks: `outcome_rail_native.mjs` (`native-rail`,
+`native-webkit-rail`), "rail the rail's foot: who you are on which instance,
+the guide's ? and Health sit below the side rail's last section …", at 320,
+375, 390 and a laptop, light and dark, on a topic, a tool's page, an
+outcome's page, the Outcomes home and a Notebook page's cards, where ↓ below
+the last card goes on to the guide's ?; `health_native.mjs` (`native-health`,
+`native-webkit-health`), "health lit at the foot of the side rail …".
+Every page's run moves the foot to the end of the rail again, so a drawn page
+never shows where the shell put the outline; what that placement holds is the
+move in place itself, where the rail is put back in the order the shell first
+gave it and the foot stays last throughout. That is checked by "rail the
+outline keeps its scroll when it moves in place to a topic …", which watches
+every state of the rail in the move.
+
 ## The right rail
 
 The right rail has folding sections: Starred, Pipeline, Waiting for…,
@@ -261,10 +292,11 @@ between two feed pages (topics and Conversations) goes like this:
 4. The body's parts go back to how `index.html` drew them. The outline, the
    right rail and the drawer's backdrop stay as the same elements. The rail
    that holds the outline is never taken out of the page, so it keeps its
-   scroll and its focus. The logo block above the outline is put back as it
-   reads, the guide's ? included until the new run puts its own in its place,
-   so the rail never grows shorter during the move: scrolled near its end, it
-   would otherwise be pulled up to that end and carried past where it was.
+   scroll and its focus. The logo block above the outline and the rail's foot
+   under it are put back as they read, the guide's ? included until the new
+   run puts its own in its place, so the rail never grows shorter during the
+   move: scrolled near its end, it would otherwise be pulled up to that end and
+   carried past where it was.
    The retired run keeps finding its own elements by id, so work it still had
    under way lands there and never on the new page.
 5. A fresh run of `app.mjs` (`app.mjs?place=N`) reads and draws the new place

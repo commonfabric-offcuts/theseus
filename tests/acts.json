@@ -6944,8 +6944,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
-     "const PLACING = ['root_id', 'name_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -10662,16 +10662,16 @@
   },
   {
    "item": 228,
-   "act": "Only people edit messages",
+   "act": "Only people open a message in Edit",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if self._actor(db, actor)[\"kind\"] != \"human\":",
+     "if people and self._actor(db, actor)[\"kind\"] != \"human\":",
      "if False:"
     ]
    ],
    "check": {
-    "python": "test_message_edit.py"
+    "python": "test_agent_edit.py"
    }
   },
   {
@@ -10764,8 +10764,8 @@
    "break": [
     [
      "aim_next/cli.py",
-     "        if item.get(\"correction\"):\n            # A person edited",
-     "        if False:\n            # A person edited"
+     "        if item.get(\"correction\"):\n            # Its author edited",
+     "        if False:\n            # Its author edited"
     ]
    ],
    "check": {
@@ -11044,8 +11044,8 @@
    "break": [
     [
      "web/card-scroll.mjs",
-     "    this.wholes.delete(id); this.revisions.delete(id);\n    if (!card) return;",
-     "    this.revisions.delete(id);\n    if (!card) return;"
+     "    this.wholes.delete(id); this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;",
+     "    this.revisions.delete(id); this.strikes.delete(id);\n    if (!card) return;"
     ]
    ],
    "check": {
@@ -12542,7 +12542,7 @@
    "break": [
     [
      "aim_next/message_edit.py",
-     " and not (highest[row[\"id\"]] == 1 and row[\"seq\"] <= horizon)]",
+     "\n            and not (highest[row[\"id\"]] == 1 and _counted_handed(row[\"kind\"], row[\"seq\"], horizon, agent_from))]",
      "]"
     ]
    ],
@@ -13437,11 +13437,11 @@
   },
   {
    "item": 452,
-   "act": "Only a person's message is recorded as handed, so an agent's read of an agent's words writes nothing",
+   "act": "An agent's read of its own message records nothing and writes nothing",
    "break": [
     [
      "aim_next/message_edit.py",
-     "if row[\"kind\"] == \"human\" and highest",
+     "if row[\"author_id\"] != actor and highest",
      "if highest"
     ]
    ],
@@ -13699,8 +13699,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'cover_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'cover_revision'];"
     ]
    ],
    "check": {
@@ -17809,12 +17809,12 @@
   },
   {
    "item": 305,
-   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the logo block keeps the guide's ? through the move, so the rail never grows shorter",
+   "act": "The outline keeps its scroll when it moves in place to a topic, scrolled near the rail's end: the rail's foot keeps the guide's ? through the move, so the rail never grows shorter",
    "break": [
     [
      "web/in-place-navigation.mjs",
-     "    if (selector === BRAND) { children.push(live.cloneNode(true)); continue; }",
-     "    if (selector === BRAND) { const brand = live.cloneNode(true); for (const added of brand.querySelectorAll('.guide-open')) added.remove(); children.push(brand); continue; }"
+     "    if (AS_READ.includes(selector)) { children.push(live.cloneNode(true)); continue; }",
+     "    if (AS_READ.includes(selector)) { const kept = live.cloneNode(true); for (const added of kept.querySelectorAll('.guide-open')) added.remove(); children.push(kept); continue; }"
     ]
    ],
    "check": {
@@ -20688,9 +20688,14 @@
      "(\"43\", \"44\", ENDS_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"45\", \"46\", COVER_UP",
+     "(\"44\", \"45\", COVER_UP"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"45\"",
-     "SCHEMA_VERSION = \"44\""
+     "SCHEMA_VERSION = \"46\"",
+     "SCHEMA_VERSION = \"45\""
     ]
    ],
    "check": {
@@ -27136,6 +27141,1439 @@
    "check": {
     "native": "reading",
     "case": "item 655 B4-return"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A verified new release fast-forwards its configured remote branch after recording the release",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        publish_release_branch(config, sha, evidence)\n",
+     "        pass  # mutant: leave the remote branch behind\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A restart never contacts or moves the release branch",
+   "break": [
+    [
+     "tools/deploy.py",
+     "    if planned is not None:\n        publish_release_branch",
+     "    if True:\n        publish_release_branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A remote head outside the shipped history is refused before any push",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(follows(config, old, sha), \"release branch",
+     "require(True, \"release branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A concurrent remote change is never overwritten by force",
+   "break": [
+    [
+     "tools/deploy.py",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force\", \"origin\", sha + \":\" + ref)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "Only a remote read-back equal to the shipped head attests success",
+   "break": [
+    [
+     "tools/deploy.py",
+     "require(result[\"read_back\"] == sha, \"release branch",
+     "require(True, \"release branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A release without a configured branch says that no branch was moved",
+   "break": [
+    [
+     "tools/deploy.py",
+     "        record(evidence, \"12-release-branch\", result)\n        return",
+     "        return  # mutant: no evidence for an unconfigured branch"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 667,
+   "act": "A release branch deleted or moved after fetch is not recreated or overwritten; publication refuses and keeps the release record",
+   "break": [
+    [
+     "tools/deploy.py",
+     "git(\"push\", \"push\", \"--porcelain\", \"--force-with-lease=\" + ref + \":\" + old, \"origin\", sha + \":\" + ref)",
+     "git(\"push\", \"push\", \"--porcelain\", \"origin\", sha + \":\" + ref)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_deploy_branch.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "A small-fix PR deals only its chosen native steps beside the mandatory shards",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]",
+     "native = ['native-' + step.name for step in check.NATIVE_STEPS]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "Pushes always receive the full run",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "if event_name == 'pull_request':",
+     "if event_name in ('pull_request', 'push'):"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "Six changed paths require the full run under the shared deploy rule",
+   "break": [
+    [
+     "tools/release_check.py",
+     "SMALL_FIX_FILES = 5",
+     "SMALL_FIX_FILES = 6"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "An unreadable scope falls closed to all native steps",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]",
+     "native = scoped['steps'] if scoped is not None else []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "No chosen browser mode creates no browser shard",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "for i, (load, names) in enumerate(loads) if names]",
+     "for i, (load, names) in enumerate(loads)]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "Combine accounts for scoped omissions and produces a deployable scoped summary",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "missing = [name for name in required if name not in names and name not in covered]",
+     "missing = [name for name in required if name not in names]"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The validator accepts complete scoped coverage without accepting it as full coverage",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "expected = scoped_required(summary, run, base, candidate_root, commit, policy['required'])",
+     "expected = set(policy['required'])"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The validator rechooses a PR scope from Git rather than trusting the producer",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "changed, chosen, _ = release_check.scope(root, base['sha'], commit)",
+     "changed, chosen, _ = scoped['changed'], scoped['steps'], []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "A scoped native mode runs whole with no case filter",
+   "break": [
+    [
+     "tools/ci_known_reds.py",
+     "require(all(release_check.ran_whole(step) for step in combined if step['name'] in NATIVE),",
+     "require(True,"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_ci_known_reds.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command reads GitHub's event file to scope a docs-only PR",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "event = json.loads(Path(args.event).read_text()) if args.event else {}",
+     "event = {}"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command emits the shard matrix GitHub schedules",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "print('shards=' + json.dumps(result['shards']))",
+     "pass # dropped matrix"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 664,
+   "act": "The workflow command emits the scope claim combine needs",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "print('scoped=' + json.dumps(result['scoped']))",
+     "pass # dropped scope"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_check_plan.py"
+   }
+  },
+  {
+   "item": 628,
+   "act": "The outline goes into the side rail above its foot, so through a move in place the rail's foot stays at the rail's end and the rail keeps its scroll near its end",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "      rail.insertBefore(outline, rail.querySelector(':scope > .rail-foot'));",
+     "      rail.append(outline);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a page with no rail, the rail's foot ends the page",
+   "break": [
+    [
+     "web/outcome-scope.mjs",
+     "  if (foot && host.lastElementChild !== foot) host.append(foot);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a laptop the rail's foot stands one line under the other",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail-foot{display:flex;flex-direction:column;",
+     ".rail-foot{display:flex;flex-direction:row;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "On a phone the rail's foot keeps the logo block's row: who you are on its own line, then the guide's ? and Health side by side",
+   "break": [
+    [
+     "web/aim.css",
+     ".rail-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.8rem;row-gap:.3rem}.rail-foot #instance-label{grid-column:1/-1;min-width:0}",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail's foot: who you are on which instance"
+   }
+  },
+  {
+   "item": 628,
+   "act": "A move in place puts the rail's foot back as it reads, so the rail keeps its scroll near its end",
+   "break": [
+    [
+     "web/in-place-navigation.mjs",
+     "const AS_READ = ['.brand', '.rail-foot'];",
+     "const AS_READ = ['.brand'];"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "the outline keeps its scroll when it moves in place to a topic"
+   }
+  },
+  {
+   "item": 628,
+   "act": "Health, lit at the rail's foot, keeps the alert colour and opens Health",
+   "break": [
+    [
+     "web/index.html",
+     "        <a id=\"health-link\" class=\"health-link\" href=\"?health\">Health · checking</a>\n",
+     ""
+    ],
+    [
+     "web/index.html",
+     "        <button id=\"notify\" type=\"button\" hidden>Turn on notifications</button>\n",
+     "        <a id=\"health-link\" class=\"health-link\" href=\"?health\">Health · checking</a>\n        <button id=\"notify\" type=\"button\" hidden>Turn on notifications</button>\n"
+    ]
+   ],
+   "check": {
+    "native": "health",
+    "case": "health the page says the runner and every agent from the view|lit at the foot of the side rail"
+   }
+  },
+  {
+   "item": 628,
+   "act": "The markup draws the rail's foot last in the rail, after Skills and tools",
+   "break": [
+    [
+     "web/index.html",
+     "      <div class=\"rail-foot\">",
+     "      <div class=\"rail-feet\">"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_reread_messages.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover write that names Done beside its fields: Done is the owner's",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if \"done\" in args:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "    if False:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover's payload that names its own Done",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if \"done\" in value:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "    if False:\n        raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover written takes Done from the outcome owner's record, never the writer's",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "done=done_of(db, owner, payload[\"message_id\"], payload.get(\"done_by\"))",
+     "done=done_of(db, actor, payload[\"message_id\"], payload.get(\"done_by\"))"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Only the outcome owner's own thumbs-up settles a payload's Done",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            if self._cover_owner(db, row[\"topic_id\"]) != actor:\n                continue",
+     "            if False:\n                continue"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner's thumbs-up on the payload's message makes it Done in the same act",
+   "break": [
+    [
+     "aim_next/reactions.py",
+     "covered = self._cover_settle(db, actor, message[\"id\"])",
+     "covered = []"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A thumbs-up taken back proposes the payload again",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "thumb[\"revision\"] % 2 == 1",
+     "thumb[\"revision\"] > 0"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a cover write fenced on a revision someone moved past",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if envelope[\"expected\"][\"cover_revision\"] != current:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a whisper as the payload of a dossier on the record",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if message[\"private_to\"] is not None and (",
+     "        if False and ("
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A reader outside the owner's whispered word reads the payload done with no message to open",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "        if seen is None:\n            payload = dict(payload, done=",
+     "        if False:\n            payload = dict(payload, done="
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover goes on its dossier's first message only",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if StackRoots(db, actor).root(message[\"id\"]) != message[\"id\"]:",
+     "        if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A payload names a message of its dossier",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if not member:\n            raise Refusal(\"INVALID_ARGUMENT\", \"A payload names",
+     "        if False:\n            raise Refusal(\"INVALID_ARGUMENT\", \"A payload names"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The covers' step steps back only while no cover was ever written",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "COVER_OCCUPIED = \"SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover')\"",
+     "COVER_OCCUPIED = \"SELECT 0\""
+    ]
+   ],
+   "check": {
+    "python": "test_migrations.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "aim-next cover fences its write on --expected when given",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected",
+     "expected = found[\"cover_revision\"]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The page never puts back a cover Core has moved past",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "joined: 'join_revision', cover: 'cover_revision' }",
+     "joined: 'join_revision' }"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A payload's pill names who gave Done in the reader's words",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "const who = done.by === context.viewer ? 'your' : `${context.nameOf(done.by)}'s`;",
+     "const who = 'your';"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover is the folder's first sheet, after its first message's entry, under its tab",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "reconcile(section, [head, ...(p.cover ? [p.cover] : []), ",
+     "reconcile(section, [...(p.cover ? [p.cover] : []), head, "
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers an agent's cover is the dossier's first sheet"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A message on its own shows its cover as pills, and a dossier's first message never does",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null",
+     "messages.get(id)?.acts?.cover ?? null"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers an agent's cover is the dossier's first sheet"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The payload's pill shows Done as Core holds it",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "  const done = payload.done ?? null;\n",
+     "  const done = null;\n"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the person's 👍 on the payload's message makes it done"
+   }
+  },
+  {
+   "item": 624,
+   "act": "On a phone the Reader's cover line gives way while the reply is written",
+   "break": [
+    [
+     "web/aim.css",
+     "#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}",
+     "#reader:has(#reader-composer[data-compose=nothing]) #reader-cover{display:none}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader shows a dossier's cover as one line"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A finger's tap on the Reader's cover line flashes no highlight over it",
+   "break": [
+    [
+     "web/aim.css",
+     "font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}",
+     "font-size:.85rem;cursor:pointer}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader shows a dossier's cover as one line"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A reply of the owner's is their word only where the cover names it (done_by): a question, or any reply nobody named, settles nothing",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "    if done_by is None:\n        return None\n    return db.execute(\"SELECT id,seq,sent_ms FROM messages WHERE id=? AND reply_to=?",
+     "    return db.execute(\"SELECT id,seq,sent_ms FROM messages WHERE (id=? OR 1) AND reply_to=?"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Core refuses a done_by that is not the owner's own reply to the payload's message",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        if not seen:\n            raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)",
+     "        if False:\n            raise Refusal(\"DONE_BY_OWNER\", DONE_REFUSED)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by is the owner's own message",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "WHERE id=? AND reply_to=? AND author_id=?\", (done_by, message_id, owner)",
+     "WHERE id=? AND reply_to=? AND ?<>''\", (done_by, message_id, owner)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by replies to the payload's message",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "WHERE id=? AND reply_to=? AND author_id=?\", (done_by, message_id, owner)",
+     "WHERE id=? AND ?<>'' AND author_id=?\", (done_by, message_id, owner)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A done_by is a reply its writer can see, so no refusal names a whisper",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "        seen = word is not None and db.execute(",
+     "        seen = word is not None or db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A thumbs-up given and taken back leaves the reply the cover names standing",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            done = done_of(db, actor, message_id, value[\"payload\"].get(\"done_by\"))",
+     "            done = done_of(db, actor, message_id)"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A dossier's place carries its cover, so a page holding only its replies has it, and a reader outside its first message never does",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "\"cover\": acts[\"cover\"], \"cover_revision\": acts[\"cover_revision\"],",
+     "\"cover\": None, \"cover_revision\": 0,"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A cover rewritten reaches a page that holds its dossier's place: a changed cover is a change of place",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "'aside_revision', 'name_revision', 'cover_revision'];",
+     "'aside_revision', 'name_revision'];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_stack_position.test.mjs"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A stack of replies whose first message is above the loaded page shows its dossier's cover under its tab, from its place",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "  if (position && position.root_id !== stack.head.id) return position.cover ?? null;",
+     "  if (position && position.root_id !== stack.head.id) return null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The Reader shows the cover of a dossier whose first message is above the loaded page",
+   "break": [
+    [
+     "web/stack-feed.mjs",
+     "    const cover = stack ? stackCover(stack) : null;",
+     "    const cover = stack?.replies.length ? this.actsOf(stack.head.id, stack.head).cover ?? null : null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
+   }
+  },
+  {
+   "item": 624,
+   "act": "A dossier's one reply, loaded while its first message is above the page, shows its dossier's cover as pills under who wrote it",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "lone.has(id) ? stackCover(lone.get(id), { alone: true }) : null",
+     "lone.has(id) ? stackCover({ ...lone.get(id), head: { ...lone.get(id).head, stack_position: null } }, { alone: true }) : null"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers a dossier whose first message is more than a page behind"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The Reader's cover sheet opens for the message it was pressed on: the same message opened again, or the next one, starts at the closed line",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (!same) this.$('reader-cover').open = false;",
+     "    if (false) this.$('reader-cover').open = false;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader's cover sheet opens only where it is pressed"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The Reader's open cover sheet closes when its message's dossier becomes another or its cover goes, and stays open as its cover changes",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }",
+     "    if (dossier !== (this.coverDossier ?? null)) { this.coverDossier = dossier; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the Reader's cover sheet opens only where it is pressed"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The open Reader's cover line follows the cover: an agent's rewrite and the owner's thumbs-up given and taken back",
+   "break": [
+    [
+     "web/reader.mjs",
+     "  paintTitle(source, topics = this.topics ?? []) {\n    this.paintCover(source);\n",
+     "  paintTitle(source, topics = this.topics ?? []) {\n"
+    ],
+    [
+     "web/reader.mjs",
+     "    if (!same) this.$('reader-cover').open = false;\n    this.paintTitle(source, topics);",
+     "    if (!same) this.$('reader-cover').open = false;\n    this.paintCover(source);\n    this.paintTitle(source, topics);"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading covers the open Reader's cover line follows the cover"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb writes the payload's link",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "**({\"link\": options.link} if options.link else {}), ",
+     ""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb writes the payload's kind",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "**({\"kind\": options.kind} if options.kind else {}),\n",
+     "\n"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb refuses a payload's link, kind or message given with no payload, never reading it as a plain read",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "named = options.payload is not None or options.payload_from or options.link or options.kind or options.done_by",
+     "named = options.payload is not None or options.done_by"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The cover verb says when a write changed nothing",
+   "break": [
+    [
+     "aim_next/cli_covers.py",
+     "\"wrote\" if result[\"changed\"] else \"no change to\"",
+     "\"wrote\""
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "Done is the earlier of the owner's thumbs-up and their named word, in either order",
+   "break": [
+    [
+     "aim_next/cover_values.py",
+     "return min(found, key=lambda each: each[:2])[2]",
+     "return max(found, key=lambda each: each[:2])[2]"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 624,
+   "act": "The owner's thumbs-up that changes no Done records no new cover row",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "            if value[\"payload\"].get(\"done\") == done:\n                continue\n",
+     "            if False:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_covers.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits its own message in place",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "message = self._editable(db, actor, target[\"message_id\"], people=False)",
+     "message = self._editable(db, actor, target[\"message_id\"])"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent edits only a message it wrote",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        if message[\"author_id\"] != actor:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)",
+     "        if False:\n            raise Refusal(\"FORBIDDEN\", ONLY_AUTHOR)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "item[\"struck\"] = None if item[\"withheld\"] else struck(",
+     "item[\"struck\"] = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had read an agent's message sees its old words struck through in the Reader",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "seen = None if held or current <= 1 else struck(",
+     "seen = None if True else struck("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person who had not read it sees only the new words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if delivery is None or delivery[\"state\"] != \"acknowledged\":",
+     "if delivery is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes the message unread again for a person who had read it",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "db.execute(\"UPDATE deliveries SET state='pending' WHERE id=?\", (delivery[\"id\"],))",
+     "pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person's edit strikes nothing and leaves the message read",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if self._actor_kind(db, actor) == \"agent\" else 0",
+     "if True else 0"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The struck words are what was last read, not the revision before",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "ON CONFLICT(actor_id,message_id) DO UPDATE SET revision=max(revision,excluded.revision)",
+     "ON CONFLICT(actor_id,message_id) DO NOTHING"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Another agent's read of an agent's message is recorded, and corrected on an edit",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return agent_from is None or seq < agent_from",
+     "    return True"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words sit where they stood, counted as a page counts",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "    return len(text.encode(\"utf-16-le\")) // 2",
+     "    return len(text)"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card's excerpt strikes only what it shows",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "        cuts = [cut for cut in cuts if cut[\"at\"] < _units(shown)]",
+     "        pass"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The CLI's edit is fenced on the revision read",
+   "break": [
+    [
+     "aim_next/cli.py",
+     "{\"body\": self.text()}, {\"message_revision\": options.expected})",
+     "{\"body\": self.text()}, {\"message_revision\": 1})"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The brief says a correction to one's own words is an edit",
+   "break": [
+    [
+     "aim_next/hosted_notice.py",
+     "fix words you wrote, in place: a correction to your own words is an edit",
+     "fix words you wrote, in place"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, options.struck);\n  host.classList.add('formatted');",
+     "  host.classList.add('formatted');"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader draws the struck words where they stood",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "  strike(host, struck);\n  DRAWN.set(host, body);",
+     "  DRAWN.set(host, body);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Struck words are spaced from the words they touch",
+   "break": [
+    [
+     "web/message-format.mjs",
+     "const nodes = [...(touches(before, true) ? [gap()] : []), del,",
+     "const nodes = [del,"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });",
+     "      formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item) });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card first drawn after an agent's edit shows the struck words",
+   "break": [
+    [
+     "web/app.mjs",
+     "revision: revisionOf(item), struck: item.struck?.cuts }));",
+     "revision: revisionOf(item) }));"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The Reader shows the struck words",
+   "break": [
+    [
+     "web/reader.mjs",
+     "struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,",
+     "struck: null,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An open Reader keeps the struck words when the agent edits again",
+   "break": [
+    [
+     "web/app.mjs",
+     "edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null });",
+     "edited_ms: latest.edited_ms ?? null });"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again on the open page",
+   "break": [
+    [
+     "web/app.mjs",
+     "  paintCardReading(); stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();",
+     "  stackMessages(); menu?.paint();\n  if (here?.page) paintConversationPage();"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's edit makes its card new again though this visit opened it",
+   "break": [
+    [
+     "web/app.mjs",
+     "    if (item.unread === true) openedIds.delete(id);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading edit agent"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person sent a message between others sees the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n",
+     "            if delivery is None or delivery[\"state\"] != \"acknowledged\":\n                continue\n            if bool(addressees) and reader not in addressees and reader != row[\"answers\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A message between others is never unread again for a person",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if not delivery[\"active\"]:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A delivery in a subscription closed since is not made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "if between or not delivery[\"active\"]:",
+     "if between:"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The edit's unread again counts only the people it made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if between or not delivery[\"active\"]:\n                continue\n",
+     "            count += between or not delivery[\"active\"]\n            if between or not delivery[\"active\"]:\n                continue\n"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A person whose message an agent answers while addressing others has it unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     " and reader != row[\"answers\"]\n            if between",
+     "\n            if between"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "An agent's own delivery is never made unread again",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "            if self._actor_kind(db, reader) != \"human\":\n                continue\n            delivery = db.execute(",
+     "            delivery = db.execute("
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Only people are given the struck words",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "JOIN actors a ON a.id=e.actor_id AND a.kind='human' ",
+     "JOIN actors a ON a.id=e.actor_id "
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The message made unread again keeps an earlier unread one first",
+   "break": [
+    [
+     "aim_next/message_edit.py",
+     "first_pending_seq=min(coalesce(first_pending_seq,?),?) WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"seq\"], delivery[\"group_id\"]))",
+     "first_pending_seq=? WHERE id=?\",\n                       (delivery[\"seq\"], delivery[\"group_id\"]))"
+    ]
+   ],
+   "check": {
+    "python": "test_agent_edit.py"
+   }
+  },
+  {
+   "item": 614,
+   "act": "A card read on in place strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "revision: this.revisions.get(item.id), struck: this.strikes.get(item.id) });",
+     "revision: this.revisions.get(item.id) });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a cut-off card strikes what the whole message took away",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? null : item.struck?.cuts"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "Show full on a whole card strikes its own item's words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "struck: item.preview ? this.strikes.get(item.id) : item.struck?.cuts",
+     "struck: item.preview ? this.strikes.get(item.id) : null"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
+   }
+  },
+  {
+   "item": 614,
+   "act": "The whole message read for a card keeps its struck words",
+   "break": [
+    [
+     "web/card-scroll.mjs",
+     "this.strikes.set(id, source.struck?.cuts ?? null);",
+     "this.strikes.set(id, null);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_message_format.test.mjs"
    }
   }
  ]

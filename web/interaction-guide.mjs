@@ -2,7 +2,7 @@
 // page (docs/interaction.md holds the same rules and the checks that keep
 // them). Each rule says the pointer's way, the keys' and the phone's. It opens
 // quietly: the ? key anywhere outside writing, or the small ? under who you
-// are at the top of the side rail (on a phone, the top of the page).
+// are at the foot of the side rail (on a phone, the end of its drawer or of the page).
 import { closeOnOutsideClick } from './dismiss.mjs';
 
 export const TITLE = 'Pointer, keys and taps';
@@ -22,7 +22,7 @@ export const RULES = [
   ['Reply stacks', 'Replies gather under the message they answer, oldest first as a chat reads, with that message on top as one row: who began it, its short name, who replied and how many are new. Press the row to show the message whole. Click the name, or ✎, or press Return on the selected stack, to rename it for everyone here: Return saves, Escape cancels; Space folds and opens it. A line stands for each run of replies folded away, with how many are new in red; press it to open them. Reply on a message’s bar, or Return on the selected message, opens its reply composer. On a message, ⌘↑ and ⌘↓ move its stack up or down for you alone, → shows every message and ← only the latest and unread; another → when fully open moves to the right siderail, and another ← at latest and unread moves to the left siderail. ⇧⌘↑ and ⇧⌘↓ join it to the stack above or below for everyone, after which every message of both reads oldest first as one stack and a new reply lands at the bottom (Split back out takes it out again), and ⌘Z puts the last back. ⋯ holds the same, and Star for me, which keeps a message in view and in the right rail\'s Starred, for you alone. Fold on ⋯, or x on the selected message, makes a message one line, who wrote it and its first words, for you alone, on every device, in every state of its stack, until you unfold it: press or tap that line, Unfold on ⋯ or x again, and ⌘Z undoes a fold you just made. A reply or a 👍 of yours folds the message for you too, and ⌘Z leaves that fold; its line keeps its 👍. A starred message is not folded. Swipe a dossier’s header or last visible message right to put the whole dossier below More messages for you, on every device. Your own replies leave it there; a new reply from someone else brings it back. Move below More and Bring back above More are also in ⋯, and in the Reader as the archive button beside the star, which says how many messages go; ⌘Z undoes a move. On a laptop, two fingers swiped right on the trackpad fold other messages, and swiped left over a folded line unfold it. On a phone ⋯ opens from the bottom, with Move or join… for the stack\'s moves; a message swiped right folds, and its line swiped left unfolds.'],
   ['Moving lines', 'In writing, ⌥↑ and ⌥↓ move the line, list item or paragraph you are on, or those selected, above or below its neighbour; ⌘Z puts it back. A phone has no such key.'],
   ['Escape', 'Closes what is open, keeping your writing; so does ✕. A click or tap outside a pop-up closes it too.'],
-  ['?', 'The ? key opens this page, and so does "? Pointer, keys and taps" at the top of the side rail (on a phone, the top of the page).'],
+  ['?', 'The ? key opens this page, and so does "? Pointer, keys and taps" at the foot of the side rail, under who you are (on a phone, at the end of what ☰ opens, or of the page).'],
 ];
 
 export class InteractionGuide {
@@ -49,7 +49,7 @@ export class InteractionGuide {
     if (!this.dialog.open) this.dialog.showModal();
   }
   // The quiet way in: a small ? under the instance label, a full tap high on a phone.
-  // One the page before drew, put back with the logo block by a move in place
+  // One the page before drew, put back with the rail's foot by a move in place
   // (in-place-navigation.mjs), gives its place to this one.
   offer(label) {
     const there = label?.parentElement.querySelector('.guide-open');

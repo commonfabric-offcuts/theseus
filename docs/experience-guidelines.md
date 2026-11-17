@@ -351,6 +351,14 @@ nothing scrolls sideways, and nothing depends on hover.
   shows, 44px, …", in both themes; "rail each pencil's title line, at 320, 375
   and 390 in the open drawer and on a laptop, …" draws each of its states
   (open, refused, busy, refused by the server) at each width, in both themes.
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): "rail
+  the rail's foot: who you are on which instance, the guide's ? and Health sit
+  below the side rail's last section …", at 320, 375 and 390 in the drawer and
+  on a laptop, light and dark: the three end the rail (or the page with no
+  rail) inside the screen, the guide's ? is 44px to a finger and opens the
+  guide; `tests/health_native.mjs` (`native-health`, `native-webkit-health`):
+  "health lit at the foot of the side rail …", the lit link tapped there opens
+  Health ([rails.md](rails.md), "The rail's foot").
 - `tests/outcome_rail_native.mjs` (`native-rail`): "rail on a phone, on a Build
   topic's outcome, the drawer's outcome row counts its Build topics' new
   messages and "Pipeline & pages" carries them to their rows; …" and "rail More
