@@ -27061,6 +27061,20 @@
    "check": {
     "python": "test_item_610.py"
    }
+  },
+  {
+   "item": 610,
+   "act": "An unavailable coordinator refuses without changing the outcome",
+   "break": [
+    [
+     "aim_next/standing_conversation.py",
+     "chosen = self._recipients(db, [chosen])[0]",
+     "_identifier(chosen, \"actor_id\")"
+    ]
+   ],
+   "check": {
+    "python": "test_item_610.py"
+   }
   }
  ]
 }
