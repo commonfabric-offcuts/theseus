@@ -84,6 +84,9 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     await check(`item 651 ${label}: rail thumbnail opens its image and keeps the topic`, async () => {
       const p = await page(shape, scheme, `/?topic=${topic}`);
       if (p.touch) await press(p, '#things-open');
+      const summary = '.things-sec[data-key=images] > summary';
+      await p.locator(summary).waitFor({ state: 'visible' });
+      if (!await p.locator('.things-sec[data-key=images]').evaluate(d => d.open)) await press(p, summary);
       const selector = '.things-thumbs .image-thumb';
       await ready(p, selector);
       await picture(p, 'item-651-rail');
