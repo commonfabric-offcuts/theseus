@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 export async function promiseChecks(api, helpers) {
   const { check, until, view, control, shot, facts, observations, engine } = api;
-  const { seed, open, centre, press, closeReader, card } = helpers;
+  const { seed, open, centre, press, openReader, closeReader, card } = helpers;
   const sizes = [['320', 'phone-320'], ['375', 'phone-375'], ['390', 'phone'], ['laptop', 'laptop']];
   const text = 'I will book the cabin.';
   let serial = 0;
@@ -126,6 +126,30 @@ export async function promiseChecks(api, helpers) {
     await check(`reading item 717 ${branch} is explicit on the cover and Reader at 320 375 390 laptop light dark`,
       () => scenario(branch, false, false, branch));
   }
+
+  await check('reading item 717 a single message shows a promise pill and opens its complete Reader history at 320 375 390 laptop light dark', async () => {
+    for (const [width, shape] of sizes) for (const theme of ['light', 'dark']) {
+      const topic = `promise-717-lone-${++serial}`;
+      const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, body: text, addressees: [facts.actor] }]]);
+      const promise = { id: 'cabin', text, message_id: ids.root, source_revision: 1, due: null, state: 'promised' };
+      assert.equal((await write(ids.root, { promises: [promise] }, topic + '-promise')).status, 'committed');
+      const p = await open(topic, shape, topic, ids.root), device = shape.startsWith('phone') ? 'phone' : 'laptop';
+      try {
+        await scheme(p, theme);
+        const pill = card(ids.root) + ' .pill-promise';
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(pill)})?.textContent.includes('No time given')`), 'the lone promise pill is drawn');
+        await centre(p, pill); await shot(p, `717-lone-${width}-${theme}`);
+        await openReader(p, device, ids.root, text);
+        await until(() => p.evaluate(`document.querySelector('#reader-cover-line').textContent.includes(${JSON.stringify(text)})`), 'a promise-only cover names its words on the quiet line');
+        await press(p, device, '#reader-cover > summary');
+        await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'the promise-only sheet opens natively');
+        const at = await measure(p, '#reader-cover .dossier-cover');
+        assert.equal(at.rows.length, 1); assert.ok(at.rows[0].text.includes('No time given')); assert.equal(at.done, 'false');
+        await shot(p, `717-lone-reader-${width}-${theme}`);
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    }
+  });
 
   const sourceOpen = async (p, device, root) => {
     const citation = covers(root) + ' .cover-payload .cover-src';
@@ -266,7 +290,8 @@ export async function promiseChecks(api, helpers) {
         assert.equal(served, changed, 'the owned server serves the actual mutated bytes');
         await scenario('mutant-' + serial, false, false);
       } catch (error) { failure = error; }
-      finally { await writeFile(url, original); assert.equal(await readFile(url, 'utf8'), original, 'original bytes restored'); await restart(); }
+      finally { await writeFile(url, original); assert.equal(await readFile(url, 'utf8'), original, 'original bytes restored'); await restart();
+        assert.equal(await (await fetch(facts.origin + '/dossier-cover.mjs')).text(), original, 'restored bytes are served too'); }
       assert.ok(failure, mutant.name + ' must fail');
       const intended = { 'promise omitted': /recorded promised/, 'prior time not struck': /prior time is visibly struck/, 'missed credited kept': /recorded missed/, 'cover too wide': /cover fits within/ };
       assert.match(String(failure), intended[mutant.name], 'the mutation fails the intended product assertion');
