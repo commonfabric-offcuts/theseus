@@ -233,8 +233,9 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
   stacks hidden title bar glyphs reserve nothing …", at 320 by touch hidden
   glyphs keep no width from a dossier's name, and "reading stacks the title
-  bar's ⋯ sits on the folder's face …", ⋯ stays inside the folder's right edge
-  at 320, 375 and 390 and on a laptop, light and dark.
+  bar's ⋯ sits on the folder's face …", ⋯ stays inside the folder's right edge,
+  the tab giving back no more than ⋯ needs, at 320, 375 and 390 each way a
+  touch shows it and on a laptop, light and dark.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 

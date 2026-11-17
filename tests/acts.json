@@ -25994,8 +25994,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *):is(:hover,:focus-within,",
-     ".reply-stack:not(.only-new *):is(:active,:focus-within,"
+     ".reply-stack:not(.only-new *):has(>.stack-tools):hover{--stack-tools-shown:1}",
+     ".reply-stack:not(.only-new *):has(>.stack-tools):active{--stack-tools-shown:1}"
     ]
    ],
    "check": {
@@ -26655,18 +26655,13 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
-     ".reply-stack:not(.only-new *)>.stack-tools{visibility:hidden}\n"
+     "opacity:var(--stack-tools-shown);clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}",
+     "opacity:var(--stack-tools-shown);clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)));visibility:hidden}"
     ],
     [
      "web/stack-look.css",
-     ">.stack-tools{opacity:1;pointer-events:auto}\n",
-     ">.stack-tools{visibility:visible}\n"
-    ],
-    [
-     "web/stack-look.css",
-     ">.stack-tools{pointer-events:auto;opacity:0}\n",
-     ">.stack-tools{visibility:visible;opacity:0}\n"
+     "{--stack-tools-shown:1}\n@media(hover:hover){\n",
+     "{--stack-tools-shown:1}\n.reply-stack:not(.only-new *):has(>.stack-tools):is(:focus-within,:has(.stack-head-card.lit),:has(>.stack-tools [aria-expanded=true]))>.stack-tools{visibility:visible}\n@media(hover:hover){\n  .reply-stack:not(.only-new *)>.stack-tools{visibility:visible}\n"
     ]
    ],
    "check": {
@@ -26680,8 +26675,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
-     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0}\n"
+     ";clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}",
+     "}"
     ]
    ],
    "check": {
@@ -26695,8 +26690,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0;pointer-events:none}\n",
-     ".reply-stack:not(.only-new *)>.stack-tools{opacity:0}\n"
+     ";clip-path:inset(calc(50% - var(--stack-tools-held) * (50% + .5rem)))}",
+     "}"
     ]
    ],
    "check": {
@@ -26935,8 +26930,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *){--stack-tools-room:0px}",
-     ".reply-stack:not(.only-new *){--stack-tools-room:var(--stack-tools-w)}"
+     "--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}",
+     "--stack-tools-room:var(--stack-tools-w)}"
     ]
    ],
    "check": {
@@ -26950,8 +26945,8 @@
    "break": [
     [
      "web/stack-look.css",
-     ".reply-stack:not(.only-new *){--stack-tools-room:0px}",
-     ".reply-stack:not(.only-new *){--stack-tools-room:var(--stack-tools-w)}"
+     "--stack-tools-room:calc(var(--stack-tools-held) * var(--stack-tools-w))}",
+     "--stack-tools-room:var(--stack-tools-w)}"
     ]
    ],
    "check": {
@@ -26987,6 +26982,141 @@
    "check": {
     "native": "webkit-reading",
     "case": "hidden title bar glyphs reserve nothing"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A reply selected by touch, the focus in the dossier and its first message not lit, shows the title bar's ⋯ on the folder's face, clear of the tab's corner, at 390, 375 and 320 (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":is(:focus-within,:has(.stack-head-card.lit),",
+     ":is(:has(.stack-head-card.lit),"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A dossier selected by touch with the focus gone from it, its first message lit alone, shows the title bar's ⋯ on the folder's face at 390, 375 and 320 (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":is(:focus-within,:has(.stack-head-card.lit),",
+     ":is(:focus-within,"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's ⋯ menu opened by the keys with nothing lit, the focus in the menu, keeps ⋯ showing on the folder's face at 390, 375 and 320 (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ",:has(>.stack-tools [aria-expanded=true])){--stack-tools-shown:1}",
+     "){--stack-tools-shown:1}"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "By touch the title bar's ⋯ takes its room on the folder whenever it shows: its room and its press follow the one switch that shows it, at 390, 375 and 320 (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-tools-held:var(--stack-tools-shown);",
+     "--stack-tools-held:0;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A reply selected by touch, the focus in the dossier and its first message not lit, shows the title bar's ⋯ on the folder's face, clear of the tab's corner, at 390, 375 and 320, in Safari's engine (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":is(:focus-within,:has(.stack-head-card.lit),",
+     ":is(:has(.stack-head-card.lit),"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "A dossier selected by touch with the focus gone from it, its first message lit alone, shows the title bar's ⋯ on the folder's face at 390, 375 and 320, in Safari's engine (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ":is(:focus-within,:has(.stack-head-card.lit),",
+     ":is(:focus-within,"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "The title bar's ⋯ menu opened by the keys with nothing lit, the focus in the menu, keeps ⋯ showing on the folder's face at 390, 375 and 320, in Safari's engine (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     ",:has(>.stack-tools [aria-expanded=true])){--stack-tools-shown:1}",
+     "){--stack-tools-shown:1}"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "By touch the title bar's ⋯ takes its room on the folder whenever it shows: its room and its press follow the one switch that shows it, at 390, 375 and 320, in Safari's engine (warp #7317, B4)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "--stack-tools-held:var(--stack-tools-shown);",
+     "--stack-tools-held:0;"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar's ⋯ sits on the folder's face"
+   }
+  },
+  {
+   "item": 473,
+   "act": "On a phone the title bar's room is ⋯'s alone, so the tab gives back only as much as one glyph needs, ⋯ inside the window, in Safari's engine (warp #7317, B3)",
+   "break": [
+    [
+     "web/stack-look.css",
+     "  :root{--stack-tools-w:calc(var(--stack-tool-size) + .1rem)}\n",
+     ""
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "the title bar shows Reply, Move below More and ⋯"
    }
   }
  ]
