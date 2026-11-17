@@ -28,3 +28,33 @@ test('item 655 returning to an old dossier preserves the paging gap and merges e
   assert.equal(views.messages.size, 29);
   assert.equal(views.runOf('m3'), views.runOf('m30'), 'the overlapping earlier page joins the two runs');
 });
+
+// Exercise the real registry open contract without a browser or another test process.
+import { EditorRegistry } from '../web/app-session.mjs';
+const gate655 = () => {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
+function opening655(present) {
+  const ref = { kind: 'message', id: 'source' }, source = { instance_id: 'i', source_ref: ref, topic_id: 't' };
+  const registry = Object.create(EditorRegistry.prototype);
+  Object.assign(registry, { generation: 0, disposed: false, bootstrap: { instance_id: 'i', actor: 'reader' }, activity() {},
+    cleanup: { foreground: () => ({ read: work => work({}), release() {} }) },
+    keepBeforeStep: async () => {}, api: { view: async name => name === 'source' ? source : { submissions: [], destination_available: true } },
+    validateState() {}, setPending() {}, register: async () => ({ read() {} }), present });
+  return { registry, open: () => registry.open(ref, { topicId: 't' }) };
+}
+test('item 655 B3 open waits for presentation and reports a presentation failure', async () => {
+  const entered = gate655(), release = gate655();
+  const f = opening655(async () => { entered.resolve(); await release.promise; throw Error('Dossier lookup refused'); });
+  let settled = false;
+  const result = f.open().then(value => ({ value }), error => ({ error })).then(answer => { settled = true; return answer; });
+  await entered.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  const reportedEarly = settled;
+  release.resolve();
+  const answer = await result;
+  assert.equal(reportedEarly, false, 'open must not report success before presentation has completed');
+  assert.match(answer.error?.message ?? '', /Dossier lookup refused/, 'the caller receives the failure instead of an unhandled rejection');
+});

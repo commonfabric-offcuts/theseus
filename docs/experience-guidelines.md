@@ -412,3 +412,10 @@ agrees (item 655).
 - `tests/ui_starred_dossier.test.mjs`: a valid cross-topic Starred route and
   a bounded return that preserves the paging gap, then merges an overlapping
   older page without repeating messages.
+
+Item 655 review checks in `tests/stack_native.mjs` (`native-reading` and
+`native-webkit-reading`): "reading item 655 B1-root", "B1-reply", "single",
+"B2-fresh", "B3-position", "B3-root" and "B4-return" cover unnamed roots and
+replies, singleton fallback, remote rename/clear/join/split, each failed
+metadata lookup and settled Conversation return through Only new. Each
+state runs at 320, 375, 390 and laptop, with light/dark screenshots.

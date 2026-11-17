@@ -1111,6 +1111,26 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const range=document.createRange();range.selectNodeContents(b??h);const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top))).size;
     const cut=[b,h].some(e=>e&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow==='ellipsis'),title=h.getBoundingClientRect(),aside=box('reader-aside'),close=box('reader-close');
     return {text:h.textContent,button:Boolean(b),lines,cut,aside:inside(aside)&&aside.left>=title.right-0.5,close:inside(close),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const network = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    if (engine === 'chrome') {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
+    }
+    const held = []; let test = null;
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, held: () => held,
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
+  };
   // Item 655: an old starred reply is outside the page's loaded range. The first dossier and the
   // topic deliberately have different names, and Starred is pressed from a different topic.
   for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
@@ -1163,6 +1183,111 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         assert.equal((await titleOf(p)).text, 'Second dossier', 'opening the same reply from its dossier agrees');
         assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === ids.star)?.acts.starred, true, 'navigation never takes the star off');
         assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.first, ids.second] })).items.every(i => i.stack_position.below === false), true, 'navigation moves neither dossier below More');
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
+  // Review regressions: every state of the same title/return at the phone widths and laptop.
+  const openStar655 = async (p, device, id) => {
+    if (device === 'phone') await press(p, device, '#things-open');
+    const section = '#things .things-sec[data-key=starred]';
+    await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy') !== 'true' && Boolean(document.querySelector('${section}:not([hidden])')?.getClientRects().length)`), 'Starred is ready');
+    if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
+    const link = `${section} .things-starred a[href*="message=${id}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length)`), 'Starred draws the source link');
+    await centre(p, link); await press(p, device, link);
+  };
+  for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const rule of ['B1-root', 'B1-reply', 'single', 'B2-fresh', 'B3-position', 'B3-root']) await check(`reading item 655 ${rule} at ${width}: unloaded dossier title states`, async () => {
+      const topic = `item-655-review-${rule}-${width}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Unnamed dossier first line.\nThe rest stays as written.' }],
+        ...(rule === 'single' ? [] : [['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Unloaded dossier reply.' }]]),
+        ['else', { sender: other, addressees: [facts.actor], body: 'Other dossier first line.' }],
+        ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Independent later message ${n}.`, read: true }]),
+      ]);
+      const target = rule === 'B1-root' || rule === 'single' ? ids.root : ids.reply;
+      if (rule === 'B2-fresh') await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-name', args: { name: 'Old dossier name' } });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: target, operation_id: topic + '-star', args: { starred: true } });
+      const p = await open(topic, device, topic, ids.f33, 'window.holdReads=true;');
+      try {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        const bad = rule.startsWith('B3-');
+        let net;
+        if (bad) {
+          net = await network(p, true);
+          net.hold(payload => rule === 'B3-position' ? payload?.name === 'stack_positions' && payload.args?.message_ids?.includes(target)
+            : payload?.name === 'topic_messages' && payload.args?.message_ids?.includes(ids.root));
+        }
+        await openStar655(p, device, target);
+        if (bad) {
+          const held = await until(() => net.held()[0], 'the dossier metadata read is held');
+          net.hold(null);
+          await net.answer(held, 503, { error: { code: 'DATABASE_BUSY', message: 'Dossier lookup busy for item 655.' } });
+        }
+        await until(async () => (await readerOn(p)) !== null, 'the source opens even if dossier metadata is unavailable');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.root))}))`), false, 'opening reads no old feed page');
+        if (bad) {
+          await until(() => p.evaluate(`document.querySelector('#reader-notice').textContent.includes('Dossier name could not be read')`), 'the Reader explains the metadata failure');
+          assert.ok((await readerOn(p)).startsWith('Unloaded dossier reply.'), 'failure preserves the exact source');
+          assert.equal(await p.evaluate(`document.querySelector('#reader-close').disabled`), false, 'the Reader remains closable');
+        } else {
+          const expected = rule === 'single' ? 'Reading ' + topic : rule === 'B2-fresh' ? 'Old dossier name' : 'Unnamed dossier first line.';
+          await becomes(async () => (await titleOf(p)).text, expected, 'the title names this dossier, with the topic fallback only for a singleton');
+          if (rule === 'B2-fresh') {
+            for (const [suffix, root, name, expectedName] of [
+              ['rename', ids.root, 'New dossier name from another device', 'New dossier name from another device'],
+              ['clear', ids.root, '', 'Unnamed dossier first line.'],
+            ]) {
+              await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: root, operation_id: topic + '-' + suffix, args: { name } });
+              await becomes(async () => (await titleOf(p)).text, expectedName, 'freshness follows an unloaded dossier rename or cleared name');
+            }
+            await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.else, operation_id: topic + '-other-name', args: { name: 'Joined dossier name' } });
+            await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-join', args: { into: ids.else } });
+            await becomes(async () => (await titleOf(p)).text, 'Joined dossier name', 'freshness follows the new root after a join');
+            await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-split', args: { into: null } });
+            await becomes(async () => (await titleOf(p)).text, 'Unnamed dossier first line.', 'a split drops the old joined name');
+          }
+        }
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-${rule}-${width}-${theme}-reader`); }
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'the title closes the Reader');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))})?.getClientRects().length)`), 'the title reveals the same source');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-${rule}-${width}-${theme}-return`); }
+        if (!bad) {
+          await openReader(p, device, target, target === ids.root ? 'Unnamed dossier first line.' : 'Unloaded dossier reply.');
+          assert.equal((await titleOf(p)).text, rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', 'opening from the dossier agrees after every state change');
+        }
+        assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === target)?.acts.starred, true, 'no title read or return unstars the source');
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+    await check(`reading item 655 B4-return at ${width}: a settled Conversation dossier returns through Only new`, async () => {
+      const name = `item-655-conversation-${width}`;
+      await control({ method: 'navigation_workspaces', workspaces: [{ id: name, title: name, team: ['fable'], coordinator: 'fable' }] });
+      const topic = (await view('conversation', { workspace_id: name })).conversation.topic_id;
+      const root = (await control({ method: 'agent_message', operation_id: name + '-root', topic_id: topic, sender: facts.actor, body: 'Settled starred conversation item.' })).result.message_id;
+      await control({ method: 'agent_message', operation_id: name + '-answer', topic_id: topic, sender: 'fable', reply_to: root, body: 'The coordinator answered this item.' });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: root, operation_id: name + '-star', args: { starred: true } });
+      await control({ method: 'agent_message', operation_id: name + '-new', topic_id: topic, sender: facts.actor, body: 'An unrelated item still needs an answer.' });
+      const p = await open(name, device, topic, root, '', '/?conversation=' + name);
+      try {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        const filter = '#conversation-show button';
+        await until(() => p.evaluate(`Boolean(document.querySelector('${filter}')?.getClientRects().length)`), 'Only new is offered');
+        await press(p, device, filter);
+        await until(() => p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), 'Only new is active');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(root))})?.getClientRects().length)`), false, 'the settled dossier is hidden by the filter');
+        await openStar655(p, device, root);
+        await until(async () => (await readerOn(p))?.startsWith('Settled starred conversation item.'), 'Starred opens the settled source without resetting the filter');
+        assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), true, 'opening alone keeps the chosen filter');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-B4-${width}-${theme}-reader`); }
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'the title closes the Reader');
+        assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), false, 'the title return clears Only new so its settled source can show');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(root))})?.getClientRects().length)`), 'the settled dossier is revealed');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `item-655-review-B4-${width}-${theme}-return`); }
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }
     });
@@ -2263,26 +2388,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 547: Core's answers to the page's requests, held at the network for a check to drop, let through or
   // answer itself, in Chrome with the harness's interception and in Safari's engine with Playwright's routing.
   // before: what the check picks is held before Core sees it; else once Core has answered it.
-  const network = async (p, before = false) => {
-    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
-    if (engine === 'chrome') {
-      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
-      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
-        drop: entry => { take(p.held, entry); return p.fail(entry); },
-        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
-        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
-    }
-    const held = []; let test = null;
-    await p.pw.route(facts.origin + '/api/*', async route => {
-      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
-      if (!test?.(payload)) return route.continue();
-      held.push({ payload, route, response: before ? null : await route.fetch() });
-    });
-    return { hold: given => { test = given; }, held: () => held,
-      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
-      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
-      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
-  };
   // The page's status line, as shown.
   const statusLine = p => p.evaluate(`(()=>{const n=document.getElementById('app-status');return {shown:!n.hidden&&n.getClientRects().length>0,text:n.textContent}})()`);
   const foldedCard = (p, id) => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded === 'true'`);

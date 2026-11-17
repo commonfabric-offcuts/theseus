@@ -24,6 +24,13 @@ a press on it goes back to that dossier, as ← does (`StackFeed.dossierName`,
 back, including when another topic was on screen and the dossier is older
 than the loaded messages (item 655). Its name is read by message ID; pressing
 the title loads one page around the reply and reveals it in its dossier.
+An unnamed old root with replies uses its own first line; a singleton keeps
+the topic title. Names, cleared names and joins from another device follow
+freshness even while the source stays outside the feed. If the scoped name
+lookup fails, the Reader still opens the exact source and explains that its
+dossier name could not be read. A title return from a Conversation clears
+Only new so a settled source can be revealed; merely opening it keeps the
+filter.
 The ordinary More messages frontier stays where it was, so the messages
 between that page and the newest ones are still reachable.
 

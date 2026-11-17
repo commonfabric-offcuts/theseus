@@ -71,3 +71,10 @@ fenced on the move's own answer, as on a loaded root.
 Schema 38 adds `aside` to the existing act table plus reply/join edge indexes.
 Upgrade preserves act ids, revisions and the sequence high-water mark. Downgrade
 to 37 refuses if any aside row exists, even if brought back later.
+
+For an unloaded Reader source, `stack_positions` also returns
+`has_other_messages` on each position: whether its dossier has another
+message this reader can see, through the same indexed reply/join edges.
+This distinguishes an unnamed root with replies from a singleton without
+loading history; whispers the reader cannot see and replies joined elsewhere
+never count. The field is computed once per root in this scoped view.
