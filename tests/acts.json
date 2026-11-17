@@ -24778,8 +24778,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "message.get(\"author_id\") == owner",
-     "True"
+     "if message.get(\"author_id\") != owner:",
+     "if False:"
     ]
    ],
    "check": {
@@ -24792,8 +24792,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "        line, SENTENCE % clock(end), number,",
-     "        line, \"\", number,"
+     "if ask else \"\", SENTENCE % clock(end), number,",
+     "if ask else \"\", \"\", number,"
     ]
    ],
    "check": {
@@ -24862,8 +24862,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "        words = body(line, number, item, True, window_end(now, window))",
-     "        words = body(line, number, item, True, window_of(newest, lines[-1][\"message_id\"]))"
+     "        words = body(line, number, item, True, window_end(clock(), window), ask=dissented)",
+     "        words = body(line, number, item, True, window_of(newest, lines[-1][\"message_id\"]), ask=dissented)"
     ]
    ],
    "check": {
@@ -24988,8 +24988,8 @@
    "break": [
     [
      "tools/start_line.py",
-     "(newest[\"body\"].split(\"\\n\", 1)[0], owner, said)",
-     "(newest[\"body\"].split(\"\\n\", 1)[0], owner, \"\")"
+     "(written, owner, said)",
+     "(written, owner, \"\")"
     ]
    ],
    "check": {
@@ -25002,8 +25002,144 @@
    "break": [
     [
      "tools/start_line.py",
-     "        newest = read_message(cli, lines[-1][\"message_id\"])\n        commit = surface_commit(surface)",
-     "        newest = read_message(cli, lines[0][\"message_id\"])\n        commit = surface_commit(surface)"
+     "        newest = read_message(cli, lines[-1][\"message_id\"])\n        written = ",
+     "        newest = read_message(cli, lines[0][\"message_id\"])\n        written = "
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The window runs from the minute the line is posted, after the writer returns, never from when open started",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    theirs = owners_item(item, owner)\n",
+     "    theirs = owners_item(item, owner)\n    started = clock()\n"
+    ],
+    [
+     "tools/start_line.py",
+     "to_owner, window_end(clock(), window))",
+     "to_owner, window_end(started, window))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "Each line posted again in one open run states a window from its own post, after its own writer run",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    for reply, rewrite in pending:\n",
+     "    rewritten = clock()\n    for reply, rewrite in pending:\n"
+    ],
+    [
+     "tools/start_line.py",
+     "True, window_end(clock(), window), ask=dissented)",
+     "True, window_end(rewritten, window), ask=dissented)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The owner's reply under his own reply, or under a member's in the line's dossier, is a correction worked in and posted again",
+   "break": [
+    [
+     "tools/start_line.py",
+     "            elif message.get(\"reply_to\") in dossier:\n                dossier.add(message[\"id\"])\n",
+     "            elif message.get(\"reply_to\") in dossier:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The owner's plain top-level post in the topic is a new matter and is not read",
+   "break": [
+    [
+     "tools/start_line.py",
+     "elif message.get(\"reply_to\") in dossier:",
+     "elif True:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "The owner's reply under a message outside the line's dossier is not read",
+   "break": [
+    [
+     "tools/start_line.py",
+     "elif message.get(\"reply_to\") in dossier:",
+     "elif message.get(\"reply_to\") is not None:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A 👎 is a correction, never a yes: the line is posted again as it stands, no writer run, until a 👍 or the new window's end",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    return not any(character.isalnum() for character in words) and any(character in DISSENT for character in words)",
+     "    return False"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A line posted again for a 👎 asks \"say what to change\" under it",
+   "break": [
+    [
+     "tools/start_line.py",
+     "line, ASK + \"\\n\\n\" if ask else \"\", SENTENCE",
+     "line, \"\", SENTENCE"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A typed 👍, or any reply with no letters and no dissent mark, is worked in by the writer with no ask",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    return not any(character.isalnum() for character in words) and any(character in DISSENT for character in words)",
+     "    return not any(character.isalnum() for character in words)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_start_line.py"
+   }
+  },
+  {
+   "item": 603,
+   "act": "A reply with a letter or digit beside a 👎 is the writer's to work in, not a dissent",
+   "break": [
+    [
+     "tools/start_line.py",
+     "    return not any(character.isalnum() for character in words) and any(character in DISSENT for character in words)",
+     "    return any(character in DISSENT for character in words)"
     ]
    ],
    "check": {

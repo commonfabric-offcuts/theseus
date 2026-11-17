@@ -230,12 +230,18 @@ sentence
 where H:MM is that post's window end, in Pacific time. The window is 15
 minutes (`--window` changes it): the item's sources set no length, and 15
 minutes is the time after which a default the owner was told of stands, on
-the owner's standing rule for calls. The end is the post's time and the
-window, rounded up to the minute, so the time stated is never earlier than
-the end. The tool never decides what a word means: the owner's 👍 on the
-newest line, or that line's window ending with nothing written under it,
-builds it as written; anything they write is a correction, worked into the
-line by the writer and posted again with the window restarted.
+the owner's standing rule for calls. The window runs from the minute the
+line is posted (warp, codex #6896): the clock is read after the writer
+returns, just before each post, never when `open` started, so a writer that
+takes longer than the window never posts a line whose window is already
+over, and each line posted again in one `open` run states a window from its
+own post. The end is the post's time and the window, rounded up to the
+minute, so the time stated is never earlier than the end. The tool never
+decides what a word means: the owner's 👍 on the newest line, or that line's
+window ending with nothing written under it, builds it as written; anything
+they write is a correction, worked into the line by the writer and posted
+again with the window restarted. The one thing it tells apart is a dissent
+(below), which is a correction with no words to work in.
 
 ```sh
 tools/start_line.py open OUTCOME N --topic TOPIC --cli LIVE/bin/aim-next --profile /abs/agent.json --surface LIVE \
@@ -243,8 +249,10 @@ tools/start_line.py open OUTCOME N --topic TOPIC --cli LIVE/bin/aim-next --profi
 tools/start_line.py cut OUTCOME N --cli LIVE/bin/aim-next --profile /abs/agent.json [--now ISO]
 ```
 
-`--now` is the time it is, ISO 8601 with its offset; left out, it is the
-clock. Both verbs take it, so the window is read against a time passed in.
+`--now` is the time, ISO 8601 with its offset, fixed for every read of the
+clock in that run; left out, the clock is read at each post (and once by
+`cut`). Both verbs take it, so the window is read against a time passed in.
+The coordinator leaves it out: with it, a slow writer's time is not counted.
 
 `open` runs when a build slot opens for item N: after its piece enters Build in
 TOPIC and before its builder starts. WRITER is the headless brief-writer, any
@@ -297,13 +305,18 @@ different payload under the same operation (`OPERATION_PAYLOAD_MISMATCH`), and
 the second run answers with the line recorded (`posted: false`).
 Operations are the poster's own, so the coordinator opens every start line.
 
-Then `open` works in what the owner wrote. Every reply of the owner's under
-any start line of the revision, whatever its words and however many lines,
-is a correction: the writer is given the item as before, the newest line and
+Then `open` works in what the owner wrote. Every message of the owner's in
+the start line's dossier after it, whatever its words and however many
+lines, is a correction (warp, codex #6896). The dossier is the line's reply
+thread: the replies under any start line of the revision, and the replies
+under those, to any depth, so his reply under his own reply, or under a
+member's message in the thread, counts. His plain top-level post in the
+topic, or his reply under a message outside the thread, is a new matter and
+is not read. A correction with words: the writer is given the item as before, the newest line and
 the reply word for word, and prints the line as it should now read (the line
 unchanged, if what they wrote changes nothing; that is the writer's call). It
 is posted again in the line's topic as a reply to theirs, to the owner as a
-tell, with the sentence and a window restarted from `--now`. Each such line
+tell, with the sentence and a window restarted from its own post. Each such line
 is its own operation, `start-line-OUTCOME-N-REV-re-REPLY`, one per (revision,
 reply answered), so a retry finds it and never posts it twice, and the
 revision's lines and the replies they answer are found by those operations,
@@ -314,8 +327,24 @@ from agents without its words: `open` answers exit 2 and runs no writer for
 it until they save or leave the edit. Only the owner's replies count; another
 member's words under a line are worked into nothing.
 
+A dissent is a correction, never a yes (warp, codex #6896): a reply with no
+letter or digit that holds a dissent mark, 👎, ❌, 🛑, ⛔ or 🚫 (with any
+skin tone or variation selector). It has nothing to work in, so no writer
+runs: the newest line is posted again as it stands, under the reply, to the
+owner, with its own operation as any rewrite, and with
+
+> say what to change
+
+between the line and the sentence. Nothing builds until the owner's 👍 on
+that line or its new window's end. Every other reply keeps the shape of
+codex #6643, any text a correction: a reply with no letters and no dissent
+mark (a typed 👍, a "?") is given to the writer like words and posted again
+with the sentence alone, and a 👎 beside a letter or digit ("👎 not the reel
+page") is words for the writer. A typed 👍 is not the owner's 👍: only the
+reaction on the newest line builds before its window ends.
+
 `cut` reads the item's current revision from Theseus: its start lines and the
-replies under them, page by page through the topic from the first line on, so
+dossier under them, page by page through the topic from the first line on, so
 an answer after a hundred other messages is still read. It builds only from
 the newest line:
 
@@ -339,7 +368,8 @@ Each verb prints one JSON object: `item`, `revision`, `operation_id`,
 `message_id`, `topic_id`, `owner`, `brief` (the newest line) and
 `window_ends`; `open` adds `owners_item`, `to_owner`, `posted` (the first
 line, and `surface_commit` when it posted) and `rewrites` (each line it
-posted again: `reply`, `message_id`, `posted`, `surface_commit`); `cut` adds
+posted again: `reply`, `message_id`, `posted`, `dissent`, and
+`surface_commit` when it posted one the writer wrote); `cut` adds
 `answer` and `lines`. Exit 0 done, 1 refused or waiting with one line on
 stderr and nothing posted, 2 Theseus could not be read or did not record the
 post, which is never read as "nothing there".

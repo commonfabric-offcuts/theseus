@@ -6,6 +6,9 @@ from __future__ import annotations
 Every outcome, item and word here is invented: outcome w1 ("Isolated test") is owner's, agent-a its coordinator and
 agent-b a member; its items are about a kite club's pages."""
 
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta
+import io
 import json
 import os
 from pathlib import Path
@@ -16,6 +19,7 @@ import unittest
 
 from aim_next.profile import write_profile
 from test_agent_verbs import AgentVerbCase
+from tools import start_line
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "start_line.py"
@@ -55,10 +59,12 @@ def sentence(clock):
     return "a \U0001f44d, or nothing by %s, builds it as written; anything you write, I rewrite the line and post it again" % clock
 
 
-def posted(line, number, title, clock, ends, kept=False):
-    """A start line's post as the owner reads it: the line, the sentence under it, what it is and when it ends."""
-    return '%s\n\n%s\n\nStart line for %d, "%s": what its build will make.%s Its window ends %s.' % (
-        line, sentence(clock), number, title, " Kept with the item's work; the owner is not told." if kept else "", ends)
+def posted(line, number, title, clock, ends, kept=False, ask=False):
+    """A start line's post as the owner reads it: the line, the sentence under it, what it is and when it ends. A line
+    posted again for a 👎 asks "say what to change" between the line and the sentence."""
+    return '%s\n\n%s%s\n\nStart line for %d, "%s": what its build will make.%s Its window ends %s.' % (
+        line, "say what to change\n\n" if ask else "", sentence(clock), number, title,
+        " Kept with the item's work; the owner is not told." if kept else "", ends)
 
 
 # A writer that, while it writes, runs a second open of the same item, whose line is recorded first: two opens racing
@@ -117,6 +123,22 @@ class StartLineCase(AgentVerbCase):
         code, result, err = self.open_line(number, *flags, line=line, expect=expect, now=now)
         self.assertEqual((code, err), (0, ""), result)
         return result
+
+    def open_slowly(self, number, start, seconds, *flags, line=LINE, expect=()):
+        """open as the coordinator runs it, with --now left out, in this process on a clock of the test's own: it reads
+        start until the writer runs and moves on by seconds with each writer run, a writer that takes that long."""
+        runs = self.runs()
+
+        def clock():
+            return datetime.fromisoformat(start) + timedelta(seconds=seconds * (self.runs() - runs))
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = start_line.main(["open", "w1", str(number), "--cli", str(CLI), "--profile", str(self.profiles["agent-a"]),
+                                    "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface)] + list(flags) + [
+                                    "--", sys.executable, "-I", str(self.writer), str(self.writer_runs), str(self.surface), line, "0"]
+                                   + list(expect), clock=clock)
+        self.assertEqual((code, err.getvalue()), (0, ""), out.getvalue())
+        return json.loads(out.getvalue())
 
     def cut(self, number, now=LATE):
         return self.tool("cut", "w1", str(number), "--now", now)
@@ -574,6 +596,138 @@ class CutCase(StartLineCase):
         line = self.opened(summer, now="2026-07-04T09:50:10+00:00")
         self.assertEqual(line["window_ends"], "2026-07-04T03:06-07:00")
         self.assertIn(sentence("3:06"), self.message(line["message_id"])[2])
+
+
+class PostedWindowCase(StartLineCase):
+    # The window runs from the minute the line is posted, after the writer returns, and the sentence's H:MM is counted
+    # from that, never from when open started (warp, codex #6896).
+
+    def test_a_slow_writers_line_stands_open_for_its_whole_window_from_when_it_is_posted(self):
+        # The reviewer's probe (rv3b): --window 1, a writer that takes 125 s, --now left out, the cut run right after.
+        number = self.add("Kite wind page", "Show the wind.", actor="owner")
+        opened = self.open_slowly(number, T0, 125, "--window", "1")
+        # Open started at 16:20:30; the line was posted at 16:22:35, after the writer, and stands open to 16:23:35: 4:24.
+        self.assertEqual(opened["window_ends"], "2026-11-16T16:24-08:00")
+        self.assertEqual(self.message(opened["message_id"])[2], posted(LINE, number, "Kite wind page", "4:24", "2026-11-16T16:24-08:00"))
+        self.waiting(number, "2026-11-16T16:22:36-08:00", "4:24")
+        self.waiting(number, "2026-11-16T16:23:59-08:00", "4:24")
+        self.assertEqual(self.cut_ok(number, "2026-11-16T16:24:00-08:00")["answer"], "window-ended")
+
+    def test_each_line_posted_again_in_one_open_gets_its_own_posted_time(self):
+        number = self.add("Kite wind page", "Show the wind.", actor="owner")
+        opened = self.opened(number)
+        first = self.reply(opened["message_id"], "Wind in knots.")
+        second = self.reply(opened["message_id"], "And the gusts.")
+        # One open works both in; each writer run takes 125 s from 16:23:00: the first line posted again at 16:25:05
+        # stands open to 16:26:05 (4:27), the second, posted at 16:27:10, to 16:28:10 (4:29).
+        again = self.open_slowly(number, "2026-11-16T16:23:00-08:00", 125, "--window", "1", line="Wind and gusts in knots.")
+        self.assertEqual([rewrite["reply"] for rewrite in again["rewrites"]], [first, second])
+        self.assertEqual([self.message(rewrite["message_id"])[2] for rewrite in again["rewrites"]],
+                         [posted("Wind and gusts in knots.", number, "Kite wind page", clock, "2026-11-16T16:%s-08:00" % ends)
+                          for clock, ends in (("4:27", "27"), ("4:29", "29"))])
+        self.assertEqual(again["window_ends"], "2026-11-16T16:29-08:00")
+        self.waiting(number, "2026-11-16T16:27:11-08:00", "4:29")
+        self.assertEqual(self.cut_ok(number, "2026-11-16T16:29:00-08:00")["message_id"], again["message_id"])
+
+
+class DossierCase(StartLineCase):
+    # Any message of the owner's in the start line's dossier, its reply thread, after the line is a correction, his reply
+    # under his own reply included; a plain top-level post in the topic is a new matter and is not read (warp, codex #6896).
+
+    def test_a_reply_the_owner_writes_under_his_own_reply_is_a_correction_worked_in_and_posted_again(self):
+        number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
+        opened = self.opened(number)
+        said = self.reply(opened["message_id"], "Lengths in metres.")
+        metres = "The string page shows each kite's string length in metres."
+        self.opened(number, line=metres, now="2026-11-16T16:25:00-08:00")
+        # He writes again under his own reply, not under the line posted again: still his correction, never a silence.
+        more = self.reply(said, "And in feet beside them.")
+        self.unworked(number, more)
+        before = self.count()
+        feet = "The string page shows each kite's string length in metres and feet."
+        third = self.opened(number, line=feet, now="2026-11-16T16:28:00-08:00",
+                            expect=("owner wrote under it:\nAnd in feet beside them.", "The start line now reads:\n" + metres))
+        self.assertEqual((third["rewrites"][0]["reply"], self.message(third["message_id"])[5], self.told(third["message_id"]), self.count()),
+                         (more, more, ["owner"], before + 1))
+        self.assertEqual(self.message(third["message_id"])[2], posted(feet, number, "String lengths on the string page", "4:43",
+                                                                      "2026-11-16T16:43-08:00"))
+        # Under a member's message in the dossier, too: the member's words are not his, his under them are.
+        note = self.reply(third["message_id"], "I could put the feet behind a toggle.", actor="agent-b")
+        toggle = self.reply(note, "No toggle: both, always.")
+        self.unworked(number, toggle)
+        fourth = self.opened(number, line="Metres and feet, both always shown.", now="2026-11-16T16:30:00-08:00",
+                             expect=("No toggle: both, always.",))
+        self.assertEqual([rewrite["reply"] for rewrite in fourth["rewrites"]], [toggle])
+        cut = self.cut_ok(number)
+        self.assertEqual((cut["brief"], cut["lines"]), ("Metres and feet, both always shown.", 4))
+
+    def test_a_reply_under_his_own_reply_before_any_line_works_either_in_is_worked_in_after_it(self):
+        number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
+        opened = self.opened(number)
+        said = self.reply(opened["message_id"], "Lengths in metres.")
+        more = self.reply(said, "Rounded to the metre.")
+        again = self.opened(number, line="Lengths in whole metres.", now="2026-11-16T16:25:00-08:00", expect=(
+            "@1:owner wrote under it:\nLengths in metres.\n", "@2:owner wrote under it:\nRounded to the metre.\n"))
+        self.assertEqual([rewrite["reply"] for rewrite in again["rewrites"]], [said, more])
+        self.assertEqual(self.cut_ok(number)["lines"], 3)
+
+    def test_the_owners_plain_post_in_the_topic_is_a_new_matter_and_is_not_read(self):
+        number = self.add("String lengths on the string page", "Show how long each kite's string is.", actor="owner")
+        opened = self.opened(number)
+        # His top-level post in the topic, his reply under a message outside the dossier, and a member's reply in it.
+        self.post("The shelf page could list the kites by colour.", actor="owner")
+        outside = self.post("Build note: the reel page loads slowly.")
+        self.reply(outside, "Look at the reel page next.")
+        self.reply(opened["message_id"], "Only the reel page instead.", actor="agent-b")
+        before, runs = self.count(), self.runs()
+        again = self.opened(number, now=BEFORE)
+        self.assertEqual((again["rewrites"], again["message_id"], self.count(), self.runs()), ([], opened["message_id"], before, runs))
+        self.waiting(number, BEFORE, "4:36")
+        cut = self.cut_ok(number, "2026-11-16T16:36:00-08:00")
+        self.assertEqual((cut["answer"], cut["brief"], cut["lines"]), ("window-ended", LINE, 1))
+
+
+class DissentCase(StartLineCase):
+    # A 👎 is a correction, never a yes: the line is posted again with "say what to change" under it, and nothing builds
+    # until a 👍 or the new window's end (warp, codex #6896). A reply with no letter or digit that holds a dissent mark
+    # (👎 ❌ 🛑 ⛔ 🚫) is one; any other reply is worked in by the writer as before.
+
+    def test_a_thumbs_down_is_posted_again_with_say_what_to_change_and_never_builds_as_a_yes(self):
+        for n, words in enumerate(("\U0001f44e", "\u274c", "\U0001f6d1", "\U0001f44e\U0001f3fd", " \U0001f44e\U0001f44e ", "\u26d4\ufe0f")):
+            with self.subTest(words=words):
+                number = self.add("Kite page %d" % n, "Show kite page %d." % n, actor="owner")
+                opened = self.opened(number)
+                said = self.reply(opened["message_id"], words)
+                self.unworked(number, said, LATE)
+                before, runs = self.count(), self.runs()
+                # The line as it stands, posted again under his reply, to him, with "say what to change" under it and a
+                # window from its post: 16:22:00 and 15 minutes, 4:37. A 👎 has nothing to work in, so no writer runs.
+                again = self.opened(number, line="A line the writer would write.", now="2026-11-16T16:22:00-08:00")
+                topic, author, body, addressees, intent, reply_to = self.message(again["message_id"])
+                self.assertEqual(body, posted(LINE, number, "Kite page %d" % n, "4:37", "2026-11-16T16:37-08:00", ask=True))
+                self.assertEqual((json.loads(addressees), intent, reply_to, self.told(again["message_id"])), (["owner"], "tell", said, ["owner"]))
+                self.assertEqual((again["brief"], again["rewrites"][0]["reply"], again["rewrites"][0]["dissent"], self.count(), self.runs()),
+                                 (LINE, said, True, before + 1, runs))
+                # Never a yes: nothing builds in the new window; its end or his 👍 on the new line builds it.
+                self.waiting(number, "2026-11-16T16:36:59-08:00", "4:37")
+                self.assertEqual(self.cut_ok(number, "2026-11-16T16:37:00-08:00")["answer"], "window-ended")
+                self.ok("thumb", again["message_id"], actor="owner")
+                self.assertEqual(self.cut_ok(number, "2026-11-16T16:23:00-08:00")["answer"], "thumbs-up")
+
+    def test_a_typed_thumbs_up_and_other_replies_without_a_dissent_are_worked_in_by_the_writer_with_no_ask(self):
+        for n, words in enumerate(("\U0001f44d", "?", "\U0001f44e not the reel page", "\u274c 2")):
+            with self.subTest(words=words):
+                number = self.add("Kite page %d" % n, "Show kite page %d." % n, actor="owner")
+                opened = self.opened(number)
+                said = self.reply(opened["message_id"], words)
+                self.unworked(number, said, LATE)
+                runs = self.runs()
+                worked = "Kite page %d, as worked by the writer." % n
+                again = self.opened(number, line=worked, now="2026-11-16T16:22:00-08:00", expect=("owner wrote under it:\n" + words.strip(),))
+                self.assertEqual((self.message(again["message_id"])[2], self.message(again["message_id"])[5], self.runs()),
+                                 (posted(worked, number, "Kite page %d" % n, "4:37", "2026-11-16T16:37-08:00"), said, runs + 1))
+                self.waiting(number, "2026-11-16T16:36:59-08:00", "4:37")
+                self.assertEqual(self.cut_ok(number)["brief"], worked)
 
 
 if __name__ == "__main__":
