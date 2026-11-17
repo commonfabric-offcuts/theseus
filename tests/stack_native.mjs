@@ -1739,7 +1739,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const entry of p.held.splice(0)) await p.release(entry);
     await becomes(state, ['a1', 'Placed here by you', true], 'once Core answers, it stays');
     assert.deepEqual(atOnce, ['a1', 'Placed here by you', true], '⌘Z shows the place line and the place at once');
-    assert.equal((await actsOf(topic, ids.a1))?.placed, 2000000, 'and Core holds a1 placed again');
+    // ⌘Z sends a1's place once Core has answered the first message's (the page's acts go one after another), after
+    // the held answer is let go: wait on Core holding it.
+    await until(async () => (await actsOf(topic, ids.a1))?.placed === 2000000, 'and Core holds a1 placed again');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
