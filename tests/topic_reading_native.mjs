@@ -237,6 +237,106 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   // Each image row under a writing: its words, "name · state".
   const imageRows = (p, host) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].map(r=>r.firstElementChild.textContent)`);
 
+  // Item 649: the corner opens only this reader's note. Faults below hold or refuse
+  // the actual source/editor read; native clicks, taps and keys still start every act.
+  const noteFaults = `(()=>{const fetch_=window.fetch;window.noteFault=null;window.noteReads=0;
+    window.fetch=async function(input,init){let b;try{b=JSON.parse(init?.body)}catch{}
+      const applies=b?.name==='source'||b?.name==='editor_state';
+      if(applies&&window.noteFault){window.noteReads++;
+        if(window.noteFault==='busy'&&b.name==='editor_state')await new Promise(go=>window.releaseNote=go);
+        if(window.noteFault==='error')throw Error('item 649 interrupted note read');
+        if(window.noteFault==='unavailable'&&b.name==='source')return new Response(JSON.stringify({error:{code:'FORBIDDEN'}}),{status:200,headers:{'Content-Type':'application/json'}});
+        if(window.noteFault==='unavailable'&&b.name==='editor_state'){const r=await fetch_.call(this,input,init),j=await r.json();
+          j.source_available=false;return new Response(JSON.stringify(j),{status:r.status,headers:r.headers})}}
+      return fetch_.call(this,input,init)}})()`;
+  for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    // Named tolerance for all measured bounds in these cases, including the 44px target.
+    const layoutTolerancePx = 1;
+    const name = `item 649 ${size} ${theme}`;
+    const setupNote = async suffix => {
+      const topic = `note-649-${size}-${theme}-${suffix}`;
+      const ids = await seed(topic, [['note', { sender: 'aim-core', join: true, body: 'Check the exact destination before Friday.' }],
+        ['plain', { sender: 'aim-core', body: 'No note of mine on this message.' }]]);
+      const note = 'Private words — keep exactly.\nSecond line, with  two spaces.';
+      const reply = 'Unsent reply, still addressed here.';
+      await control({ method: 'private_writing', operation_id: topic + '-note', topic_id: topic, message_id: ids.note, kind: 'note', body: note });
+      await control({ method: 'private_writing', operation_id: topic + '-reply', topic_id: topic, message_id: ids.note, kind: 'draft', body: reply });
+      await control({ method: 'private_writing', operation_id: topic + '-theirs', topic_id: topic, message_id: ids.plain, kind: 'note', body: 'Another actor secret.', sender: 'aim-core' });
+      const p = await open(topic, size, topic, ids.note, noteFaults, undefined, q => q.send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-color-scheme', value: theme }] }));
+      return { p, topic, ids, note, reply, corner: card(ids.note) + ' > .note-corner' };
+    };
+    const pressCorner = async ({p, corner}) => {
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(corner)}))`), true, 'item 649: own saved note has a corner');
+      await centre(p, corner);
+      if (size === 'laptop') await p.point(corner); else await tap(p, corner);
+    };
+    const noteShown = async ({p, ids, note}) => {
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#writing-label').textContent==='Private note'
+        && document.querySelector('#writing-body').value===${JSON.stringify(note)}`), name + ': exact note is shown');
+      assert.equal(await readerOn(p), 'Check the exact destination before Friday.');
+      assert.equal(await p.evaluate("document.querySelector('#destination-label').hidden"), true, 'private writing has no send destination');
+      assert.equal(await p.evaluate("window.sent.includes('message.send')"), false, 'opening a note sends no message');
+    };
+    await check(`reading ${name} page comparison retains the message and its marks`, async () => {
+      const {p} = await setupNote('look');
+      await p.evaluate("document.fonts.ready");
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-page');
+      assert.equal(await p.evaluate("document.documentElement.scrollWidth<=innerWidth+1"), true, 'layoutTolerancePx=1: page fits');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading ${name} normal corner opens the exact private note by pointer or touch and keyboard`, async () => {
+      const state = await setupNote('normal'), {p,corner,note,reply,topic,ids} = state;
+      await pressCorner(state);
+      await noteShown(state);
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-note');
+      const b = await p.evaluate(`(()=>{const n=document.querySelector(${JSON.stringify(corner)}),b=n.getBoundingClientRect();return {w:b.width,h:b.height,name:n.getAttribute('aria-label'),title:n.title}})()`);
+      assert.ok(b.w>=44-layoutTolerancePx&&b.h>=44-layoutTolerancePx, 'layoutTolerancePx=1: note corner is a 44px target');
+      assert.equal(b.name, 'Open your private note'); assert.equal(b.title,b.name);
+      await closeReader(p, size==='laptop'?'laptop':'phone');
+      // Close returns to the corner; a native Tab/Shift-Tab returns there too.
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`), 'focus returns to note corner');
+      await p.key('Tab'); await p.key('Tab',8);
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`),true,'corner is a native tab stop');
+      await p.key('Enter'); await noteShown(state);
+      // Existing reply remains exact and in the same topic; the corner must never overwrite it.
+      const saved = await view('editor_state',{source_ref:{kind:'message',id:ids.note},topic_id:topic});
+      assert.equal(saved.note.body,note); assert.equal(saved.draft.body,reply);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    for (const branch of ['busy', 'error', 'unavailable']) await check(`reading ${name} ${branch} corner preserves writing and recovers to the same note`, async () => {
+      const state = await setupNote(branch), {p} = state;
+      await p.evaluate(`window.noteFault=${JSON.stringify(branch)}`);
+      await pressCorner(state);
+      await until(() => p.evaluate('window.noteReads>0'), 'the corner starts its real foreground read');
+      if(branch==='busy') {
+        await until(() => p.evaluate('typeof window.releaseNote==="function"'), 'editor read is waiting');
+        assert.equal(await readerOn(p),null,'no premature composer while opening');
+        await p.evaluate('window.noteFault=null;window.releaseNote()');
+        await noteShown(state);
+      } else if(branch==='error') {
+        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 interrupted note read')"), 'read error is visible');
+        assert.equal(await readerOn(p),null,'a failed read exposes no note');
+        await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-error');
+        await p.evaluate('window.noteFault=null'); await pressCorner(state); await noteShown(state);
+      } else {
+        await noteShown(state);
+        assert.equal(await p.evaluate("document.querySelector('#writing-body').readOnly"),true,'unavailable source keeps note read-only');
+        await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-unavailable');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading ${name} empty and other actor notes have no corner and clearing your note removes it`, async () => {
+      const state = await setupNote('private'), {p,ids,topic,corner} = state;
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.plain)+' > .note-corner')}))`),false,'another actor has no corner');
+      assert.equal(await p.evaluate("document.querySelector('#messages').textContent.includes('Another actor secret.')"),false,'no private words on the feed');
+      await pressCorner(state); await noteShown(state); await closeReader(p,size==='laptop'?'laptop':'phone');
+      await control({method:'private_writing',operation_id:topic+'-empty',topic_id:topic,message_id:ids.note,kind:'note',body:''});
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(corner)})`),'empty note removes its corner without reload');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
   await check('reading the bar\'s 👍 and the card\'s 👍 count record a thumbs-up in Core, and pressing again takes it back', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-thumb-' + device;

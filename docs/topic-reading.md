@@ -183,6 +183,24 @@ on the arrow or its words opens the reply; a tap anywhere else puts the words
 away. A reply written while the page is open moves the arrow at once
 (`learnReply`).
 
+## Your note corner (649)
+
+A message with your private note shows a small note corner; pressing it opens
+ the composer to that note. The shortcut is on the drawn message card, with the
+existing note glyph and an “Open your private note” name and tooltip. Pointer,
+keyboard and a phone's first tap all open the Reader directly to the exact note.
+The reply and its destination stay as they were. The time's passive marks and
+collapsed dossier rows keep their existing behavior.
+
+The corner follows Core's reader-scoped `yours.note`: no corner for an empty
+note or another actor's note. It disappears when your saved note is emptied.
+Opening uses the existing foreground source/editor read, retains writing during
+a slow or failed read, and permits retry from the same corner. Unavailable
+sources retain the existing read-only note recovery. No note text is put in the
+feed or the shortcut's attributes. The `reading item 649` native cases in
+`tests/topic_reading_native.mjs` cover these branches at 320, 375, 390 and laptop,
+light and dark, in Chromium and WebKit. Measured bounds use a named 1px tolerance.
+
 ## What a card carries (127)
 
 A card shows at a glance what its message carries: a small, quiet glyph in
