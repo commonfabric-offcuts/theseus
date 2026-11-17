@@ -57,7 +57,14 @@ function parentOf(item, has) {
 // that first message, so loading more of the dossier, which can give its stack
 // another head, keeps it. Where that first message carries no place, the
 // place set last on another of its messages sorts it (heldPlace).
-export function gather(items, { has = null, viewer = null } = {}) {
+// filled: the ids of older messages Earlier messages loaded into the stack it
+// fills (reply-stacks.mjs, filling): each shows at that stack's end, under what
+// it showed, newest first, never folded away and never its head, so they show
+// where the button was (docs/reply-stacks.md, "One dossier, one stack"). A
+// stack carries them as filled, a Set; and, gathered from branches under a
+// first message the page has not loaded, the head of each branch but its own as
+// branches, a Set, each kept in view when it is folded (shown), or null.
+export function gather(items, { has = null, viewer = null, filled = new Set() } = {}) {
   const byId = new Map(items.map(item => [item.id, item]));
   const on = has ?? (id => byId.has(id));
   const parent = new Map(items.map(item => [item.id, parentOf(item, on)]));
@@ -89,17 +96,20 @@ export function gather(items, { has = null, viewer = null } = {}) {
     branches.get(head).members.push(item);
     if (item.id !== head && up(item.id)?.joined) branches.get(head).joins.set(item.id, up(item.id).joined);
   }
-  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {
+  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {
     // Every message under the head as one run, oldest first: its replies, each
     // stack joined to it and the replies to those, however deep. A join
     // changes no message, so splitting it out puts both stacks back as they were.
-    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);
+    // The older messages Earlier messages filled it with follow, newest first.
+    const late = members.filter(item => item.id !== head.id && filled.has(item.id)).sort((a, b) => b.seq - a.seq);
+    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];
     const position = positionOf({ head, replies }), byRoot = position && position.root_id !== head.id && 'place_revision' in position;
     const first = byRoot ? position.placed : actsOf(head).placed, place = typeof first === 'number' ? first : heldPlace(position);
     const placed = typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
-    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: position?.root_id ?? head.id };
+    return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed, dossier: position?.root_id ?? head.id,
+      filled: new Set(late.map(item => item.id)), branches: gathered };
   });
 }
 
@@ -125,8 +135,13 @@ function heldPlace(position) {
 // split is not yet answered (moving, stack-feed.mjs) carries positions Core
 // read before it, so it gathers nothing by them. branches: Map of head id to
 // { id, head, members, joins }; headOf(id): the head of a loaded message's
-// branch. Answers the stacks as [{ head, members, joins }].
-function dossiers(branches, headOf) {
+// branch. Where the first message is not loaded, the head is the oldest branch
+// head that Earlier messages did not fill in (filled, gather) and that is not
+// the reader's own (viewer), as a reply of the reader's own never lifts a
+// stack: it stays a reply, its card its own. Answers the stacks as [{ head,
+// members, joins, gathered }], gathered: the other branch heads of a stack
+// whose first message is not loaded, else null.
+function dossiers(branches, headOf, { viewer = null, filled = new Set() } = {}) {
   const into = new Map();
   for (const [id, branch] of branches) {
     const position = positionOf({ head: branch.head, replies: branch.members.filter(item => item.id !== id) });
@@ -140,11 +155,16 @@ function dossiers(branches, headOf) {
     if (!gathered.has(end)) gathered.set(end, []);
     gathered.get(end).push(branch);
   }
+  const oldest = list => list.reduce((most, branch) => (branch.head.seq < most.head.seq ? branch : most));
   return [...gathered.values()].map(found => {
-    // The head: the branch that names no other (the dossier's first message, where loaded), else the oldest head.
-    const first = found.find(branch => !into.has(branch.id)) ?? found.reduce((oldest, branch) => (branch.head.seq < oldest.head.seq ? branch : oldest));
+    // The head: the branch that names no other (the dossier's first message, where loaded), else the oldest head
+    // not filled in and not the reader's own, else the oldest not filled in, else the oldest.
+    const loaded = found.find(branch => !into.has(branch.id));
+    const fresh = found.filter(branch => !filled.has(branch.id)), theirs = fresh.filter(branch => viewer === null || branch.head.author_id !== viewer);
+    const first = loaded ?? oldest(theirs.length ? theirs : fresh.length ? fresh : found);
     const joins = new Map(found.flatMap(branch => [...branch.joins]));
-    return { head: first.head, members: found.flatMap(branch => branch.members), joins };
+    const others = loaded || found.length < 2 ? null : new Set(found.filter(branch => branch !== first).map(branch => branch.head.id));
+    return { head: first.head, members: found.flatMap(branch => branch.members), joins, gathered: others };
   });
 }
 
@@ -189,7 +209,8 @@ export const LEVELS = ['folded', 'open'];
 // they are counted afresh.
 export const RECENT = 7;
 export function earlierOf(stack, level, { held = null } = {}) {
-  const all = [stack.head, ...stack.replies];
+  // What Earlier messages filled the stack with shows at its end, never behind the row (gather, filled).
+  const all = [stack.head, ...stack.replies].filter(item => !stack.filled?.has(item.id));
   if (level !== 'open') return [];
   const at = held === null ? -1 : all.findIndex(item => item.id === held);
   if (at >= 0) return all.slice(0, at);
@@ -201,11 +222,16 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // drew them (reply-stacks.mjs). A fold never decides this:
 // a folded reply shows where it would, as its one-line row (rowFolded). Open,
 // an earlier reply (earlierOf, held) shows once its row was opened (earlier).
+// Item 550: what Earlier messages filled the stack with always shows (gather,
+// filled), and folded, a stack gathered from branches under a first message
+// the page has not loaded keeps each branch's head in view (branches): before
+// 550 each was a stack of its own, its card in view, and a fold loses none.
 export function shown(stack, item, { level = 'folded', kept = () => false, earlier = false, held = null } = {}) {
+  if (stack.filled?.has(item.id)) return true;
   if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
   if (level === 'open') return true;
   if (level === 'head') return false;
-  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);
+  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));
 }
 
 // Whether a message reads as its one-line row: the reader folded it (their

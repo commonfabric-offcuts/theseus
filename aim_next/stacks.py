@@ -339,6 +339,24 @@ def _dossier_through(db, actor, root, message):
                       " WHERE m.id=:root OR m.seq<=:seq ORDER BY m.id<>:root, m.seq", {"root": root, "actor": actor, "seq": message["seq"]}).fetchall()
 
 
+# How much of a dossier's first message source_dossier reads: more than its first line can take (a stack's name, and
+# so a first line shown as one, is at most 200 characters), so the page's first line of it is the whole message's.
+OPENING = 2000
+
+
+def source_dossier(db, actor, message_id):
+    """The dossier a message is in, as the Reader titles a reply there (item 550, docs/reader.md): its first message's
+    id, its name typed or minted (None while nobody named it), that first message as it begins (its words cut at
+    OPENING characters, held and marked as words handed out are, and its attachments), and whether the dossier is that
+    one message alone. Read with the message, so the Reader names the dossier whatever of it the page has loaded,
+    never by the oldest reply the page holds, and while the topic's updates are paused."""
+    root = StackRoots(db, actor).root(message_id)
+    name = current_acts(db, actor, [root]).get(root, EMPTY)["name"]
+    first = db.execute("SELECT " + words("m", chars=OPENING) + " AS body,m.attachments FROM messages m WHERE m.id=?", (root,)).fetchone()
+    count = db.execute(MEMBERS + " SELECT count(*) FROM (SELECT id FROM members LIMIT 2)", {"root": root, "actor": actor}).fetchone()[0]
+    return {"root_id": root, "name": name, "first": {"body": first["body"], "attachments": json.loads(first["attachments"])}, "alone": count < 2}
+
+
 def dossier_namer(db, root, replied=False):
     """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
     (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record

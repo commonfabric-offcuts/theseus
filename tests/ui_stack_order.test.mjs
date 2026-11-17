@@ -682,3 +682,49 @@ test('the newest seven are counted when the dossier is drawn open: a message arr
   // Not held (drawn open for the first time): the last seven, as before.
   assert.deepEqual(ids(earlierOf(eleven, 'open')), ['m1', 'm2', 'm3', 'm4']);
 });
+
+// Item 550's limits (docs/reply-stacks.md, "One dossier, one stack"): each way of showing a dossier loses nothing in
+// it, and every message stays reachable where it is. A topic whose messages all answer its opening message, which is
+// above the page: each is a branch of one dossier, gathered into one stack.
+const opening = (seq, extra = {}) => message(seq, { reply_to: 'm1', stack_position: { root_id: 'm1', through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } }, ...extra });
+
+test('folded, a stack gathered under a first message the page has not loaded keeps each branch\'s head in view; one whose first message is loaded folds as before', () => {
+  const [one] = stacksOf([opening(10), opening(11), opening(12, { reply_to: 'm11' }), opening(13), opening(14)]);
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m10', ['m11', 'm12', 'm13', 'm14']]);
+  const read = () => false;
+  assert.deepEqual(one.replies.filter(item => shown(one, item, { level: 'folded', kept: read })).map(item => item.id), ['m11', 'm13', 'm14'],
+    'each branch head (m11, m13) shows, as it did as a stack of its own before 550; m12 under m11 folds, and the newest shows');
+  assert.deepEqual(words(rowsOf(one, { level: 'folded', kept: read })), ['m11', '1 more reply', 'm13', 'm14']);
+  // The negative: with the first message loaded, the stack is that message's, and folds to its latest as it always did.
+  const [whole] = stacksOf([message(1), opening(10), opening(11), opening(12, { reply_to: 'm11' }), opening(13), opening(14)]);
+  assert.deepEqual([whole.head.id, whole.branches, whole.replies.filter(item => shown(whole, item, { level: 'folded', kept: read })).map(item => item.id)], ['m1', null, ['m14']]);
+});
+
+test('a reply of the reader\'s own never heads a stack gathered under a first message not loaded while another branch can; all their own, the oldest does', () => {
+  const mine = ordered(gather([opening(10, { author_id: 'owner' }), opening(11), opening(12, { author_id: 'owner' }), opening(13)], { viewer: 'owner' }));
+  assert.deepEqual([mine.length, mine[0].head.id, ids(mine[0].replies)], [1, 'm11', ['m10', 'm12', 'm13']], 'the oldest head not the reader\'s, their own a reply, its card their own');
+  assert.equal(stacksOf([opening(10, { author_id: 'owner' }), opening(11)])[0].head.id, 'm10', 'with no viewer named, the oldest heads, as before');
+  const all = ordered(gather([opening(10, { author_id: 'owner' }), opening(12, { author_id: 'owner' })], { viewer: 'owner' }));
+  assert.equal(all[0].head.id, 'm10', 'every branch the reader\'s own: the oldest heads');
+  // The negative: the dossier's first message, loaded, heads it whoever wrote it.
+  assert.equal(ordered(gather([message(1, { author_id: 'owner' }), opening(10)], { viewer: 'owner' }))[0].head.id, 'm1');
+});
+
+test('older messages More filled a stack with show at its end, newest first, whole at every level, and never head it', () => {
+  const page = [opening(40), opening(41), opening(42), opening(43), opening(44), opening(45), opening(46), opening(47), opening(48)];
+  const older = [opening(20), opening(21), opening(22, { reply_to: 'm21' })];
+  const filled = new Set(ids(older));
+  const [one] = ordered(gather([...older, ...page], { filled }));
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m40', ['m41', 'm42', 'm43', 'm44', 'm45', 'm46', 'm47', 'm48', 'm22', 'm21', 'm20']],
+    'the head it had, what it showed, then the older messages newest first, where the button was');
+  assert.deepEqual([...one.filled], ['m22', 'm21', 'm20']);
+  for (const level of ['folded', 'open', 'head']) assert.ok(older.every(item => shown(one, one.replies.find(each => each.id === item.id), { level })), `each shows at ${level}`);
+  assert.deepEqual(ids(earlierOf(one, 'open')), ['m40', 'm41'], 'the seven are counted without them: none goes behind the row');
+  assert.deepEqual(words(rowsOf(one, { level: 'open' })).slice(-4), ['m48', 'm22', 'm21', 'm20']);
+  // The negative: the same messages not filled go in time order, and the oldest heads the stack.
+  const [plain] = ordered(gather([...older, ...page]));
+  assert.deepEqual([plain.head.id, ids(plain.replies).slice(0, 3), plain.filled.size], ['m20', ['m21', 'm22', 'm40'], 0]);
+  // The dossier's first message, loaded by More, heads it all the same.
+  const [rooted] = ordered(gather([message(1), ...older, ...page], { filled }));
+  assert.equal(rooted.head.id, 'm1');
+});

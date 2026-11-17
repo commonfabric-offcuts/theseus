@@ -731,12 +731,14 @@ export class StackFeed {
   // The name of the dossier a message is in, as its tab shows it (item 561):
   // the name typed or minted, or, for a dossier nobody named, its first line.
   // Null for a message of its own nobody named (a stack of one, which shows no
-  // tab), and for one no stack drawn holds.
+  // tab), for one no stack drawn holds, and (item 550) for a dossier nobody
+  // named whose first message is not loaded, as no line on the page is its
+  // first message's (app.mjs, readerDossierName).
   dossierName(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
     if (!stack) return null;
     const head = headOf(stack, { preview: messagePreview });
-    return head.typed?.text || (stack.replies.length ? head.name : '') || null;
+    return head.typed?.text || (stack.replies.length && stack.dossier === stack.head.id ? head.name : '') || null;
   }
   // focus: false leaves the focus where it is, as on the Reader's archive
   // button, whose dialog keeps it while the page behind it changes.

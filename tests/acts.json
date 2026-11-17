@@ -2410,8 +2410,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
-     "  return actsOf(item).starred === true || item.seq === newestReply(stack);"
+     "  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "  return actsOf(item).starred === true || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));"
     ]
    ],
    "check": {
@@ -5155,8 +5155,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => b.seq - a.seq), ...late];"
     ]
    ],
    "check": {
@@ -5169,8 +5169,13 @@
    "break": [
     [
      "web/reply-stacks.mjs",
-     "gather(loaded, { viewer }));",
-     "gather(loaded));"
+     "  let stacks = ordered(gather(loaded, { viewer, filled: state.filled }));",
+     "  let stacks = ordered(gather(loaded, { filled: state.filled }));"
+    ],
+    [
+     "web/reply-stacks.mjs",
+     "  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { viewer, filled: state.filled }));",
+     "  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { filled: state.filled }));"
     ]
    ],
    "check": {
@@ -5493,8 +5498,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq), ...late];"
     ]
    ],
    "check": {
@@ -5521,8 +5526,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => (a.reply_to === head.id ? 0 : 1) - (b.reply_to === head.id ? 0 : 1) || a.seq - b.seq), ...late];"
     ]
    ],
    "check": {
@@ -7981,8 +7986,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => a.seq - b.seq);",
-     "    const replies = members.filter(item => item.id !== head.id).sort((a, b) => b.seq - a.seq);"
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => a.seq - b.seq), ...late];",
+     "    const replies = [...members.filter(item => item.id !== head.id && !filled.has(item.id)).sort((a, b) => b.seq - a.seq), ...late];"
     ]
    ],
    "check": {
@@ -10364,8 +10369,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack);",
-     "return kept(item) || item.seq === newestReply(stack);"
+     "return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "return kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));"
     ]
    ],
    "check": {
@@ -15013,8 +15018,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
-     "  return [...branches.values()].map(({ head, members, joins }) => {"
+     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
+     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
     ]
    ],
    "check": {
@@ -19890,8 +19895,8 @@
     ],
     [
      "web/reply-stacks.mjs",
-     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });",
-     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map() });"
+     "    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });",
+     "    earlier: new Set(JSON.parse(sessionStorage.getItem('earlier') ?? '[]')), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });"
     ],
     [
      "web/reply-stacks.mjs",
@@ -23762,8 +23767,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
-     "  return [...branches.values()].map(({ head, members, joins }) => {"
+     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
+     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
     ]
    ],
    "check": {
@@ -23776,8 +23781,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
-     "  return [...branches.values()].map(({ head, members, joins }) => {"
+     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
+     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
     ]
    ],
    "check": {
@@ -23791,8 +23796,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "  return dossiers(branches, id => headOf.get(id)).map(({ head, members, joins }) => {",
-     "  return [...branches.values()].map(({ head, members, joins }) => {"
+     "  return dossiers(branches, id => headOf.get(id), { viewer, filled }).map(({ head, members, joins, gathered }) => {",
+     "  return [...branches.values()].map(({ head, members, joins, gathered }) => {"
     ]
    ],
    "check": {
@@ -23806,8 +23811,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "    const first = found.find(branch => !into.has(branch.id)) ?? found.reduce(",
-     "    const first = found.reduce("
+     "    const first = loaded ?? oldest(theirs.length ? theirs : fresh.length ? fresh : found);",
+     "    const first = oldest(theirs.length ? theirs : fresh.length ? fresh : found);"
     ]
    ],
    "check": {
@@ -24463,7 +24468,12 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "(stack.replies.length ? head.name : '')",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
+     "''"
+    ],
+    [
+     "web/app.mjs",
+     "(dossier.alone ? '' : messagePreview(dossier.first))",
      "''"
     ]
    ],
@@ -24478,7 +24488,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "(stack.replies.length ? head.name : '')",
+     "(stack.replies.length && stack.dossier === stack.head.id ? head.name : '')",
      "head.name"
     ]
    ],
@@ -26923,6 +26933,80 @@
    ],
    "check": {
     "python": "test_tools_deploy.py"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Folded, a stack gathered under a first message the page has not loaded keeps each branch's head in view",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "|| item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));",
+     "|| item.seq === newestReply(stack);"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "rendering: every pill is as wide as its words"
+   }
+  },
+  {
+   "item": 550,
+   "act": "A reply of the reader's own never heads a stack gathered under a first message not loaded while another branch can",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "theirs = fresh.filter(branch => viewer === null || branch.head.author_id !== viewer);",
+     "theirs = fresh;"
+    ]
+   ],
+   "check": {
+    "native": "colors",
+    "case": "your own message keeps its own style when it arrives live and when More loads it"
+   }
+  },
+  {
+   "item": 550,
+   "act": "More messages fills the stack shown last above it: the older messages of its dossier show where the button was, under the head it had",
+   "break": [
+    [
+     "web/app.mjs",
+     "run(() => { fillFrom($('messages')); return listPage('messages', true); });",
+     "run(() => listPage('messages', true));"
+    ]
+   ],
+   "check": {
+    "native": "live",
+    "case": "More messages shows the older messages where its button was"
+   }
+  },
+  {
+   "item": 550,
+   "act": "The Reader's title names the dossier by what Core read with the source where the page's stacks cannot say, never by the oldest loaded reply",
+   "break": [
+    [
+     "web/app.mjs",
+     "  const dossier = source.dossier;\n  if (!dossier) return null;",
+     "  const dossier = null;\n  if (!dossier) return null;"
+    ]
+   ],
+   "check": {
+    "native": "freshness",
+    "case": "access that comes back clears the paused note and More"
+   }
+  },
+  {
+   "item": 550,
+   "act": "Core sends a message read as a source with its dossier: first message, name, how that message begins, and whether it is alone",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "\"dossier\": self._source_dossier(db, actor, row),",
+     "\"dossier\": None,"
+    ]
+   ],
+   "check": {
+    "python": "test_stacks.py"
    }
   }
  ]

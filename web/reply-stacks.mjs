@@ -111,12 +111,48 @@ export function topOf(list, entry) {
 // among those earlier ones shown whole this visit (whole), the messages
 // last drawn as an earlier one's row (earlierRows), and, for each dossier drawn
 // open, the first message it showed then (held; stack-order.mjs, earlierOf),
-// so a message arriving hides nothing. None is ever recorded.
+// so a message arriving hides nothing. Item 550: the dossier More messages
+// fills, with what was loaded when it was pressed (filling), and the older
+// messages it filled that dossier's stack with (filled; stack-order.mjs,
+// gather). None is ever recorded.
 export function stackState(list) {
   if (!states.has(list)) states.set(list, { levels: new Map(), kept: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: true, below: new Set(), viewer: null, again: () => {},
-    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map() });
+    earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), filling: null, filled: new Set() });
   return states.get(list);
+}
+
+// Item 550: More messages, pressed, fills the stack shown last above it: the
+// older messages it loads that are of that stack's dossier show at that
+// stack's end, where the button was, each whole, and its head stays its head
+// (stack-order.mjs, gather and shown). Records that dossier, the messages
+// loaded now and the oldest of them; arrangeStacks fills the stack as the
+// older page is drawn. Nothing drawn above More: nothing is filled.
+export function fillFrom(list) {
+  const state = stackState(list), view = shownView(state);
+  const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
+  if (!last) { state.filling = null; return; }
+  const known = new Set();
+  let below = Infinity;
+  for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { known.add(item.id); below = Math.min(below, item.seq); }
+  state.filling = { dossier: last.dossier, known, below };
+}
+
+// The messages of the dossier being filled (fillFrom) that this drawing is
+// the first to hold, older than everything loaded when More was pressed,
+// join state.filled; its first message, which heads the dossier once loaded,
+// never does. Answers whether any did.
+function fill(state, stacks, loaded) {
+  const filling = state.filling;
+  if (!filling) return false;
+  const into = stacks.find(stack => stack.dossier === filling.dossier);
+  let added = false;
+  for (const item of into ? [into.head, ...into.replies] : []) {
+    if (filling.known.has(item.id) || item.seq >= filling.below || item.id === filling.dossier || state.filled.has(item.id)) continue;
+    state.filled.add(item.id); added = true;
+  }
+  for (const item of loaded) filling.known.add(item.id);
+  return added;
 }
 
 // Agent-only dossiers begin as one quiet title row; a person's explicit
@@ -622,7 +658,8 @@ export function arrangeStacks(list, messages, options = {}) {
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
-  const stacks = ordered(gather(loaded, { viewer }));
+  let stacks = ordered(gather(loaded, { viewer, filled: state.filled }));
+  if (fill(state, stacks, loaded)) stacks = ordered(gather(loaded, { viewer, filled: state.filled }));
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
   state.earlierRows = new Set();

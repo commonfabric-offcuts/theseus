@@ -202,8 +202,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('topicUnavailable' in value) topicUnavailable = value.topicUnavailable; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
@@ -3369,6 +3369,61 @@ test('your own message keeps its own style when it arrives live and when More lo
   const classes = Object.fromEntries(listed(f).map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m33: 'message-card agent-card agent-cyan', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
+});
+
+// Item 550's limits: a topic whose messages all answer its opening message, above the page, is one dossier, one
+// stack. More messages fills that stack: the older messages it loads show at the stack's end, where the button was,
+// newest first and whole, under the head the stack had; a message of the reader's own, live or loaded, never heads it
+// and keeps its own style.
+test('More messages shows the older messages of the dossier it fills where its button was, under the head it had, the reader\'s own their own', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = { root_id: 'm1', through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } };
+  const item = (seq, author_id = 'fable') => ({ id: 'm' + seq, seq, author_id, author_kind: author_id === 'fixture-person' ? 'human' : 'agent', body: 'Body ' + seq, topic_id: 't1', reply_to: 'm1', stack_position: at });
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  views.messagesPage(page([40, 41, 42, 43].map(seq => item(seq)), 40, 1), { initial: true }); await settle();
+  views.messagesPage(page([item(44, 'fixture-person')], null, 2), { live: true, cursor: views.newest }); await settle();
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? page([item(36), item(37, 'fixture-person'), item(38)], null, 2)
+    : name === 'memory_items' ? { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } } : view(name, args);
+  const drawn = () => entries(f.get('messages')).map(entry => [entry.dataset.id, entry.className, !entry.hidden]);
+  const before = drawn();
+  assert.deepEqual(before.map(([id]) => id), ['m40', 'm41', 'm42', 'm43', 'm44'], 'one stack, its head m40');
+  await f.get('more-messages').onclick(); await settle(); await settle();
+  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true]],
+    'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
+  assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
+});
+
+// Item 550's limit on the Reader's title (item 561): under a source it names the dossier, by its name, else its first
+// message's line, never by the oldest reply the page holds; where the page's stacks cannot say (that first message not
+// loaded, or the topic's updates paused), the dossier Core read with the source says. A dossier of that one message
+// keeps the topic's name.
+test('the Reader\'s title names the dossier by its name, else its first message\'s line, never the oldest loaded reply, the topic paused or not', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  const wire = extra => f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh, ...extra });
+  wire({});
+  const at = name => ({ root_id: 'm1', through: null, below: false, aside_revision: 0, name, name_revision: name ? 1 : 0, at: { acts: 1, messages: 0 } });
+  const item = (seq, name = null) => ({ id: 'm' + seq, seq, author_id: 'fable', author_kind: 'agent', body: 'Reply line ' + seq, topic_id: 't1', reply_to: 'm1', stack_position: at(name) });
+  views.messagesPage({ instance_id: 'fixture', items: [40, 41, 42].map(seq => item(seq)), next_cursor: 40, relevant_versions: { topic: 1 } }, { initial: true }); await settle();
+  const core = { root_id: 'm1', name: null, first: { body: 'Where shall the club meet?\nThe hall or the boathouse.', attachments: [] }, alone: false };
+  const source = (id, dossier = core) => ({ source_ref: { kind: 'message', id }, topic_id: 't1', dossier });
+  assert.equal(f.readerDossierName(source('m41')), 'Where shall the club meet?', 'the first message\'s line, as Core read it, not "Reply line 40"');
+  wire({ topicUnavailable: true });
+  assert.equal(f.readerDossierName(source('m41')), 'Where shall the club meet?', 'the same while the topic\'s updates are paused');
+  assert.equal(f.readerDossierName(source('m41', { ...core, name: { text: 'Club hall', by: 'fable' } })), 'Club hall', 'paused, the name Core read');
+  wire({ topicUnavailable: false });
+  // A name on the page's positions shows at once, over what Core read with the source.
+  views.messagesPage({ instance_id: 'fixture', items: [item(43, { text: 'Hall plan', by: 'fable', at_ms: 1 })], next_cursor: null, relevant_versions: { topic: 2 } }, { live: true, cursor: views.newest }); await settle();
+  assert.equal(f.readerDossierName(source('m41')), 'Hall plan');
+  // The negatives: a dossier of one message alone keeps the topic's name, and so does a message read without a
+  // dossier (sent by name from a topic the reader does not read).
+  const lone = { id: 'm50', seq: 50, author_id: 'fable', author_kind: 'agent', body: 'On its own', topic_id: 't1', stack_position: { ...at(null), root_id: 'm50' } };
+  views.messagesPage({ instance_id: 'fixture', items: [lone], next_cursor: null, relevant_versions: { topic: 3 } }, { live: true, cursor: views.newest }); await settle();
+  assert.equal(f.readerDossierName(source('m50', { root_id: 'm50', name: null, first: { body: 'On its own', attachments: [] }, alone: true })), null);
+  assert.equal(f.readerDossierName(source('m50', null)), null);
 });
 
 test('a Notebook page shown in the Reader is read at the revision shown; a message is not, and a refused read is said', async () => {
