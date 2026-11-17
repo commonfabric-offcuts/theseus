@@ -387,11 +387,28 @@ def _release_train(measurements, attached):
     if not isinstance(train, dict):
         return None
     judgment = attached if train.get("judgment") == "pending" and attached is not None else train.get("judgment")
+    return dict({"kind": train.get("kind")}, **_judged(judgment))
+
+
+def _judged(judgment):
+    """A judgment as the page says it: "pending" while there is none, or "judged" with how many of its runs and checks
+    succeeded."""
     if not isinstance(judgment, dict):
-        return {"kind": train.get("kind"), "judgment": "pending", "succeeded": None, "total": None}
+        return {"judgment": "pending", "succeeded": None, "total": None}
     found = [entry for key in ("producer_runs", "verdict_checks") for entry in judgment.get(key) or [] if isinstance(entry, dict)]
-    return {"kind": train.get("kind"), "judgment": "judged", "total": len(found),
-            "succeeded": sum(1 for entry in found if entry.get("conclusion") == "success")}
+    return {"judgment": "judged", "total": len(found), "succeeded": sum(1 for entry in found if entry.get("conclusion") == "success")}
+
+
+def _release_scoped(measurements, attached):
+    """A release deployed on a scoped run (item 608), as the page says it: how many browser steps ran of the steps
+    there are, and its full run, "pending" until one is attached beside the record, or "judged" with how many of its
+    runs and checks succeeded; None for any other release."""
+    scoped = measurements.get("scoped") if isinstance(measurements, dict) else None
+    if not isinstance(scoped, dict):
+        return None
+    ran, not_run = scoped.get("steps") or [], scoped.get("not_run") or []
+    judgment = attached if scoped.get("full_judgment") == "pending" else None
+    return dict({"ran": len(ran), "steps": len(ran) + len(not_run)}, **_judged(judgment))
 
 
 def machine_load():
@@ -867,7 +884,8 @@ class Health:
             attached = None if latest["hosted_judgment"] is None else json.loads(latest["hosted_judgment"])
             release = {"release": latest["number"], "commit": latest["commit_sha"], "deployed_ms": latest["deployed_ms"],
                        "items": json.loads(latest["items"]), "source": latest["source"],
-                       "check": _release_check(measured), "train": _release_train(measured, attached)}
+                       "check": _release_check(measured), "train": _release_train(measured, attached),
+                       "scoped": _release_scoped(measured, attached)}
         schema = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0]
         return {"instance_id": self.instance_id, "read_ms": now, "commit_seq": self._commit_seq(db), "red": sorted(reds), "runner": runner, "agents": agents,
                 "failing_after": FAILING_AFTER, "release": release, "machine": (self._machine or machine_load)(), "schema_version": schema}

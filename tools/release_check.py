@@ -4,7 +4,7 @@ from __future__ import annotations
 """Run every check a release needs, for one commit, and write a summary the deploy reads.
 
 Usage: tools/release_check.py --out ABSOLUTE_DIR [--chrome PATH] [--playwright DIR] [--python PATH] [--node PATH] [--repeats N]
-         [--only STEP,... | --live COMMIT] [--cli LIVE/bin/aim-next --profile PROFILE [--base] [--report OUTCOME]]
+         [--only STEP,... | --live COMMIT | --scoped COMMIT] [--cli LIVE/bin/aim-next --profile PROFILE [--base] [--report OUTCOME]]
          [--quarantine-at COMMIT|event]
 
 The checkout this file lives in is the one checked. It must be clean, so the
@@ -12,7 +12,10 @@ summary speaks for exactly its HEAD commit. Python units, node units, the
 deploy's refusals, every native browser mode and the wake replay run one at a
 time; any failure makes the run fail (exit 1) and a refusal before running
 anything exits 2. With --live, a change that none of the browser modes or the
-wake replay could see skips them, and the summary says so. With --quarantine-at,
+wake replay could see skips them, and the summary says so. With --scoped, a small
+fix runs the units, the deploy's refusals, the wake replay and only the browser
+steps its files touch since the live commit (tools/steps_for.py), and the
+summary says which it did not run. With --quarantine-at,
 a browser step whose only failures are cases the policy at that earlier commit
 quarantines (tools/quarantine.py) does not fail the run's exit; its raw verdict
 and its failed cases stay in the summary. docs/tools.md has the details.
@@ -50,7 +53,7 @@ NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
 PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
 WEBKIT = "tests/webkit_native.mjs"
-WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "targets")
+WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device", "new-line", "reading", "invite", "health", "targets")
 # The Reader's composer, in Chrome for Testing and Safari's engine (docs/reader.md).
 COMPOSE = "tests/reader_compose_native.mjs"
 # The harnesses that load playwright-core, and so are handed its directory.
@@ -90,6 +93,13 @@ TOOL = "theseus-release-check"
 # some of tools/ and tests/. A Python or node unit module in tests/ is seen only where those files name it.
 SKIPPABLE = tuple("native-" + step.name for step in NATIVE_STEPS) + (WAKE_REPLAY,)
 UNIT_MODULE = re.compile(r"tests/(test_[^/]+\.py|[^/]+\.test\.mjs)")
+# Item 608: a small fix deploys on a scoped run, the units, the deploy's refusals, the wake replay and only the browser
+# steps its files touch since the live commit (tools/steps_for.py); its full run follows on the deployed head. A small
+# fix changes none of the deploy's tools, the controller, the scripts in bin/ or the data migrations, and at most
+# SMALL_FIX_FILES files: the small fixes of 16 November changed one to five (the code, its CSS, its case, its act row, its
+# doc), and the nine of a merged set of touches is a feature's run.
+SMALL_FIX_FILES = 6
+SMALL_FIX_NEVER = ("tools/", ".github/", "bin/", "aim_next/migrations.py")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 
 
@@ -391,6 +401,46 @@ def skipped_words(live):
             "wake replay run, so they were not run: %d steps skipped, not passed." % (live, len(SKIPPABLE)))
 
 
+def small_fix_problems(changed):
+    """Why the paths changed since the live commit are not a small fix (SMALL_FIX_NEVER, SMALL_FIX_FILES); [] when they are."""
+    never = [path for path in changed if path.startswith(SMALL_FIX_NEVER)]
+    problems = ["%s changed, which a small fix never changes" % ", ".join(never[:5]) + (" and %d more" % (len(never) - 5) if len(never) > 5 else "")] if never else []
+    if len(changed) > SMALL_FIX_FILES:
+        problems.append("%d files changed, more than a small fix's %d" % (len(changed), SMALL_FIX_FILES))
+    return problems
+
+
+def scope(root, live, commit, git=git):
+    """(the paths changed from live to commit, the native steps those changes touch, the selection's notes): chosen by
+    tools/steps_for.py from the rules at commit, read through git in root. Refused when git or the rules cannot say."""
+    from tools import steps_for
+    changed = changed_paths(root, live, commit, git)
+    try:
+        chosen = steps_for.choose(steps_for.Repo(root, live, commit, git))
+    except (steps_for.Refused, SyntaxError, ValueError, KeyError) as error:
+        raise Refused("the browser steps the changes since %s touch cannot be chosen at %s: %s" % (live[:12], commit[:12], error))
+    names = [step["step"] for step in chosen["steps"]]
+    unknown = [name for name in names if name not in REQUIRED]
+    if unknown:
+        raise Refused("the steps chosen at %s are not this release check's: %s" % (commit[:12], ", ".join(unknown)))
+    return changed, names, chosen["notes"]
+
+
+def ran_whole(step):
+    """Whether a browser step's run was its whole mode, every case of it, as this release check runs it: its harness and
+    flags and no case filter after them."""
+    native = {"native-" + one.name: one for one in NATIVE_STEPS}.get(step.get("name"))
+    argv = step.get("argv")
+    return (native is not None and isinstance(argv, list) and len(argv) == 4 + len(native.flags) and argv[1] == native.harness
+            and list(argv[4:]) == list(native.flags))
+
+
+def scoped_words(live, chosen):
+    return ("A small fix since the live commit %s: the units, the deploy's refusals, the wake replay and the %d browser step%s its "
+            "files touch ran; the other %d did not, and its full run follows on the deployed head."
+            % (live, len(chosen), "" if len(chosen) == 1 else "s", len(NATIVE_STEPS) - len(chosen)))
+
+
 def blob(root, path):
     found = git(root, "rev-parse", "HEAD:" + path)
     return found.stdout.strip() if found.returncode == 0 else None
@@ -529,7 +579,7 @@ def quarantined(steps):
 
 
 def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None, base=None, report=None, live=None,
-          quarantine_at=None):
+          quarantine_at=None, scoped=None):
     """Run every step serially (or only those named) and write summary.json; returns the summary.
 
     live: the live commit; when nothing changed since it is a path the skippable steps could see, they are skipped and
@@ -538,7 +588,9 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
     (cli, profile, outcome) to report the run on the outcome's open release piece; playwright is the playwright-core
     directory PLAYWRIGHT_HARNESSES load, without which they find none and fail. quarantine_at: the earlier commit whose
     policy's quarantine the browser steps are judged with, or "event" for the GitHub run's event base (item 549); a
-    quarantine that cannot be read quarantines nothing, and the summary's `quarantine` says why."""
+    quarantine that cannot be read quarantines nothing, and the summary's `quarantine` says why. scoped: the live commit;
+    a small fix since it (small_fix_problems) runs the units, the deploy's refusals, the wake replay and only the browser
+    steps its files touch (scope()), and the summary's `scoped` says which ran and which did not (item 608)."""
     started = now()
     commit = preflight(root, out, chrome, python, node)
     names = list(REQUIRED) if only is None else list(only)
@@ -547,7 +599,20 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
         raise Refused("--only names steps the release check does not have: %s" % (unknown or "none"))
     if repeats < 1:
         raise Refused("--repeats is at least 1")
-    skipped, ran_all = None, None
+    skipped, ran_all, scoped_record = None, None, None
+    if scoped is not None:
+        if only is not None or live is not None:
+            raise Refused("--scoped chooses the steps to run; give it alone, not with --only or --live")
+        if not re.fullmatch(r"[0-9a-f]{40}", scoped):
+            raise Refused("--scoped is the live release's full 40-character commit, not %r" % scoped)
+        changed, chosen, notes = scope(root, scoped, commit)
+        problems = small_fix_problems(changed)
+        if problems:
+            raise Refused("a scoped run is for a small fix, and %s; run the whole release check" % "; ".join(problems))
+        names = [name for name in names if name not in SKIPPABLE or name in chosen or name == WAKE_REPLAY]
+        scoped_record = {"steps": chosen, "live": scoped, "changed": changed,
+                         "not_run": ["native-" + step.name for step in NATIVE_STEPS if "native-" + step.name not in chosen],
+                         "notes": notes[:20], "why": scoped_words(scoped, chosen)}
     if live is not None:
         if only is not None:
             raise Refused("--only names the steps to run and --live decides which to skip: give one")
@@ -646,6 +711,8 @@ def check(root, out, chrome, python, node, playwright=None, repeats=1, only=None
         summary["only"] = names
     if skipped is not None:
         summary["skipped"] = skipped
+    if scoped_record is not None:
+        summary["scoped"] = scoped_record
     if ran_all is not None:
         summary["ran_all"] = ran_all
     if base_dir is not None:
@@ -679,14 +746,18 @@ def same_tree(git, judged, commit):
     return trees[0]
 
 
-def judge_summary(path, commit, basis=None, tree=None):
+def judge_summary(path, commit, basis=None, scope=None, tree=None):
     """(foreign, unpassed): reasons a summary does not describe a run at exactly this commit (unreadable, not a
     summary, another commit, a tree that changed while it ran, steps it skipped that basis does not confirm it could
-    skip), and reasons that run did not pass (a required step failed or is missing). A summary that describes the
-    commit can be measured even when it did not pass.
+    skip, a scope that scope does not confirm), and reasons that run did not pass (a required step failed or is
+    missing). A summary that describes the commit can be measured even when it did not pass.
 
     basis: only for a summary that skipped steps, (the live commit, seen() of the paths changed since it at commit), read
-    by the caller itself, or Refused; without it a skip is never taken.
+    by the caller itself, or Refused; without it a skip is never taken. scope: only for a scoped summary (item 608), (the
+    live commit, the paths changed since it, the native steps they touch at commit), read and chosen by the caller itself
+    (scope()), or Refused; without it a scoped run is never taken. It is taken only when that live commit is the one the
+    summary was scoped beside, the change is a small fix (small_fix_problems), and every step chosen ran whole, once;
+    the units, the deploy's refusals and the wake replay stay required, and only the browser steps not chosen are not.
     tree: only for a summary of another full commit (item 588), tree(that commit) reads, by the caller itself, the tree
     it shares with commit (same_tree), or raises Refused; such a summary describes commit's tree, and is judged as one
     of commit is. Without it a summary of another commit is never taken."""
@@ -712,8 +783,12 @@ def judge_summary(path, commit, basis=None, tree=None):
                 foreign.append("%s, and %s" % (said, refusal))
     if summary.get("tree_unchanged") is not True:
         foreign.append("the checkout changed while the release check ran")
-    skipped, covered = summary.get("skipped"), set()
-    if skipped is not None:
+    listed = [step for step in summary.get("steps") or [] if isinstance(step, dict)]
+    steps = {step.get("name"): step for step in listed}
+    skipped, scoped, covered = summary.get("skipped"), summary.get("scoped"), set()
+    if skipped is not None and scoped is not None:
+        foreign.append("the release check both skipped and scoped its steps, which it never does together")
+    elif skipped is not None:
         named = skipped.get("steps") if isinstance(skipped, dict) else None
         if not isinstance(named, list) or set(named) != set(SKIPPABLE):
             foreign.append("the release check skipped steps it never skips together: %s" % (named,))
@@ -731,7 +806,42 @@ def judge_summary(path, commit, basis=None, tree=None):
                     foreign.append("%s, but %s is live; run the release check again" % (said, live))
                 elif could:
                     foreign.append("%s, but %s changed since then, which they could see" % (said, ", ".join(could[:5])))
-    steps = {step.get("name"): step for step in summary.get("steps") or [] if isinstance(step, dict)}
+    elif scoped is not None:
+        said = ("the release check ran only the browser steps a small fix touches beside the live commit %s"
+                % (scoped.get("live") if isinstance(scoped, dict) else None))
+        if not isinstance(scoped, dict) or not isinstance(scoped.get("steps"), list):
+            foreign.append("the release check's scope is not one it writes: %s" % (scoped,))
+        elif scope is None:
+            covered = {"native-" + step.name for step in NATIVE_STEPS} - set(scoped["steps"])
+            foreign.append("%s; only the deploy, choosing those steps again from what changed since the live commit, takes that" % said)
+        else:
+            # Not taken unless the reader's own choice below agrees; until then the steps the summary says it left out are
+            # not listed again as missing, since its scope already refuses it.
+            covered = {"native-" + step.name for step in NATIVE_STEPS} - set(scoped["steps"])
+            try:
+                live, changed, chosen = scope()
+            except Refused as refusal:
+                foreign.append("%s, and that cannot be taken: %s" % (said, refusal))
+            else:
+                problems = []
+                if live != scoped.get("live"):
+                    problems.append("but %s is live; run the release check again" % live)
+                else:
+                    problems += ["but %s" % problem for problem in small_fix_problems(changed)]
+                    lacking = [name for name in chosen if name not in steps]
+                    if lacking:
+                        problems.append("but what changed since then touches %s, which it did not run" % ", ".join(lacking))
+                    twice = sorted({name for name in chosen if [step.get("name") for step in listed].count(name) > 1})
+                    if twice:
+                        problems.append("but it lists %s more than once" % ", ".join(twice))
+                    partial = [name for name in chosen if name in steps and not ran_whole(steps[name])]
+                    if partial:
+                        problems.append("but %s did not run whole: a step the change touches runs every case of its mode"
+                                        % ", ".join(partial))
+                if problems:
+                    foreign.append("%s, %s" % (said, "; ".join(problems)))
+                else:
+                    covered = {"native-" + step.name for step in NATIVE_STEPS} - set(chosen)
     for name in sorted(set(REQUIRED) | set(summary.get("required") or [])):
         if name in covered and name not in steps:
             continue
@@ -744,10 +854,10 @@ def judge_summary(path, commit, basis=None, tree=None):
     return foreign, reasons
 
 
-def skipped_of(path):
-    """What a summary says it skipped and why, or None."""
+def skipped_of(path, key="skipped"):
+    """What a summary says it skipped (or, with key "scoped", did not run) and why, or None."""
     try:
-        skipped = json.loads(Path(path).read_text()).get("skipped")
+        skipped = json.loads(Path(path).read_text()).get(key)
     except (OSError, ValueError, AttributeError):
         return None
     return skipped.get("why") if isinstance(skipped, dict) else None
@@ -778,6 +888,7 @@ def main(argv=None):
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--only")
     parser.add_argument("--live", metavar="COMMIT")
+    parser.add_argument("--scoped", metavar="COMMIT")
     parser.add_argument("--cli")
     parser.add_argument("--profile")
     parser.add_argument("--base", action="store_true")
@@ -792,7 +903,7 @@ def main(argv=None):
                         only=[name for name in args.only.split(",") if name] if args.only is not None else None,
                         base=(args.cli, args.profile) if args.base else None,
                         report=(args.cli, args.profile, args.report) if args.report else None, live=args.live,
-                        quarantine_at=args.quarantine_at)
+                        quarantine_at=args.quarantine_at, scoped=args.scoped)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         # Recorded only where the run itself could have written, so a refusal never changes the checkout.
@@ -803,6 +914,7 @@ def main(argv=None):
     held_by = summary.get("quarantine") or {}
     print(json.dumps(dict({"commit": summary["commit"], "passed": summary["passed"], "failed": failed,
                            "skipped": (summary.get("skipped") or {}).get("why"), "summary": str(args.out / "summary.json")},
+                          **({"scoped": summary["scoped"]["why"]} if summary.get("scoped") else {}),
                           **({"quarantined": held_by.get("held"), "green": held_by.get("green") is True,
                               **({"quarantine_refused": held_by["refused"]} if "refused" in held_by else {})} if held_by else {}))))
     return 0 if summary["passed"] or held_by.get("green") is True else 1

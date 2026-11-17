@@ -19,7 +19,10 @@ run of another commit whose tree is its own (item 588), says its hosted
 judgment is pending. Once GitHub's judgment of its commit lands, the
 operator attaches it (`bin/aim-next-admin attach-judgment`): a separate fact
 beside the record, written once, which the record's view shows as
-`hosted_judgment`; the record itself stays as it was written.
+`hosted_judgment`; the record itself stays as it was written. A release deployed
+on a scoped run (item 608), a small fix checked on only the browser steps its
+files touch, says its full run is pending the same way, and takes that run's
+judgment beside its record once it lands.
 """
 
 import datetime
@@ -186,12 +189,15 @@ def _judged(entries, name, commit):
 
 
 def judgment_pending(measurements):
-    """Whether a record's measurements say its own commit's hosted judgment is pending: an ordinary merged train's
-    (items 481, 482), or a release deployed on the run of another commit with its tree, `judged_tree` (item 588)."""
-    measurements = measurements if isinstance(measurements, dict) else {}
-    train, judged = measurements.get("train"), measurements.get("judged_tree")
+    """Whether a record's measurements say a judgment is attached afterwards: its own commit's hosted judgment, for an
+    ordinary merged train's release (items 481, 482, "judgment": "pending") or one deployed on the run of another commit
+    with its tree (`judged_tree`, item 588, "judgment": "pending"); or the full run of a release deployed on a scoped run
+    (item 608, "full_judgment": "pending")."""
+    measured = measurements if isinstance(measurements, dict) else {}
+    train, judged, scoped = measured.get("train"), measured.get("judged_tree"), measured.get("scoped")
     return ((isinstance(train, dict) and train.get("kind") == "ordinary" and train.get("judgment") == "pending")
-            or (isinstance(judged, dict) and judged.get("judgment") == "pending"))
+            or (isinstance(judged, dict) and judged.get("judgment") == "pending")
+            or (isinstance(scoped, dict) and scoped.get("full_judgment") == "pending"))
 
 
 def write_judgment(db, number, judgment, now_ms):
@@ -205,8 +211,8 @@ def write_judgment(db, number, judgment, now_ms):
         raise Refusal("RELEASE_UNKNOWN", "No release %d is recorded" % number)
     if not judgment_pending(json.loads(row["measurements"]) if row["measurements"] is not None else None):
         raise Refusal("JUDGMENT_NOT_PENDING", "Release %d's record does not say its hosted judgment is pending; only an "
-                      "ordinary merged train's release, or one deployed on another commit's run with its tree, takes one "
-                      "afterwards" % number)
+                      "ordinary merged train's release, one deployed on another commit's run with its tree, or one "
+                      "deployed on a scoped run, takes one afterwards" % number)
     if not isinstance(judgment, dict) or set(judgment) != set(JUDGMENT_FIELDS):
         _refuse("A judgment is a JSON object with exactly %s" % ", ".join(JUDGMENT_FIELDS))
     commit = row["commit_sha"]

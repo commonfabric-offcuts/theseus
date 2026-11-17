@@ -117,6 +117,21 @@ It sits inside `measurements`, which the store keeps as one JSON object of at
 most 16384 bytes, so the record's own fields and the admin verb are unchanged;
 a record too large for that is refused before anything stops.
 
+A release deployed on a scoped run (docs/tools.md, "A small fix", item 608) ran
+the units, the deploy's refusals, the wake replay and only the browser steps its
+files touch. Its counts are of those steps, and `scoped` says which ran and which
+did not, and that its full run, which follows on the deployed head, is pending:
+
+```json
+{"scoped": {"live": "...", "changed": ["web/aim.css", "docs/health.md"], "steps": ["native-health"],
+            "not_run": ["native-journal", "..."], "full_judgment": "pending"}}
+```
+
+`scoped` is left out of every other record, like `skipped`. When the full run
+lands it is attached beside the record, as an ordinary train's hosted judgment
+is (below): the record keeps saying `"pending"`, and the view's
+`hosted_judgment` is the run that landed.
+
 A release deployed from a merged train (docs/tools.md, "A merged train") ran no
 local release check, so its measurements hold none of those counts, only the
 train as the deploy read it (and `steps_beyond_policy` when there are any):
@@ -138,14 +153,14 @@ ran no release check here and says its judgment, never that checks passed
 ([health.md](health.md)).
 
 When an ordinary train's hosted judgment lands, or the push run on a release
-deployed on another commit's run with its tree (`judged_tree`, above), it is
-attached to the record:
-a separate fact, written once, shown by the view as `hosted_judgment` in the
-judged-first form above, its `head` the release's commit. The record itself
-keeps saying `"pending"`, as it was written; a reader takes `hosted_judgment`
-for what landed since. Only a record whose train is ordinary and pending, or
-whose `judged_tree` judgment is pending, takes
-one (`JUDGMENT_NOT_PENDING` otherwise), every run and check must name the
+deployed on another commit's run with its tree (`judged_tree`, above), or a
+scoped release's full run, it is attached to the record: a separate fact,
+written once, shown by the view as `hosted_judgment` in the judged-first form
+above, its `head` the release's commit. The record itself keeps saying
+`"pending"`, as it was written; a reader takes `hosted_judgment` for what
+landed since. Only a record whose train is ordinary and pending, whose
+`judged_tree` judgment is pending, or whose `scoped` says `full_judgment`
+`"pending"`, takes one (`JUDGMENT_NOT_PENDING` otherwise), every run and check must name the
 release's commit (`JUDGMENT_OF_ANOTHER_COMMIT`), the same judgment again
 returns the one attached (`"attached": false`), and another is refused with
 `RELEASE_JUDGED`. The store refuses to update or delete a judgment.
@@ -172,7 +187,7 @@ record without a number on an instance with none is refused with
   and its topic, is the state derived from those facts
   ([pipeline.md](pipeline.md#the-release)).
 - `bin/aim-next-admin attach-judgment --profile /abs/profile.json --release N --judgment /abs/judgment.json`
-  attaches a release's hosted judgment (above) from a JSON file. Like
+  attaches a release's hosted judgment, or a scoped release's full run (above), from a JSON file. Like
   `record-release` it is an operator act on the local instance, never an HTTP
   route. `tools/releases.py attach-judgment` reads the judgment from GitHub and
   calls it (docs/tools.md).
