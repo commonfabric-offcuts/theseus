@@ -34,7 +34,9 @@ def plan(root, event_name, event, head):
 
 
 def names(result):
-    return [name for shard in result['shards'] for name in shard['steps'].split(',')]
+    python = ['python-units'] if any(shard.get('python_shard') for shard in result['shards']) else []
+    return python + [name for shard in result['shards'] if not shard.get('python_shard')
+                     for name in shard['steps'].split(',')]
 
 
 class Plan(unittest.TestCase):
@@ -56,7 +58,7 @@ class Plan(unittest.TestCase):
         self.assertEqual(chosen, ['native-health'])
         result = plan(self.root, 'pull_request', self.event, self.head)
         self.assertCountEqual(names(result), list(release_check.UNIT_STEPS) + ['deploy-refusals', 'wake-replay'] + chosen)
-        self.assertEqual(len(result['shards']), 3)
+        self.assertEqual(len(result['shards']), 8)
         self.assertEqual(result['scoped']['live'], self.base)
         self.assertCountEqual(result['scoped']['changed'], changed)
 
@@ -64,7 +66,7 @@ class Plan(unittest.TestCase):
         self.change({'docs/note.md': 'small documentation fix\n'})
         result = plan(self.root, 'pull_request', self.event, self.head)
         self.assertCountEqual(names(result), ['python-units', 'node-units', 'deploy-refusals', 'wake-replay'])
-        self.assertEqual(len(result['shards']), 2)
+        self.assertEqual(len(result['shards']), 7)
 
     def test_push_manual_forbidden_paths_six_files_and_refused_scope_all_deal_every_step(self):
         self.change({'web/aim.css': fixtures.HEALTH_FIX['web/aim.css']})
@@ -119,16 +121,23 @@ class Fold(unittest.TestCase):
             summary = fixtures.scoped_summary(head, base, ['native-health'], list(fixtures.HEALTH_FIX))
             shards = root / 'shards'
             merge = {'sha': head, 'tree': 't', 'first_parent': base, 'second_parent': head}
-            for i, steps in enumerate((summary['steps'][:3], summary['steps'][3:])):
+            by_name = {step['name']: step for step in summary['steps']}
+            for i, job in enumerate(result['shards']):
+                steps = [copy.deepcopy(by_name[name]) for name in job['steps'].split(',')]
                 folder = shards / ('check-%d' % i)
                 folder.mkdir(parents=True)
                 raw = dict(summary, steps=steps, started_at='2026-11-16T00:00:00Z', finished_at='2026-11-16T00:01:00Z',
                            tree_after={'head': head, 'changes': ''}, only=[s['name'] for s in steps])
                 raw.pop('scoped')
+                if job.get('python_shard'):
+                    index, total = map(int, job['python_shard'].split('/'))
+                    raw['python_shard'] = {'index': index, 'total': total, 'files': job['files']}
+                    steps[0]['counts'] = {'tests': 1, 'status': 'OK'}
                 data = json.dumps(raw).encode()
                 (folder / 'summary.json').write_bytes(data)
                 import hashlib
                 receipt = {'run': {'id': '1', 'attempt': '1'}, 'merge': merge,
+                           'shard': {'name': job['name']},
                            'summary_sha256': hashlib.sha256(data).hexdigest(),
                            'base_at_run': {'ref': 'release/live', 'sha': base}}
                 (folder / 'run.json').write_text(json.dumps(receipt))
@@ -169,7 +178,7 @@ class PlanCommand(unittest.TestCase):
         # Run the actual command and its dependencies in an isolated checkout.
         # The committed harness is synthetic; planning never launches a browser.
         sources = {path: (ROOT / path).read_text() for path in (
-            'tools/check_plan.py', 'tools/release_check.py', 'tools/steps_for.py',
+            'tools/check_plan.py', 'tools/release_check.py', 'tools/unit_shards.py', 'tools/steps_for.py',
             '.github/check-weights.json')}
         sources[release_check.PERSISTENCE] = """const [chromePath, evidencePath, mode] = process.argv.slice(2);
 const check = async (name, action) => {
@@ -228,14 +237,14 @@ await check('health colour', async () => {
         self.change({'docs/note.md': 'documentation only\n'})
         result, why = self.workflow()
         self.assert_scoped(result, [], ['docs/note.md'])
-        self.assertEqual(len(result['shards']), 2, 'no empty browser job')
+        self.assertEqual(len(result['shards']), 7, 'no empty browser job')
         self.assertEqual(why, result['scoped']['why'])
 
     def test_workflow_command_emits_only_chosen_css_steps_and_complete_scope(self):
         self.change(fixtures.HEALTH_FIX)
         result, why = self.workflow()
         self.assert_scoped(result, ['native-health'], list(fixtures.HEALTH_FIX))
-        self.assertEqual(len(result['shards']), 3)
+        self.assertEqual(len(result['shards']), 8)
         self.assertEqual(why, result['scoped']['why'])
 
     def test_workflow_command_falls_closed_when_event_is_unavailable_or_not_a_pr(self):

@@ -22780,8 +22780,8 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases) == 1",
-     "\"green\": (not missing and combined[\"tree_unchanged\"]"
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"] and len(bases) == 1",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"]"
     ]
    ],
    "check": {
@@ -22892,7 +22892,7 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"]",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"]",
      "\"green\": (combined[\"tree_unchanged\"]"
     ]
    ],
@@ -22906,7 +22906,7 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "\"green\": (not missing and combined[\"tree_unchanged\"] and len(bases)",
+     "\"green\": (not missing and not missing_jobs and combined[\"tree_unchanged\"] and len(bases)",
      "\"green\": (not missing and len(bases)"
     ]
    ],
@@ -27176,8 +27176,8 @@
    "break": [
     [
      ".github/workflows/checks.yml",
-     "missing = [name for name in required if name not in names and name not in covered]",
-     "missing = [name for name in required if name not in names]"
+     "missing = [name for name in missing if name not in names and name not in covered]",
+     "missing = [name for name in missing if name not in names]"
     ]
    ],
    "check": {
@@ -29649,6 +29649,375 @@
    "check": {
     "native": "webkit-reading",
     "case": "the title bar shows Reply, Move below More and ⋯"
+   }
+  },
+  {
+   "item": 665,
+   "act": "A cancelled unit job and every unreported required step are named missing",
+   "break": [
+    [
+     "tools/release_check.py",
+     "missing = sorted(set(required) - set(names))",
+     "missing = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Python passes only when every planned file shard reports",
+   "break": [
+    [
+     "tools/release_check.py",
+     "if len(parts) == total and coverage:",
+     "if parts and coverage:"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Python files run once across the partitions",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "if path in selected)",
+     "if True)"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Every Python run reports its slowest tests even after failure",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "slowest = sorted(result.times, key=lambda t: (-t['seconds'], t['test']))[:25]",
+     "slowest = []"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Each Python process retains its own bytecode cache for nested child checks",
+   "break": [
+    [
+     "tools/release_check.py",
+     "[python, str(REPO / \"tools/unit_shards.py\")",
+     "[python, \"-I\", str(REPO / \"tools/unit_shards.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "The Python runner is guarded as a producer tool in a judged-first train",
+   "break": [
+    [
+     "tools/train.py",
+     "\"tools/release_check.py\", \"tools/unit_shards.py\",",
+     "\"tools/release_check.py\","
+    ]
+   ],
+   "check": {
+    "python": "test_tools_train.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "A Python producer runner cannot be claimed as an ordinary tool record",
+   "break": [
+    [
+     "aim_next/tool_records.py",
+     "\"tools/train.py\", \"tools/unit_shards.py\")",
+     "\"tools/train.py\")"
+    ]
+   ],
+   "check": {
+    "python": "test_tool_records.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Python package tests and initializers are included in the same file plan the runner reports",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "config = weights['units']\n    files = test_files(root)",
+     "config = weights['units']\n    files = sorted(str(p.relative_to(root)) for p in (root / 'tests').glob('test_*.py'))"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Discovery errors, skips and custom identities belong to their discovered source file",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "path = loader.owners[id(test)]",
+     "path = 'tests/' + test.id().rsplit('.', 2)[0].replace('.', '/') + '.py'"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "An empty initializer, module or hook-suppressed file still completes its planned Python partition",
+   "break": [
+    [
+     "tools/unit_shards.py",
+     "if not chosen and not planned.countTestCases():",
+     "if not planned.countTestCases():"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Only partitioned Python accepts a completed zero-test unittest report",
+   "break": [
+    [
+     "tools/release_check.py",
+     "allow_empty=bool(python_shard)",
+     "allow_empty=False"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "Completed empty partitions combine with nonempty partitions without losing Python",
+   "break": [
+    [
+     "tools/release_check.py",
+     "p['counts'].get('tests', -1) >= 0",
+     "p['counts'].get('tests', -1) > 0"
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 665,
+   "act": "All Python partitions together must run at least one test",
+   "break": [
+    [
+     "tools/release_check.py",
+     "'passed': counts['tests'] > 0 and all(",
+     "'passed': all("
+    ]
+   ],
+   "check": {
+    "python": "test_tools_unit_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "The full browser run deals measured minutes over four balanced shards with the four long steps apart",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "  BROWSER_SHARDS: 4",
+     "  BROWSER_SHARDS: 3"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser steps are dealt largest first onto the lightest shard, including a fifth long step",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "key=lambda n: -measured.get(n, median)",
+     "key=lambda n: measured.get(n, median)"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser shard limits come from the longest measured dealt total plus half",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "timeout = math.ceil(longest * 1.5)",
+     "timeout = math.ceil(longest)"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A new browser step is dealt using the measured median instead of being dropped or given zero minutes",
+   "break": [
+    [
+     "tools/check_plan.py",
+     "median = known[len(known) // 2] if known else 1.0",
+     "median = 0.0"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Every step of a missing browser shard stays required and is reported missing",
+   "break": [
+    [
+     "tools/release_check.py",
+     "required = sorted(set(name for job in plan for name in job['steps'].split(',')) |",
+     "required = sorted(set() |"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Browser weights retain the measured maximum and the run each sample came from",
+   "break": [
+    [
+     ".github/check-weights.json",
+     "\"native-rail\": 28.7",
+     "\"native-rail\": 3.2"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A cancelled browser shard keeps the six already logged train 33 results",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "                      steps.append(step)",
+     "                      pass"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A cancelled browser result names its shard and the cancellation time",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "cancelled_at=cancelled_at, result_source=",
+     "cancelled_at=None, result_source="
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancelled browser job recovery reads the current run attempt",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "attempt_number: attempt, per_page: 100",
+     "attempt_number: 1, per_page: 100"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Recovered cancelled results never become a release verdict even when no step is missing",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "\"tree_unchanged\": bool(timed) and not cancelled_shards and all(d.get(\"tree_unchanged\") is True for d in docs),",
+     "\"tree_unchanged\": all(d.get(\"tree_unchanged\") is True for d in docs),"
+    ],
+    [
+     ".github/workflows/checks.yml",
+     "and not missing and not cancelled_shards and not missing_jobs",
+     "and not missing"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancellation recovery retains results when every shard artifact is absent",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "if len(merges) > 1:",
+     "if len(merges) != 1:"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "Cancellation recovery and missing steps survive when every supplied summary is a refusal",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "          # Recovery and the missing-step inventory must not depend on any sibling finishing.",
+     "          if not timed:\n              sys.exit(\"no shard wrote a summary with a run in it\")"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
+   }
+  },
+  {
+   "item": 666,
+   "act": "A scoped cancellation removes recovered browser results from missing without hiding a missing Python partition",
+   "break": [
+    [
+     ".github/workflows/checks.yml",
+     "missing = [name for name in missing if name not in names and name not in covered]",
+     "missing = [name for name in missing if name not in covered]"
+    ]
+   ],
+   "check": {
+    "python": "test_checks_browser_shards.py"
    }
   }
  ]
