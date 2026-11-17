@@ -3919,7 +3919,7 @@ test('a message\'s Reader shows its writing\'s Review button as it opens', async
   const reading = { token: 1, source: { instance_id: 'fixture', source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', title: 'm1', body: '', attachments: [] },
     editors: { reply: modal }, mode: 'reply', opener: null, mark: null };
   f.registry.current = reading;
-  f.registry.options.present(reading);
+  await f.registry.options.present(reading);
   assert.equal(f.get('pending-submissions').firstElementChild?.textContent, 'Review 1 reply');
 });
 
