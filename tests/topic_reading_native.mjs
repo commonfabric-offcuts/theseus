@@ -271,10 +271,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await centre(p, corner);
       if (size === 'laptop') await p.point(corner); else await tap(p, corner);
     };
-    const noteShown = async ({p, ids, note}) => {
+    const noteShown = async ({p, ids, note}, unavailable = false) => {
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#writing-label').textContent==='Private note'
         && document.querySelector('#writing-body').value===${JSON.stringify(note)}`), name + ': exact note is shown');
-      assert.equal(await readerOn(p), 'Check the exact destination before Friday.');
+      assert.equal(await readerOn(p), unavailable ? '' : 'Check the exact destination before Friday.');
       assert.equal(await p.evaluate("document.querySelector('#destination-label').hidden"), true, 'private writing has no send destination');
       assert.equal(await p.evaluate("window.sent.includes('message.send')"), false, 'opening a note sends no message');
     };
@@ -320,7 +320,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-error');
         await p.evaluate('window.noteFault=null'); await pressCorner(state); await noteShown(state);
       } else {
-        await noteShown(state);
+        await noteShown(state, true);
         assert.equal(await p.evaluate("document.querySelector('#writing-body').readOnly"),true,'unavailable source keeps note read-only');
         await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-unavailable');
       }
