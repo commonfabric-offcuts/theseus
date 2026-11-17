@@ -133,16 +133,17 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
     await check(`${mode} item 656 refused: newer title stands, typed words stay beside the refusal, Return recovers at ${size} ${theme}`, async () => {
       const p = await start('refused'), original = await title(p);
       const theirs = original === 'Their newer title' ? 'Another newer title' : 'Their newer title';
-      await edit(p); await type(p, 'My kept title');
+      const mine = 'My kept title ' + phase;
+      await edit(p); await type(p, mine);
       await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-${size}-${theme}`, topic_id: 't1', args: { title: theirs } });
       await until(async () => await title(p) === theirs, 'page learned the newer title');
       await p.key('Enter');
       await until(() => p.evaluate('document.querySelector("#topic-title-edit .notice")?.textContent.includes("Someone else renamed it first")'), 'refusal beside the kept title');
       assert.equal((await held()).title, theirs, 'refusal overwrites nothing');
-      assert.equal(await p.evaluate('document.querySelector("#topic-rename").value'), 'My kept title');
+      assert.equal(await p.evaluate('document.querySelector("#topic-rename").value'), mine);
       assert.equal(await p.evaluate('document.querySelector("#topic-settings").open'), false);
       await snap(p, 'refused'); await p.key('Enter');
-      await until(async () => await title(p) === 'My kept title' && await active(p) === 'topic-title-rename', 'Return recovers');
+      await until(async () => await title(p) === mine && await active(p) === 'topic-title-rename', 'Return recovers');
       await control({ method: 'topic_state', operation_id: `656-${phase}-conflict-restore-${size}-${theme}`, topic_id: 't1', args: { title: original } });
       assert.deepEqual(p.errors, []);
     });
