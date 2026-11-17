@@ -267,11 +267,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           }, 'every counted row is drawn with its count');
           for (const row of [null, ...rows]) {
             let box = null;
-            // The pointer goes to the row's middle, or, where the lit row's own message bar sits over its middle (a one-line
-            // card at a phone's width, under a bar four buttons wide since item 473), to the middle of the row left of it.
-            const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(), y = (b.top + b.bottom) / 2;
-              const bar = document.elementFromPoint((b.left + b.right) / 2, y)?.closest('.message-bar'), x = bar ? (b.left + bar.getBoundingClientRect().left) / 2 : (b.left + b.right) / 2;
-              return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, x, y, hovered: row.matches(':hover') }; })()`;
+            const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
             // At rest the page stands where it opened, and the pointer is off
             // its content; the topic's own state is brought into view when the
             // first screen does not hold it.
@@ -292,7 +288,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
                 assert.ok(now, `${row} is still drawn on the ${route} page`);
                 if (!now.hovered || JSON.stringify(now) !== JSON.stringify(box)) {
                   box = now;
-                  if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: now.x, y: now.y });
+                  if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (now.left + now.right) / 2, y: (now.top + now.bottom) / 2 });
                   return false;
                 }
               }

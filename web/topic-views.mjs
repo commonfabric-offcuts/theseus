@@ -200,13 +200,6 @@ export class TopicViews {
       this.messages.set(item.id, item); this.runs.set(item.id, run);
     }
     this.learnPositions(answer.items.map(item => ({ message_id: item.id, stack_position: item.stack_position })));
-    // Each position Core answers carries the act it had reached when it read the page (at.acts). The Reader's
-    // neighbours are read after the page, so an acts read reaching no later act than the first page's has moved no
-    // dossier since either: it asks for them nothing (readActs, item 426).
-    if (initial && this.neighborsAt === undefined) {
-      const seen = answer.items.reduce((most, item) => integer(item.stack_position?.at?.acts) ? Math.max(most, item.stack_position.at.acts) : most, -Infinity);
-      if (seen > -Infinity) this.neighborsAt = seen;
-    }
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
@@ -295,14 +288,6 @@ export class TopicViews {
     if (this.learnUnread(answer, afresh)) this.paint('line');
     return true;
   }
-  // The page's own act, as Core answered it (stack-feed.mjs). A fold, star or
-  // deal places no dossier, so when the neighbours were read at or after the
-  // last act the reader had heard of before it (acts_before), the acts read
-  // it brings has moved none of them, and asks for them nothing (item 426).
-  ownAct(kind, result) {
-    if (!['message.fold', 'message.star', 'message.deal'].includes(kind) || !integer(result?.acts_version) || !integer(result.acts_before)) return;
-    if (this.neighborsAt !== undefined && this.neighborsAt >= result.acts_before) this.neighborsAt = Math.max(this.neighborsAt, result.acts_version);
-  }
   // What people recorded about the loaded messages (docs/reply-stacks.md),
   // read again newest first down to the oldest message loaded: each loaded
   // message the answer names takes its acts as Core holds them. version: the
@@ -325,14 +310,6 @@ export class TopicViews {
       cursor = answer.items.length && answer.items.at(-1).seq < oldest ? null : answer.next_cursor;
     } while (cursor !== null);
     if (reached < version) throw behind();
-    // The Reader's neighbours beyond what the page loaded carry Core's place
-    // for their dossier, which an act on another device can move (Move below
-    // More, Bring back) with no change to the topic: an answer that reaches a
-    // later act than they were last asked for at asks for them again (item
-    // 426), as a topic change does. An acts read that reaches no later act
-    // (one for a topic change, or the page's own) moves no dossier, so the
-    // neighbours already resolved stand.
-    const moved = reached > (this.neighborsAt ?? -Infinity);
     // Each act takes the later of what the page holds and the answer, by its
     // revision: an answer read before a commit the page has since heard of
     // puts back nothing (stack-order.mjs, laterActs).
@@ -347,13 +324,7 @@ export class TopicViews {
     // (superseded, or deferred behind the page's own reads): the next read
     // learns nothing new, so it would draw nothing.
     try { await this.readPositions(read, current); }
-    finally {
-      if (changed) this.paint('acts');
-      // Acts count apart from the topic's versions, so the neighbours are
-      // asked for afresh (force), even over a read already under way that
-      // began before this act.
-      if (moved) { this.neighborsAt = reached; this.invalidate('neighbors', version, true); }
-    }
+    finally { if (changed) this.paint('acts'); }
     if (current()) landed();
     return true;
   }

@@ -116,34 +116,6 @@ test('the New message composer resting under the messages is never taken for the
   assert.deepEqual(shown(), [50, 40, 30, 'composer'], 'a message among the loaded ones without a card here still has no line');
 });
 
-// Item 426: More messages ends the run the reader reads down, and the
-// dossiers put below More follow it. The line for a message further back
-// waits at the bottom of that run, above More, never after what lies below
-// More, and the oldest card is the last of that run.
-test('a line for a message not loaded yet waits above More messages, not after the dossiers below it', () => {
-  const host = list(50, 40, 30), load = () => {};
-  const more = new Element('button'); more.className = 'stack-more'; host.insertBefore(more, null);
-  const aside = new Element('section'); aside.className = 'reply-stack'; aside.dataset.stack = 'm60';
-  const inside = new Element('button'); inside.dataset.seq = '60'; inside.dataset.id = 'm60'; aside.insertBefore(inside, null);
-  host.insertBefore(aside, null);
-  const name = node => node.dataset.line ?? (node === more ? 'More' : node === aside ? 'aside' : Number(node.dataset.seq));
-  placeNewLine(host, 10, doc, load);
-  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'above More, not below the dossier put aside');
-  placeNewLine(host, 10, doc, load);
-  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'placed again, it stays');
-  host.insertBefore(host.children[3], null);
-  placeNewLine(host, 10, doc, load);
-  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older', 'More', 'aside'], 'moved below, it goes back above More');
-  // No More: the bottom of the list, as before.
-  more.remove(); aside.remove();
-  placeNewLine(host, 10, doc, load);
-  assert.deepEqual(host.children.map(name), [50, 40, 30, 'older']);
-  // The dossier below More is newer than the run's last card; the run's last card decides what is further back.
-  const run = list(50, 40), last = new Element('button'); last.className = 'stack-more'; run.insertBefore(last, null);
-  const newer = new Element('section'); newer.dataset.seq = '70'; run.insertBefore(newer, null);
-  assert.equal(placeNewLine(run, 45, doc, load), null, 'a message among the run\'s cards, with no card here, has no line, whatever lies below More');
-});
-
 // Once nothing at or above it is unread, the line stays in its place but
 // fades: .new-line-read, a CSS opacity transition, and inert, so no pointer,
 // Tab or screen reader finds it. Held again, the same line comes back.

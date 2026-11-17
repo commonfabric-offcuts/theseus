@@ -60,9 +60,7 @@ act's revision counts its rows for that message, kind and owner. A late
 request is refused with `REVISION_CONFLICT`, and the refusal carries the
 current revision. Sending a value the act already stands at records nothing
 and answers `changed: false`. An answer carries the value, the new revision,
-`changed` and, when it recorded a row, `acts_version` and `acts_before`: the
-newest act in the topic its reader had heard of before this one (their own and
-the topic's, never another reader's own).
+`changed` and, when it recorded a row, `acts_version`.
 
 `message.fold_through` (item 472) folds a message and every message before it
 in its dossier, for the reader, as Option with a swipe right does. It names one
@@ -324,8 +322,7 @@ their acts.
 - **First messages.** A dossier's first message is a message like any other
   (item 471): with the dossier fully open it folds to its own row under the
   head row, by its header, x, a swipe or Fold in ⋯, and its row, x or Unfold
-  unfolds it; shown whole or folded it has its bar, which offers Unfold once
-  it is folded. The head row stays the dossier's
+  unfolds it; shown whole it has its bar. The head row stays the dossier's
   title, the one special row, and says nothing of the fold. At latest and
   unread the head shows only that title row, and x there does nothing, as on
   the chevron. Among an open dossier's earlier messages (Earlier messages,
@@ -465,61 +462,6 @@ select comes into view"): a message is its card, and a dossier's chevron or
 compact header is the whole dossier, its header and whatever of its body
 shows, which lands with its top a tenth below the window's top when it is
 taller than the window.
-
-### The title bar and the message bar (item 473)
-
-A dossier's title bar, its tab, shows three glyphs at its right, on the paper
-beside the tab, where the tab never reaches:
-
-- Reply (an arrow turning back): the Reader on the dossier's first message,
-  the cursor in its reply, as Return on that message does.
-- Move below More (a tray, the arrow going down), or Bring back above More
-  (the arrow coming up) once the dossier is below More; none on a dossier
-  Core has no place for yet.
-- ⋯: the menu a right-click on the first message gives, opened under it.
-
-They show while a pointer is over the dossier, and are there to be found
-(invisible, never gone) as the pointer crosses to them; by touch, once the
-dossier or one of its messages is selected; by the keys, as soon as one of
-them holds the focus, or the dossier or one of its messages is selected. Their
-place is kept while they are hidden, so showing them moves nothing, and the
-tab's name leaves room for them. Hidden by touch they take no press: a tap
-where ⋯ sits lands on the page beneath it, not on ⋯, until the dossier is
-selected; the keys still reach them. A message on its own has no title bar and no
-glyphs; a dossier being renamed and Only new show none.
-
-Each glyph is a real button beside the first message's card, after its
-chevron, so Tab reaches them in order (Reply, Move below More, ⋯) and Shift-Tab
-comes back; each has its name as its accessible name and its tooltip, and by
-touch each is 44px square.
-
-On a phone, in a window narrower than 404px, Reply and Move below More fold
-into ⋯, which then shows alone: three 44px glyphs beside the tab would leave
-its second line too little room for who began the dossier and who named it
-(item 479), which needs a 371px folder beside them. ⋯ keeps its name, its
-tooltip and its 44px, and its menu offers Reply to the first message and Move
-below More (or Bring back above More) first, by those names, before what the
-first message's own ⋯ offers. As every menu item (docs/links.md, "A message's
-menu"), each shows the glyph of the button that does the same: Reply the title
-bar's Reply, Move below More the Reader's archive tray and Bring back above
-More the tray with an arrow out. Each does what its glyph does, by touch and by
-the keys (Tab reaches ⋯ alone, Return opens its menu on Reply). The tab
-leaves room for ⋯ alone, at rest as once selected, so its name keeps the same
-words either way. A wider window keeps the three glyphs.
-
-The bar over a lit message shows Reply as its glyph, named Reply (Return), and
-two more: Show full message (two arrows pointing out), only while the card
-cuts the message off, showing it whole there as ⋯'s Show full message does;
-and Fold (arrows pointing in to a line), Unfold once the message is folded,
-none on a starred message, for the reader alone as ⋯'s Fold is. Tab goes
-through them as through the rest of the bar. With these a go-ahead ask its
-card cuts off has seven buttons, too wide for a 320px window by touch: the bar
-puts Fold, then Show full message, behind its ⋯, which offers both, and keeps
-to one row (docs/interaction.md, "The light").
-
-Nothing a glyph does is new: each is an act the menu or the keys already make,
-with the same record in Core, so how a dossier is shown stores nothing, and
-every message stays reachable where it sits.
 
 The ⋯ menu offers:
 
@@ -687,9 +629,6 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `data-seq`
   - `data-fold`: folded or open, or head for a quiet agent dossier not yet opened
   - `data-head-open`, `data-placed`, `data-single`, `data-renaming`
-  - `data-color`: `agent` on a dossier an agent began, with that agent's
-    `agent-<colour>` class from `web/aim.css` (its `--agent-card` and
-    `--agent-tag`); empty on a person's
 - Inside the stack:
   - the head's entry, with its card marked `.stack-head-card` and holding
     `.stack-head`. The row's parts are `.stack-name`, `.stack-pen`,
@@ -699,9 +638,6 @@ the semantic colour tokens of `web/aim.css` and only the names that
   - `.stack-rename`, holding `.stack-rename-input` and `.stack-rename-hint`.
   - `.stack-toggle`, the header's native expand/collapse button, a sibling of
     the message button, with `aria-expanded` and `aria-controls`.
-  - `.stack-tools`, the title bar's glyphs, each a `.stack-tool` button with
-    `data-tool` `reply`, `aside` or `menu`, holding a `.glyph` svg
-    (`web/glyphs.mjs`) or ⋯.
   - `.stack-replies`, with each reply's entry and `.stack-join-line`
     (`.stack-join-words` and `.stack-split`).
   - `data-stack-overlap` and `data-stack-covered` on message entries: visual
@@ -725,14 +661,7 @@ colour, a border or a spacing. The look now is the Dossier: a stack is one
 folder pressed into the page. Its head row is the folder's tab, two lines high,
 with the short name on the first and who started it, how many replied, who
 and what is new on the second; the tab and the body are one cut, joined by a
-curved corner. A compact chevron sits beside the name, and the title bar's
-glyphs at the far right. A dossier an agent began (the author of its first
-message, an agent other than the reader) wears that agent's colour, in the
-colour the reader sees it in, across the whole face of its folder and its tab:
-a step deeper than its cards, so its sheets still read on it, with the tab's
-words, meta, star and New kept at 4.5:1 or better on it and under the pointer,
-in light and dark. A person's dossier, and the reader's own, keep the neutral
-folder. No coloured edge or bar marks a dossier (item 477). The replies are the
+curved corner. A compact chevron sits beside the name. The replies are the
 sheets inside, each card in its own colours; folded replies draw no extra bar.
 Later visible cards overlap the previous card's bottom edge by 12px, with a
 soft top contact shadow. At latest and unread, read replies hidden above the
@@ -819,7 +748,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | x folds and unfolds the selected message; a starred one, a dossier and writing | `tests/ui_outline_order.test.mjs` (the key map); `tests/stack_native.mjs`, "reading stacks x folds the selected message …" |
 | the 👍 on a folded row | `tests/stack_native.mjs`, "reading stacks a folded message's row carries its 👍 …" |
 | inside a dossier: a message shown whole keeps its agent name's badge (its computed corner, fill, border and padding those of a message on its own), folded rows with a plain name, no pill and a 👍 only once given, a message on its own unchanged, at 320, 375 and 390 pixels and on a laptop, light and dark, and a reload finding order, names and folds as they were | in Chrome and Safari's engine, `tests/stack_native.mjs`, "reading stacks inside a dossier a message shown whole keeps its agent name's pill …" |
-| inside a dossier: a header press folds, the words open the Reader, a folded row keeps its bar with Unfold, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
+| inside a dossier: a header press folds, the words open the Reader, no bar on a folded row, the first message folded and unfolded as any message, the title row still the dossier's, a message on its own opened from its header | in Chrome and Safari's engine, at 320, 375 and 390 pixels and on a laptop, `tests/stack_native.mjs`, "reading stacks inside a dossier a press on a shown message's header …" |
 | Option and a swipe right fold the message and every one before it, later and starred ones whole, ⌘Z, and a plain swipe folding one | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds the message …" |
 | in a dossier longer than the loaded page, the messages not loaded fold too, by one request, another reader's folds stand, ⌘Z unfolds every one, and Earlier messages on a new document shows them folded | in Chrome, `tests/stack_native.mjs`, "reading stacks Option held with two fingers right on the trackpad folds every message before it in a dossier longer than the loaded page …"; in Core, `tests/test_stacks.py` (`FoldThroughCase`) |
 | a swipe on a dossier's last visible message folds it in place; the title bar alone moves the dossier below More and back | in Chrome (a finger's drag), `tests/stack_native.mjs`, "reading stacks below More uses a real swipe …"; the trackpad, "reading stacks on a laptop two fingers swiped right on the trackpad …" |
@@ -864,12 +793,6 @@ twin without judging it, as the rule for that case is still open (item 430).
 | a busy 👍's line in the rail at a laptop's width and in the drawer at 320, 375 and 390, light and dark, and gone once its reactions read again land | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a thumbs-up Theseus was too busy to take …" |
 | a 👍 or an answer, and the Reader's mark, say what Theseus answered, never a lost connection unless none answered | node units, `tests/ui_reactions.test.mjs` and `tests/ui_inline_wiring.test.mjs` ("… item 547") |
 | a busy star and a reply in doubt together, as on live: no notice over another, no hold on leaving, the star made once from the page that has gone | in Chrome and Safari's engine, `tests/outcome_rail_native.mjs`, "rail a star Theseus was too busy to take and a reply whose send is lost …" |
-| the title bar's glyphs: shown under the pointer or once selected by touch (hidden by touch, a press at ⋯ does not land on it, at 320, 375 and 390 pixels), named with their tooltips, 44px by touch, beside the tab at 320, 375, 390 pixels and on a laptop, light and dark; none on a message on its own | `tests/stack_native.mjs`, "reading stacks the title bar shows Reply, Move below More and ⋯ …", in Chrome and Safari's engine |
-| the title bar's Reply, ⋯ (the first message's own menu), Move below More and Bring back, by pointer, touch and the keys; a reload finds order, name and folds as they were, every message in reach | `tests/stack_native.mjs`, "reading stacks the title bar's Reply opens the Reader …", in Chrome and Safari's engine |
-| on a 390px phone the title bar's ⋯ opens its menu, Reply to the first message with the title bar's Reply glyph and Move below More with the Reader's tray first, Bring back above More with the tray and its arrow out once below, light and dark | `tests/stack_native.mjs`, "reading menus a dossier's title bar ⋯ on a 390px phone …", in Chrome and Safari's engine |
-| the message bar's Reply glyph, Show full message only on a cut-off message, Fold and Unfold, none on a starred message | `tests/stack_native.mjs`, "reading stacks the message bar's Reply is a glyph …", in Chrome and Safari's engine |
-| the message bar in the window: a go-ahead ask's bar, short and cut off, plain and with "Link copied", in one row at 390, 375 and 320 pixels with Fold and Show full message behind its ⋯ where they do not fit and back once they do, nothing put away on a laptop or where there is room | `tests/topic_reading_native.mjs`, "reading a go-ahead ask's bar keeps every button in the window …", in Chrome and Safari's engine |
-| a folder in its agent's colour, following the reader's choice; a person's neutral; no edge | `tests/ui_folder_colour.test.mjs` (contrast for every palette colour, light and dark); `tests/stack_native.mjs`, "reading stacks a dossier an agent began wears its colour …", in Chrome and Safari's engine |
 
 `tests/acts.json` names the break each act must catch.
 
@@ -879,9 +802,7 @@ Not yet:
   for it; ⋯ is the way there.
 - A head shown as one row has no room for its reply arrow. The reply sits
   in the stack under it.
-- Archive, Make it a heading, Edit and Lift out come with the next piece. The
-  title bar's tray glyph is Move below More, which is what archiving a dossier
-  is for now.
+- Archive, Make it a heading, Edit and Lift out come with the next piece.
 
 ## Put a dossier aside
 
@@ -931,12 +852,7 @@ has it: this page's More and Only new are not its view. A dossier below More
 that a link, search or Starred drew where it sits stays there through →, ←,
 Fold and the page reading the topic again, while Core holds it at the place it
 held then (`drawnBelow`, by `placeOf`: the dossier and the revision of its
-Move below More). The page may not yet have heard of a move another device
-made before the link was followed, and so hold an older place than Core: the
-dossier is drawn where it sits until the page has read Core's place again, and
-the place that read finds is the one it holds to, so reading the move it
-missed does not take the dossier away (item 426; a read that fails keeps the
-place the page held). A Move below More or Bring back made on another device is a
+Move below More). A Move below More or Bring back made on another device is a
 new place only when it changes Core's value, which raises that revision; the
 dossier is then drawn as Core holds it, and a link followed again draws it
 where it sits again. One that finds the place unchanged leaves it drawn where
@@ -947,26 +863,9 @@ aside revision): every act in the topic raises the snapshot a position is
 read at, and that alone draws nothing. Each time the page's stacks are drawn again (More opened
 or closed, Only new turned on or off, an act or a reaction, a move on another
 device) everything placed by what the page shows is placed again: the Reader's
-↑ and ↓ while it is open, the New line, and Earlier messages. Core's
-neighbours of the Reader beyond what the page loaded are read again whenever
-an acts read reaches a later act than they were last read at, since a Move
-below More or Bring back on another device moves their dossier with no change
-to the topic; an acts read that reaches no later act leaves the neighbours
-already resolved as they stand (item 426). The page's own fold, star or deal
-places no dossier: when the neighbours were read at or after the act its
-answer names as `acts_before`, they are taken as read at that act too, so the
-acts read it brings leaves them standing, while its own Move below More, or
-one following an act they were not read past, asks for them again. The New line,
+↑ and ↓ while it is open, the New line, and Earlier messages. The New line,
 when the oldest new message is in a dossier below a closed More, takes the
-first place shown after it; when it is older than the page and waits at the
-bottom saying more new messages lie below, the bottom is the end of the run
-above More, never after the dossiers below it, and whether it is older than the
-page is measured from that run's last card, not from a dossier below More
-(item 426). A dossier below More
-that someone joins into one above it reads there, above More, and Split back
-out puts it below again; one joined into a dossier below More goes below with
-it (`tests/stack_native.mjs`, "reading stacks below More: a dossier put below
-More joined by someone else …"). Earlier messages shows wherever the dossiers put
+first place shown after it. Earlier messages shows wherever the dossiers put
 aside are on show, under Only new as with More open; under Only new it shows
 even while the New line says more new messages lie below, since Only new does
 not draw that line. Moving a dossier below More hands focus to More when the

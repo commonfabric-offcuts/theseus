@@ -991,13 +991,12 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
-    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to five stops before
-    // the people (the star, 👍, Reply, Fold since item 473, and ⋯).
+    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to four stops before the people.
     let past = 0;
     for (;;) {
       await p.key('Tab');
       const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar'))||a.classList.contains('card-star'),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill && at.bar && !seen.length && past++ < 5) continue;
+      if (!at.pill && at.bar && !seen.length && past++ < 4) continue;
       if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);

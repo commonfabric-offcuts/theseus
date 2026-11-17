@@ -6,15 +6,13 @@
 // changed, a borrowed glyph cloned from another control, or a character that
 // draws nothing. They are read by tests/ui_menu_glyphs.test.mjs below the
 // browser, and in the browser by tests/stack_native.mjs (a message's ⋯, a
-// dossier's menu, a right-click, the phone's sheets and a dossier's title bar ⋯ on a phone),
+// dossier's menu, a right-click and the phone's sheets),
 // tests/reader_compose_native.mjs (the Reader's ⋯), tests/pipeline_native.mjs
 // (a pipeline item's ⋯) and tests/notebook_pages_native.mjs (the Reader's ⋯ on
 // a Notebook page).
 export const GLYPH_OF = Object.freeze({
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',
-  // A dossier's title bar ⋯ on a phone (item 473): Reply to the first message takes the title bar's own Reply.
-  'Reply to the first message': 'reply',
   'Copy Link': 'link', 'Show full message': 'full', Edit: 'pencil', 'Edit page': 'pencil', 'Mark unread': 'unread', 'Mark read': 'read',
   // Item 601: an archive act shows the Reader's archive tray, in every menu.
   'Move below More': 'archive', 'Bring back above More': 'back',
@@ -36,7 +34,6 @@ export const glyphOf = label => (Object.hasOwn(GLYPH_OF, label) ? GLYPH_OF[label
 // fails the checks that read it (misdrawn below).
 export const APPROVED = Object.freeze({
   archive: { vb: '0 0 20 20', sw: '1.6', d: 'M2.5 3.5h15V7h-15zM3.75 7v9.5h12.5V7M8 10.5h4' },
-  reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },
   full: { d: 'M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4' },
   fold: { d: 'M12 2.5v7 M8.5 6.5l3.5 3.5 3.5-3.5 M5 12h14 M12 21.5v-7 M8.5 17.5l3.5-3.5 3.5 3.5' },

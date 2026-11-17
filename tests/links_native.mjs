@@ -289,21 +289,20 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard)}))`), 'the card is drawn');
     await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
     await until(() => barShown(p), 'the card the focus is on lights, with its bar');
-    // Tab from the lit card goes on to the star in its header (item 376), then its bar's buttons, in order (Fold since
-    // item 473), as its own ⋯ once followed it.
+    // Tab from the lit card goes on to the star in its header (item 376), then its bar's buttons, in order, as its own ⋯ once followed it.
     const focused = () => p.evaluate(`(()=>{const a=document.activeElement;return a?.closest('.message-bar')?'bar:'+a.dataset.act:a?.classList.contains('card-star')?'star':a===document.querySelector(${JSON.stringify(menuCard)})?'card':(a?.tagName??'')+(a?.className?'.'+a.className:'')})()`);
     const order = [];
-    for (let i = 0; i < 5; i++) { await p.key('Tab'); order.push(await focused()); }
-    assert.deepEqual(order, ['star', 'bar:thumb', 'bar:reply', 'bar:fold', 'bar:more'], 'Tab from the card reaches its star, then its bar\'s 👍, Reply, Fold and ⋯');
+    for (let i = 0; i < 4; i++) { await p.key('Tab'); order.push(await focused()); }
+    assert.deepEqual(order, ['star', 'bar:thumb', 'bar:reply', 'bar:more'], 'Tab from the card reaches its star, then its bar\'s 👍, Reply and ⋯');
     // Shift-Tab back through the bar and the star comes back to the card; Tab past its ⋯ goes on to what follows the card.
-    for (let i = 0; i < 5; i++) await p.key('Tab', 8);
+    for (let i = 0; i < 4; i++) await p.key('Tab', 8);
     assert.equal(await focused(), 'card', 'Shift-Tab from the star comes back to the card');
-    for (let i = 0; i < 5; i++) await p.key('Tab');
+    for (let i = 0; i < 4; i++) await p.key('Tab');
     assert.equal(await focused(), 'bar:more');
     await p.key('Tab');
     assert.equal(await p.evaluate(`(()=>{const a=document.activeElement,c=document.querySelector(${JSON.stringify(menuCard)});return !a.closest('.message-bar')&&a!==c&&Boolean(c.compareDocumentPosition(a)&Node.DOCUMENT_POSITION_FOLLOWING)})()`), true, 'Tab past the ⋯ goes on from the card, not to the page\'s end');
     await p.evaluate(`(()=>{document.querySelector(${JSON.stringify(menuCard)}).focus();return true})()`);
-    for (let i = 0; i < 5; i++) await p.key('Tab');
+    for (let i = 0; i < 4; i++) await p.key('Tab');
     assert.equal(await focused(), 'bar:more', 'Tab from the card reaches its ⋯');
     await p.key('Enter');
     await menuOpen(p, ['Copy Link', 'Mark unread']);

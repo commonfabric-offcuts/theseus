@@ -171,9 +171,8 @@ which hears the item's words; the item's words, order, keys and acts are as
 they were. One meaning keeps one glyph in every menu (`web/glyphs.mjs`): an item
 that does what a button on the page does takes that button's own drawing, so
 Move below More shows the Reader's archive tray, and Edit, Edit page and Rename
-the pencil of the topic's New message, Open its record the box with an
-arrow of the Notebook sheet's Open as a full page, and Reply to the first
-message, in a dossier's title bar ⋯ on a phone, the title bar's Reply. The rest are drawn once, in
+the pencil of the topic's New message, and Open its record the box with an
+arrow of the Notebook sheet's Open as a full page. The rest are drawn once, in
 the same style; tests/menu_glyphs.mjs lists the glyph of every item by its
 words, in every state the item has, and the approved drawing of every glyph.
 The checks read what each glyph draws, not only its name: a drawing changed or
