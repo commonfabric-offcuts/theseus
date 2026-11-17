@@ -447,12 +447,14 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
   });
 
   await check('targets a message into an archived outcome is refused in Core\'s words with its writing kept for review; the topic says it is kept to read, and after Bring back by keys a message sends', async () => {
-    await act('outcome.end_set', { state: 'archived' }, { workspace_id: 'tg-round' });
-    const p = await open('targets-end-topic', '/?topic=tg-round-plan', 'phone', 'dark');
+    // An outcome of its own, lit here, so the case runs alone as well as after the others.
+    await control({ method: 'light_outcome', outcome: 'tg-door', title: 'Door frame', topic: { id: 'tg-door-plan', title: 'Door plan' } });
+    await act('outcome.end_set', { state: 'archived' }, { workspace_id: 'tg-door' });
+    const p = await open('targets-end-topic', '/?topic=tg-door-plan', 'phone', 'dark');
     await ready(p);
     const line = await until(() => p.evaluate(`(h=>h&&!h.hidden&&h.getClientRects().length?h.textContent:null)(document.getElementById('outcome-kept'))`), 'the line shows in the header');
     assert.equal(line, 'This outcome is archived; its topics are kept to read Bring back');
-    const messages = async () => JSON.stringify((await view('topic_messages', { topic_id: 'tg-round-plan', direction: 'before', limit: 30 })).items);
+    const messages = async () => JSON.stringify((await view('topic_messages', { topic_id: 'tg-door-plan', direction: 'before', limit: 30 })).items);
     const write = async words => {
       await p.evaluate(`document.getElementById('inline-writing-body').scrollIntoView({block:'center'})`);
       await p.point('#inline-writing-body');
@@ -468,13 +470,13 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await p.point('#inline-pending button');
     const card = await until(() => p.evaluate(`(()=>{const c=[...document.querySelectorAll('#review-content .pending-card')].find(c=>c.querySelector('pre')?.textContent===${JSON.stringify(words)});
       const why=c?.querySelector('[data-refusal]');return c&&why&&!why.hidden?{head:c.querySelector('h3').textContent,why:why.textContent}:null})()`), 'the review shows the writing and why');
-    assert.deepEqual(card, { head: 'Not sent — writing kept', why: 'Round trip is archived; bring it back to change anything in it.' }, 'in Core\'s words, which say who brings it back');
+    assert.deepEqual(card, { head: 'Not sent — writing kept', why: 'Door frame is archived; bring it back to change anything in it.' }, 'in Core\'s words, which say who brings it back');
     assert.ok(await sideways(p) <= 0, 'no sideways scroll at 390');
     await shot(p, 'targets-end-topic-refused');
     await p.key('Escape');
     await until(async () => !(await p.evaluate(`document.getElementById('version-review').open`)), 'the review closes');
     await keyOn(p, '#outcome-kept [data-key="bring-back"]', 'Enter');
-    await until(async () => (await ended('tg-round')) === 'open', 'Return on Bring back brings it back');
+    await until(async () => (await ended('tg-door')) === 'open', 'Return on Bring back brings it back');
     await until(async () => !(await shown(p, '#outcome-kept')), 'the line goes');
     await until(() => p.evaluate(`document.activeElement?.id==='inline-writing-body'`), 'the keys go to the writing');
     await write('The door is 81 cm.');

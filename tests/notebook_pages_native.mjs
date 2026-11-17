@@ -1545,7 +1545,9 @@ export async function notebookChecks({ check, page, until, control, view, facts,
         await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
       } });
       await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent==='Fence plan'`), `${width} ${theme}: the Reader shows the page`);
-      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+      // Settled as the Reader's other cases read it: the topic's opening is the person's own message, which waits for a
+      // reply under three dots that pulse for as long as it waits (item 475), so an endless animation is not one to wait out.
+      await until(() => p.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a=>a.playState!=='running')"), 'the Reader settled');
       if (metrics) {
         const b = await p.box('#reader-menu');
         await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
