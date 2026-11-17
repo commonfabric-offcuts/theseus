@@ -28429,6 +28429,176 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
+  },
+  {
+   "item": 717,
+   "act": "A cover records exact explicit promises and source revisions",
+   "break": [
+    [
+     "aim_next/cover_promises.py",
+     "    return records\n",
+     "    return []\n"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "Promise changes retain attributed prior words times and states",
+   "break": [
+    [
+     "aim_next/cover_promises.py",
+     "history = old[\"history\"] + [dict(old, history=[])] if old is not None else []",
+     "history = []"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A promise refuses invented source words",
+   "break": [
+    [
+     "aim_next/cover_promises.py",
+     "if words is None or value[\"text\"] not in words[0]:",
+     "if words is None:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A duplicate promise write keeps its clock and adds no history",
+   "break": [
+    [
+     "aim_next/cover_promises.py",
+     "        if same:\n",
+     "        if False and same:\n"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A promise keeps the explicit timezone offset across a moved time",
+   "break": [
+    [
+     "aim_next/cover_promises.py",
+     ".astimezone(ZoneInfo(zone))",
+     ".astimezone(timezone.utc)"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A private promise source stays within the dossier privacy boundary",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "if message[\"private_to\"] is not None and (root[\"private_to\"] is None or",
+     "if False and (root[\"private_to\"] is None or"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
+  },
+  {
+   "item": 717,
+   "act": "Promises are visible on the dossier cover",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "for (const promise of cover.promises ?? []) sheet.append",
+     "for (const promise of []) sheet.append"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 717 promises carry exact words explicit times history kept and missed on the cover and Reader at 320 375 390 laptop light dark"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A moved promise time is visibly struck through",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "element(doc, 's', 'promise-prior')",
+     "element(doc, 'span', 'promise-prior')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 717,
+   "act": "The cover shows missed as missed",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "row.dataset.state = promise.state;",
+     "row.dataset.state = promise.state === 'missed' ? 'kept' : promise.state;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 717,
+   "act": "Promise covers fit the phone and laptop within the named tolerance",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "sheet.setAttribute('role', 'note');",
+     "sheet.style.width = 'calc(100% + 160px)'; sheet.setAttribute('role', 'note');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 717 promises carry exact words explicit times history kept and missed on the cover and Reader at 320 375 390 laptop light dark"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A single-message promise remains readable with its time and state",
+   "break": [
+    [
+     "web/dossier-cover.mjs",
+     "pills.append(pill);\n  }\n  if (!pills.children.length)",
+     "/* promise omitted */\n  }\n  if (!pills.children.length)"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_dossier_cover.test.mjs"
+   }
+  },
+  {
+   "item": 717,
+   "act": "A kept promise never infers owner acceptance or Done",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "done=done_of(db, owner, payload[\"message_id\"], payload.get(\"done_by\"))",
+     "done=({\"how\": \"promise\", \"by\": actor, \"at_ms\": 1} if any(p[\"state\"] == \"kept\" for p in value[\"promises\"]) else done_of(db, owner, payload[\"message_id\"], payload.get(\"done_by\")))"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_promises.py"
+   }
   }
  ]
 }

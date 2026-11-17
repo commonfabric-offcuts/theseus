@@ -220,6 +220,15 @@ step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
 
+A promise belongs on the cover too. Use `--promises JSON` with its stable id,
+exact words and message revision, an explicitly supplied instant/timezone (or
+null when no time was given), and `promised`, `kept` or `missed`. Keep that id
+when moving the time or recording the result; Core retains prior versions and
+the cover strikes moved times through. Never extract a deadline from prose,
+call a promise missed just because the clock passed it, or infer Done from a
+kept promise. The owner alone accepts the payload. See the promise record
+shape in [dossier-covers.md](dossier-covers.md#promises-item-717).
+
 ## Replying to a whisper with a whisper
 
 A whisper is private between one person and you. Its delivery line starts

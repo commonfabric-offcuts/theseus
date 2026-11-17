@@ -17,6 +17,7 @@ fenced on.
 """
 
 from .contract import Refusal
+from .cover_promises import record_promises
 from .cover_values import DONE_REFUSED, done_of, owners_word, shown, stored_value, written
 from .stacks import EMPTY, MEMBERS, StackRoots, current_acts
 from .whispers import STAYS, VISIBLE
@@ -69,6 +70,8 @@ class Covers:
             raise Refusal("REVISION_CONFLICT", "This cover changed since it was read; nothing was changed", {"cover_revision": current})
         before = stored_value(self._act_value(db, message["id"], "cover", ""))
         value = dict(before, **fields)
+        if "promises" in fields:
+            value["promises"] = record_promises(db, actor, message, fields["promises"], before["promises"], self._cover_payload)
         owner = self._cover_owner(db, message["topic_id"])
         if value["payload"] is not None:
             payload = value["payload"]

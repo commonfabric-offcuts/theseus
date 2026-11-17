@@ -617,3 +617,12 @@ straight that way (in sight, or out of sight only by the page or a box the
 focus is in), unless the press acted there (opened or folded something,
 switched a stack, or said so in a live region). Where an arrow lands by the geometry, and which arrows a
 form control keeps: `tests/ui_arrow_reach.test.mjs`.
+
+Item 717 extends that same cover with explicit promises and their recorded
+times, moved times struck through, and promised/kept/missed status. Its source
+links open by Tab/Return or touch, and the Reader disclosure opens the full
+history. Owner acceptance keeps its existing thumbs-up or named-word rule;
+kept never infers Done. `tests/dossier_promises_native.mjs` runs as the
+`reading item 717 …` family in both reading engines, with named measurement
+tolerances, pending/refused/retried owner acceptance, nonowner acceptance,
+empty/read-only/refused-edit covers and actual rendering mutants/restores.
