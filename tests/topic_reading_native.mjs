@@ -17,6 +17,7 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
@@ -345,6 +346,170 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(corner)})`),'empty note removes its corner without reload');
       assert.deepEqual(p.errors, []); await p.close();
     });
+  }
+
+  // B1/B2 final correction: these are real dossiers, not standalone cards.
+  // The negative control reinstates the original c2c48465 corner rules on the
+  // live page. It changes no DOM or handler and is removed in finally before
+  // native input. The original file SHA binds the control to preserved source.
+  const brokenCornerRules = `.message-card:has(>.note-corner){padding-bottom:2.75rem}
+    .note-corner{position:absolute;right:0;bottom:0;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer;margin-left:0}`;
+  for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    const device = size === 'laptop' ? 'laptop' : 'phone';
+    // 1px permits subpixel rounding in both runners; the broken root is a
+    // whole card away and the broken reply loses 12px, so neither can pass.
+    const layoutTolerancePx = 1;
+    for (const shape of ['B1-root', 'B2-covered']) {
+      const name = `item 649 ${size} ${theme} ${shape}`;
+      const setup = async branch => {
+        const topic = `note-649-${size}-${theme}-${shape}-${branch}`;
+        const ids = await seed(topic, [
+          ['root', {sender:'aim-core', join:true, addressees:[facts.actor], body:'Root words belong to this first card.'}],
+          ['covered', {sender:'aim-core', reply_to:'root', addressees:[facts.actor], body:'Earlier reply words stay readable and selectable.'}],
+          ['last', {sender:'aim-core', reply_to:'root', addressees:[facts.actor], body:'Last reply has its own different private writing.'}],
+          ['absent', {sender:'aim-core', addressees:[facts.actor], body:'No note was saved on this separate card.'}]
+        ]);
+        const notes = {root:'Root private words — exactly.\nTwo  spaces.', covered:'Earlier reply private words — distinct.\nKeep  this.', last:'Last reply private words — different.\nOnly  here.'};
+        const drafts = {};
+        for (const key of ['root','covered','last']) {
+          await control({method:'private_writing', operation_id:topic+'-note-'+key, topic_id:topic, message_id:ids[key], kind:'note', body:notes[key]});
+          drafts[key] = 'Unsent reply for '+key+' — keep its destination.';
+          await control({method:'private_writing', operation_id:topic+'-draft-'+key, topic_id:topic, message_id:ids[key], kind:'draft', body:drafts[key]});
+        }
+        const p = await open(topic,size,topic,ids.root,noteFaults,undefined,q=>q.send('Emulation.setEmulatedMedia', {features:[{name:'prefers-color-scheme',value:theme}]}));
+        const section = card(ids.root) + ' .stack-who';
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen`),'false','root starts collapsed');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root)+' > .note-corner')}).getClientRects().length`),0,'collapsed root exposes no corner');
+        await centre(p,section); await press(p,device,section);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen==='true'`),'native header press opens root');
+        const key = shape === 'B1-root' ? 'root' : 'covered';
+        return {p,topic,ids,key,notes,drafts,corner:card(ids[key])+' > .note-corner'};
+      };
+      const geometry = async (s, key = s.key) => {
+        const selector = card(s.ids[key])+' > .note-corner';
+        await centre(s.p,selector);
+        await s.p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+        return s.p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[key]))}),n=c.querySelector(':scope > .note-corner'),
+          rect=e=>{const b=e.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}},b=rect(n),host=rect(c),
+          content=[...c.children].filter(e=>e!==n&&!e.matches('.stack-head')).map(e=>rect(e)).filter(r=>r.width>0&&r.height>0),
+          misses=[];for(let dx=.5;dx<44;dx++)for(let dy=.5;dy<44;dy++){const x=b.left+dx,y=b.top+dy,h=document.elementFromPoint(x,y);
+            if(x<0||y<0||x>=innerWidth||y>=innerHeight||!n.contains(h))misses.push({dx,dy,hit:h?.className})}
+          return {key:${JSON.stringify(key)},b,host,contentBottom:Math.max(host.top,...content.map(r=>r.bottom)),misses:misses.slice(0,8),missCount:misses.length,
+            bottomCentreMiss:misses.some(m=>m.dx===22.5&&m.dy===43.5),
+            covered:c.dataset.stackCovered,tabPosition:getComputedStyle(c.closest('.reply-stack').querySelector('.stack-head')).position,
+            rootPosition:getComputedStyle(c.closest('.reply-stack').querySelector('.stack-head-card')).position,
+            overflow:document.documentElement.scrollWidth-innerWidth}})()`);
+      };
+      const assertGeometry = g => {
+        assert.ok(g.b.width>=44-layoutTolerancePx&&g.b.height>=44-layoutTolerancePx,'layoutTolerancePx=1: full 44px target');
+        assert.ok(g.b.left>=g.host.left-layoutTolerancePx&&g.b.right<=g.host.right+layoutTolerancePx&&g.b.top>=g.host.top-layoutTolerancePx&&g.b.bottom<=g.host.bottom+layoutTolerancePx,
+          'layoutTolerancePx=1: corner belongs inside its own card');
+        assert.ok(g.b.top>=g.contentBottom-layoutTolerancePx,'layoutTolerancePx=1: corner lies after all words and controls');
+        assert.ok(g.overflow<=layoutTolerancePx,'layoutTolerancePx=1: no horizontal page overflow');
+        // Hit testing is strict: a covered pixel is never counted as hittable.
+        assert.deepEqual(g.misses,[],'every sampled point across the entire target hits its own corner');
+        assert.equal(g.missCount,0,'all 1936 CSS pixel centres hit the corner, with no covered area counted');
+        assert.equal(g.rootPosition,'static','folder tab keeps its original containing block');
+        assert.equal(g.tabPosition,'absolute','folder tab stays absolute');
+        if(g.key==='covered')assert.equal(g.covered,'true','earlier reply really is covered by a following sheet');
+      };
+      const shown = async (s, key=s.key, unavailable=false) => {
+        await until(()=>s.p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#writing-label').textContent==='Private note'&&document.querySelector('#writing-body').value===${JSON.stringify(s.notes[key])}`),'exact distinct private note opens');
+        assert.equal(await readerOn(s.p),unavailable?'':key==='root'?'Root words belong to this first card.':key==='covered'?'Earlier reply words stay readable and selectable.':'Last reply has its own different private writing.');
+        assert.equal(await s.p.evaluate("document.querySelector('#destination-label').hidden"),true);
+        assert.equal(await s.p.evaluate("window.sent.includes('message.send')"),false,'opening private writing sends no message');
+      };
+      const pressOwn = async (s,key=s.key,bottom=false) => {
+        const selector=card(s.ids[key])+' > .note-corner';
+        assertGeometry(await geometry(s,key));
+        if(!bottom){await press(s.p,device,selector);return;}
+        const b=await s.p.box(selector),x=b.x+b.width/2,y=b.y+b.height-2;
+        if(device==='phone'){
+          await s.p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+          await s.p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        }else{
+          await s.p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+          await s.p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
+          await s.p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
+        }
+      };
+      const kept = async s => {
+        for(const key of [s.key,'last']){
+          const saved=await view('editor_state',{source_ref:{kind:'message',id:s.ids[key]},topic_id:s.topic});
+          assert.equal(saved.note.body,s.notes[key]);assert.equal(saved.draft.body,s.drafts[key]);
+          assert.equal(saved.destination.topic_id,s.topic,'reply keeps its destination');
+          assert.deepEqual(saved.source_ref,{kind:'message',id:s.ids[key]},'reply stays on its exact source');
+        }
+      };
+      await check(`reading ${name} normal own card and whole target with original-runtime negative and restored native presses`,async()=>{
+        const s=await setup('normal'),{p}=s;
+        const good=await geometry(s);assertGeometry(good);
+        let negative;
+        try{
+          await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-original-runtime-control';e.textContent=${JSON.stringify(brokenCornerRules)};document.head.append(e)})()`);
+          assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(s.corner)})).position`),'absolute','broken source rule actually applied');
+          const broken=await geometry(s);
+          assert.throws(()=>assertGeometry(broken),/corner belongs inside|corner lies after|sampled point/,'original B1/B2 geometry must fail');
+          if(shape==='B2-covered')assert.ok(broken.bottomCentreMiss,'B2 original target really loses its bottom hit area to the following card');
+          assert.equal(await p.evaluate("document.querySelector('#item649-original-runtime-control').textContent"),brokenCornerRules,'exact negative rules applied');
+          negative={source:'c2c4846578a827a35dc798293c9a393f93e76bae',aimCssSha256:'0006765e03942889e5958e79d1dea997e67dee50f4f760bfe52f25ef773dded4',
+            rulesSha256:createHash('sha256').update(brokenCornerRules).digest('hex'),broken};
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-negative');
+        }finally{await p.evaluate("document.querySelector('#item649-original-runtime-control')?.remove()");}
+        assert.equal(await p.evaluate("Boolean(document.querySelector('#item649-original-runtime-control'))"),false,'negative stylesheet removed');
+        const restored=await geometry(s);assertGeometry(restored);
+        observations.push({name:'reading '+name+' applied original-runtime negative and restored',layoutTolerancePx,negative,restored});
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-card');
+        await pressOwn(s,s.key,true);await shown(s);await kept(s);
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-note');
+        await closeReader(p,device);
+        await until(()=>p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(s.corner)})`),'corner regains focus');
+        await p.key('Tab',8);await p.key('Tab');
+        assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(s.corner)})`),true,'native Tab reaches corner');
+        await p.key(' ');await shown(s);await closeReader(p,device);
+        await p.key('Enter');await shown(s);await closeReader(p,device);
+        await pressOwn(s,'last',true);await shown(s,'last');await closeReader(p,device);
+        await readerByClick(p,device,s.ids[s.key],s.key==='root'?'Root words':'Earlier reply words');
+        assert.equal(await p.evaluate("document.querySelector('#writing-label').textContent"),'Reply','message words still open ordinary reading/reply');
+        await kept(s);assert.deepEqual(p.errors,[]);await p.close();
+      });
+      for(const branch of ['busy','error','unavailable'])await check(`reading ${name} ${branch} whole target keeps exact writing and recovery`,async()=>{
+        const s=await setup(branch),{p}=s;
+        await p.evaluate(`window.noteFault=${JSON.stringify(branch)}`);
+        await pressOwn(s,s.key,true);
+        await until(()=>p.evaluate('window.noteReads>0'),'native corner starts foreground read');
+        if(branch==='busy'){
+          await until(()=>p.evaluate('typeof window.releaseNote==="function"'),'editor read waits');
+          assert.equal(await readerOn(p),null);
+          await p.evaluate('(()=>{window.noteFault=null;window.releaseNote()})()');await shown(s);
+        }else if(branch==='error'){
+          await until(()=>p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 note read refused')"),'refused read is visible');
+          assert.equal(await readerOn(p),null);
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-error');
+          await p.evaluate('window.noteFault=null');await pressOwn(s,s.key,true);await shown(s);
+        }else{
+          await shown(s,s.key,true);
+          assert.equal(await p.evaluate("document.querySelector('#send-reply').disabled"),true);
+          assert.equal(await p.evaluate("document.querySelector('#retry-source').hidden"),false);
+        }
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-'+branch+'-note');
+        await kept(s);assert.deepEqual(p.errors,[]);await p.close();
+      });
+      await check(`reading ${name} absent other actor and empty note leave no corner or private words`,async()=>{
+        const s=await setup('privacy'),{p,topic}=s;
+        const absent=card(s.ids.absent)+' > .note-corner';
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(absent)}))`),false,'absent note has no corner');
+        await control({method:'private_writing',operation_id:topic+'-empty',topic_id:topic,message_id:s.ids[s.key],kind:'note',body:''});
+        await until(()=>p.evaluate(`!document.querySelector(${JSON.stringify(s.corner)})`),'empty saved note removes corner');
+        await control({method:'private_writing',operation_id:topic+'-theirs',topic_id:topic,message_id:s.ids[s.key],kind:'note',body:'Another actor secret B1 B2.',sender:'aim-core'});
+        // Reload the isolated origin to read the actual other-reader state.
+        await front(p);await p.send('Page.reload');
+        await until(()=>p.evaluate(`document.body.dataset.ready==='true'&&Boolean(document.querySelector(${JSON.stringify(card(s.ids[s.key]))}))`),'same topic reloads');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(s.corner)}))`),false,'other actor has no corner');
+        assert.equal(await p.evaluate("document.querySelector('#messages').textContent.includes('Another actor secret B1 B2.')"),false);
+        assert.deepEqual(p.errors,[]);await p.close();
+      });
+    }
   }
 
   await check('reading the bar\'s 👍 and the card\'s 👍 count record a thumbs-up in Core, and pressing again takes it back', async () => {

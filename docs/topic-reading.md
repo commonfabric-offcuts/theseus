@@ -202,6 +202,15 @@ feed or the shortcut's attributes. The `reading item 649` native cases in
 `tests/topic_reading_native.mjs` cover these branches at 320, 375, 390 and laptop,
 light and dark, in Chromium and WebKit. Measured bounds use a named 1px tolerance.
 
+The corner takes its own 44px row in the card's normal flow, after the words
+and other card content. A dossier root stays static so its tab still belongs
+to the folder. A covered reply keeps the card system's ordinary bottom padding
+and overlap allowance below the corner: the next sheet covers no part of its
+target. Root and last-reply notes remain distinct. The B1/B2 cases measure
+containment and test points across the full target, including its bottom edge,
+then press the actual corners and the message words separately. Their named
+1px layout tolerance permits rounding, never covered hit area.
+
 ## What a card carries (127)
 
 A card shows at a glance what its message carries: a small, quiet glyph in
