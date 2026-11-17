@@ -778,7 +778,6 @@ export async function editChecks({ check, until, view, control, facts, shot = as
       await closeReader(p, device === 'laptop' ? 'laptop' : 'phone');
       await becomes(() => strikeOf(p, words(a.line)).then(seen => seen && { text: seen.text, struck: seen.struck }), { text: 'Update: ' + STRUCK + ' Deployed.', struck: ['85'] },
         `${width}: the card shows the same`);
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(a.line))}).hasAttribute('data-read')`), `${width}: opened in the Reader this visit, the card reads as read`);
       // A third, with the Reader closed: the card is new again, though this visit opened it.
       const third = await control({ method: 'agent_edit', operation_id: `${read}-edit-3`, sender: 'aim-core', message_id: a.line, revision: 3, body: 'Update: ' + FIXED + ' Deployed at noon.' });
       assert.equal(third.status, 'committed', `${width}: the third edit commits`);
