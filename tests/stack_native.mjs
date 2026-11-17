@@ -1377,23 +1377,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
       const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
       const lineOf = id => `${card(id)} > .message-author`;
-      // ⋯ of the dossier: on a phone a tap on a lit card opens the Reader, and the dossier's lit card can be its newest
-      // message's, so a message of another dossier is lit first, as a person taps elsewhere before coming back to it.
+      const fold = () => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.fold`);
+      // ⋯ of the dossier's first message, shown whole: the dossier open by its chevron (from its quiet row, folded,
+      // then open: item 394), so its words show and a press on them brings its bar. On a phone a tap on a lit card
+      // opens the Reader, so a message of another dossier is lit first, as a person taps elsewhere before coming back.
       const rootMenu = async () => {
+        for (const [from, to] of [['head', 'folded'], ['folded', 'open']]) {
+          if (await fold() !== from) continue;
+          await centre(p, toggle); await press(p, device, toggle);
+          await becomes(fold, to, `${device} ${width}: from its chevron, ${from} to ${to}`);
+        }
+        assert.equal(await fold(), 'open', `${device} ${width}: the dossier is open`);
         if (device === 'phone') await light(p, device, (await lit(p)).includes(ids.mine) ? ids.primer : ids.mine);
         return menuOf(p, device, ids.root);
       };
-      // The agents-only dossier opens from its quiet row to its title bar and first message (item 394).
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.compact === 'true'`), `${device} ${width}: the agents-only dossier is one quiet row`);
-      await centre(p, toggle); await press(p, device, toggle);
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.compact === 'false'`), `${device} ${width}: opened from its row`);
       await rootMenu(); await moveItem(p, device, 'Move below More');
       await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: moved below More, in Core`);
       await moreOpened(p, device);
       await becomes(shown, true, `${device} ${width}: More shows it`);
       await rootMenu(); await moveItem(p, device, 'Bring back above More');
       await until(async () => !(await positionIn(topic, ids.root)).below, `${device} ${width}: brought back, in Core`);
-      // ⋯ from the dossier's first line: the folded dossier's menu is its newest message's, a message of it all the same.
+      // A star on a message of the dossier, any of them, holds it.
       const inIt = async () => (await starsOf(facts.actor)).filter(id => id === ids.root || id === ids.reply);
       await rootMenu(); await choose(p, device, 'Star for me');
       await until(async () => (await inIt()).length === 1, `${device} ${width}: a message of the dossier is starred, in Core`);
