@@ -27021,6 +27021,62 @@
     "native": "reading",
     "case": "reading item 645 opened"
    }
+  },
+  {
+   "item": 645,
+   "act": "B1 Only new groups only the drawn folded messages",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "if (state.only && (!item || !state.only(item))) continue;",
+     "if (false) continue;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folded_names.test.mjs"
+   }
+  },
+  {
+   "item": 645,
+   "act": "B1 Only new counts its drawn folded head while the dossier is closed",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "state.only || entry.dataset.headOpen === 'true'",
+     "entry.dataset.headOpen === 'true'"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folded_names.test.mjs"
+   }
+  },
+  {
+   "item": 645,
+   "act": "B2 A New line placed by the arrangement callback starts a named folded run",
+   "break": [
+    [
+     "web/reply-stacks.mjs",
+     "  state.on?.arranged?.();\n  paintFoldedNames(list, messages, state);",
+     "  paintFoldedNames(list, messages, state);\n  state.on?.arranged?.();"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folded_names.test.mjs"
+   }
+  },
+  {
+   "item": 645,
+   "act": "B2 A line-only refresh regroups folded names after inserting moving or removing its separator",
+   "break": [
+    [
+     "web/app.mjs",
+     "  paintFoldedNames($('messages'), views.messages);\n",
+     ""
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_folded_names.test.mjs"
+   }
   }
  ]
 }

@@ -105,6 +105,28 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.root))}).getClientRects().length && !document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length && document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length>0`), 'the answered root and first row are hidden and the new row is shown');
       await centre(p, card(ids.b)); await away(p); await shot(p, key);
       assert.equal(await visibleName(), facts.actor, 'the first visible folded message names its sender after Only new hides its predecessor');
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length>0`), 'the first folded row is drawn again');
+      assert.equal(await visibleName(), '', 'restoring the first row suppresses its repeated sender again');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 Only new visible folded head at ${device} ${theme}`, async () => {
+      const key = `head-645-only-${device}-${theme}`;
+      const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
+      const topic = conversation.topic_id, ids = {};
+      for (const name of ['root', 'reply']) ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name,
+        topic_id: topic, sender: 'person', body: key + ' ' + name,
+        ...(name === 'reply' ? { reply_to: ids.root } : { whole_topic: true }) })).result.message_id;
+      for (const id of Object.values(ids)) await dossierFold(key, id);
+      const p = await open(key, device, topic, ids.root, '', '/?conversation=w1');
+      const input = device === 'laptop' ? 'laptop' : 'phone'; await dossierTheme(p, theme);
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
+      await until(() => p.evaluate(`${JSON.stringify(Object.values(ids))}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), 'Only new draws both the folded head and reply');
+      await centre(p, card(ids.reply)); await away(p); await shot(p, key);
+      const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>1?e.textContent:''})`);
+      assert.deepEqual(names, [facts.actor, ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
       assert.deepEqual(p.errors, []); await p.close();
     });
     await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {

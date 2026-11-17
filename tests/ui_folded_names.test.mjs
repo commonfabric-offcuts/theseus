@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
+import { placeNewLine } from '../web/unanswered.mjs';
 
 const file = new URL('../web/reply-stacks.mjs', import.meta.url);
 let source = await readFile(file, 'utf8');
@@ -27,7 +28,7 @@ function fixture(items) {
   const doc = miniDocument(), list = doc.createElement('div'), messages = new Map(), cards = new Map();
   for (const [id, author, folded = true] of items) {
     const item = { id, seq: items.length - messages.size, author_id: author, body: 'Words ' + id, acts: { folded } }, card = doc.createElement('article'), name = doc.createElement('div');
-    card.dataset.id = id; name.className = 'message-author'; name.textContent = author; card.append(name);
+    card.dataset.id = id; card.dataset.seq = String(item.seq); name.className = 'message-author'; name.textContent = author; card.append(name);
     subject.paintFolded(card, item, folded, { doc, nameOf: id => id });
     messages.set(id, item); cards.set(id, card); list.append(card);
   }
@@ -96,4 +97,22 @@ test('item 645 regression: a New line placed by the arranged callback starts a n
   assert.deepEqual(f.names(), ['agent', '', 'agent'], 'a newly inserted separator starts a named run');
   separated = false; arrange();
   assert.deepEqual(f.names(), ['agent', '', ''], 'removing the separator groups the run again');
+});
+
+// Execute the page's actual boundary function with the real line renderer.
+// No browser, layout or timers: only the page shell and its data are supplied.
+test('item 645 regression: line-only refresh regroups inserted, moved and removed separators', async () => {
+  const f = fixture([['a', 'agent'], ['b', 'agent'], ['c', 'agent']]);
+  subject.arrangeStacks(f.list, f.messages, { doc: f.doc });
+  const views = { messages: f.messages, line: { seq: 2 }, olderCursor: null, held: true };
+  const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  const body = app.match(/function placeLine\(\) \{([\s\S]*?)\n\}/)[1];
+  const place = new Function('$', 'views', 'document', 'placeNewLine', 'lineSeq', 'paintMoreMessages', 'paintFoldedNames',
+    body).bind(null, () => f.list, views, f.doc, placeNewLine, subject.lineSeq, () => {}, subject.reviewPaintNames);
+  place();
+  assert.deepEqual(f.names(), ['agent', '', 'agent'], 'line-only insertion starts a named run');
+  views.line.seq = 3; place();
+  assert.deepEqual(f.names(), ['agent', 'agent', ''], 'moving the line names its new successor and groups the old one');
+  views.line = null; place();
+  assert.deepEqual(f.names(), ['agent', '', ''], 'removing the line groups the run again');
 });
