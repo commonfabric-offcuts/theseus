@@ -1,3 +1,4 @@
+import { topicTitleChecks } from './topic_title_native.mjs';
 import assert from 'node:assert/strict';
 import { pngPixels } from './png-bands.mjs';
 
@@ -6,6 +7,7 @@ import { pngPixels } from './png-bands.mjs';
 // keyboard, pointer and phone behaviour, and one pill per person in the Team on
 // the title row's right (item 465). Every press and key is a native input event.
 export async function headerChecks({ check, page, until, control, view, facts, shot }) {
+  await topicTitleChecks({ check, page, until, control, view, facts, shot }, 'header');
   const HINT = 'Open a message to read, quote, reply, or keep a private note.';
   const NOTE = 'Ongoing: each release and what comes next';
   const phone = async q => {
