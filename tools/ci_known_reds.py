@@ -609,8 +609,16 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
     combined = summary['steps']
     require(unique([s['name'] for s in combined], 'combined steps') == set(REQUIRED), 'missing required step')
     by_name = {s['name']: s for s in combined}
+    fresh = any(j.get('compose_group') for j in provenance['plan'])
+    forward_receipts = {}
+    if fresh:
+        try:
+            forward_receipts, forward_step = f779_validate(candidate_root,commit,provenance,shards,run,REQUIRED,F779_PRODUCER)
+        except ForwardRefused as error:
+            raise Refused(str(error))
+        require(by_name.get('native-compose')==forward_step, 'fresh compose aggregate differs')
     plan = plan_steps(provenance['plan'])
-    require(Counter(s for shard in plan for s in shard) == Counter(REQUIRED), 'incomplete or duplicated shard plan')
+    require(Counter(s for shard in plan for s in shard if not (fresh and s=='native-compose')) == Counter(s for s in REQUIRED if not (fresh and s=='native-compose')), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
     observed_base = ({'ref':base['ref'], 'sha':expected_merge['first_parent']} if run['event'] == 'pull_request' else None)
@@ -659,6 +667,13 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                     'producer profile differs from measured runtime: ' + runtime)
         require(raw.get('passed') is all(s.get('passed') is True for s in steps), 'inconsistent raw shard verdict')
         for step in steps:
+            if fresh and step['name']=='native-compose':
+                verified=forward_receipts[artifact]
+                require(step.get('compose_receipt')==verified and step.get('passed') is verified['passed']
+                        and step.get('exit')==verified['exit'] and step.get('counts')=={'tests':len(verified['results']),'failed':sum(r['passed'] is False for r in verified['results'])}, 'fresh compose shard differs')
+                observed.append(('native-compose',verified['results'],profile,raw['checkout']))
+                ran.append('native-compose')
+                continue
             require(step == by_name[step['name']], 'aggregate step differs from original shard')
             ran.append(step['name'])
             if step['name'] in NATIVE:
@@ -676,7 +691,7 @@ def _read_evidence(summary_path, provenance_path, shards, root, commit, run, bas
                 elif step['name'] == 'wake-replay':
                     replay_evidence(step, out, traffic)
         require(raw['required'] == summary['required'], 'shard required plan differs')
-    require(Counter(ran) == Counter(REQUIRED), 'incomplete whole-run coverage')
+    require(Counter(s for s in ran if not (fresh and s=='native-compose')) == Counter(s for s in REQUIRED if not (fresh and s=='native-compose')) and (not fresh or ran.count('native-compose')==len(forward_receipts)), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
     require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
@@ -947,6 +962,255 @@ def main(argv=None):
     print(json.dumps(result,sort_keys=True))
     return 0 if result['passed'] else 1
 
+
+# Exact protected path-C implementation, embedded to retain the stdlib-only controller.
+
+
+"""Protected path-C mechanics; all runtime claims come from original job output.
+
+Stdlib only. The controller embeds these exact definitions in its protected
+script. Inventory/compiler strings are frozen below, never candidate executables.
+"""
+import collections
+import hashlib
+import json
+import pathlib
+import subprocess
+import tempfile
+import re
+
+
+class ForwardRefused(ValueError):
+    pass
+
+
+def f779_require(ok, why):
+    if not ok:
+        raise ForwardRefused('fresh compose: ' + why)
+
+
+def f779_bytes(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
+
+
+def f779_hash(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def f779_digest(value):
+    return f779_hash(f779_bytes(value))
+
+
+def f779_identity(row):
+    return row['phase'], row['engine'], row['name']
+
+
+def f779_json(raw):
+    def pairs(items):
+        out = {}
+        for k, v in items:
+            f779_require(k not in out, 'duplicate JSON field')
+            out[k] = v
+        return out
+    return json.loads(raw, object_pairs_hook=pairs)
+
+
+def f779_git(root, *args):
+    return subprocess.check_output(['git', '-C', str(root)] + list(args))
+
+
+def f779_source(root, head):
+    return {'head': head, 'tree': f779_git(root, 'rev-parse', head+'^{tree}').decode().strip(),
+            'parents': f779_git(root, 'rev-list','--parents','-n','1',head).decode().split()[1:]}
+
+
+def f779_inventory(root, head):
+    with tempfile.TemporaryDirectory(prefix='forward779-enumerate-') as temp:
+        script = pathlib.Path(temp)/'inventory.cjs'
+        output = pathlib.Path(temp)/'inventory.json'
+        script.write_text(F779_INVENTORY)
+        result = subprocess.run(['node','--experimental-vm-modules',str(script),head,str(output)],
+                                cwd=str(root), capture_output=True)
+        f779_require(result.returncode == 0, 'independent inventory unavailable: '+result.stderr.decode()[-1000:])
+        return f779_json(output.read_bytes())
+
+
+def f779_patch(original):
+    with tempfile.TemporaryDirectory(prefix='forward779-compile-') as temp:
+        root = pathlib.Path(temp)
+        (root/'instrument.cjs').write_text(F779_INSTRUMENT)
+        (root/'original.mjs').write_bytes(original)
+        subprocess.run(['node',str(root/'instrument.cjs'),str(root/'original.mjs'),str(root/'patched.mjs'),
+                        '../tools/compose_deadline_775.mjs'],check=True,capture_output=True)
+        return (root/'patched.mjs').read_bytes()
+
+
+def f779_groups(inventory, source):
+    # Exactly the reviewed 775 unknown-first-run policy, no historical timings.
+    rows = [dict(r,case_id=f779_digest(f779_identity(r))) for r in inventory['rows']]
+    keys = [f779_identity(r) for r in rows]
+    f779_require(bool(keys) and len(set(keys)) == len(keys), 'duplicate/empty inventory')
+    groups, bucket = [], []
+    def flush():
+        if not bucket:
+            return
+        cases = [dict(r,limit_seconds=300,limit_basis='unknown-300s-policy-not-measurement') for r in bucket]
+        total = len(cases)*300
+        groups.append({'id':'compose-'+f779_digest(cases)[:20], 'source':source,
+            'inventory_sha256':f779_digest(rows),'cases_sha256':f779_digest(cases),'cases':cases,
+            'phase':cases[0]['phase'],'engine':cases[0]['engine'], 'case_budget_seconds':total,
+            'phase_seconds':total+300,'seed_seconds':300,'launch_seconds':120,'final_seconds':120,
+            'wall_seconds':5400,'terminal_cleanup_seconds':60,'watchdog_grace_seconds':5,'worker_exit_seconds':5,
+            'timeout_minutes':120,'minutes':None,'budget_minutes':None,'timing_basis':'unknown-first-group-run',
+            'overlap':'common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union'})
+        bucket.clear()
+    for row in rows:
+        if bucket and (f779_identity(bucket[-1])[:2] != f779_identity(row)[:2] or (len(bucket)+1)*300>4400):
+            flush()
+        bucket.append(row)
+    flush()
+    f779_require(collections.Counter(f779_identity(r) for g in groups for r in g['cases']) == collections.Counter(keys), 'exact union differs')
+    return groups
+
+
+def f779_plan(plan, required, groups):
+    offered = [j['compose_group'] for j in plan if j.get('compose_group')]
+    f779_require(offered == [{'id':g['id'],'source':g['source']} for g in groups], 'deterministic complete group plan differs')
+    f779_require(all(j['steps']=='native-compose' and j['name']==j['compose_group']['id'] for j in plan if j.get('compose_group')), 'group assignment differs')
+    ordinary = [s for j in plan if not j.get('compose_group') for s in j['steps'].split(',')]
+    f779_require(collections.Counter(ordinary) == collections.Counter(s for s in required if s!='native-compose'), 'ordinary steps must run once')
+
+
+def f779_job(group, receipt, report, binding, worker, log, source, hashes, original, patched, producer, run, source_bytes=None):
+    f779_require(receipt.get('source') == source == group['source'] and receipt.get('group')==group['id']
+                  and receipt.get('cases_sha256') == group['cases_sha256'], 'source/group binding differs')
+    f779_require(binding == receipt.get('binding') and binding.get('product') == source,
+                  'receipt/raw source binding differs')
+    f779_require(binding.get('checkout_head')==source['head'] and binding.get('checkout_tree')==source['tree']
+                  and binding.get('checkout_parents')==source['parents'] and binding.get('enumeration_hashes')==hashes,
+                  'checkout/input provenance differs')
+    for key, value in (('original_harness_sha256',f779_hash(original)),('instrumented_harness_sha256',f779_hash(patched)),
+                       ('instrument_sha256',producer['compose_deadline_775.mjs']),('supervisor_sha256',producer['compose_worker_775.mjs']),
+                       ('wrapper_sha256',producer['run_compose_group.py'])):
+        f779_require(binding.get(key)==value, 'reviewed harness/producer differs: '+key)
+    actual = binding.get('actual_runtime') or {}
+    checkout = binding.get('checkout')
+    f779_require(isinstance(checkout,str) and pathlib.Path(checkout).is_absolute()
+                  and actual.get('source_checkout')==checkout, 'actual checkout absent')
+    fixtures = report.get('scope775',{}).get('fixtures')
+    f779_require(isinstance(fixtures,list) and len(fixtures)==2 and fixtures==actual.get('fixture_observations'), 'actual fixture facts absent')
+    f779_require(len({f['origin'] for f in fixtures})==2 and all(re.fullmatch(r'http://127\.0\.0\.1:[0-9]+',f.get('origin',''))
+                  and isinstance(f.get('instance_id'),str) and f['instance_id'] for f in fixtures), 'fixture identity differs')
+    scope = report.get('scope775') or {}
+    phase = group['phase']+':'+group['engine']+'/group:'+group['id']
+    f779_require(report.get('harnessCompleted') is False and scope.get('originalWholeCompleted') is False
+                  and scope.get('groupCompleted') is True and scope.get('group')==group['id']
+                  and scope.get('source')==source and scope.get('cases_sha256')==group['cases_sha256']
+                  and report.get('plannedPhases')==[phase] and report.get('completedPhases')==[phase], 'scoped completion differs')
+    f779_require(report.get('browserClosed') is True and report.get('fixtureExitCode')==0
+                  and type(report.get('fixtureExitCode')) is int and report.get('fixtureExitSignal','missing') is None
+                  and not report.get('fixtureErrors') and report.get('shortFixture',{}).get('exitCode')==0
+                  and type(report.get('shortFixture',{}).get('exitCode')) is int
+                  and report.get('shortFixture',{}).get('exitSignal','missing') is None
+                  and not report.get('shortFixture',{}).get('errors'), 'browser/fixture retirement unproved')
+    f779_require(not any(report.get(k) for k in ('teardown','instrumentError','pageErrors','left','harnessError')), 'teardown/infrastructure failure')
+    f779_require(worker==receipt.get('worker') and worker.get('event')=='exit' and worker.get('terminal') is False
+                  and type(worker.get('code')) is int and worker['code']==receipt.get('exit'), 'producer retirement unproved')
+    restoration = receipt.get('retirement') or {}
+    f779_require(restoration.get('wrapper_wait_returncode')==worker['code'] and restoration.get('source_restored') is True
+                  and restoration.get('git_status')=='', 'source restoration unproved')
+    rows = report.get('results')
+    f779_require(isinstance(rows,list) and [r.get('name') for r in rows]==[r['name'] for r in group['cases']]
+                  and scope.get('completedCases')==[r['name'] for r in group['cases']], 'unrun/duplicate/wrong case inventory')
+    normalized = [dict(r,phase=e['phase'],engine=e['engine']) for r,e in zip(rows,group['cases'])]
+    f779_require(receipt.get('results')==normalized and receipt.get('planned_cases')==group['cases'], 'raw false/body changed')
+    f779_require(all(type(r.get('passed')) is bool and (r['passed'] or bool(r.get('error')))
+                  and (not r.get('expectedFailure') or r.get('mutationCaught') is True)
+                  and ('observedPassed' not in r or r['passed'] is r['observedPassed']) for r in rows), 'raw verdict/mutation missing')
+    for field in ('hashes','sourceHashes'):
+        for path, value in report.get(field,{}).items():
+            f779_require(source_bytes is not None and path in source_bytes and value==f779_hash(patched if path=='tests/reader_compose_native.mjs' else source_bytes[path]), 'raw source hash differs')
+    good = all(r['passed'] is True for r in rows)
+    f779_require(receipt.get('complete') is True and receipt.get('cleanup') is True and not receipt.get('terminal')
+                  and receipt.get('unrun')==[] and receipt.get('passed') is good and type(receipt.get('exit')) is int
+                  and ((good and receipt['exit']==0) or (not good and receipt['exit']==1) or
+                       (not good and receipt['exit']==0 and all(r['passed'] or (r.get('expectedFailure') is True and r.get('mutationCaught') is True) for r in rows))), 'false-to-green/partial producer')
+    counts = re.findall(r'^(\d+) passed, (\d+) failed$',log,re.M)
+    f779_require(bool(counts) and tuple(map(int,counts[-1]))==(sum(r.get('mutationCaught') is True if r.get('expectedFailure') and 'observedPassed' in r else r['passed'] for r in rows),
+                       sum(not (r.get('mutationCaught') is True if r.get('expectedFailure') and 'observedPassed' in r else r['passed']) for r in rows)), 'raw log differs')
+    engines = scope.get('runtime')
+    f779_require(engines==actual.get('browser_engines') and isinstance(engines,list) and len(engines)==1
+                  and engines[0].get('engine')==group['engine'] and bool(engines[0].get('version')), 'engine provenance absent')
+    f779_require(receipt.get('workflow_run')==run, 'wrong run/attempt/workflow/job')
+    return normalized
+
+
+def f779_fold(groups, receipts):
+    planned = {g['id']:g for g in groups}
+    f779_require(len(planned)==len(groups) and len(receipts)==len(groups), 'missing group receipts')
+    seen, results = set(), []
+    for r in receipts:
+        gid=r['group']
+        f779_require(gid in planned and gid not in seen, 'duplicate/unknown group')
+        seen.add(gid)
+        g=planned[gid]
+        f779_require(r.get('source')==g['source'] and r.get('cases_sha256')==g['cases_sha256']
+                      and [f779_identity(x) for x in r['results']]==[f779_identity(x) for x in g['cases']]
+                      and r.get('complete') is True and r.get('cleanup') is True, 'incomplete group union')
+        results.extend(r['results'])
+    return {'complete':True, 'passed':all(r.get('passed') is True and r.get('exit')==0 for r in receipts)
+            and all(r.get('passed') is True for r in results), 'missing_groups':[], 'results':results,
+            'raw_false':[r for r in results if r['passed'] is False],
+            'expected_mutants':[r for r in results if r.get('expectedFailure') and r.get('mutationCaught') is True],
+            'receipts':receipts, 'admitted':False}
+
+
+def f779_step(union):
+    return {'name':'native-compose','tool':'compose-group-union-775','passed':union['passed'],
+            'exit':0 if union['passed'] else 1,'counts':{'tests':len(union['results']),'failed':len(union['raw_false'])},
+            'compose_union':union,'shards':union['receipts']}
+
+
+def f779_read_group(out, group, source, inventory, original, patched, producer, run, source_root):
+    out=pathlib.Path(out)/'native/compose'
+    read=lambda name:f779_json((out/name).read_bytes())
+    f779_require(not (out/'group-timeout.json').exists(), 'terminal timeout')
+    f779_require(read('group.json')==group, 'original job group differs')
+    receipt=read('group-receipt.json')
+    report=read('native.json')
+    f779_require(report.get('originalPlannedPhases')==inventory['phases'], 'original full phase inventory differs')
+    claims=set(report.get('hashes',{}))|set(report.get('sourceHashes',{}))
+    f779_require(all(isinstance(p,str) and not p.startswith('/') and '..' not in pathlib.PurePosixPath(p).parts for p in claims), 'unsafe source claim')
+    source_bytes={p:f779_git(source_root,'show',source['head']+':'+p) for p in claims}
+    f779_job(group,receipt,report,read('source-binding.json'),read('worker-exit.json'),
+              (out/'native-compose.log').read_text(),source,inventory['hashes'],original,patched,producer,run,source_bytes)
+    return receipt
+
+F779_INVENTORY = "// Browser-free source enumeration. All executable dependencies are confined to\n// vm modules; filesystem writes, process spawning, network and browser APIs are absent.\nconst vm = require('node:vm');\nconst fs = require('node:fs');\nconst path = require('node:path');\nconst cp = require('node:child_process');\nconst crypto = require('node:crypto');\nconst url = require('node:url');\nconst assert = require('node:assert/strict');\nconst acorn = {};\nnew Function('exports', 'module', process.binding('natives')['internal/deps/acorn/acorn/dist/acorn'])(acorn, {exports:acorn});\nconst ref = process.argv[2], output = process.argv[3];\nassert.match(ref, /^(input-train49|input-train50|input-train51|HEAD|[0-9a-f]{40})$/);\nconst root='/enumeration';\nconst hashes={}, transforms=[], setup=[], rows=[], phases=[];\nconst git=(rev,p)=>cp.execFileSync('git',['show',rev+':'+p]);\nconst read = (p,encoding) => {\n  p=p instanceof URL ? url.fileURLToPath(p) : p;\n  assert.ok(p.startsWith(root+'/'), 'source read outside virtual root: '+p);\n  p=p.slice(root.length+1);\n  const b=git(ref,p); hashes[p]=crypto.createHash('sha256').update(b).digest('hex');\n  return encoding ? b.toString(encoding) : b;\n};\nconst context=vm.createContext({ Buffer, URL, console: {log(){}}, __record: (phase,engine,name)=>{\n  assert.equal(typeof name,'string'); rows.push({phase,engine,name:`${engine} ${name}`});\n}, __phase: (phase,engine)=>phases.push(phase+':'+engine), __setup: x=>setup.push(x), process: {argv:['node','harness','/never-chrome','/evidence',''],env:{AIM_PLAYWRIGHT_CORE:'/never-playwright'}} });\nconst modules=new Map();\nconst fakeControl=async x=>{setup.push(x);return {status:'committed',agent:'fake-agent',actor:'fake-actor',origin:'http://enumeration.invalid',instance_id:'enumeration',result:{message_id:'fake-message'}}};\nfunction synthetic(id, values){return new vm.SyntheticModule(Object.keys(values), function(){for(const [k,v]of Object.entries(values))this.setExport(k,v)}, {context,identifier:id})}\nconst builtins={\n 'node:assert/strict':{default:assert}, 'node:path':{default:path},\n 'node:url':{fileURLToPath:url.fileURLToPath}, 'node:crypto':{createHash:crypto.createHash},\n 'node:fs/promises':{readFile:async(p,e)=>read(p,e),mkdir:async()=>{},writeFile:async()=>{},appendFile:async()=>{}},\n 'node:child_process':{spawn:()=>{throw Error('enumeration forbids spawn')}, execFileSync:(cmd,args,options)=>{\n   assert.equal(cmd,'git');\n   const hash=/^[0-9a-f]{40}$/;\n   const object=/^[0-9a-f]{40}(?:\\^\\{tree\\}|:web)$/;\n   if(args[0]==='rev-parse' && args.length===2 && args[1]==='HEAD')return cp.execFileSync('git',['rev-parse',ref],options?.encoding?{encoding:options.encoding}:{});\n   const allowed=(args[0]==='show' && args.length===2 && /^[0-9a-f^]+:[a-zA-Z0-9_./-]+$/.test(args[1])) ||\n     (args[0]==='ls-tree' && args.length===5 && args[1]==='-rz' && hash.test(args[2]) && args[3]==='--' && args[4]==='web/') ||\n     (args[0]==='rev-parse' && args.length===2 && object.test(args[1])) ||\n     (args[0]==='show' && args.length===4 && args[1]==='-s' && args[2]==='--format=%P' && hash.test(args[3]));\n   assert.ok(allowed,'enumeration refuses unreviewed Git read');\n   return cp.execFileSync('git',args,options?.encoding?{encoding:options.encoding}:{});\n }},\n 'node:vm':{default:{runInNewContext:()=>{throw Error('enumeration forbids nested VM execution')}}},\n 'node:module':{createRequire:()=>()=>{throw Error('enumeration forbids playwright load')}}\n};\nfunction edits(src,changes){for(const c of changes.sort((a,b)=>b.start-a.start)){transforms.push({start:c.start,end:c.end,reason:c.reason});src=src.slice(0,c.start)+c.text+src.slice(c.end)}return src}\nasync function load(id){\n if(modules.has(id)) return modules.get(id);\n if(builtins[id]){const m=synthetic(id,builtins[id]);modules.set(id,m);return m}\n if(id===root+'/tests/fixture_control.mjs'){\n   const m=synthetic(id,{fixtureControl:()=>({control:fakeControl,exit:Promise.resolve({code:0,signal:null}),errors:()=>''})}); modules.set(id,m);return m;\n }\n let src=read(id,'utf8');\n if(id===root+'/tests/reader_compose_native.mjs'){\n   const ast=acorn.parse(src,{ecmaVersion:'latest',sourceType:'module'}), changes=[];\n   for(const n of ast.body){\n     if(n.type==='VariableDeclaration'){\n       const name=n.declarations[0].id.name;\n       if(name==='playwright')changes.push({...n,text:'const playwright = null;',reason:'no browser dependency'});\n       if(name==='world')changes.push({...n,text:'const world = () => ({stdin:{end(){}},exitCode:null,signalCode:null});',reason:'no fixture process'});\n     }\n     if(n.type==='FunctionDeclaration' && n.id.name==='check')changes.push({...n,text:'async function check(name, action) { __record(activePhase, engine, name); }',reason:'record names, never invoke action'});\n     if(n.type==='TryStatement')changes.push({start:n.start,end:src.length,text:`let activePhase;\nawait seed();\nfor (const [phase, before] of PHASES) {\n activePhase=phase.name;\n if (before) await before();\n for (engine of ENGINES) { __phase(phase.name,engine); await phase(); }\n}`,reason:'enumerate loops only; no launch, close or pass assertion'});\n   }\n   assert.equal(changes.length,4); src=edits(src,changes);\n }\n const m=new vm.SourceTextModule(src,{context,identifier:id,initializeImportMeta(meta){meta.url=url.pathToFileURL(id).href}});\n modules.set(id,m);\n await m.link((spec,parent)=>load(spec.startsWith('.')?path.resolve(path.dirname(parent.identifier),spec):spec));\n return m;\n}\n(async()=>{const m=await load(root+'/tests/reader_compose_native.mjs'); await m.evaluate({timeout:30000});\n const keys=rows.map(x=>JSON.stringify([x.phase,x.engine,x.name]));assert.equal(new Set(keys).size,keys.length,'duplicate identity');\n fs.writeFileSync(output,JSON.stringify({parser:{node:process.version,acorn:acorn.version},kind:'enumeration-only-no-native-execution',ref,rows,phases,hashes,transforms,setup},null,2)+'\\n');console.log(JSON.stringify({ref,cases:rows.length,phases:Object.fromEntries([...new Set(rows.map(x=>x.phase+':'+x.engine))].map(p=>[p,rows.filter(x=>x.phase+':'+x.engine===p).length]))}));\n})().catch(e=>{console.error(e);process.exitCode=1});\n"
+F779_INSTRUMENT = '// Preparation only: emit the explicit harness delta; never execute the harness.\nconst fs=require(\'node:fs\'),path=require(\'node:path\'),assert=require(\'node:assert/strict\');\nconst acorn={};new Function(\'exports\',\'module\',process.binding(\'natives\')[\'internal/deps/acorn/acorn/dist/acorn\'])(acorn,{exports:acorn});\nconst [source,target,deadlineModule]=process.argv.slice(2);\nlet src=fs.readFileSync(source,\'utf8\');\nconst ast=acorn.parse(src,{ecmaVersion:\'latest\',sourceType:\'module\'});\nconst edits=[];\nlet fullExpression;\nfor(const n of ast.body){\n if(n.type===\'FunctionDeclaration\' && n.id.name===\'check\'){\n  const full=n.body.body.find(x=>x.type===\'VariableDeclaration\'&&x.declarations[0].id.name===\'full\');\n  assert.ok(full,\'original full case identity absent\');\n  fullExpression=src.slice(full.declarations[0].init.start,full.declarations[0].init.end);\n  // Keep original action, native gestures, assertions and complete ending body.\n  edits.push({start:n.start,end:n.start+\'async function check\'.length,text:\'async function originalCheck775\'});\n }\n if(n.type===\'TryStatement\'){\n  let body=src.slice(n.start,n.end);\n  assert.ok(body.includes(\'await seed();\'));\n  const simple=\'try { await phase(); } finally { await browser.close(); browserClosed = true; }\';\n  const diagnostic=\'try { await phase(); } catch(error) { primary=error; }\';\n  assert.ok(body.includes(simple)||body.includes(diagnostic),\'unknown phase ending shape\');\n  body=body.replace(\'await seed();\',"await bounded775.guard({stage:\'seed\'}, group775.seed_seconds, () => seed()); fixtureObservations779.push({origin:facts.origin,instance_id:facts.instance_id},{origin:shortFacts.origin,instance_id:shortFacts.instance_id});");\n  body=body.replace(\'if (before) await before();\',"if (phase.name !== group775.phase) continue;\\n    activePhase775 = phase.name;\\n    if ([\'runSending\',\'runPencil\',\'runPencilMutants\'].includes(phase.name)) { const prerequisite = PHASES.find(([p]) => p.name === \'runAnswering\')?.[1]; if (prerequisite) await bounded775.guard({stage:\'inherited-answering-coordinator\'}, group775.seed_seconds, prerequisite); }\\n    if (before) await bounded775.guard({stage:\'phase-before\'}, group775.seed_seconds, before);");\n  body=body.replace(\'for (engine of ENGINES) {\',"for (engine of ENGINES) {\\n      if (engine !== group775.engine) continue;");\n  body=body.replace("browser = engine === \'chromium\' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });", "browser = await bounded775.guard({stage:\'launch\'}, group775.launch_seconds, () => engine === \'chromium\' ? playwright.chromium.launch({ executablePath: chrome, headless: true }) : playwright.webkit.launch({ headless: true })); runtime775.push({engine,version:browser.version(),node:process.version,platform:process.platform,arch:process.arch});");\n  body=body.replace(\'try { await phase(); } finally { await browser.close(); browserClosed = true; }\', "try { await bounded775.guard({stage:\'phase-setup-and-cases\'}, group775.phase_seconds, () => phase()); } finally { await bounded775.guard({stage:\'browser-close\'}, group775.final_seconds, () => browser.close()); browserClosed = true; }");\n  if(body.includes(diagnostic)){\n    body=body.replace(diagnostic,"try { await bounded775.guard({stage:\'phase-setup-and-cases\'},group775.phase_seconds,()=>phase()); } catch(error) { primary=error; }");\n    body=body.replace(\'try { await browser.close(); browserClosed = true; } catch(error) { closing=error; }\',"try { await bounded775.guard({stage:\'browser-close\'},group775.final_seconds,()=>browser.close()); browserClosed = true; } catch(error) { closing=error; }");\n  }\n  assert.ok(body.includes(\'completedPhases.push(`${phase.name}:${engine}`);\') && body.includes(\'browserClosed, harnessCompleted, plannedPhases, completedPhases,\'), \'unknown phase/report shape\');\n  body=body.replace(\'completedPhases.push(`${phase.name}:${engine}`);\', \'completedPhases.push(`${phase.name}:${engine}/group:${group775.id}`);\');\n  body=body.replace(\'harnessCompleted = true;\', \'bounded775.finish();\\n  harnessCompleted = true;\');\n  body=body.replace(\'await Promise.all([fixtureExit, shortExit])\', "await bounded775.guard({stage:\'fixture-exit\'}, group775.final_seconds, () => Promise.all([fixtureExit, shortExit]))");\n  body=body.replace(\'browserClosed, harnessCompleted, plannedPhases, completedPhases,\', \'browserClosed, harnessCompleted: false, scope775: { fixtures: fixtureObservations779, runtime: runtime775, group: group775.id, source: group775.source, cases_sha256: group775.cases_sha256, completedCases: bounded775.completed.slice(), groupCompleted: harnessCompleted, originalWholeCompleted: false }, originalPlannedPhases: originalPlannedPhases775, plannedPhases, completedPhases,\');\n  edits.push({start:n.start,end:n.end,text:body});\n }\n if(n.type===\'VariableDeclaration\' && n.declarations[0].id.name===\'plannedPhases\'){\n  const old=src.slice(n.start,n.end);\n  edits.push({start:n.start,end:n.end,text:old.replace(\'const plannedPhases = PHASES.flatMap\', \'const originalPlannedPhases775 = PHASES.flatMap\').replace(\', completedPhases = [];\', ";\\nconst plannedPhases = [group775.phase + \':\' + group775.engine + \'/group:\' + group775.id], completedPhases = [];" )});\n }\n}\nassert.equal(edits.length,3,\'unknown compose source shape\');\nconst at=src.indexOf(\'let browserClosed = true, harnessCompleted = false\');assert.ok(at>0);\n// Initialized before all seeds and phases; closures read actual owned resources.\nconst injected=`\nlet activePhase775;\nconst group775 = JSON.parse(readFileSync775(process.env.AIM_COMPOSE_GROUP, \'utf8\'));\nconst runtime775 = [];\nconst fixtureObservations779 = [];\nconst selected775 = new Set(group775.cases.map(r=>r.name));\nconst bounded775 = new ComposeDeadline775({group:group775,evidence,\n snapshot:()=>({results:results.slice(),browserClosed,harnessCompleted:false,groupCompleted775:harnessCompleted,completedPhases:completedPhases.slice()}),\n retire:async()=>{\n   fixture.stdin.end(); shortFixture.stdin.end();\n   const closed=browser ? await browser.close().then(()=>true,()=>false) : true;\n   const exits=await Promise.all([fixtureExit,shortExit]);\n   return {browserClosed:closed,fixtures:exits};\n }});\nasync function check(name, action) {\n const full=${fullExpression};\n if(!selected775.has(full))return;\n const row=group775.cases.find(r=>r.name===full);\n if(row.phase!==activePhase775 || row.engine!==engine)throw Error(\'compose phase/engine differs\');\n await bounded775.check(row,()=>originalCheck775(name,action));\n}\n`;\n// group775 must exist before plannedPhases initialization.\nconst before=ast.body.find(n=>n.type===\'VariableDeclaration\'&&n.declarations[0].id.name===\'plannedPhases\').start;\nedits.push({start:before,end:before,text:injected});\nfor(const e of edits.sort((a,b)=>b.start-a.start))src=src.slice(0,e.start)+e.text+src.slice(e.end);\nsrc="import {readFileSync as readFileSync775} from \'node:fs\';\\nimport {ComposeDeadline as ComposeDeadline775} from "+JSON.stringify(deadlineModule)+";\\n"+src;\n// Original substring filter MUST be empty, including helper-level filtering.\nsrc=src.replace("const [chrome, evidence, filter = \'\'] = process.argv.slice(2);", "const [chrome, evidence] = process.argv.slice(2);\\nconst filter = \'\'; // exact selection is inside check; all helper setup retained");\n// Retain the observed assertion verdict; caught-mutant policy stays separate.\nassert.ok(src.split(\'r.passed=r.mutationCaught;\').length<=2,\'ambiguous mutant output\');\nsrc=src.replace(\'r.passed=r.mutationCaught;\',\'r.passed=r.observedPassed;\');\nfs.writeFileSync(target,src);\n'
+
+
+def f779_validate(root, commit, provenance, shards, run, required, producer):
+    source=f779_source(root,commit)
+    inventory=f779_inventory(root,commit)
+    groups=f779_groups(inventory,source)
+    f779_plan(provenance['plan'],required,groups)
+    for name, expected in producer.items():
+        f779_require(f779_hash(f779_git(root,'show',commit+':tools/'+name))==expected, 'unreviewed producer input: '+name)
+    original=f779_git(root,'show',commit+':tests/reader_compose_native.mjs')
+    patched=f779_patch(original)
+    verified={}
+    for i,job in enumerate(provenance['plan']):
+        if not job.get('compose_group'):
+            continue
+        group=next(g for g in groups if g['id']==job['compose_group']['id'])
+        expected={k:str(run[k]) for k in ('id','attempt')}
+        expected.update(workflow_sha=provenance['run']['workflow_sha'],workflow_ref=provenance['run']['workflow_ref'],
+                        repository=run['repository'],job=('check' if i<256 else 'check_more'),job_name=group['id'])
+        verified['check-%d'%i]=f779_read_group(pathlib.Path(shards)/('check-%d'%i),group,source,inventory,original,patched,producer,expected,root)
+    return verified, f779_step(f779_fold(groups,list(verified.values())))
+
+F779_PRODUCER = {'forward_plan.py': '1d63c691ae83285cc112df8d1352e2f7599acdc9c10bff7e622fb5e129c80931', 'compose_forward.py': 'd02724fe65e60bf084b82fd532c14139fcec5323fa8f0a01f8f44aad4a3b4de3', 'compose_groups.py': '8de720f633adc74d55e60117ae67f596762167768ed8dd9fa8196c39716b504b', 'compose_inventory.cjs': '1906308eeb001a66d44655760c4136873ad462a26f2efe12d670eb0287319d95', 'compose_instrument.cjs': 'bc9e6a5c42fd124db65edd887e919293e7bca2a8ba40bb38df61c02b40970a2d', 'compose_deadline_775.mjs': '3a2ac81d7002b89ab22de1fbbd3017716ec951bda0e9f3984227cbfddb42ca45', 'compose_worker_775.mjs': '8f618de667df4f4a0be502cb4c4b39cd25b689ffcb8eaa3c1989dfb4eb40871f', 'run_compose_group.py': '9ee606169207bed5ddc121949d2d483719701f9779d603984781e5b6fd8301bb'}
 
 if __name__ == '__main__':
     raise SystemExit(main())
