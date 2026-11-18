@@ -11,7 +11,7 @@ import unittest
 import copy
 import itertools
 
-from tools import deploy, release_check, ci_known_reds as ci, base_move
+from tools import deploy, release_check, ci_known_reds as ci, base_move, releases
 from test_tools_train import TrainCase, listed, BRANCH, REPOSITORY
 
 
@@ -278,12 +278,20 @@ class BaseMoveFixture(TrainCase):
 class BaseMove(BaseMoveFixture):
     def test_deploy_records_source_failure_and_base_move_without_new_run(self):
         out = self.trained(self.host(), self.candidate(), self.merged, self.github)
-        record = self.evidence_of('02-release')['record']['measurements']['train']
+        stored = self.evidence_of('02-release')['record']
+        record = stored['measurements']['train']
         self.assertEqual(record['judgment']['head'], self.head)
         self.assertEqual(record['judgment']['producer_runs'][0]['conclusion'], 'failure')
         self.assertEqual(record['base_move']['assembly_head'], self.assembly)
         self.assertEqual(record['base_move']['source']['run'], 101)
-        self.assertEqual(self.evidence_of('00-train')['base_move'], record['base_move'])
+        planned = self.evidence_of('00-train')['base_move']
+        evidence = self.evidence.resolve()
+        full = releases.verify_record(dict(stored, evidence=str(evidence)), evidence)
+        self.assertEqual(full['train']['base_move'], planned)
+        projection = releases.compact_measurements(
+            {'train': {'base_move': planned}},
+            Path(stored['measurements']['full_measurements']['path']))
+        self.assertEqual(projection['train']['base_move'], record['base_move'])
         observed = record['base_move']['source_observed']
         self.assertEqual(observed['failed'], ['native-journal'])
         self.assertEqual(observed['steps'][0]['passed'], False)
