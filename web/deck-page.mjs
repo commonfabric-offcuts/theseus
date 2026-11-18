@@ -533,7 +533,17 @@ export class DeckPage {
     const pictures = row ? [...row.querySelectorAll(':scope > .deck-images > .deck-image')] : [];
     const height = Math.max(0, (row?.getBoundingClientRect().height ?? 0) - (row?.querySelector(':scope > .deck-images')?.getBoundingClientRect().height ?? 0));
     const shownAt = new Map(pictures.map(figure => [figure.dataset.cardImage, figure.getBoundingClientRect().height]));
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height });
+    // A parent's first title line contains its chevron, taller by touch. Read
+    // that line's actual room before replacing the card. Extra title lines
+    // already wrap in the textarea, so they must not also become top padding.
+    const title = row?.querySelector(':scope > .deck-title'), body = row?.querySelector(':scope > .deck-words');
+    let bodyStart = null;
+    if (words && title?.querySelector('.deck-fold') && body) {
+      const range = this.doc.createRange(); range.selectNodeContents(title.lastChild);
+      const lines = [...range.getClientRects()], extra = lines.length ? lines[lines.length - 1].top - lines[0].top : 0;
+      bodyStart = body.getBoundingClientRect().top - title.getBoundingClientRect().top - extra;
+    }
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height, bodyStart });
   }
   written(card) {
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
@@ -591,6 +601,7 @@ export class DeckPage {
     field.rows = 1;
     field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
+    if (editing.bodyStart != null) field.style.setProperty('--body-start', `${editing.bodyStart}px`);
     field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field, input: new WritingInput({ field }) };

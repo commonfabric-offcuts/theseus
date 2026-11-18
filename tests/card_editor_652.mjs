@@ -279,6 +279,45 @@ export async function cardEditor652({ check, page, until, press, picture, contro
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) for (const surface of ['full', 'sheet'])
     await check(`item 652 B1 unchanged parent Edit ${surface} ${shape} ${scheme}`, () => entry(shape, scheme, surface));
 
+  await check('item 652 B1 applied whole-body padding mutant and restored controls', async () => {
+    const old = '.deck-parent>.deck-editor{text-indent:2.75rem}';
+    const replacement = '.deck-parent>.deck-editor{padding-left:2.75rem;text-indent:0}';
+    assert.equal(css.split(old).length, 2, 'B1 exactly one coarse-pointer padding mutation site');
+    const mutated = css.replace(old, replacement);
+    const trail = { file: 'web/aim.css', old, replacement, before: sha(css), applied: sha(mutated), caught: [], restored: null, restoredControls: [] };
+    const restartPadding = async () => {
+      assert.equal((await control({ method: 'server_stop' })).stopped, true);
+      assert.equal((await control({ method: 'server_start' })).origin, facts.origin, 'B1 isolated origin is retained');
+    };
+    try {
+      await writeFile(cssPath, mutated);
+      assert.equal(sha(await readFile(cssPath)), trail.applied, 'B1 padding source mutant actually applied');
+      await restartPadding();
+      for (const surface of ['full', 'sheet']) {
+        try { await entry('phone-320', 'light', surface, '-padding-mutant'); }
+        catch (error) {
+          assert.equal(error.code, 'ERR_ASSERTION');
+          assert.match(error.message, /B1 unchanged body and adjacent cards retain their geometry/);
+          assert.ok(error.actual.some(message => message.startsWith('B1 unchanged body character')), 'B1 catches displaced body characters');
+          assert.ok(error.actual.some(message => message.startsWith('B1 unchanged body wraps')), 'B1 catches body rewrapping');
+          trail.caught.push({ surface, error: error.stack, geometryErrors: error.actual });
+        }
+      }
+    } finally {
+      await writeFile(cssPath, css);
+      trail.restored = sha(await readFile(cssPath));
+      await restartPadding();
+      await writeFile(path.join(evidence, engine, 'item-652-B1-padding-mutant.json'), JSON.stringify(trail, null, 2));
+    }
+    assert.equal(trail.caught.length, 2, 'B1 padding mutant is caught on both surfaces');
+    assert.equal(trail.restored, trail.before, 'B1 source restored byte-for-byte');
+    for (const surface of ['full', 'sheet']) {
+      await entry('phone-320', 'light', surface, '-padding-restored');
+      trail.restoredControls.push({ surface, passed: true });
+    }
+    await writeFile(path.join(evidence, engine, 'item-652-B1-padding-mutant.json'), JSON.stringify(trail, null, 2));
+  });
+
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) for (const surface of ['full', 'sheet']) for (const state of STATES) {
     await check(`item 652 ${surface} ${shape} ${scheme} ${state}`, () => scenario(shape, scheme, surface, state));
   }

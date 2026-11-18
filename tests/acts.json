@@ -3563,7 +3563,7 @@
    "break": [
     [
      "web/aim.css",
-     ".deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}",
+     ".deck-worded>.deck-editor{padding-top:calc(var(--body-start,1.65rem) - .92rem * 1.55)}",
      ""
     ]
    ],
@@ -28487,6 +28487,21 @@
    ],
    "check": {
     "node": "tests/ui_card_editor_652.test.mjs"
+   }
+  },
+  {
+   "item": 652,
+   "act": "B1 native Edit of an unchanged parent keeps body positions, wrapping and adjacent cards; Done records no revision",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-parent>.deck-editor{text-indent:2.75rem}",
+     ".deck-parent>.deck-editor{padding-left:2.75rem;text-indent:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 652 B1 unchanged parent Edit full phone-320 light"
    }
   }
  ]

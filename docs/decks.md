@@ -121,8 +121,10 @@ start and the word before the cursor.
 At every width a card being written stays where it showed: its box takes the
 card's own place and height, its words stay on the lines they showed on, a
 card with children keeps its chevron where it stood, and the cards around it
-do not move. The box grows only when what is written needs more room. On a touch parent card,
-chevron clearance belongs to the title line alone; opening Edit without
+do not move. The box grows only when what is written needs more room. On a
+touch parent card, chevron clearance belongs to the title line alone. The
+editor measures the read body's start to keep the taller touch title's room;
+opening Edit without
 changing the body keeps its horizontal origin and wrapping. The `item 652 B1`
 cases compare unchanged body character positions, line membership, chevron
 and adjacent-card bounds before and after native Edit, then check Done writes
