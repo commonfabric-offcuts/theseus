@@ -229,7 +229,7 @@ export class TopicStatePanel {
     this.painted(topic);
   }
 
-  reset() { this.restoreTitleSurface(); this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
+  reset() { this.restoreTitleSurface(); this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
   // Whether the reader may say where the topic stands, by Core's rule: its
   // participants, its creator, whoever organises the outcome and whoever has
@@ -243,6 +243,10 @@ export class TopicStatePanel {
   // The chips, the note and the quiet line of who said it: chips to tap for
   // those who may say where it stands, the state alone for everyone else.
   build(says) {
+    // Reclaim the field while its lending panel still owns it. Keep the
+    // title model across a permission rebuild so answers and writing survive.
+    this.restoreTitleSurface();
+    const titleFields = Object.fromEntries(['title', 'archived'].filter(name => this.fields[name]).map(name => [name, this.fields[name]]));
     const chips = element('div', { className: 'state-chips' });
     chips.setAttribute('role', 'group'); chips.setAttribute('aria-labelledby', 'stand-heading');
     const states = new Map();
@@ -251,7 +255,7 @@ export class TopicStatePanel {
     people.setAttribute('role', 'group'); people.setAttribute('aria-labelledby', 'waiting-label');
     const waiting = element('div', { className: 'waiting-on', hidden: true }, waitingLabel, people);
     let note;
-    this.fields = {};
+    this.fields = titleFields;
     if (says) {
       for (const value of STATES) {
         const button = chip(LABELS[value], () => this.tap('state', () => value));
@@ -303,7 +307,7 @@ export class TopicStatePanel {
   // topic's creator: two quiet actions. Rename puts a one-line title in their place.
   manage(manager) {
     const controls = this.controls;
-    if (manager && !controls.managed) {
+    if (manager && !this.managedTitle) {
       const unchanged = () => this.fields.title?.line.value === this.topic?.title;
       const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
         { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!this.movingTitle && !unchanged()) this.save('title'); } });
@@ -318,11 +322,17 @@ export class TopicStatePanel {
       this.fields.archived = { name: 'archived' };
       controls.actions.replaceChildren(title, rename, archive);
       controls.actions.hidden = false;
-      controls.managed = { title, rename, archive };
-    } else if (!manager && controls.managed) {
-      this.restoreTitleSurface();
-      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null;
-      delete this.fields.title; delete this.fields.archived;
+      this.managedTitle = { title, rename, archive };
+    }
+    if (this.managedTitle) {
+      if (!manager) this.restoreTitleSurface();
+      const { title, rename, archive } = this.managedTitle;
+      // A read-only panel owns the same disabled field behind its hidden
+      // actions; a regained permission makes those exact words available.
+      if (!controls.actions.contains(title) && !this.inlineTitle) controls.actions.replaceChildren(title, rename, archive);
+      title.disabled = rename.disabled = archive.disabled = !manager;
+      controls.actions.hidden = !manager;
+      controls.managed = manager ? this.managedTitle : null;
     }
   }
 
@@ -430,6 +440,7 @@ export class TopicStatePanel {
   // waits on is out. At the person's act (ask), a save it waits on whose
   // answer was lost is asked again first.
   turn(field, ask = true) {
+    if (['title', 'archived'].includes(field.name) && !managesTopic(this.topic, this.reader)) return this.queue;
     if (field.next) {
       const busy = field.out ? field : this.blocker(field);
       if (!busy) this.go(field);
@@ -654,7 +665,7 @@ export class TopicStatePanel {
 
   hide() {
     this.restoreTitleSurface();
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.managedTitle = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
   }
 }
 

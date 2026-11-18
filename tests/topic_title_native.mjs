@@ -15,6 +15,42 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
   const held = async () => (await view('topic', { topic_id: 't1' })).topic;
   const title = p => p.evaluate('document.querySelector("#topic-title").textContent');
   const updates = p => p.calls.filter(c => c.payload?.kind === 'topic.update').map(c => c.payload);
+  if (mutations) await check(`${mode} item 656 oldhead red: permission rebuild restores the header title; exact restore green`, async () => {
+    const url = new URL('../web/topic-state.mjs', import.meta.url);
+    const original = await readFile(url, 'utf8');
+    // This commit holds the new native case and the still-unfixed r1 product.
+    const oldhead = '6f7bf4c428a28a698aa7f3f75675e4cdf711706b';
+    const red = execFileSync('git', ['show', oldhead + ':web/topic-state.mjs'], { encoding: 'utf8' });
+    assert.notEqual(red, original, 'the oldhead product really replaces the fixed source');
+    const pages = []; let runNumber = 0;
+    const restart = async () => {
+      for (const p of pages.splice(0)) await p.close();
+      await control({ method: 'server_stop' }); Object.assign(facts, await control({ method: 'server_start' }));
+    };
+    const run = async () => {
+      let ran = 0; runNumber++;
+      await topicTitleChecks({ check: async (name, action) => {
+        if (name.includes('item 656 membership-editing:') && name.endsWith('320 light')) { ran++; await action(); }
+      }, page: async (...args) => { const p = await page(...args); pages.push(p); return p; }, until, control, view, facts, shot }, mode, false, 'oldhead-' + runNumber);
+      assert.equal(ran, 1, 'one real membership acceptance case at oldhead and restored head');
+    };
+    let caught = null, pageErrors = [];
+    try {
+      await writeFile(url, red); assert.equal(await readFile(url, 'utf8'), red);
+      await restart();
+      try { await run(); } catch (error) { caught = error; }
+    } finally {
+      await writeFile(url, original); pageErrors = pages.flatMap(p => p.errors); await restart();
+    }
+    assert.ok(caught, 'the actual r1 product must fail the new native case');
+    assert.match(caught.message, /permission rebuild restores the header title/, 'oldhead fails the reproduced orphan rule');
+    assert.deepEqual(pageErrors, [], 'a script error is not oldhead proof');
+    assert.equal(await readFile(url, 'utf8'), original, 'exact fixed source restored');
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    process.stdout.write(JSON.stringify({ item: 656, oldhead, red_source: digest(red), fixed_source: digest(original), caught: caught.message, exact_restoration: true }) + '\n');
+    try { await run(); } finally { await restart(); }
+    process.stdout.write(JSON.stringify({ item: 656, oldhead, restored_control_passed: true }) + '\n');
+  });
   for (const width of [320, 375, 390, 1440]) for (const theme of ['light', 'dark']) {
     const size = width === 1440 ? 'laptop' : width;
     const setup = { touch: width < 760, titleRename: true, beforeNavigate: async p => {
@@ -229,6 +265,7 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
           await control({ method: 'outcome_change', operation_id: prefix + '-lose', sender: facts.actor, workspace_id: made.workspace_id, owner: facts.agent });
           await until(async () => (await read()).topic.reader_may_say === false, 'Core actually revokes reader_may_say');
           await until(() => p.evaluate('document.querySelector("#topic-title-rename").hidden && !document.querySelector("#topic-state .state-chips button")'), 'live permission change rebuilt the panel read-only');
+          await snap(p, 'membership-permission-lost-' + busy);
           assert.equal(await p.evaluate('document.querySelector("#topic-title-edit").hidden'), true, 'permission rebuild restores the header title');
           assert.equal(await p.evaluate('document.querySelector("#topic-title").hidden'), false, 'saved heading is visible');
           assert.equal(await title(p), busy ? first : original);

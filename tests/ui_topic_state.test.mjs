@@ -437,7 +437,10 @@ test('whoever organises the outcome manages its topics beside their creator; a c
   assert.ok(fable.host.find(node => node.id === 'topic-rename'), 'the coordinator may rename it');
   assert.equal(fable.host.find(node => node.textContent === 'Archive')?.tag, 'button', 'and archive it');
   fable.paint(topic({ coordinator_id: null }), []);
-  assert.equal(fable.host.find(node => node.id === 'topic-rename'), undefined, 'once no longer coordinator, Rename and Archive go');
+  const retained = fable.host.find(node => node.id === 'topic-rename');
+  assert.equal(retained.disabled, true, 'once no longer coordinator, the retained rename field cannot accept an act');
+  assert.equal(retained.parent.hidden, true, 'Rename and Archive are hidden without permission');
+  assert.ok(retained.parent.children.filter(node => node.tag === 'button').every(node => node.disabled), 'neither management action remains enabled');
   const warp = new TopicStatePanel({ host: new Element('section'), reader: 'warp', send: async () => ({}) });
   warp.paint(topic({ coordinator_id: 'fable' }), []);
   assert.equal(warp.host.find(node => node.id === 'topic-rename'), undefined, 'a plain member who did not start it cannot rename it');

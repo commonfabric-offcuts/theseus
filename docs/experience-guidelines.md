@@ -276,7 +276,10 @@ press cannot reach.
 - `tests/topic_title_native.mjs` (`native-header`, `native-colors`,
   `native-webkit-colors`): the “item 656” cases keep the Rename topic pencil
   beside the title, edit there, retain the name in header and rail after
-  reload, preserve settings rename and follow its permission. Each state
+  reload, preserve settings rename and follow its permission. The “item 656
+  membership-editing” and “membership-busy” cases revoke and regain ownership
+  for a nonparticipant with no previous authorship, retaining exact writing
+  and the pending operation through the read-only rebuild and native Escape. Each state
   (normal, editing, busy, refused, invalid title, and read-only) is checked
   at 320, 375, 390 and laptop widths in both themes.
 
