@@ -32377,6 +32377,21 @@
     "native": "rail",
     "case": "rail item 715 available"
    }
+  },
+  {
+   "item": 648,
+   "act": "A swipe right over the message in the composer folds it for the reader, as in a dossier, keeping writing and destination",
+   "break": [
+    [
+     "web/reader.mjs",
+     "    this.bindSwipe();",
+     "    // Item 648 mutant: swipe binding removed."
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 648"
+   }
   }
  ]
 }

@@ -1,3 +1,4 @@
+import { messageFoldSwipe } from './message-fold-swipe.mjs';
 import { keyAction, holdsWriting, written } from './editor.mjs';
 import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
@@ -88,6 +89,16 @@ export class Reader {
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
   }
+  // Capture the source where the gesture began. A step, close or access change
+  // during the gesture cannot fold another source or touch private writing.
+  bindSwipe() {
+    messageFoldSwipe(this.sourceBody, () => {
+      const source = this.source;
+      const available = () => this.dialog.open && this.source === source && source?.source_ref?.kind === 'message'
+        && !this.presentation?.sourceUnavailable && !this.presentation?.availabilityUnconfirmed;
+      return available() ? () => { if (available()) this.callbacks.foldMessage?.(source); } : null;
+    });
+  }
   $(id) { return this.dialog.querySelector(`#${id}`); }
   get editor() { return this.sessions?.[this.mode]; }
   admits(editor = this.editor, presentation = this.presentation) { return this.callbacks.admits?.(presentation, editor) ?? true; }
@@ -148,6 +159,7 @@ export class Reader {
     closeOnOutsideClick(this.dialog, () => this.close(), window);
     this.$('reader-parent').onclick = () => this.close('parent');
     this.bindDivider();
+    this.bindSwipe();
     this.$('toggle-note').onclick = () => this.switchMode();
     // What a press on the pill, the ⋯ or + would quote is taken as it
     // presses (hold), or as its key is pressed: each press takes it afresh.

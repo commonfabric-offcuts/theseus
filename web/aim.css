@@ -946,13 +946,13 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
   .quote-float{left:0;right:0;display:flex;justify-content:center}
   .quote-key{display:none}
 }
-/* Where a finger presses, every control of a composer, in every state, is at least 44px: one floor under all of them, which no rule for a single control lowers (so the floor alone is !important). The Reader's header is held to it here too. */
-@media(pointer:coarse){
+/* The phone layout keeps its 44px controls even when a mouse or trackpad becomes the primary pointer. The same floor covers coarse pointers at any width; individual controls cannot lower it. The Reader title shares its header's floor. */
+@media(pointer:coarse),(max-width:760px){
   .composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}
   .plus-button,.composer>#thumb-source{width:2.75rem;height:2.75rem}
   .composer[data-compose=line] textarea{height:2.75rem}
   #reader:not([data-layout=wide]) .writing-pane{grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.75rem,auto)}
-  .reader-header>button,#reader-stepping>button,#reader-star,#reader-aside{min-width:2.75rem;min-height:2.75rem}
+  .reader-header>button,#reader-stepping>button,#reader-star,#reader-aside,.reader-topic{min-width:2.75rem;min-height:2.75rem}
   .taller-field{width:2.75rem;height:2.75rem;top:0}
   .image-strip{padding:1rem 1rem 0 0}
   .image-choice>button[data-method=remove]{width:2.75rem;height:2.75rem;top:-1rem;right:-1rem;background:transparent;border:0}
