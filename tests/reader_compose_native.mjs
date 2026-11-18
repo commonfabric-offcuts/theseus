@@ -22,6 +22,8 @@
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
+import { composeSwipe648 } from './compose_swipe_648.mjs';
+import { composeSwipe648Protections, observe648 } from './compose_swipe_648_protections.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -115,9 +117,10 @@ const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
 // at: the fixture the page reads, the cases' own unless one says otherwise.
-async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, prepare = async () => {}) {
+async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, prepare = async () => {}, optionsOverride = {}) {
   const options = SHAPES[shape];
-  const context = await browser.newContext({ ...options, colorScheme: scheme });
+  const { observeSwipe648 = false, ...contextOptions } = optionsOverride;
+  const context = await browser.newContext({ ...options, ...contextOptions, colorScheme: scheme });
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
   const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
@@ -126,6 +129,7 @@ async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, pr
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
   await prepare(p);
+  if (observeSwipe648) await observe648(p);
   await p.goto(at.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
@@ -290,6 +294,8 @@ const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySe
 async function run() {
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
+  await composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine, evidence });
+  await composeSwipe648Protections({ check, page, open, press, until, picture, close, control, facts, engine, root, evidence });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
     await check(`item 644 ${shape} ${scheme}: opening, using and closing the card composer holds the page`, async () => {
@@ -561,9 +567,9 @@ async function run() {
         if (shape.startsWith('phone')) {
           assert.ok(at.tab && at.name, `${shape}, ${dossier}: the message's dossier has a tab in the feed, and the title its button: ${JSON.stringify(at)}`);
           if (dossier === 'short') assert.equal(at.tab, SHORT_NAME, `${shape}: the short dossier's tab shows the name it was given: ${JSON.stringify(at)}`);
-          // A short name fits whole; a long one is cut, with the ellipsis in effect. Either takes one line, its button one line
-          // high, and runs into no control, on the header's second row.
-          assert.deepEqual([at.title, at.name.text, at.name.fits, at.name.ellipsis, at.name.lines, at.name.height < 2 * at.name.line, at.name.into, at.twoRows],
+          // A short name fits whole; a long one is cut, with the ellipsis in effect. Either takes one text line;
+          // the button keeps the approved 44px target floor, otherwise stays below two text lines, and overlaps no control.
+          assert.deepEqual([at.title, at.name.text, at.name.fits, at.name.ellipsis, at.name.lines, at.name.height >= 44 && (at.name.height === 44 || at.name.height < 2 * at.name.line), at.name.into, at.twoRows],
             [at.tab, at.tab, dossier === 'short', true, 1, true, [], true],
             `${shape}: the title is the dossier's name, ${dossier === 'short' ? 'whole' : 'cut with an ellipsis'}, on one line of the header's second row, clear of the controls: ${JSON.stringify(at)}`);
           assert.deepEqual([at.small, at.over, at.sideways], [[], [], false], `${shape}, ${dossier}: every control of the header 44px, none over another, nothing sideways: ${JSON.stringify(at)}`);

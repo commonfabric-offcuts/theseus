@@ -122,6 +122,17 @@ shows them: inside a reply stack, ↓ goes down to its newer replies and then
 on to the stack below (docs/reply-stacks.md). On a phone the ⋯ is a sheet
 from the bottom, and the message ends with a quiet "↑ Previous · ↓ Next".
 
+A swipe right over the message in the composer folds that message for the
+reader, as in a dossier (item 648). It is the same act as Fold message in
+⋯: the Reader stays open, its writing and destination kept, and the card on
+the topic folds to its row. A starred or already folded message stays as it
+is. A drag on code or a table scrolling sideways scrolls it instead; vertical
+scrolls, left swipes and gestures in the writing fold nothing. The phone's
+finger crosses 80 pixels with at most 40 pixels vertically; a trackpad uses
+the dossier's natural-scrolling direction and 80-pixel threshold, once per
+gesture. A gesture interrupted by another source opening acts on neither.
+The existing fold command owns optimistic display, refusal and recovery.
+
 ## Writing
 
 A press or Tab into the field makes it the composer:
@@ -504,3 +515,34 @@ phone shows: the keyboard's own height and animation, the browser's bars
 appearing and going, and the caret being kept in view by the system. In
 WebKit, Tab moves only between fields and links unless Option is held, as in
 Safari; the check presses Option-Tab there.
+
+Item 648's bounded continuation checks (`tests/compose_swipe_648_protections.mjs`,
+`native-compose`, case names beginning "item 648 protections", "item 648 access"
+and "item 648 ledger") exercise the access guards through real HTTP refusal and
+state responses, native Retry access and read-only writing, negative gestures,
+and the ledger's actual binding-removal break with byte-for-byte restoration.
+The access states disable sending while safe local typing remains available.
+Actual read-only writing is checked while native Close waits for device-save
+completion; refusal keeps the Reader open, exact writing and destination kept.
+A source fold remains its own act while that writing is read-only. The title
+button shares the header's 44px phone-layout and coarse-pointer floor, which
+remains in force when native mixed input changes the primary pointer.
+The HTTP seams measure client behavior; they do not claim a backend permission
+transition. WebKit's phone-width input is desktop wheel with native taps. The
+unavailable native WebKit finger path remains harness item 720. Final physical
+phone acceptance is Tony's swipe on the coordinator's working preview, pending
+before independent review. Measured geometry uses named tolerances (#7715).
+
+The 8675 harness continuation observes trusted native touch termination on
+the original target, which may be detached when the source changes. A
+document-only observer cannot see that termination. The old and new source's
+own drafts and destinations are checked separately while stepping, and the
+original writing is checked again on return. Geometry keeps the named 2px
+containment and 1px phone-target tolerances, with actual served CSS mutants
+and restored controls. Ordinary and access/recovery fixtures use the fictional
+display name Pipit; the two original already-folded WebKit320 cases retain
+their technical-name fixture and their separate historical base placement.
+The recovered-state 3px diagnostic is specifically a background folded cue
+after that technical name, not Reader overflow, and is not waived by that
+older placement. Tony8674's supplied phone word, “yeah that works”, covers the
+precise smoke test and does not certify the engine matrix or every guard.

@@ -45,6 +45,15 @@ maximum, and on a phone never reach past the screen.
   keyboard (`keyboard.visualBefore`, `keyboard.visualSmallest`), as evidence for
   that check ([device-evidence.md](device-evidence.md)).
 
+- `tests/reader_compose_native.mjs` (`native-compose`), the "item 648" cases:
+  a right swipe over the composer's message makes the same personal fold as
+  in a dossier. Reading, writing, private note, pending and refused fold,
+  starred, already folded, horizontal code and empty New message each have
+  their own case at 320, 375, 390 and laptop, light and dark. Chromium phones
+  use native touch drags; WebKit uses native wheel input in a touch-enabled
+  desktop context at those widths. Native WebKit finger-drag proof is a gap
+  in the existing driver, which supplies taps but no drags.
+
 ## Keys mean one thing in each place
 
 While reading a source, Return quotes the selected or lit passage, in the
