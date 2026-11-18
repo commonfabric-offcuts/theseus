@@ -32259,8 +32259,8 @@
    "break": [
     [
      "web/cover-refresh.mjs",
-     "local.error || (!pending && local.busy ? 'Requesting update…' : '')",
-     "local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '')"
+     "status.textContent = local.error;",
+     "status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"
     ]
    ],
    "check": {
@@ -32333,6 +32333,21 @@
     [
      "web/reader.mjs",
      "if (target.closest?.('#reader-cover')) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native backward Tab enters the Reader cover from the natively tapped source article in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (event.shiftKey && target === this.sourceBody) {",
      "if (false) {"
     ]
    ],

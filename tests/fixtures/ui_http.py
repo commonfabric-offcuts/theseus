@@ -589,19 +589,20 @@ def main():
                         path = destination / name
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_bytes(data)
-                    path = destination / ("reader.mjs" if phase == "reader-tab-boundary" else "cover-refresh.mjs")
+                    path = destination / ("reader.mjs" if phase in ("reader-tab-boundary", "reader-source-entry") else "cover-refresh.mjs")
                     data = path.read_bytes()
                     mutations = {
                         "reader-tab-boundary": (b"if (target.closest?.('#reader-cover')) {", b"if (false) {"),
+                        "reader-source-entry": (b"if (event.shiftKey && target === this.sourceBody) {", b"if (false) {"),
                         "lost-pending": (b"const pending = refresh?.state === 'pending';", b"const pending = false;"),
-                        "visible-text": ("local.error || (!pending && local.busy ? 'Requesting update…' : '')".encode(), "local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '')".encode()),
+                        "visible-text": (b"status.textContent = local.error;", b"status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"),
                         "keyboard-target": (b"control.className = 'cover-refresh-glyph';", b"control.tabIndex=-1; control.className = 'cover-refresh-glyph';"),
                         "small-target": (b"control.className = 'cover-refresh-glyph';", b"control.style.cssText='width:1px;min-height:1px;height:1px;padding:0'; control.className = 'cover-refresh-glyph';"),
                     }
                     old, new = mutations[phase]
                     assert data.count(old) == 1, "Item 738 source marker must apply exactly once: " + phase
                     path.write_bytes(data.replace(old, new))
-                    assert path.read_bytes() != data
+                    assert path.read_bytes() == data.replace(old, new)
                 server.build = server_module.web_build.load(destination)
             script_src = " ".join(["'self'"] + ["'%s'" % digest for digest in server.build.script_hashes])
             before, rest = item645_candidate_csp.split("script-src ", 1)

@@ -88,7 +88,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     assert.ok(state.box.height >= (device === 'laptop' ? 32 : 44) - targetTolerancePx738, 'target height (targetTolerancePx738=1)');
     assert.ok(state.overflow <= overflowTolerancePx738, 'page fits (overflowTolerancePx738=1)');
   };
-  const activate = async (p, device, selector, keyboard = false) => {
+  const activate = async (p, device, selector, keyboard = false, sourceEntry = false) => {
     await centre(p, selector);
     if (!keyboard) return press(p, inputFor(device), selector);
     const reverse = await p.evaluate(`(()=>{const target=document.querySelector(${JSON.stringify(selector)}),active=document.activeElement;
@@ -102,6 +102,13 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
       await p.key('Tab', reverse ? 8 : 0, { plainTab });
       const after = await p.evaluate(`({tag:document.activeElement?.tagName,id:document.activeElement?.id,className:document.activeElement?.className})`);
       trace.push({before, after, plainTab});
+      if (sourceEntry && n === 0) trace[0].enteredCover = await p.evaluate(`(()=>{
+        const source=document.querySelector('#source-body');
+        const stops=[...document.querySelectorAll('#reader summary,#reader button,#reader textarea,#reader select,#reader input,#reader a[href],#reader [tabindex]')]
+          .filter(e=>e.getClientRects().length&&!e.disabled&&!e.hidden&&(e.tabIndex>=0||e.matches('summary:not([tabindex])')));
+        const previous=stops[stops.indexOf(source)-1];
+        return !!previous?.closest('#reader-cover')&&document.activeElement===previous;
+      })()`);
       // The WebKit adapter normally translates to Option-Tab. If that exact
       // native key leaves focus unmoved, compare native plain Tab on the same
       // rendered control. Neither path sets focus or invokes a handler.
@@ -113,6 +120,14 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     observations.push({name:'item 738 native keyboard', selector, reverse, plainTab, reached, trace, receipt});
     await p.evaluate('window.coverWatchKeys=false');
     if (!reached) await capture(p, 'refresh738-keyboard-failure-' + observations.length);
+    if (sourceEntry) {
+      const entryKey = receipt.keys.find(key => key.key === 'Tab');
+      assert.equal(reverse, true, 'source entry uses backward native Tab');
+      assert.equal(entryKey?.trusted, true, 'source entry key was actually delivered and trusted');
+      assert.equal(entryKey?.shift, true, 'source entry key is backward Tab');
+      assert.equal(entryKey?.target, 'ARTICLE#source-body', 'source entry key starts on the natively tapped article');
+      assert.equal(trace[0]?.enteredCover, true, 'native source Shift-Tab enters previous eligible cover control');
+    }
     assert.equal(reached, true, 'native Tab reaches refresh: ' + JSON.stringify({reverse,trace,receipt}));
     await p.evaluate('window.coverWatchKeys=true');
     await p.key('Enter');
@@ -240,7 +255,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         await activate(p, device, where + ' ' + CONTROL, surface === 'reader' || device === 'laptop');
         await until(() => p.evaluate('window.coverReleases.length===1'), 'request held before real dispatch');
         const busy = await look(p, where);
-        assert.equal(busy.status, 'Requesting update…'); assert.equal(busy.dots, 3);
+        assert.equal(busy.status, '', 'Tony8657: no visible busy label'); assert.equal(busy.dots, 3);
         assert.equal((await read(ids.root)).refresh, null, 'busy is not a Core pending fact');
         await capture(p, topic + '-busy');
         await activate(p, device, where + ' ' + CONTROL);
@@ -399,23 +414,50 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     const topic = 'refresh738-mutants', ids = await setup(topic);
     const r = await control({ method: 'stack_act', kind: 'stack.cover_refresh', sender: facts.actor, message_id: ids.root, args: {}, operation_id: topic + '-request' });
     assert.equal(r.status, 'committed');
-    for (const phase of ['lost-pending', 'visible-text', 'small-target', 'keyboard-target', ...(engine === 'webkit' ? ['reader-tab-boundary'] : [])]) await source(phase, topic, async receipt => {
-      let p;
-      try {
-        p = await open(topic + '-' + phase, 'phone', topic, ids.root, GATE);
-        const where = await show(p, 'phone', topic, ids, ['keyboard-target', 'reader-tab-boundary'].includes(phase) ? 'reader' : 'sheet');
-        assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
-        if (['keyboard-target', 'reader-tab-boundary'].includes(phase)) {
-          await assert.rejects(activate(p, 'phone', where + ' ' + CONTROL, true), /native Tab reaches refresh/, 'source removing the real stop or Reader boundary must fail native key access');
-          observations.push({ name: 'item 738 killed native keyboard mutant', phase });
-          return;
-        }
-        const state = await look(p, where);
-        assert.throws(() => phase === 'small-target' ? geometry(state, 'phone') : pendingShape(state), { name: 'AssertionError' }, 'applied source mutant must fail the real native assertion');
-        await capture(p, topic + '-' + phase);
-        observations.push({ name: 'item 738 killed native mutant', phase, state });
-      } finally { if (p) await p.close(); }
-    });
+    const sourceEntryControl = async (p, where, phase) => {
+      const held = await keepWriting(p, 'phone', 'reader');
+      await writingComparison(p, 'phone', 'reader', topic + '-' + phase);
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector('#source-body')`), true, 'native source tap owns entry focus');
+      await assertWriting(p, 'reader', held, 'source entry keeps exact writing and To before navigation');
+      await activate(p, 'phone', where + ' ' + CONTROL, true, true);
+      await until(() => p.evaluate(`document.querySelector('#source-body').textContent.includes('Please rewrite this dossier')`), 'source entry activates the actual request link');
+      await closeReader(p, 'phone');
+      await show(p, 'phone', topic, ids, 'reader');
+      await assertWriting(p, 'reader', held, 'source-entry request navigation and return keep exact writing and To');
+    };
+    for (const phase of ['lost-pending', 'visible-text', 'small-target', 'keyboard-target', ...(engine === 'webkit' ? ['reader-tab-boundary', 'reader-source-entry'] : [])]) {
+      await source(phase, topic, async receipt => {
+        let p;
+        try {
+          p = await open(topic + '-' + phase, 'phone', topic, ids.root, GATE);
+          const where = await show(p, 'phone', topic, ids, ['keyboard-target', 'reader-tab-boundary', 'reader-source-entry'].includes(phase) ? 'reader' : 'sheet');
+          assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
+          if (phase === 'reader-source-entry') {
+            await assert.rejects(sourceEntryControl(p, where, phase), error => error.code === 'ERR_ASSERTION' && error.actual === false && error.expected === true && error.message.startsWith('native source Shift-Tab enters previous eligible cover control'), 'only the delivered native source-entry assertion kills this mutant; no source expectation or timeout counts');
+            observations.push({ name: 'item 738 killed native keyboard mutant', phase });
+            return;
+          }
+          if (['keyboard-target', 'reader-tab-boundary'].includes(phase)) {
+            await assert.rejects(activate(p, 'phone', where + ' ' + CONTROL, true), /native Tab reaches refresh/, 'source removing the real stop or Reader boundary must fail native key access');
+            observations.push({ name: 'item 738 killed native keyboard mutant', phase });
+            return;
+          }
+          const state = await look(p, where);
+          assert.throws(() => phase === 'small-target' ? geometry(state, 'phone') : pendingShape(state), { name: 'AssertionError' }, 'applied source mutant must fail the real native assertion');
+          await capture(p, topic + '-' + phase);
+          observations.push({ name: 'item 738 killed native mutant', phase, state });
+        } finally { if (p) await p.close(); }
+      });
+      if (phase === 'reader-source-entry') {
+        let restored;
+        try {
+          restored = await open(topic + '-source-entry-restored', 'phone', topic, ids.root, GATE);
+          const where = await show(restored, 'phone', topic, ids, 'reader');
+          await sourceEntryControl(restored, where, 'source-entry-restored');
+          observations.push({ name: 'item 738 restored native source entry', phase });
+        } finally { if (restored) await restored.close(); }
+      }
+    }
     let p;
     try {
       p = await open(topic + '-restored', 'phone', topic, ids.root, GATE);

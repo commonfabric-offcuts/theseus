@@ -131,3 +131,21 @@ is removed from source; accessible names and honest refusal/error text remain.
 No second preview approval is required. Existing in-flight checks keep their
 exact tested source; this correction must be incorporated into the returned
 738 correction lineage before its final handoff.
+
+The six phone source-entry trails at 8fe establish a separate product keyboard
+fault: native backward Tab arrives on the source article, outside the existing
+inside-cover branch, and reaches no control. They establish no internal engine
+cause. The Reader also owns backward entry from that article when its preceding
+eligible stop belongs to the cover. It enters that stop in document order,
+including payload and request links, then uses the existing cover order. Hidden,
+disabled and negative-tabindex stops are skipped; writing, To and selection keep
+their existing owners. No shortcut or test focus substitute is added.
+
+The WebKit applied-source case removes only this article-entry branch on disk.
+It repeats the native writing/source tap and backward keys, asserts the first
+delivered native key enters the preceding eligible cover control, and restores
+the exact candidate before repeating that same path through request navigation.
+The inside-cover mutant and its summary-start control remain separate. All 73
+case identities and six phone lifecycles remain. This source correction is
+unrun until the coordinator's final pair; prior runtime and visual qualifications
+remain bound to their old source.
