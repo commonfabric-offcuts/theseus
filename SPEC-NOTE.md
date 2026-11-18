@@ -1,0 +1,13 @@
+# Train49 re-cut specification
+
+Build a new owned source line from pre6500dbd77f9 and actuallive98 85147119 with true ancestry for approved738/721/731/704. Capture every actual conflict before resolution; ours is receivingHEAD0dbd77f9. Preserve all current live behavior. No new product correction is permitted. Every product byte must equal that three-way merge.
+
+Remove650 in full: product edges/width state, CSS, module imports, native/baseline/mutant cases, fixture hooks, cache additions and source controls. Keep651 and all preexisting shared features/tests. Retain only applicable approved post650 staying corrections:651 exact selector,9501 two restart metadata closures,b811 reading/diagnostic contracts,f737 wording guard and the already reviewed necessary ledger/schema/read-declaration integration hunks. No50/51 ancestry or653 thumbnail hunk.
+
+Phone opening must use native input, observe actual first-tap outcome, and avoid a second tap into an open or asynchronously opening Reader. An already-lit card must open; old light is not completion. Keep saved writing/source assertions. Shared Tab traversal uses native Tab/Shift-Tab with WebKit modifiers, records actual element identity/order, refuses a repeated state or finite safety limit if the original plus target was not reached, and adds no forced focus. Preserve exact case names and geometry tolerances.
+
+Focused synthetic helper and selected local Core/ledger controls only, one test process at a time, serial Node concurrency1, CPython3.9 with a unique effective cache per mutant/restored run. Execute real source mutations, assert applied bytes, catch intended failures, restore exact bytes and independently recheck. These controls prove source contracts only, not native input delivery or geometry.
+
+Keep every original raw false, source identity, cleanup qualification and coordinator refusal. Shared fixture/driver changes make consumers source-affected and UNRUN. Do not weaken guards, manufacture green, import old browser suites or treat old-harness failures as automatically quarantined. C9619/9621 requires one future separately authorized fresh complete run on final reviewed source; oldpartial/208/126/eleven are historical only.
+
+Freeze exact clean source head/tree/ordered parents, full binary differences, every Git entry/blob/SHA256, input and evidence SHA256SUMS, conflict/path/hunk ledger and complete report. Zero runtime/hosted allocations, servers, browser/native callbacks, live-store/profile/key/session/auth access, external writes, delegation, push/PR/install/deploy or self-approval. Independent final merge review owns the next decision.

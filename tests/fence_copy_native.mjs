@@ -2,10 +2,13 @@
 // views. Run in both engines, without granting clipboard permissions.
 // Usage: node tests/fence_copy_native.mjs <Chrome for Testing> <evidence dir> [case filter]
 import assert from 'node:assert/strict';
+import { assertFeedCard, assertCardDrag } from './train49-contract-oracles.mjs';
+import { fenceBoundarySnapshot } from './fence-copy-observation.mjs';
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createRequire } from 'node:module';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +16,17 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const [chrome, evidence, filter = ''] = process.argv.slice(2);
 const playwright = createRequire(import.meta.url)(process.env.AIM_PLAYWRIGHT_CORE);
 await mkdir(evidence, { recursive: true });
+const source = {};
+for (const filename of ['tests/fence_copy_native.mjs', 'tests/fence-copy-observation.mjs',
+  'tests/train49-contract-oracles.mjs', 'tests/fixtures/ui_http.py', 'web/reply-stacks.mjs',
+  'web/stack-feed.mjs', 'web/feed-fence-copy.mjs', 'web/fence-copy.mjs',
+  'web/message-menu.mjs', 'web/reader.mjs', 'web/app.mjs', 'web/lines.mjs',
+  'web/message-format.mjs', 'web/feed-passages.mjs', 'web/stack-order.mjs', 'web/aim.css', 'web/stack-look.css']) {
+  const bytes = await readFile(path.join(root, filename));
+  source[filename] = createHash('sha256').update(bytes).digest('hex');
+  await mkdir(path.dirname(path.join(evidence, 'source', filename)), { recursive: true });
+  await writeFile(path.join(evidence, 'source', filename), bytes);
+}
 const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--agent-colors'], { cwd: root });
 const pending = new Map(); let serial = 0, stderr = '';
 fixture.stderr.on('data', data => { stderr += data; });
@@ -28,6 +42,12 @@ const control = data => new Promise((resolve, reject) => {
   const id = ++serial; pending.set(id, { resolve, reject }); fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], observations = [];
+async function boundary(p, name, phase, cardSelector, controlSelector, point = null) {
+  observations.push({ name, phase, engine, source,
+    state: await p.evaluate(fenceBoundarySnapshot, { cardSelector, controlSelector, point }) });
+  // Persist before the next assertion or native gesture can fail.
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, observations }, null, 2));
+}
 let browser, facts, contexts = [], engine;
 const payload = '\t  α <tag> & `literal`  \n\nlast line';
 const body = 'Before the fence.\n\n~~~~ text\n' + payload + '\n~~~~\n\nAfter the fence.';
@@ -119,7 +139,7 @@ try {
           }
           await copy(p, button);
           assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'one Copy tap never opens a message');
-          assert.equal(await p.locator(card).evaluate(c => c.tagName), 'BUTTON');
+          assertFeedCard(await p.locator(card).evaluate(c => ({ tag: c.tagName, role: c.getAttribute('role'), tabIndex: c.tabIndex })));
           assert.equal(await p.locator('button button').count(), 0, 'no nested button semantics');
           assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
           await picture(p, `${id === message ? 'topic' : 'conversation'}-${label.replaceAll(' ', '-')}`);
@@ -192,7 +212,9 @@ try {
         const phone = width < 1280, p = await open(route, { width, dark, phone });
         const button = p.locator(selector).first();
         await p.evaluate(() => { copyMode = 'pending'; });
-        await press(p, selector);
+        if (surface === 'feed' && width === 320) await boundary(p, 'feed320 coverage', 'before pending press', query(message), selector);
+        try { await press(p, selector); }
+        finally { if (surface === 'feed' && width === 320) await boundary(p, 'feed320 coverage', 'after pending press', query(message), selector); }
         await wait(p, () => copyResolves.length === 1);
         assert.equal(await button.getAttribute('data-label'), 'Copying…');
         assert.equal(await button.getAttribute('aria-label'), 'Copying fenced text…');
@@ -201,7 +223,9 @@ try {
         if (phone) assert.ok(box.width >= 44 && box.height >= 44, surface + ' pending touch target');
         await p.evaluate(() => { copyResolves.shift()(); copyMode = 'reject'; });
         await wait(p, s => document.querySelector(s).dataset.label === 'Copied', selector);
-        await press(p, selector);
+        if (surface === 'feed' && width === 320) await boundary(p, 'feed320 coverage', 'before refusal press', query(message), selector);
+        try { await press(p, selector); }
+        finally { if (surface === 'feed' && width === 320) await boundary(p, 'feed320 coverage', 'after refusal press', query(message), selector); }
         const notice = p.locator('.fence-copy-announcement:not(.sr-only)').first();
         await notice.waitFor();
         const guidance = surface === 'feed' ? 'Open the message, select the text, and use Copy.' : 'Select the text and use Copy.';
@@ -225,6 +249,7 @@ try {
           return { inView: rect.width > 2 && rect.height > 2 && rect.left >= 0 && rect.top >= 0 &&
             rect.right <= innerWidth && rect.bottom <= innerHeight, covered };
         });
+        if (surface === 'feed' && width === 320) await boundary(p, 'feed320 coverage', 'after refusal before coverage assertion', query(message), selector);
         assert.deepEqual(layout, { inView: true, covered: [] }, surface + ' ' + width + (dark ? ' dark' : ' light'));
         await p.close();
       }
@@ -320,8 +345,8 @@ try {
       await p.evaluate(() => { copyMode = 'reject'; });
       await press(p, selector);
       assert.match(await feedbackWords(p.locator('.fence-copy-announcement:not(.sr-only)')), /Open the message/);
-      // The Reader is the desktop fallback: dragging over the feed card itself
-      // opens the message on release. It must not select the payload in place.
+      // Approved721: dragging selects the source in place; a separate explicit
+      // stationary click still opens the Reader for manual Copy recovery.
       const span = p.locator(query(message) + ' .md-pre').first();
       await span.scrollIntoViewIfNeeded();
       const line = await span.evaluate(node => {
@@ -333,8 +358,10 @@ try {
       });
       await p.mouse.move(line.from, line.y); await p.mouse.down();
       await p.mouse.move(line.to, line.y, { steps: 8 });
-      assert.equal(await p.evaluate(() => getSelection().toString()), '');
+      assert.equal(await p.evaluate(() => getSelection().toString()), 'last');
       await p.mouse.up();
+      assertCardDrag(await p.evaluate(() => ({ selection: getSelection().toString(), reader: document.querySelector('#reader').open })));
+      await span.click();
       const source = p.locator('#source-body');
       await source.locator('.md-pre').waitFor();
       await source.focus();
@@ -353,7 +380,10 @@ try {
       await field.evaluate(t => t.setSelectionRange(0, 5));
       const card = p.locator(query(message));
       await card.scrollIntoViewIfNeeded();
-      await card.click({ button: 'right', position: { x: 8, y: 8 } });
+      const menuBox = await card.boundingBox(), menuPoint = { x: menuBox.x + 8, y: menuBox.y + 8 };
+      await boundary(p, 'composer document Selection', 'before menu', query(message), '#inline-writing-body', menuPoint);
+      try { await card.click({ button: 'right', position: { x: 8, y: 8 } }); }
+      finally { await boundary(p, 'composer document Selection', 'after menu', query(message), '#inline-writing-body', menuPoint); }
       await p.locator('.message-menu-list').waitFor();
       assert.deepEqual(await field.evaluate(t => [t.value, t.selectionStart, t.selectionEnd]), ['hello composer', 0, 5]);
       assert.equal(await p.evaluate(() => getSelection().toString()), engine === 'chromium' ? 'hello' : '');
@@ -407,8 +437,13 @@ try {
           }
           return { x, y };
         }, { selector, word, previous });
-        await cdp.send('Input.synthesizeTapGesture', { ...point, duration: 1200, tapCount: 1, gestureSourceType: 'touch' });
-        await wait(p, () => lastFeedContext !== null);
+        if (width === 375 && !selector) await boundary(p, 'phone375 card-space ' + where, 'before long press', query(message), feedCopy(query(message)), point);
+        try {
+          await cdp.send('Input.synthesizeTapGesture', { ...point, duration: 1200, tapCount: 1, gestureSourceType: 'touch' });
+          await wait(p, () => lastFeedContext !== null);
+        } finally {
+          if (width === 375 && !selector) await boundary(p, 'phone375 card-space ' + where, 'after long press', query(message), feedCopy(query(message)), point);
+        }
         const actual = await p.evaluate(() => ({
           prevented: lastFeedContext, selection: getSelection().toString(),
           menu: Boolean(document.querySelector('.message-menu-list')), reader: document.querySelector('#reader').open,

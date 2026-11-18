@@ -394,8 +394,10 @@ function holdsFrame(f, selected, border = true) {
 export async function whisperOutlineReading({ check, until, control, facts, shot, engine, observations }, h) {
   const restart = async () => {
     await control({ method: 'server_stop' });
-    const { origin } = await control({ method: 'server_start' });
+    const { origin, token } = await control({ method: 'server_start' });
     assert.equal(origin, facts.origin, 'fixture restarts on its own origin');
+    assert.ok(typeof token === 'string' && token.length > 0, 'fixture restart returns its session token');
+    facts.token = token;
   };
   const branches = ['feed-rest', 'feed-selected', 'dossier-sheet-rest', 'dossier-sheet-selected', 'dossier-folded-selected', 'dossier-header-rest', 'dossier-header-selected'];
   for (const state of branches) await check(`reading item 704 ${state}: whispers keep dotted frames at 320 375 390 and laptop, light and dark`, async () => {
@@ -488,8 +490,10 @@ export async function whisperOutlineReading({ check, until, control, facts, shot
 export async function whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close }) {
   const restart = async () => {
     await control({ method: 'server_stop' });
-    const { origin } = await control({ method: 'server_start' });
+    const { origin, token } = await control({ method: 'server_start' });
     assert.equal(origin, facts.origin, 'fixture restarts on its own origin');
+    assert.ok(typeof token === 'string' && token.length > 0, 'fixture restart returns its session token');
+    facts.token = token;
   };
   // The source has no saving/refused/empty branch of its own: those belong to
   // the writing below it. Exercise the source while that writing is empty,
