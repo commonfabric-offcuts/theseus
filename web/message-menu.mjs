@@ -4,8 +4,8 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // The message under the pointer lights, as a passage lights in the Reader,
 // and a small bar of buttons sits over its top corner: 👍 (read and
 // understood), ✅ and 🚫 when the message asks the reader for a go-ahead,
-// Reply's glyph (the Reader opens on the message with the cursor in the
-// reply), Show full message while the card cuts the message off, Fold (Unfold
+// Reply's glyph (the shared reply bar opens inside that message's card),
+// Show full message while the card cuts the message off, Fold (Unfold
 // on a folded message; none on a starred one), and ⋯, the message's menu (Copy
 // Link, Mark read or unread; docs/links.md), which a right-click on the message
 // opens too, where the pointer is (item 473: glyphs, each named, with its name
@@ -82,6 +82,7 @@ function focusStop(target) {
 export class MessageMenu {
   // host: #messages. item(id): its loaded topic_messages item. viewer, kind:
   // who reads. reply(id, card): the Reader on it, the cursor in the reply.
+  // inlineReply(id, card): the hover/touch bar's Reply in that source card.
   // thumb(item, on) and answer(item, yes|no): the person's acts.
   // expand(card, item): reads a cut-off card on in place. more(item, button):
   // the message's ⋯ menu, opened from the bar's ⋯ (openMessageMenu).
@@ -90,9 +91,9 @@ export class MessageMenu {
   // Reader on it with chosen ({start, end, text} of its words) quoted.
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
-  constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
+  constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
     clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -130,6 +131,7 @@ export class MessageMenu {
     // names who (the bar's 👍 thumbs it).
     // On a phone, the first tap on a card lights it; the next opens it.
     host.addEventListener('click', event => {
+      if (event.target.closest?.('#reader')) return;
       const entry = this.entryOf(event.target);
       if (!entry) return;
       const react = event.target.closest?.('[data-react]');
@@ -143,7 +145,7 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb, .cover-refresh-glyph') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
         // The reply arrow answers its own first tap with its words (card-reading.mjs).
         if (event.target.closest?.('.replied-mark')) return;
@@ -229,7 +231,7 @@ export class MessageMenu {
       thumb: make('thumb', '👍', 'Thumbs-up: read and understood'),
       yes: make('yes', '✅', 'Go ahead'),
       no: make('no', '🚫', "Don't"),
-      reply: make('reply', '', 'Reply (Return)'),
+      reply: make('reply', '', 'Reply'),
       full: make('full', '', 'Show full message'),
       fold: make('fold', '', 'Fold'),
       more: make('more', '⋯', 'More for this message'),
@@ -242,7 +244,10 @@ export class MessageMenu {
   }
   // The list entry a target is in: a card, or a fold holding its card, on its
   // own or in a reply stack (reply-stacks.mjs).
-  entryOf(target) { return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target); }
+  entryOf(target) {
+    if (target?.closest?.('#reader')) return null;
+    return entryOf(this.host, feedFence(target?.closest?.('.feed-fence-copy')) ?? target);
+  }
   // A dossier's title bar glyphs are its controls too (reply-stacks.mjs): pressing or focusing one keeps the light.
   ownsControls(target) { return this.bar.contains(target) || Boolean(target?.closest?.('.message-menu-list, .stack-tools')); }
   // The entries on show, in the page's order; a stack's folded replies are not.
@@ -279,7 +284,7 @@ export class MessageMenu {
   // Writing keeps the focus (claim), and so do an open menu, the Reader or any
   // other dialog, so typing and their keys never go elsewhere.
   hover(event) {
-    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]')) return;
+    if (event.buttons || open || this.host.closest('[inert]') || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     this.claim(event.target);
   }
   light(entry) {
@@ -390,7 +395,7 @@ export class MessageMenu {
     const entry = this.lit, item = entry && this.item(entry.dataset.id);
     if (!item) return;
     const card = cardIn(entry);
-    if (name === 'reply') return this.reply(item.id, card);
+    if (name === 'reply') return this.inlineReply(item.id, card);
     if (name === 'more') return this.more(item, this.buttons.more);
     if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
     if (name === 'fold') return this.fold(item);
@@ -404,7 +409,7 @@ export class MessageMenu {
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
     // Nor under a drawer or sheet open over the page, which makes the page inert.
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
+    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
     // The bar's own buttons, and every control in the list but a card itself (a
@@ -421,7 +426,7 @@ export class MessageMenu {
       // as the Reader opens on it; with none, Return replies as Reply does.
       const chosen = this.passages.chosen(this.lit), item = this.item(this.lit.dataset.id);
       if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);
-      else this.act('reply');
+      else if (item) this.reply(item.id, cardIn(this.lit));
       return;
     }
     const entries = this.entries();
@@ -466,7 +471,7 @@ export class MessageMenu {
   // took the key.
   copies(event) {
     if (event.defaultPrevented || event.isComposing || !copyKey(event, this.mac) || !this.lit?.isConnected) return false;
-    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
+    if (this.doc.querySelector('dialog[open]:not([data-card-reply])') || this.host.closest('[inert]') || writing(this.doc.activeElement)) return false;
     if (this.doc.getSelection?.()?.isCollapsed === false) return false;
     const item = this.item(this.lit.dataset.id);
     if (!item) return false;

@@ -21,7 +21,9 @@
 // AIM_PLAYWRIGHT_CORE names a playwright-core directory. The release check runs
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
+import { whisperOutlineCompose, archive704 } from './whisper_outline_native.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
+import { item721Compose } from './item_721_compose.mjs';
 import { composeSwipe648 } from './compose_swipe_648.mjs';
 import { composeSwipe648Protections, observe648 } from './compose_swipe_648_protections.mjs';
 import { spawn } from 'node:child_process';
@@ -46,6 +48,8 @@ const until = async (p, expression, description, arg, timeout = 8000) => {
   try { return await p.waitForFunction(expression, arg, { polling: 'raf', timeout }); }
   catch (error) { throw Error(`Timed out: ${description}`); }
 };
+
+const hashes = await archive704(evidence);
 
 const world = () => spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
 const fixture = world();
@@ -149,9 +153,10 @@ async function open(p, id, words = id === first ? 'First agent' : 'Second agent'
   // second tap opens it.
   const box = await p.locator(card).boundingBox(), x = box.x + box.width / 2, y = box.y + box.height * 0.6;
   if (p.touch) {
+    const wasLit = await p.evaluate(s => document.querySelector(s).classList.contains('lit'), card);
     await p.touchscreen.tap(x, y);
-    await until(p, s => document.querySelector(s).classList.contains('lit'), 'the card lit', card);
-    await p.touchscreen.tap(x, y);
+    await until(p, ({ card, wasLit }) => document.querySelector('#reader').open || (!wasLit && document.querySelector(card).classList.contains('lit')), 'the first tap opened the Reader or newly lit the card', { card, wasLit });
+    if (!await p.evaluate(() => document.querySelector('#reader').open)) await p.touchscreen.tap(x, y);
   } else {
     // A long message's excerpt becomes a box that scrolls under a resting
     // pointer; the cue under it ("Open to read it whole") opens it from there.
@@ -162,6 +167,29 @@ async function open(p, id, words = id === first ? 'First agent' : 'Second agent'
   await until(p, s => document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith(s), 'the Reader on the message', words)
     .catch(async error => { await picture(p, 'open-failed'); throw Error(`${error.message}: ${await p.evaluate(s => JSON.stringify({ open: document.querySelector('#reader').open, lit: document.querySelector(s)?.className, at: document.activeElement?.id, body: document.querySelector('#source-body').textContent.slice(0, 40) }), card)}`); });
   await until(p, () => document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(a => a.playState !== 'running'), 'a settled Reader');
+}
+// Record real focus identity, including unnamed controls, rather than assuming
+// twelve Tab presses cover the composer. No focus is assigned here.
+async function tabToNative(p, id, back = false) {
+  const states = [], seen = new Set(), safetyBound = 512;
+  let reason = 'safety-bound';
+  for (let n = 0; n <= safetyBound; n++) {
+    const state = await p.evaluate(() => {
+      const el = document.activeElement, path = [];
+      for (let node = el; node; node = node.parentElement) {
+        path.unshift(node.tagName + (node.id ? '#' + node.id : ':nth-child(' + (Array.prototype.indexOf.call(node.parentElement?.children || [], node) + 1) + ')'));
+      }
+      return { id: el?.id || '', path: path.join(' > ') };
+    });
+    states.push(state);
+    if (state.id === id) { reason = 'target'; break; }
+    if (seen.has(state.path)) { reason = 'repeat'; break; }
+    seen.add(state.path);
+    if (n === safetyBound) break;
+    await p.keyboard.press(`${engine === 'webkit' ? 'Alt+' : ''}${back ? 'Shift+' : ''}Tab`);
+  }
+  measured.push({ name: 'native Tab traversal', shape: p.shape, scheme: p.scheme, target: id, back, safetyBound, reason, states });
+  assert.equal(states.at(-1).id, id, `${back ? 'Shift+' : ''}Tab reaches #${id}; ${reason}: ${JSON.stringify(states)}`);
 }
 // The keyboard comes up as a phone's does: the visible height falls while a text field has focus.
 async function keyboardUp(p) {
@@ -292,6 +320,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  await whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close });
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
   await composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine, evidence });
@@ -1989,9 +2018,8 @@ async function run() {
   // (reached by the keys alone from the writing) or on Send.
   for (const on of ['+', 'Send']) await check(`stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on ${on}, outside the open who panel, puts it away and names what was typed in To, by the keys alone`, async () => {
     const p = await page('stacked'), at = NAMING['New message sheet'];
-    const tab = back => p.keyboard.press(`${engine === 'webkit' ? 'Alt+' : ''}${back ? 'Shift+' : ''}Tab`);
     const focused = () => p.evaluate(() => document.activeElement?.id);
-    const tabTo = async (id, back = false) => { for (let n = 0; n < 12 && await focused() !== id; n++) await tab(back); assert.equal(await focused(), id, `${back ? 'Shift+' : ''}Tab reaches #${id}`); };
+    const tabTo = (id, back = false) => tabToNative(p, id, back);
     await until(p, () => !document.querySelector('#inline-composer').hidden, 'the topic\'s composer');
     await p.locator(at.field).focus();
     await p.keyboard.insertText('Home writing.');
@@ -2022,9 +2050,8 @@ async function run() {
   // topic page's own composer has its Escape, as every surface's composer does.
   for (const panel of ['who', '+']) await check(`stacked: a Reader closed by ⌘⇧Return with its ${panel} panel open takes the panel with it, and the topic page's composer then puts its own who panel away by Escape, naming what waits in To, by the keys alone`, async () => {
     const p = await page('stacked'), at = NAMING['New message sheet'];
-    const tab = back => p.keyboard.press(`${engine === 'webkit' ? 'Alt+' : ''}${back ? 'Shift+' : ''}Tab`);
     const focused = () => p.evaluate(() => document.activeElement?.id);
-    const tabTo = async (id, back = false) => { for (let n = 0; n < 12 && await focused() !== id; n++) await tab(back); assert.equal(await focused(), id, `${back ? 'Shift+' : ''}Tab reaches #${id}`); };
+    const tabTo = (id, back = false) => tabToNative(p, id, back);
     // 1. Where it rests in the feed, warp typed in To and left unnamed by a press elsewhere.
     await until(p, () => !document.querySelector('#inline-composer').hidden, 'the topic\'s composer');
     await p.locator(at.field).focus();
@@ -2530,7 +2557,10 @@ async function runSending() {
 // and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = ['chromium', 'webkit'];
-const PHASES = [[run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+async function runItem721() {
+  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts, evidence });
+}
+const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
 let browserClosed = true, harnessCompleted = false;
 try {
@@ -2549,7 +2579,7 @@ try {
   fixture.stdin.end(); shortFixture.stdin.end();
   const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
     fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);

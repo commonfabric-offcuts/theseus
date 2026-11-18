@@ -2,6 +2,7 @@
 // (docs/whispers.md, item 92). The views are painted for real into a small DOM;
 // the native whisper checks show the same in a browser.
 import test from 'node:test';
+import { undecidedWhisper704 } from './whisper_outline_native.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { defaultChoice, choiceOf, chosen, naming, unnamed, sending, audienceWords, paintChoice, clearChoice, paintWhisperAuthor } from '../web/whisper-choice.mjs';
@@ -419,4 +420,24 @@ test('a person\'s whisper may start a topic or a pipeline item, as their Tell ma
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
   assert.equal((app.match(/mayStartFrom\(p\.source\)/g) ?? []).length, 3, 'Start a topic, Add to pipeline and its line');
   assert.match(app, /function offerConversation[^\n]*\n[^\n]*source\.whisper/, 'writing about a whisper never links to it');
+});
+
+
+test('704 undecided saved quote stays private when Reader.send makes the default explicit before freezing', async t => {
+  const source = { source_ref: { kind: 'message', id: 'fixture-private', revision: 1 }, whisper: true, private_to: 'tony', author: 'fable' };
+  const f = reader(t, { source });
+  const quotes = [{ source: source.source_ref, excerpt: 'Exact private answer.' }];
+  f.reply.edit({ body: '> Exact private answer.\n\n', quotes });
+  undecidedWhisper704(f.reply.draft, 'fable');
+  const before = structuredClone(f.reply.draft);
+  let frozen;
+  f.r.callbacks.send = editor => { frozen = editor.beginPrepare({ prepareOperationId: 'prepare704', sendOperationId: 'send704', submissionId: 'submission704' }).snapshot; };
+  f.r.drawEditor = () => {};
+  await f.r.send(false);
+  assert.equal(frozen.whisper, true);
+  assert.equal(frozen.intent, null);
+  assert.equal(frozen.body, before.body);
+  assert.deepEqual(frozen.addressees, before.addressees);
+  assert.deepEqual(frozen.quotes, quotes);
+  assert.equal(before.whisper, undefined, 'sending does not retroactively invent a saved choice');
 });

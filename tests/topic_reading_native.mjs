@@ -1,3 +1,4 @@
+import { assertInlineReply } from './train49-contract-oracles.mjs';
 // The topic page's acts and how its cards read (docs/interaction.md,
 // docs/thumbs.md, docs/topic-reading.md), pressed as a person presses them: a
 // pointer and keys at 1280 wide, and a finger at 390 wide with touch. Each
@@ -18,8 +19,10 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
+import { coverRefreshChecks } from './cover_refresh_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { whisperOutlineReading } from './whisper_outline_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
@@ -2964,7 +2967,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
-  await check('reading Reply on the bar opens the Reader on the lit message with the cursor in the reply, and nothing quoted', async () => {
+  await check('reading Reply on the bar embeds the reply in the lit source card with the cursor in the reply, and nothing quoted', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'reading-bar-reply-' + device;
       const ids = await seed(topic, [['a', { sender: 'aim-core', join: true, addressees: [facts.actor], body: 'Message A, to reply to.' }],
@@ -2972,8 +2975,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       const p = await open('reading-bar-reply-' + device, device, topic, ids.a);
       await light(p, device, ids.a);
       await press(p, device, `${BAR} [data-act=reply]`);
-      await until(async () => (await readerOn(p))?.startsWith('Message A'), device + ': Reply on the bar opens the Reader on the lit message');
-      await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), device + ': the cursor is in the reply');
+      await until(() => p.evaluate(`document.querySelector('#reader')?.open && document.querySelector('#reader').closest('.message-card')?.dataset.id === ${JSON.stringify(ids.a)} && document.activeElement?.id === 'writing-body'`), device + ': Reply embeds the reply in the lit card and focuses writing');
+      assertInlineReply(await p.evaluate(`(()=>{const r=document.querySelector('#reader'),c=r.closest('.message-card');return {open:r.open,sourceId:c?.dataset.id??null,role:c?.getAttribute('role')??null,focus:document.activeElement?.id}})()`), ids.a);
       assert.equal(await valueOf(p, '#writing-body'), '', device + ': nothing quoted');
       await closeReader(p, device);
       assert.deepEqual(p.errors, []);
@@ -3001,7 +3004,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         return seen && { ...seen, head: name[seen.head], replies: seen.replies.map(([id, shown]) => [name[id], shown]) };
       };
       await becomes(stack, { top: true, head: 'root', replies: [['one', false], ['two', false], ['three', true], ['four', true]], expanded: 'true', fold: 'folded',
-        aboveOther: true, otherAlone: true }, device + ': the replies under the message, oldest first as a chat reads; the unread ones and the newest in view, the rest folded behind one line; the stack above the message on its own, as its newest reply is newer');
+        aboveOther: false, otherAlone: true }, device + ': the replies stay chronological and the dossier keeps its admission position below the later root');
       await shot(p, 'reading-stack-' + device);
       const line = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
       await centre(p, line);
@@ -3189,6 +3192,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await coverRefreshChecks({ check, until, view, control, shot, facts, observations, engine },
+    { seed, open, centre, tap, press, openReader, closeReader, card });
+  await whisperOutlineReading({ check, until, control, facts, shot, engine, observations },
+    { seed, open, centre, tap, lit, words });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

@@ -140,6 +140,10 @@
       "inputs": [],
       "scope": "generated/system/product"
     },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
     "08320cec49fc8b65d2ec92f17c2d15042a2814a91e33122d5e61ea2147010210": {
       "inputs": [
         "tests/fixtures/item_645_original_web.json"
@@ -152,17 +156,330 @@
       ],
       "scope": "repository"
     },
-    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
       "inputs": [],
       "scope": "generated/system/product"
     },
-    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+    "77193d554ceea869e159b7241742e03bc54eb87361b809d79feac0d67139de31": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.json"
+      ],
+      "scope": "repository"
+    },
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c:1": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
       "inputs": [],
       "scope": "generated/system/product"
     },
     "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705": {
       "inputs": [
         "tests/fixtures/item_645_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705:1": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "3b877f1ae69335f7ace884dfa9488c1451f8a039318945a6228a34c961e0c446": {
+      "inputs": [
+        "tests/fixtures/item_731_original_web.json",
+        "tests/fixtures/item_731_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:5": {
+      "inputs": [
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/cover-refresh.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-fold-swipe.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
+      "scope": "repository"
+    },
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c:2": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.tar.gz",
+        "tests/fixtures/item_731_original_web.tar.gz",
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705:2": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.tar.gz",
+        "tests/fixtures/item_731_original_web.tar.gz",
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:6": {
+      "inputs": [
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/cover-refresh.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-fold-swipe.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
       ],
       "scope": "repository"
     }
@@ -279,7 +596,270 @@
       "scope": "generated/system/product"
     },
     "f151e7b0b8c1a33e74a403c054d1367fc274eb8bcbbbb2f6044a7853dca130ca": {
-      "inputs": [],
+      "inputs": [
+        "aim_next/__init__.py",
+        "aim_next/addressing.py",
+        "aim_next/admin.py",
+        "aim_next/assessment_dispatch.py",
+        "aim_next/assessments.py",
+        "aim_next/authority.py",
+        "aim_next/backup.py",
+        "aim_next/blocking.py",
+        "aim_next/broker_routes.py",
+        "aim_next/changes.py",
+        "aim_next/check_reading.py",
+        "aim_next/checks.py",
+        "aim_next/cli.py",
+        "aim_next/cli_covers.py",
+        "aim_next/cli_outcome.py",
+        "aim_next/cli_targets.py",
+        "aim_next/cli_tools.py",
+        "aim_next/codex_broker.py",
+        "aim_next/codex_host.py",
+        "aim_next/colors.py",
+        "aim_next/contract.py",
+        "aim_next/conversation.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/delivery.py",
+        "aim_next/drafts.py",
+        "aim_next/effects_runner.py",
+        "aim_next/effects_watch.py",
+        "aim_next/health.py",
+        "aim_next/hosted_control.py",
+        "aim_next/hosted_notice.py",
+        "aim_next/initialization.py",
+        "aim_next/invite.py",
+        "aim_next/live.py",
+        "aim_next/marks.py",
+        "aim_next/media.py",
+        "aim_next/memory.py",
+        "aim_next/message_edit.py",
+        "aim_next/migrations.py",
+        "aim_next/openings.py",
+        "aim_next/outcome_asks.py",
+        "aim_next/outcome_end.py",
+        "aim_next/outcome_kind.py",
+        "aim_next/outcome_light.py",
+        "aim_next/outcome_rules.py",
+        "aim_next/outline_order.py",
+        "aim_next/pipeline.py",
+        "aim_next/pipeline_state.py",
+        "aim_next/profile.py",
+        "aim_next/reactions.py",
+        "aim_next/recovery.py",
+        "aim_next/recovery_io.py",
+        "aim_next/releases.py",
+        "aim_next/responsibility.py",
+        "aim_next/route_pins.py",
+        "aim_next/runner.py",
+        "aim_next/serve.py",
+        "aim_next/server.py",
+        "aim_next/sources.py",
+        "aim_next/stacks.py",
+        "aim_next/standing_conversation.py",
+        "aim_next/store.py",
+        "aim_next/supervisor.py",
+        "aim_next/tool_records.py",
+        "aim_next/tool_words.py",
+        "aim_next/tools_core.py",
+        "aim_next/topic_reading.py",
+        "aim_next/topic_state.py",
+        "aim_next/validation.py",
+        "aim_next/wake_adapter.py",
+        "aim_next/wake_health.py",
+        "aim_next/web_build.py",
+        "aim_next/whispers.py",
+        "aim_next/work.py",
+        "tests/agent_colors_native.mjs",
+        "tests/card_editor_652.mjs",
+        "tests/card_scroll_probe.mjs",
+        "tests/compose-reach.mjs",
+        "tests/conversation_native.mjs",
+        "tests/device_native.mjs",
+        "tests/fixture_control.mjs",
+        "tests/fixtures/ui_http.py",
+        "tests/fold_native.mjs",
+        "tests/form_rules_native.mjs",
+        "tests/health_native.mjs",
+        "tests/links_native.mjs",
+        "tests/menu_glyphs.mjs",
+        "tests/message_edit_native.mjs",
+        "tests/native-calls.mjs",
+        "tests/native-page-cleanup.mjs",
+        "tests/new_line_native.mjs",
+        "tests/notebook_button_geometry.mjs",
+        "tests/notebook_card_images_native.mjs",
+        "tests/notebook_pages_native.mjs",
+        "tests/notebook_sheet_native.mjs",
+        "tests/outcome_light_native.mjs",
+        "tests/outcome_rail_native.mjs",
+        "tests/outline_stars_native.mjs",
+        "tests/outline_stars_oracle.mjs",
+        "tests/pipeline_native.mjs",
+        "tests/png-bands.mjs",
+        "tests/press-fell.mjs",
+        "tests/reader_asks_native.mjs",
+        "tests/reader_colors_native.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/reader_departure_native.mjs",
+        "tests/reader_freshness_native.mjs",
+        "tests/reader_images_native.mjs",
+        "tests/reader_inline_native.mjs",
+        "tests/reader_live_native.mjs",
+        "tests/reader_navigation_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/release-rule.mjs",
+        "tests/render_native.mjs",
+        "tests/set_aside_native.mjs",
+        "tests/stack_native.mjs",
+        "tests/targets_native.mjs",
+        "tests/team_bar_native.mjs",
+        "tests/team_invite_native.mjs",
+        "tests/thumbnail_open_native.mjs",
+        "tests/topic_duties_native.mjs",
+        "tests/topic_header_native.mjs",
+        "tests/topic_list_native.mjs",
+        "tests/topic_reading_native.mjs",
+        "tests/topic_sources_native.mjs",
+        "tests/topic_work_native.mjs",
+        "tests/ui_whisper.test.mjs",
+        "tests/ui_whisper_outline.test.mjs",
+        "tests/wakes_native.mjs",
+        "tests/webkit_native.mjs",
+        "tests/whisper_native.mjs",
+        "tests/whisper_outline_native.mjs",
+        "tools/ci-input-reads.json",
+        "tools/ci_input_reads.py",
+        "tools/native.py",
+        "tools/release_check.py",
+        "tools/unit_shards.py",
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
       "scope": "generated/system/product"
     }
   },
@@ -2502,6 +3082,18 @@
         "tests/fixtures/schema_46.sql"
       ],
       "scope": "repository"
+    },
+    "b156dfb45e99e96afb4834c9046f506a1dd8b167f3f5fa662e0f13bbf21b50ad": {
+      "inputs": [
+        "tests/fixtures/schema_47.sql"
+      ],
+      "scope": "repository"
+    },
+    "54201f108703632fba2d686d6f97a3b18c715f78b3d2514c02d8734c0b6dedc5": {
+      "inputs": [
+        "tests/fixtures/schema_48.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -4396,7 +4988,270 @@
   },
   "tests/webkit_native.mjs": {
     "f151e7b0b8c1a33e74a403c054d1367fc274eb8bcbbbb2f6044a7853dca130ca": {
-      "inputs": [],
+      "inputs": [
+        "aim_next/__init__.py",
+        "aim_next/addressing.py",
+        "aim_next/admin.py",
+        "aim_next/assessment_dispatch.py",
+        "aim_next/assessments.py",
+        "aim_next/authority.py",
+        "aim_next/backup.py",
+        "aim_next/blocking.py",
+        "aim_next/broker_routes.py",
+        "aim_next/changes.py",
+        "aim_next/check_reading.py",
+        "aim_next/checks.py",
+        "aim_next/cli.py",
+        "aim_next/cli_covers.py",
+        "aim_next/cli_outcome.py",
+        "aim_next/cli_targets.py",
+        "aim_next/cli_tools.py",
+        "aim_next/codex_broker.py",
+        "aim_next/codex_host.py",
+        "aim_next/colors.py",
+        "aim_next/contract.py",
+        "aim_next/conversation.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/delivery.py",
+        "aim_next/drafts.py",
+        "aim_next/effects_runner.py",
+        "aim_next/effects_watch.py",
+        "aim_next/health.py",
+        "aim_next/hosted_control.py",
+        "aim_next/hosted_notice.py",
+        "aim_next/initialization.py",
+        "aim_next/invite.py",
+        "aim_next/live.py",
+        "aim_next/marks.py",
+        "aim_next/media.py",
+        "aim_next/memory.py",
+        "aim_next/message_edit.py",
+        "aim_next/migrations.py",
+        "aim_next/openings.py",
+        "aim_next/outcome_asks.py",
+        "aim_next/outcome_end.py",
+        "aim_next/outcome_kind.py",
+        "aim_next/outcome_light.py",
+        "aim_next/outcome_rules.py",
+        "aim_next/outline_order.py",
+        "aim_next/pipeline.py",
+        "aim_next/pipeline_state.py",
+        "aim_next/profile.py",
+        "aim_next/reactions.py",
+        "aim_next/recovery.py",
+        "aim_next/recovery_io.py",
+        "aim_next/releases.py",
+        "aim_next/responsibility.py",
+        "aim_next/route_pins.py",
+        "aim_next/runner.py",
+        "aim_next/serve.py",
+        "aim_next/server.py",
+        "aim_next/sources.py",
+        "aim_next/stacks.py",
+        "aim_next/standing_conversation.py",
+        "aim_next/store.py",
+        "aim_next/supervisor.py",
+        "aim_next/tool_records.py",
+        "aim_next/tool_words.py",
+        "aim_next/tools_core.py",
+        "aim_next/topic_reading.py",
+        "aim_next/topic_state.py",
+        "aim_next/validation.py",
+        "aim_next/wake_adapter.py",
+        "aim_next/wake_health.py",
+        "aim_next/web_build.py",
+        "aim_next/whispers.py",
+        "aim_next/work.py",
+        "tests/agent_colors_native.mjs",
+        "tests/card_editor_652.mjs",
+        "tests/card_scroll_probe.mjs",
+        "tests/compose-reach.mjs",
+        "tests/conversation_native.mjs",
+        "tests/device_native.mjs",
+        "tests/fixture_control.mjs",
+        "tests/fixtures/ui_http.py",
+        "tests/fold_native.mjs",
+        "tests/form_rules_native.mjs",
+        "tests/health_native.mjs",
+        "tests/links_native.mjs",
+        "tests/menu_glyphs.mjs",
+        "tests/message_edit_native.mjs",
+        "tests/native-calls.mjs",
+        "tests/native-page-cleanup.mjs",
+        "tests/new_line_native.mjs",
+        "tests/notebook_button_geometry.mjs",
+        "tests/notebook_card_images_native.mjs",
+        "tests/notebook_pages_native.mjs",
+        "tests/notebook_sheet_native.mjs",
+        "tests/outcome_light_native.mjs",
+        "tests/outcome_rail_native.mjs",
+        "tests/outline_stars_native.mjs",
+        "tests/outline_stars_oracle.mjs",
+        "tests/pipeline_native.mjs",
+        "tests/png-bands.mjs",
+        "tests/press-fell.mjs",
+        "tests/reader_asks_native.mjs",
+        "tests/reader_colors_native.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/reader_departure_native.mjs",
+        "tests/reader_freshness_native.mjs",
+        "tests/reader_images_native.mjs",
+        "tests/reader_inline_native.mjs",
+        "tests/reader_live_native.mjs",
+        "tests/reader_navigation_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/release-rule.mjs",
+        "tests/render_native.mjs",
+        "tests/set_aside_native.mjs",
+        "tests/stack_native.mjs",
+        "tests/targets_native.mjs",
+        "tests/team_bar_native.mjs",
+        "tests/team_invite_native.mjs",
+        "tests/thumbnail_open_native.mjs",
+        "tests/topic_duties_native.mjs",
+        "tests/topic_header_native.mjs",
+        "tests/topic_list_native.mjs",
+        "tests/topic_reading_native.mjs",
+        "tests/topic_sources_native.mjs",
+        "tests/topic_work_native.mjs",
+        "tests/ui_whisper.test.mjs",
+        "tests/ui_whisper_outline.test.mjs",
+        "tests/wakes_native.mjs",
+        "tests/webkit_native.mjs",
+        "tests/whisper_native.mjs",
+        "tests/whisper_outline_native.mjs",
+        "tools/ci-input-reads.json",
+        "tools/ci_input_reads.py",
+        "tools/native.py",
+        "tools/release_check.py",
+        "tools/unit_shards.py",
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
       "scope": "generated/system/product"
     }
   },
@@ -4542,6 +5397,531 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/stack_native.mjs": {
+    "2ba241f8e91166a5413d09df27a24d34b3dd0a8a307efccbba5d410586fea867": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.json"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/test_cover_refresh.py": {
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "3f03a4aa2e895c9e8f466546754d34ea7f453306bf04932faaa47fe5a8a3d6f4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:7": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:8": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:10": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:11": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b17b365bfa3b7667f97176ea0d4fb120b1d4e2ff77355d8ab2797a13325b08b7": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b17b365bfa3b7667f97176ea0d4fb120b1d4e2ff77355d8ab2797a13325b08b7:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:12": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:13": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_item_655_fixture.py": {
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b1806f6be502a6ca4315a5a09c922e105ac26ec1c9b2b70d841944e8fc11117c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_folded_names.test.mjs": {
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [
+        "web/reply-stacks.mjs"
+      ],
+      "scope": "repository"
+    },
+    "66a02d4736568a6a1a82d2a26dd84821c31694b36bfae49e3edc7c0b8f8fffec": {
+      "inputs": [
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
+    },
+    "5a63cfed37169284ee79c097693187334903b670b5ba16b9933258cdf7d1cd1c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "inputs": [
+        "web/app.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_item_655_evidence.test.mjs": {
+    "6be7568042f3fd4493a6fee5275f2ec746527576f770f592e2c073030b0af976": {
+      "inputs": [
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "328a883acb0a67fe74a39f8596cbca262838c15d1394d582cfe90d582e0747e5": {
+      "inputs": [
+        "tests/topic_reading_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86:1": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/fixtures/item_731_mutants.py": {
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_item_731_inputs.py": {
+    "d6a00b642fad8284ce9a355777e807732e9da3ef8e958e4a080c52e18376df09": {
+      "inputs": [
+        "tests/fixtures/item_731_mutants.py",
+        "aim_next/dossier_order.py",
+        "aim_next/conversation.py"
+      ],
+      "scope": "repository"
+    },
+    "be94871e8ded82826728d891f91d12e3b3c0898215470cb6ac4a5689f4b697e9": {
+      "inputs": [
+        "tools/ci-input-reads.json"
+      ],
+      "scope": "repository"
+    },
+    "3b877f1ae69335f7ace884dfa9488c1451f8a039318945a6228a34c961e0c446": {
+      "inputs": [
+        "tests/fixtures/item_731_original_web.json",
+        "tests/fixtures/item_731_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c": {
+      "inputs": [
+        "tests/fixtures/item_731_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705": {
+      "inputs": [
+        "tests/fixtures/item_731_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "661881680e4faab040849ff91bf1fbf64191ae6c1bd5655e2a4cdf3169991726": {
+      "inputs": [
+        "tests/fixtures/item_731_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/ui_card_editor_652_contract.test.mjs": {
+    "249f486437fd88ee02ca78295864c7ba22e24ec7c49e0601c901ad390f43a000": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "833db68d338b7cfc34a440e47091c86473c03a5d6e68687f7a0b934250ca8567": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/whisper_outline_native.mjs": {
+    "404528f8e7fd069ca1b432674769063979ad132fa51e40d640072a687959d98d": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "404528f8e7fd069ca1b432674769063979ad132fa51e40d640072a687959d98d:1": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "404528f8e7fd069ca1b432674769063979ad132fa51e40d640072a687959d98d:2": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "e1166f77450de7a6c18c5b2f52e71ae7f41c256b4b41b733a21dca6604e32912": {
+      "inputs": [
+        "aim_next/__init__.py",
+        "aim_next/addressing.py",
+        "aim_next/admin.py",
+        "aim_next/assessment_dispatch.py",
+        "aim_next/assessments.py",
+        "aim_next/authority.py",
+        "aim_next/backup.py",
+        "aim_next/blocking.py",
+        "aim_next/broker_routes.py",
+        "aim_next/changes.py",
+        "aim_next/check_reading.py",
+        "aim_next/checks.py",
+        "aim_next/cli.py",
+        "aim_next/cli_covers.py",
+        "aim_next/cli_outcome.py",
+        "aim_next/cli_targets.py",
+        "aim_next/cli_tools.py",
+        "aim_next/codex_broker.py",
+        "aim_next/codex_host.py",
+        "aim_next/colors.py",
+        "aim_next/contract.py",
+        "aim_next/conversation.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/delivery.py",
+        "aim_next/drafts.py",
+        "aim_next/effects_runner.py",
+        "aim_next/effects_watch.py",
+        "aim_next/health.py",
+        "aim_next/hosted_control.py",
+        "aim_next/hosted_notice.py",
+        "aim_next/initialization.py",
+        "aim_next/invite.py",
+        "aim_next/live.py",
+        "aim_next/marks.py",
+        "aim_next/media.py",
+        "aim_next/memory.py",
+        "aim_next/message_edit.py",
+        "aim_next/migrations.py",
+        "aim_next/openings.py",
+        "aim_next/outcome_asks.py",
+        "aim_next/outcome_end.py",
+        "aim_next/outcome_kind.py",
+        "aim_next/outcome_light.py",
+        "aim_next/outcome_rules.py",
+        "aim_next/outline_order.py",
+        "aim_next/pipeline.py",
+        "aim_next/pipeline_state.py",
+        "aim_next/profile.py",
+        "aim_next/reactions.py",
+        "aim_next/recovery.py",
+        "aim_next/recovery_io.py",
+        "aim_next/releases.py",
+        "aim_next/responsibility.py",
+        "aim_next/route_pins.py",
+        "aim_next/runner.py",
+        "aim_next/serve.py",
+        "aim_next/server.py",
+        "aim_next/sources.py",
+        "aim_next/stacks.py",
+        "aim_next/standing_conversation.py",
+        "aim_next/store.py",
+        "aim_next/supervisor.py",
+        "aim_next/tool_records.py",
+        "aim_next/tool_words.py",
+        "aim_next/tools_core.py",
+        "aim_next/topic_reading.py",
+        "aim_next/topic_state.py",
+        "aim_next/validation.py",
+        "aim_next/wake_adapter.py",
+        "aim_next/wake_health.py",
+        "aim_next/web_build.py",
+        "aim_next/whispers.py",
+        "aim_next/work.py",
+        "tests/agent_colors_native.mjs",
+        "tests/card_editor_652.mjs",
+        "tests/card_scroll_probe.mjs",
+        "tests/compose-reach.mjs",
+        "tests/conversation_native.mjs",
+        "tests/device_native.mjs",
+        "tests/fixture_control.mjs",
+        "tests/fixtures/ui_http.py",
+        "tests/fold_native.mjs",
+        "tests/form_rules_native.mjs",
+        "tests/health_native.mjs",
+        "tests/links_native.mjs",
+        "tests/menu_glyphs.mjs",
+        "tests/message_edit_native.mjs",
+        "tests/native-calls.mjs",
+        "tests/native-page-cleanup.mjs",
+        "tests/new_line_native.mjs",
+        "tests/notebook_button_geometry.mjs",
+        "tests/notebook_card_images_native.mjs",
+        "tests/notebook_pages_native.mjs",
+        "tests/notebook_sheet_native.mjs",
+        "tests/outcome_light_native.mjs",
+        "tests/outcome_rail_native.mjs",
+        "tests/outline_stars_native.mjs",
+        "tests/outline_stars_oracle.mjs",
+        "tests/pipeline_native.mjs",
+        "tests/png-bands.mjs",
+        "tests/press-fell.mjs",
+        "tests/reader_asks_native.mjs",
+        "tests/reader_colors_native.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/reader_departure_native.mjs",
+        "tests/reader_freshness_native.mjs",
+        "tests/reader_images_native.mjs",
+        "tests/reader_inline_native.mjs",
+        "tests/reader_live_native.mjs",
+        "tests/reader_navigation_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/release-rule.mjs",
+        "tests/render_native.mjs",
+        "tests/set_aside_native.mjs",
+        "tests/stack_native.mjs",
+        "tests/targets_native.mjs",
+        "tests/team_bar_native.mjs",
+        "tests/team_invite_native.mjs",
+        "tests/thumbnail_open_native.mjs",
+        "tests/topic_duties_native.mjs",
+        "tests/topic_header_native.mjs",
+        "tests/topic_list_native.mjs",
+        "tests/topic_reading_native.mjs",
+        "tests/topic_sources_native.mjs",
+        "tests/topic_work_native.mjs",
+        "tests/ui_whisper.test.mjs",
+        "tests/ui_whisper_outline.test.mjs",
+        "tests/wakes_native.mjs",
+        "tests/webkit_native.mjs",
+        "tests/whisper_native.mjs",
+        "tests/whisper_outline_native.mjs",
+        "tools/ci-input-reads.json",
+        "tools/ci_input_reads.py",
+        "tools/native.py",
+        "tools/release_check.py",
+        "tools/unit_shards.py",
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e7066bcfdf0012babcab65b229872912854900431691e6a9c374c241840fefbc": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    },
+    "e7066bcfdf0012babcab65b229872912854900431691e6a9c374c241840fefbc:1": {
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
+    }
+  },
   "tests/compose_swipe_648_protections.mjs": {
     "231eb206251c79b80f661fa52bd53ea0e274d31f5858268d885696017c37c900": {
       "inputs": [
@@ -4572,77 +5952,6 @@
     "0318686cfe106132f64cd978447603221b739cd734b31616be0b6f01b5732f09:3": {
       "inputs": [],
       "scope": "generated/system/product"
-    }
-  },
-  "tests/stack_native.mjs": {
-    "2ba241f8e91166a5413d09df27a24d34b3dd0a8a307efccbba5d410586fea867": {
-      "inputs": [
-        "tests/fixtures/item_645_original_web.json"
-      ],
-      "scope": "repository"
-    }
-  },
-  "tests/test_item_655_fixture.py": {
-    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
-      "inputs": [],
-      "scope": "generated/system/product"
-    },
-    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
-      "inputs": [],
-      "scope": "generated/system/product"
-    },
-    "b1806f6be502a6ca4315a5a09c922e105ac26ec1c9b2b70d841944e8fc11117c": {
-      "inputs": [
-        "tests/stack_native.mjs"
-      ],
-      "scope": "repository"
-    }
-  },
-  "tests/ui_folded_names.test.mjs": {
-    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
-      "inputs": [],
-      "scope": "generated/system/product"
-    },
-    "66a02d4736568a6a1a82d2a26dd84821c31694b36bfae49e3edc7c0b8f8fffec": {
-      "inputs": [],
-      "scope": "generated/system/product"
-    },
-    "5a63cfed37169284ee79c097693187334903b670b5ba16b9933258cdf7d1cd1c": {
-      "inputs": [
-        "tests/stack_native.mjs"
-      ],
-      "scope": "repository"
-    },
-    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
-      "inputs": [],
-      "scope": "generated/system/product"
-    }
-  },
-  "tests/ui_item_655_evidence.test.mjs": {
-    "6be7568042f3fd4493a6fee5275f2ec746527576f770f592e2c073030b0af976": {
-      "inputs": [
-        "tests/reader_persistence_native.mjs",
-        "tests/webkit_native.mjs"
-      ],
-      "scope": "repository"
-    },
-    "328a883acb0a67fe74a39f8596cbca262838c15d1394d582cfe90d582e0747e5": {
-      "inputs": [
-        "tests/topic_reading_native.mjs"
-      ],
-      "scope": "repository"
-    },
-    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86": {
-      "inputs": [
-        "tests/stack_native.mjs"
-      ],
-      "scope": "repository"
-    },
-    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86:1": {
-      "inputs": [
-        "tests/stack_native.mjs"
-      ],
-      "scope": "repository"
     }
   },
   "tests/test_tools_base_move.py": {
@@ -4935,16 +6244,6 @@
       "inputs": []
     }
   },
-  "tests/ui_card_editor_652_contract.test.mjs": {
-    "833db68d338b7cfc34a440e47091c86473c03a5d6e68687f7a0b934250ca8567": {
-      "scope": "generated/system/product",
-      "inputs": []
-    },
-    "249f486437fd88ee02ca78295864c7ba22e24ec7c49e0601c901ad390f43a000": {
-      "scope": "generated/system/product",
-      "inputs": []
-    }
-  },
   "tests/own_receipt_fixtures.py": {
     "01f2bf03aedc7847b3dd7d1125faa62f691658eb71da6458246c4856eca5d63b": {
       "scope": "repository",
@@ -5004,6 +6303,425 @@
     "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
       "scope": "generated/system/product",
       "inputs": []
+    }
+  },
+  "tests/train49_shared_helpers.test.mjs": {
+    "b56c2239cb7954550d5eb0635d95e1d4c1bbc290d647b13043de0bb5d0946062": {
+      "inputs": [
+        "tests/reader_compose_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/train49_restart_metadata.test.mjs": {
+    "2a610ad579201db3a5fd22fb0049874406a5fdf59832036473de2f294718d914": {
+      "inputs": [
+        "tests/whisper_outline_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/train49_thumbnail_capture.test.mjs": {
+    "0c4e6a5549e0a5d633a307a5c4782c5411dad7c22f66d3e91353890b2bc40425": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "4b713eec6be7cc27b5de4a44eb26b68dea6d6dc0c587f3b77672a4764ec59d1d": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e789e6c72c3fc55dc03791f289260ece2b847046084b2cebb98ee255795c0651": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "b366842f9d80e8e88264aa79df1c22182d2364f662e742e38d7b537624fbb847": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "f66732d32153f3d3295edc22a33be681a6dd9dd1e781ddc011a1fe8e366c5ed4": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "b366842f9d80e8e88264aa79df1c22182d2364f662e742e38d7b537624fbb847:1": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "f66732d32153f3d3295edc22a33be681a6dd9dd1e781ddc011a1fe8e366c5ed4:1": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "b366842f9d80e8e88264aa79df1c22182d2364f662e742e38d7b537624fbb847:2": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "f66732d32153f3d3295edc22a33be681a6dd9dd1e781ddc011a1fe8e366c5ed4:2": {
+      "inputs": [
+        "tests/thumbnail_open_native.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/fence_copy_native.mjs": {
+    "f151e7b0b8c1a33e74a403c054d1367fc274eb8bcbbbb2f6044a7853dca130ca": {
+      "inputs": [
+        "tests/fence_copy_native.mjs",
+        "tests/fence-copy-observation.mjs",
+        "tests/train49-contract-oracles.mjs",
+        "tests/fixtures/ui_http.py",
+        "web/reply-stacks.mjs",
+        "web/stack-feed.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/fence-copy.mjs",
+        "web/message-menu.mjs",
+        "web/reader.mjs",
+        "web/app.mjs",
+        "web/lines.mjs",
+        "web/message-format.mjs",
+        "web/feed-passages.mjs",
+        "web/stack-order.mjs",
+        "web/aim.css",
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/fixtures/item_721_runtime.py": {
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c": {
+      "inputs": [
+        "tests/fixtures/item_721_baseline_web.tar.gz",
+        "tests/fixtures/item_721_held_web.tar.gz",
+        "tests/fixtures/item_721_approved_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "135577389932777ebad467e7217fa4b86043de91d7bd17c99ed13b850b7d9de5": {
+      "inputs": [
+        "tests/fixtures/item_721_mutants.json"
+      ],
+      "scope": "repository"
+    },
+    "3e8554e3aa1baa050576f5d67ca6e71606c2bec5fd43b548c41ef32115f3a708": {
+      "inputs": [
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/cover-refresh.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-fold-swipe.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
+      "scope": "repository"
+    },
+    "f1aebcbd7cb432d3bdc098d7000286bf5804b9551d4108feae79c97b746f76ab": {
+      "inputs": [
+        "tests/fixtures/item_721_sources.json"
+      ],
+      "scope": "repository"
+    },
+    "3e8554e3aa1baa050576f5d67ca6e71606c2bec5fd43b548c41ef32115f3a708:1": {
+      "inputs": [
+        "web/agent-invite.mjs",
+        "web/aim.css",
+        "web/api.mjs",
+        "web/app-session.mjs",
+        "web/app.mjs",
+        "web/arrow-reach.mjs",
+        "web/at-names.mjs",
+        "web/attention.mjs",
+        "web/author-colors.mjs",
+        "web/boot.js",
+        "web/card-images.mjs",
+        "web/card-reading.mjs",
+        "web/card-scroll.mjs",
+        "web/characters.mjs",
+        "web/charts.mjs",
+        "web/cleanup.mjs",
+        "web/color-picker.mjs",
+        "web/colors.mjs",
+        "web/compose-bar.mjs",
+        "web/coordination-stacks.mjs",
+        "web/cover-refresh.mjs",
+        "web/creation-view.mjs",
+        "web/creation.mjs",
+        "web/deck-page.mjs",
+        "web/deck.mjs",
+        "web/dismiss.mjs",
+        "web/dossier-cover.mjs",
+        "web/editor.mjs",
+        "web/feed-fence-copy.mjs",
+        "web/feed-passages.mjs",
+        "web/fence-copy.mjs",
+        "web/fences.mjs",
+        "web/fold.mjs",
+        "web/freshness.mjs",
+        "web/glyphs.mjs",
+        "web/health-light.mjs",
+        "web/health.mjs",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/in-place-navigation.mjs",
+        "web/index.html",
+        "web/inline-composer.mjs",
+        "web/intent-journal.mjs",
+        "web/interaction-guide.mjs",
+        "web/journal.mjs",
+        "web/key-tree.mjs",
+        "web/layout.mjs",
+        "web/line-move.mjs",
+        "web/line-room.mjs",
+        "web/lines.mjs",
+        "web/links.mjs",
+        "web/lit-field.mjs",
+        "web/live.mjs",
+        "web/marks.mjs",
+        "web/message-edit-writing.mjs",
+        "web/message-edit.mjs",
+        "web/message-fold-swipe.mjs",
+        "web/message-format.mjs",
+        "web/message-menu.mjs",
+        "web/message-preview.mjs",
+        "web/notebook-create.mjs",
+        "web/notebook-images.mjs",
+        "web/notebook-page.mjs",
+        "web/notebook-sheet.mjs",
+        "web/notebook-writing.mjs",
+        "web/opening-store.mjs",
+        "web/opening-view.mjs",
+        "web/opening.mjs",
+        "web/outcome-conversation.mjs",
+        "web/outcome-end.mjs",
+        "web/outcome-light-words.mjs",
+        "web/outcome-light.mjs",
+        "web/outcome-purpose.mjs",
+        "web/outcome-references.mjs",
+        "web/outcome-scope.mjs",
+        "web/outcomes.mjs",
+        "web/outline-dossiers.mjs",
+        "web/outline-order.mjs",
+        "web/outline-rail.mjs",
+        "web/page-changes.mjs",
+        "web/page-here.mjs",
+        "web/page-image.mjs",
+        "web/page-reads.mjs",
+        "web/pane-keys.mjs",
+        "web/panes.mjs",
+        "web/people.mjs",
+        "web/phone-check.mjs",
+        "web/pipeline-words.mjs",
+        "web/pipeline.mjs",
+        "web/press-hold.mjs",
+        "web/press-note.mjs",
+        "web/quick-create.mjs",
+        "web/rail-drawer.mjs",
+        "web/rails.css",
+        "web/rails.mjs",
+        "web/reactions.mjs",
+        "web/read-through.mjs",
+        "web/reader.mjs",
+        "web/repaint.mjs",
+        "web/replies.mjs",
+        "web/reply-stacks.mjs",
+        "web/reveal.mjs",
+        "web/session-renewal.mjs",
+        "web/session.mjs",
+        "web/sheet-holder.mjs",
+        "web/skills.mjs",
+        "web/stack-feed.mjs",
+        "web/stack-look.css",
+        "web/stack-order.mjs",
+        "web/targets-words.mjs",
+        "web/targets.mjs",
+        "web/things-rail.mjs",
+        "web/times.mjs",
+        "web/topic-header.mjs",
+        "web/topic-navigation.mjs",
+        "web/topic-settings.mjs",
+        "web/topic-state.mjs",
+        "web/topic-views.mjs",
+        "web/unanswered.mjs",
+        "web/upload-cleanup.mjs",
+        "web/upload-state.mjs",
+        "web/uploads.mjs",
+        "web/waiting-questions.mjs",
+        "web/wake-lights.mjs",
+        "web/whisper-choice.mjs",
+        "web/writing-helpers.mjs",
+        "web/writing-input.mjs"
+      ],
+      "scope": "repository"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705": {
+      "inputs": [
+        "tests/fixtures/item_721_baseline_web.tar.gz",
+        "tests/fixtures/item_721_held_web.tar.gz",
+        "tests/fixtures/item_721_approved_web.tar.gz"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/item_721_compose.mjs": {
+    "9dee1a6fc5539bb8b7a33068d650183e40f5f2ceda13fc1ab308e96d63663fcf": {
+      "inputs": [
+        "tests/fixtures/item_721_mutants.json"
+      ],
+      "scope": "repository"
+    },
+    "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870": {
+      "inputs": [
+        "tests/fixtures/media/screen.png"
+      ],
+      "scope": "repository"
+    },
+    "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870:1": {
+      "inputs": [
+        "tests/fixtures/media/screen.png"
+      ],
+      "scope": "repository"
     }
   }
 }

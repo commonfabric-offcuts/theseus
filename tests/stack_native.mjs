@@ -3845,7 +3845,161 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
+  await check('reading item 731 actual record routing and return mutants', async () => {
+    const result = await control({ method: 'item_731_mutants' });
+    observations.push({ name: 'item 731 Core mutations', ...result });
+    assert.deepEqual(result.proofs.map(each => each.name), ['record', 'routing', 'return']);
+    for (const proof of result.proofs) {
+      assert.equal(proof.applied, true);
+      assert.notEqual(proof.original_sha256, proof.mutated_sha256);
+      assert.equal(proof.original_sha256, proof.restored_sha256);
+      assert.notEqual(proof.mutant_exit, 0); assert.equal(proof.control_exit, 0);
+      assert.match(proof.mutant_log, /^FAIL: test_item_731_/m);
+      assert.notEqual(proof.mutant_cache, proof.control_cache);
+    }
+  });
+
+  const targets731 = async (p, tolerance) => {
+    for (const selector of ['#reader-star', '#reader-aside']) {
+      const box = await p.box(selector);
+      assert.ok(box.width >= 44 - tolerance.sizePx && box.height >= 44 - tolerance.sizePx, 'phone controls keep 44px targets');
+    }
+  };
+
+  // Item 731: a reply must not lift an existing dossier, including an unplaced one.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const route of ['topic', 'conversation']) await check(`reading item 731 dossiers stay put ${route} ${device} ${theme}`, async () => {
+      const key = `stay-731-${route}-${device}-${theme}`, input = device === 'laptop' ? 'laptop' : 'phone';
+      let topic = key;
+      if (route === 'conversation') topic = (await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: other, team: [facts.agent] })).topic_id;
+      else await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Dossiers stay put' }] });
+      const ids = {};
+      const post = async (name, reply = null) => {
+        ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name, topic_id: topic, source: 'topic', sender: other,
+          join: route === 'topic', addressees: [facts.actor], body: `Item 731 ${name}: exact dossier words.`, ...(reply ? { reply_to: ids[reply] } : {}) })).result.message_id;
+        return ids[name];
+      };
+      await post('b'); await post('b1', 'b'); await post('a'); await post('a1', 'a');
+      const query = route === 'conversation' ? '/?conversation=w1' : '/?topic=' + topic;
+      let p;
+      const roots = [ids.a, ids.b];
+      const order = () => p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(id=>${JSON.stringify(roots)}.includes(id))`);
+      try {
+        const original = await control({ method: 'item_731_runtime', phase: 'original' });
+        observations.push({ name: 'item 731 original Build', key, ...original });
+        try {
+          p = await open(key + '-original', device, topic, ids.a, '', query);
+          await dossierTheme(p, theme);
+          assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${original.stamp}/')`), true, 'the browser actually runs the unmodified LIVE94 Build');
+          await becomes(order, [ids.a, ids.b], 'A above B before arrival');
+          await away(p); await shot(p, key + '-original-before');
+          await post('b2', 'b');
+          await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b2))}))`), 'the incoming reply is actually drawn');
+          await away(p); await shot(p, key + '-original-after');
+          assert.deepEqual(await order(), [ids.b, ids.a], 'the actual original Build lifts B');
+          await assert.rejects(async () => assert.deepEqual(await order(), [ids.a, ids.b]), { name: 'AssertionError' }, 'the identity/order assertion catches the original activity ordering');
+        } finally {
+          if (p) { await p.close(); p = null; }
+          const restored = await control({ method: 'item_731_runtime', phase: 'restored' });
+          assert.equal(restored.restored, true);
+          assert.deepEqual(restored.hashes, original.candidate_hashes, 'all candidate Build bytes restored exactly');
+          observations.push({ name: 'item 731 restored Build', key, ...restored });
+        }
+        p = await open(key, device, topic, ids.a, '', query);
+        await dossierTheme(p, theme);
+        await becomes(order, [ids.a, ids.b], 'the candidate preserves A above B with the same records');
+        await away(p); await shot(p, key + '-after');
+        await post('b-live', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids['b-live']))}))`), 'candidate live reply is drawn');
+        assert.deepEqual(await order(), [ids.a, ids.b], 'candidate live arrival does not lift B');
+        await p.close(); p = await open(key + '-reload', device, topic, ids.a, '', query);
+        await dossierTheme(p, theme);
+        await becomes(order, [ids.a, ids.b], 'reload keeps A above B');
+        // The reader still moves a dossier through real keys or the touch menu.
+        if (input === 'laptop') { await keyTo(p, ids.b); await p.key('ArrowUp', 4); }
+        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Move its stack up'); }
+        await becomes(order, [ids.b, ids.a], 'the reader moves B above A');
+        await until(async () => typeof (await actsOf(topic, ids.b))?.placed === 'number', 'Core records the native move');
+        assert.equal((await actsOf(topic, ids.b, other))?.placed ?? null, null, 'the move belongs only to the reader');
+        if (input === 'laptop') await p.key('ArrowDown', 4);
+        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Move its stack down'); }
+        await becomes(order, [ids.a, ids.b], 'the reader can move B down too');
+        if (input === 'laptop') await p.key('z', 4);
+        else { await menuAgain(p, input, ids['b-live'], ids.a1); await moveItem(p, input, 'Undo'); }
+        await becomes(order, [ids.b, ids.a], 'native Undo restores the preceding own move');
+        // New roots enter first even above a dossier the reader placed.
+        await post('c'); roots.push(ids.c);
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.c))}))`), 'new dossier C is drawn');
+        await becomes(order, [ids.c, ids.b, ids.a], 'new dossier enters at the top');
+        // A native archive and an incoming reply return B last above More.
+        await openReader(p, input, ids['b-live'], 'Item 731 b-live');
+        await centre(p, '#reader-aside'); await press(p, input, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.b)).below, 'native archive is recorded');
+        await closeReader(p, input);
+        await post('b3', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b3))}))`), 'the returning reply is drawn');
+        await becomes(order, [ids.c, ids.a, ids.b], 'reawakened B returns immediately above More');
+        await post('b4', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b4))}))`), 'a second reply is drawn');
+        assert.deepEqual(await order(), [ids.c, ids.a, ids.b], 'another reply never lifts the returned dossier');
+        await openReader(p, input, ids.b4, 'Item 731 b4');
+        await centre(p, '#reader-star'); await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === true, 'native star is recorded');
+        const targetTolerance731 = { sizePx: 0.5, overflowPx: 1 };
+        for (const selector of ['#reader-star', '#reader-aside']) {
+          if (input === 'phone') await targets731(p, targetTolerance731);
+          assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-label'))`), 'the control has an accessible name');
+        }
+        await press(p, input, '#reader-aside');
+        await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent.includes('has a message you starred')`), 'the actual archive press says why it is held');
+        assert.equal((await positionIn(topic, ids.b)).below, false, '635 star hold refuses the archive');
+        await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === false, 'native unstar is recorded');
+        await press(p, input, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.b)).below, 'unstarred, the native archive works');
+        await press(p, input, '#reader-star');
+        await until(async () => (await actsOf(topic, ids.b4))?.starred === true && !(await positionIn(topic, ids.b)).below, '635 native star returns B from below More');
+        await closeReader(p, input);
+        assert.deepEqual(await order(), [ids.c, ids.a, ids.b], 'star hold leaves the actual dossier identities in order');
+        assert.equal(await p.evaluate(`document.documentElement.scrollWidth>innerWidth+${targetTolerance731.overflowPx}`), false, 'no overflow beyond the named 1px tolerance');
+        await away(p); await shot(p, key + '-returned');
+        observations.push({ name: 'item 731 completed order', key, roots, order: await order(), targetTolerance731 });
+        if (route === 'topic' && device === 'phone-320' && theme === 'light') {
+          const mutant = await control({ method: 'item_731_runtime', phase: 'small-targets' });
+          let q;
+          try {
+            assert.equal(mutant.applied, true); assert.notEqual(mutant.original_sha256, mutant.mutated_sha256);
+            q = await open(key + '-small-targets', device, topic, ids.a, '', query);
+            await openReader(q, input, ids.b4, 'Item 731 b4');
+            await assert.rejects(() => targets731(q, targetTolerance731), {name:'AssertionError'}, 'the named 0.5px size tolerance catches the actual CSS floor mutant');
+            observations.push({name:'item 731 target mutant',...mutant,actual:await q.box('#reader-star'),targetTolerance731});
+          } finally {
+            if (q) await q.close();
+            const restored = await control({method:'item_731_runtime',phase:'restored'});
+            assert.deepEqual(restored.hashes,mutant.candidate_hashes);
+            observations.push({name:'item 731 target restored',...restored});
+          }
+          await openReader(p,input,ids.b4,'Item 731 b4'); await targets731(p,targetTolerance731); await closeReader(p,input);
+        }
+        if (route === 'topic' && device === 'laptop' && theme === 'light') {
+          // The fixture's own opening is between A and the returned B. Join
+          // upward into the actual adjacent C, rather than assuming A/B are adjacent.
+          const allRoots = await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(Boolean)`);
+          assert.equal(allRoots[allRoots.indexOf(ids.a)-1],ids.c,'the actual adjacent dossier is C');
+          observations.push({name:'item 731 join neighbours',key,allRoots,from:ids.a,into:ids.c});
+          await keyTo(p,ids.a); await p.key('ArrowUp',12);
+          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.c, 'native join records the actual destination dossier');
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a1))}).closest('.reply-stack').dataset.stack`),ids.c,'joined messages are actually under C');
+          await p.key('z',4);
+          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.a,'native Undo splits back to A');
+          await becomes(order,[ids.c,ids.a,ids.b],'split back restores the source position');
+        }
+        assert.deepEqual(p.errors, []);
+      } finally { if (p) await p.close(); }
+    });
+  }
+
+  await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; replies keep it there and Reset position restores admission order', async () => {
     const topic = 'stack-move';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.' }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.' }],
@@ -3875,14 +4029,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('z', 4);
     await becomes(() => stacks(p, all), ['d', 'c', 'a', 'b'], '⌘Z puts it back');
     await p.point(`#messages .reply-stack[data-stack="${ids.a}"] .stack-unplace`);
-    await becomes(() => stacks(p, all), ['d', 'a', 'c', 'b'], 'Let new replies move it: it goes where its newest reply puts it');
+    await becomes(() => stacks(p, all), ['d', 'c', 'b', 'a'], 'Reset position restores A to its admission position below B, with new D first');
     await until(async () => (await actsOf(topic, ids.a))?.placed === null, 'and Core holds none');
     await shot(p, 'stack-move');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
 
-  await check('reading stacks the reader\'s own reply leaves its stack where it was, under their eyes and after a reload; anyone else\'s reply lifts it', async () => {
+  await check('reading stacks the reader\'s own reply leaves its stack where it was, under their eyes and after a reload; every other reader\'s reply also keeps the admission order', async () => {
     const topic = 'stack-own-reply';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.', read: true }],
@@ -3905,15 +4059,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(mine))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.b)} && window.fetchesOut === 0`),
       'the reply is drawn into B\'s stack');
     assert.deepEqual(await stacks(p, ids), ['c', 'b', 'a'], 'the reader\'s own reply leaves B where it was, under C');
-    assert.equal(await topOf(), before, 'B\'s stack holds still on the page as the reply arrives');
+    const stablePositionTolerancePx731 = 1;
+    assert.ok(Math.abs(await topOf() - before) <= stablePositionTolerancePx731, 'B stays within stablePositionTolerancePx731=1 CSS px as the reply arrives');
     await p.close();
     p = await open('stack-own-reply-again', 'laptop', topic, ids.c);
     await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'after a reload B is still where it was');
-    // A reply by anyone else lifts its stack, B's own included, the reader's reply in it notwithstanding.
+    // Approved731: a reply by anyone else also leaves existing admission positions alone.
     await control({ method: 'agent_message', operation_id: topic + '-to-a', topic_id: topic, source: 'topic', sender: other, reply_to: ids.a, addressees: [facts.actor], body: 'A reply to A.', read: true });
-    await becomes(() => stacks(p, ids), ['a', 'c', 'b'], 'another\'s reply lifts A to the top');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).closest('.reply-stack')?.textContent.includes('A reply to A.')`), 'the external reply to A is actually drawn');
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'another reader reply leaves A in its admission position');
     await control({ method: 'agent_message', operation_id: topic + '-to-b', topic_id: topic, source: 'topic', sender: other, reply_to: ids.b1, addressees: [facts.actor], body: 'Another reply in B.', read: true });
-    await becomes(() => stacks(p, ids), ['b', 'a', 'c'], 'another\'s reply in B lifts B to the top');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).closest('.reply-stack')?.textContent.includes('Another reply in B.')`), 'the external reply to B is actually drawn');
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'another reader reply leaves B in its admission position');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -5449,7 +5606,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['oldReply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'A new reply in the old stack.' }],
       ['top', { sender: other, addressees: [facts.actor], body: 'The newest stack, new.' }]]);
     const p = await open('stack-new-line', 'laptop', topic, ids.old);
-    await becomes(() => stacks(p, ids), ['top', 'old', 'middle'], 'the old stack rises with its new reply');
+    await becomes(() => stacks(p, ids), ['top', 'middle', 'old'], 'the old dossier stays below the later middle root when a reply arrives');
     const line = () => p.evaluate(`(()=>{const l=document.querySelector('#messages > [data-line=new]');return l?{under:l.previousElementSibling?.dataset.stack??l.previousElementSibling?.dataset.id,lines:document.querySelectorAll('#messages [data-line=new]').length,inside:Boolean(document.querySelector('.reply-stack [data-line]'))}:null})()`);
     await becomes(line, { under: ids.old, lines: 1, inside: false }, 'one New line, under the stack holding the new reply, none inside it');
     assert.deepEqual(p.errors, []);
@@ -9451,7 +9608,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       let f = await barFacts(p);
       const named = act => f.find(b => b.act === act);
       assert.deepEqual(f.map(b => b.act), ['thumb', 'reply', 'fold', 'more'], `${device}: a short message's bar: 👍, Reply, Fold and ⋯, no Show full message`);
-      assert.deepEqual([named('reply').glyph, named('reply').words, named('reply').label, named('reply').title], [true, '', 'Reply (Return)', 'Reply (Return)'], `${device}: Reply is a named glyph, not the word`);
+      assert.deepEqual([named('reply').glyph, named('reply').words, named('reply').label, named('reply').title], [true, '', 'Reply', 'Reply'], `${device}: Reply is a named glyph, not the word`);
       assert.deepEqual([named('fold').glyph, named('fold').label, named('fold').title], [true, 'Fold', 'Fold'], `${device}: Fold is a named glyph`);
       if (device === 'phone') for (const b of f) assert.ok(b.width >= 44 && b.height >= 44, `phone: ${b.act} is 44px to touch: ${JSON.stringify(b)}`);
       await shot(p, `message-bar-${device}-short`);

@@ -937,6 +937,9 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its "
+                                 "message readers, and its numeric topic ceiling returns no message identity or words; the explicit "
+                                 "migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE", 7),
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
@@ -987,7 +990,7 @@ MESSAGE_READS = {
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
-                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic", 28),
+                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic; the outcome owner of a cleared cover with pending refresh, by the exact already-visible message id passed to current_acts (no message content or wider scan)", 29),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "

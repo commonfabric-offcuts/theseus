@@ -1,0 +1,63 @@
+# Train49 re-cut for independent source review
+
+This fresh branch reconstructs train49 from pre650 0dbd77f9fbc8cbed3be847d4f52237db98af390a and actual live98 851471193d72f88312d428bb9e0383dae887a4e0, then applies the staying test corrections authorized by Warp9636/9638 and auditor9644. Item650 leaves as a complete piece. No current product repair is included. Exact head/tree/ordered parents, complete Git source hashes, full binary differences and evidence digests are in the external FREEZE.json, SOURCE-MANIFEST.json and SHA256SUMS at /Users/commonfabric/.local/share/theseus/fable-tools/checks/train49-recut9636. This report is source evidence, never runtime acceptance or self-approval.
+
+The source input 89f4e0e25c30fed22939263b67b540af0333f818 and its entire immutable ancestry remain available. Its650 product was not used as the final tree. The owned branch was explicitly reconstructed at pre650; original source refs and all predecessor receipts were left unchanged. No unrelated50/51 ancestry or653 thumbnail presentation was imported.
+
+## Product composition and conflicts
+
+The first new commit is a real merge with ordered parents pre650 and actual98. The four approved exact heads remain ancestors: item738 52ab941a58723e069f596fee0134e442e7b24a1f; item721 43fe3caabc2ab6b5d740e1ed4d8ca4502c3b08ce; item731 c765b00a34010b9453c24171279b06293b72e077; item704 b8b2a58192a6d55f9256105cfa80171d2202491f. Actual98 is also an ancestor. The650 merge159c9416 and its source1e462c53 are not ancestors of this re-cut.
+
+All actual conflicts were captured before resolution in LIVE98-MERGE.log, LIVE98-CONFLICT-STAGES.txt and LIVE98-CONFLICT.diff. Actual receiving HEAD/ours was0dbd77f9, incoming was85147119, merge base3187c1bc. Three paths conflicted:
+
+- tests/acts.json: exact-row three-way composition preserves additions, removals and existing item/act multiplicity from both sides. The source-validating ledger controls retain destructive mutation intent.
+- tests/reader_compose_native.mjs: preserve721 imports alongside648 imports, and all704/652/651/648/721 registrations. All live98 swipe protection observations/options stay.
+- tools/ci-input-reads.json: compose independent keys and conservatively union repository dependencies for shared expressions. No repository dependency becomes generated merely because one side said so.
+
+Product files merged without conflicts. PRODUCT-COMPOSITION.json recomputes every web/, aim_next/ and bin/ byte by exact base/ours/theirs comparison or git merge-file and compares the result to the final checkout. All match. Thus current648 phone floor/swipe behavior,734 tooling, and the four staying pieces are retained without a new product fix. No product file differs from that merge after source mutation restoration.
+
+650-ABSENCE.json checks absence of the width module, native module, width unit tests, historical fixture/runtime/control, shared static cache additions, combined650/651 contract file and width documentation. Reader, inline composer, CSS, ui_http and native-compose contain no width edge/state/runtime hooks; the act ledger has zero650 rows. The preexisting651 thumbnail implementation and its native suite remain. The historical full-web baseline correction and effective-tabindex mutant correction leave with650; neither is installed here.
+
+## Staying corrections and explicit discarded deltas
+
+POST650-PATH-HUNK-LEDGER.json identifies every first-parent post650 commit, path, hunk header and full-diff SHA256. POST650.patch,650-MERGE-DELTA.patch and650-PIECE-HISTORY.txt preserve full source history, including the cold-cache/lifetime/reversal changes that leave with the piece.
+
+The159c9416 width integration is discarded as a piece. The177a72fc floating/embedded width code,721 edge assertions, width documentation and width act rows are discarded. Its applicable repository-read declarations are retained only where the staying code still actually reads those files, with the current web inventory replacing the old width-containing list. The7e5ba233 three ledger anchor corrections and three migration assertion corrections remain necessary for the unchanged pre650 schema49 composition and shared651/738 selector; they are separately integrated, not a width feature. Their exact patch and red/restored controls are retained.
+
+Thef737efd6 wording guard remains necessary because both image-thumb and cover-refresh-glyph exemptions are in the staying MessageMenu. Its exact hunk is retained. Thebed0a0d4 and264116dd commits change no tree bytes. All applicableb8111635 test changes are retained exactly: bounded/redacted native-view failure evidence, native adapters, approved721 card/selection/inline Reply oracles,731 admission-order reading assertions and unchanged-tolerance fence observations. Its historical report/spec are archived, and the root reports now describe this re-cut.
+
+From89f4e0e retain the exact651 capture-selector hunk, including.cover-refresh-glyph and removing only.image-thumb in the interception mutant. Retain only its two651 local capture contracts in train49_thumbnail_capture.test.mjs. Both650 local contracts, historical-source reads, fixture hook and baseline restoration machinery are discarded. The new local651 contract applies the actual capture mutant to an owned disposable source copy, catches interception, preserves the cover exemption, restores exact bytes and rechecks activation. It provides no native new-tab or trusted-touch proof.
+
+9501's supplied TRAIN49.patch is a separate narrow integration: both actual704 restart closures assert the returned origin and nonempty metadata, then update the existing mutable facts. No9501 operation-response relaxation or653 geometry hunk is imported. Both actual closures are executed locally against synthetic metadata, including wrong-origin and missing-metadata refusals. No live credential is read or printed.
+
+## Shared helper repairs under9644
+
+The phone reopen and stacked Tab cases are preexisting live97/pre650 reader_compose_native cases, not item650 cases. Their native inputs, plus target, saved-writing assertion and case bodies remain.
+
+Phone open records whether the card was already lit, makes the real first tap, and waits for an open Reader or a newly lit card. Old light cannot count as completion of an asynchronous opening. Only a still-closed Reader after a newly lighting tap gets a second native tap. The existing source-text, settled Reader and saved-writing checks remain. Local contracts exercise initially unlit, initially lit and delayed first-tap opening states.
+
+Both local tabTo closures use one shared native Tab traversal. It records each actual active-element DOM path and id, including distinct unnamed controls. It stops at the target, a repeated state, or a finite512-transition safety bound; repeat/bound refuses with the original target assertion and complete order. Native Tab/Shift-Tab and WebKit Alt modifiers remain; no focus assignment is added. Tests cover a plus target beyond12, unreachable repeated cycle, unnamed siblings, finite nonrepeating instability and reverse traversal. Existing focus assignments elsewhere in the old cases remain untouched; they are not substituted for this plus traversal.
+
+## Focused evidence and preparation qualifications
+
+Final controls run serially:32 focused Node checks with concurrency1 and test isolation disabled, and9 selected CPython3.9.6 ledger/migration checks. There is no whole-unit suite, browser, server, hosted, native or fixture-process start. Selected migration checks use isolated temporary local stores; no instance or live store is opened.
+
+MUTATIONS.json retains11 initial actual applied/read-back/caught/byte-restored mutants, each followed by a distinct green control. MUTATIONS-v2.json supplies the final helper-source proofs: unconditional second tap, old12-transition limit, removed repeat detection, wrong target and old light accepted as completion. Earlier helper proof precedes the asynchronous-opening refinement and is historical, not final-source proof. The other unchanged-path proofs cover both restart updates, stale651 selector, original migration assertions, stale schema ledger anchor and an actual migration-chain source mutation. The exact original shared helpers also fail the focused contracts. Every mutation's original/applied/restored SHA256 and separate raw logs remain. Temporary product migration bytes were restored and independently checked by the complete product composition audit.
+
+All Python mutant/restored controls use distinct PYTHONPYCACHEPREFIX paths. EFFECTIVE-CACHES.json binds actual generated CPython3.9 cache files under those prefixes. Final syntax/compile and diff whitespace checks are separate from behavioral controls. CALL-LEDGER files and ALL-LOCAL-CALLS.json name the actual invocations and outcomes.
+
+Preparation faults remain visible. The first helper edit script refused an ambiguous comment anchor before writing source; a subsequently named SHARED-GREEN.log still ran old source and failed, so its name is not a green verdict. The first synthetic legacy Tab adapter omitted WebKit's Alt modifier; it was corrected to execute the actual original Tab closure before accepted original-source red proof. The first Python integration command lacked PYTHONPATH=tests:.; its three import errors are not migration reds. The ledger's three stale-anchor failures in that run are real; corrected-path original migration checks separately fail and restore. The first static discovery records26 undeclared reads;12 were new contract/instrument reads,14 were inherited staying reads. All raw refusals survive. The final static audit initially unpacked the two-value readers API as three values; it stopped before acceptance and was corrected. No failed check is waived.
+
+The14 inherited declarations are taken by exact signature from89f4e0e and rebound to the actual re-cut web inventory where the expression reads the whole current web tree. They cover721 archives/mutants/source indexes,738 historical archives, and schema48.650 paths are excluded; live98's swipe module is included. Final discovery refuses nothing. These shared fixture consumers remain source-affected and UNRUN; no runtime-identical claim follows from static declarations.
+
+## History, admission and unresolved boundaries
+
+All original raw false results remain false. ORIGINAL-49-READING.json retains both original49 reading arrays, source bindings and cleanup from9501; no row is relabelled. READ-INPUTS.json binds whole predecessor REPORT/SPEC/manifests, original49 graph/review, supplied rulings and CURRENT-BRIEF-RULES. Old650 phone overlap is a real product hold and leaves with650. Existing fence-copy coverage, document Selection and long-press observations keep their original assertions and attribution qualifications. Existing739 parser and other owner observations retain their historical ownership, without a quarantine-by-fiat or a new pass claim.
+
+The retainedb811 response reader remains its exact scoped contract;9501's broader operation-envelope correction is outside this49 brief. Any old-harness failure on the final tree requires evidence and disposition, never automatic quarantine. No geometry tolerance is widened: stablePositionTolerancePx731=1, geometryTolerancePx=1 and overlapTolerancePx=0.5 remain.
+
+Original coordinator/guard refusals are preserved, not bypassed:775's actual installed component reads refused changed continuation source hashes and frozen workflow assignment, and ran_whole was false.775-GUARD-REFUSALS.json and its full report/spec retain the literal evidence. The original49 missing-read audit and corrected cut-check are separately bound. No new coordinator cut, guard admission or runtime command was invoked here.
+
+Path C9619/9621 supersedes every historical union plan. The original partial, retained208,126 groups and eleven placements are cause/history only. The only supported future runtime route is one separately authorized fresh complete run on this final reviewed head/tree, under779's reviewed producer/validator, accepted coherently by landing and Verdict. No corrected native case, complete run, acceptance, teardown or restoration in a real browser is claimed here. SOURCE-AFFECTED-STEPS.json identifies static shared consumers; it allocates none.
+
+Zero hosted/native/browser/whole-suite allocations or starts. No live store, runtime profile/key/session/auth/token, board/stage/flight, foreign/frozen source writes, signals, process sweeps, delegation, Pool/dispatch/GitHub, push/PR/install/deploy. Only the owned checkout, owned evidence and disposable owned local contract data were written. Stop at independent final merge review; no self-approval or publication.
