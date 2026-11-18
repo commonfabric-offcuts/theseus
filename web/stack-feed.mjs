@@ -188,10 +188,10 @@ export class StackFeed {
     list.addEventListener('keydown', event => this.key(event));
     // A message swiped to the right on a phone folds to its row, and its row
     // swiped to the left unfolds it; a drag on something that scrolls
-    // sideways scrolls it instead.
+    // sideways scrolls it instead. Native selection handles keep their drag.
     list.addEventListener('touchstart', event => {
       const touch = event.touches?.[0];
-      this.swipe = touch && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
+      this.swipe = touch && doc.getSelection()?.isCollapsed !== false && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: true });
     // Two fingers across a laptop's trackpad do the same. Not passive: while a
@@ -891,7 +891,7 @@ export class StackFeed {
     const start = this.swipe, touch = event.changedTouches?.[0];
     this.swipe = null;
     const across = touch && start ? touch.clientX - start.x : 0;
-    if (!start || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
+    if (!start || this.doc.getSelection()?.isCollapsed === false || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
     this.swipeAct(start.target, across > 0, event.altKey);
   }
   // A wheel event on the list: part of a trackpad swipe, or a scroll the
