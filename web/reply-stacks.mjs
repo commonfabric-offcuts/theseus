@@ -544,7 +544,9 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   };
   // Pointer/touch keeps the current writing or reading focus; Tab still
   // reaches this control and Return/Space activate it in place.
-  star.onpointerdown = event => event.preventDefault();
+  // WebKit suppresses the native touch click when pointerdown is cancelled.
+  // Cancel the compatibility mousedown instead, as message-bar controls do.
+  star.onmousedown = event => event.preventDefault();
   star.dataset.stackAct = 'star';
   const starWords = starred ? 'Unstar' : 'Star for me', starGlyph = starred ? '★ Starred' : '☆';
   if (star.textContent !== starGlyph) star.textContent = starGlyph;

@@ -113,7 +113,7 @@ export class MessageMenu {
       const still = pointer ? pointer.x === event.screenX && pointer.y === event.screenY : this.touch;
       pointer = { x: event.screenX, y: event.screenY };
       // While the bar's ⋯ menu is open the light stays on its message.
-      if (still || this.menuOpen()) return;
+      if (still || this.menuOpen() || event.target.closest?.('.stack-star')) return;
       const entry = this.entryOf(event.target);
       if (entry && entry !== this.lit) this.light(entry);
       else if (!entry && !this.ownsControls(event.target)) this.light(null);

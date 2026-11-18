@@ -98,3 +98,23 @@ REPORT and ACCEPTANCE; test presence is not evidence of passing behavior.
 
 735 remains parked with its historical 12/20 per engine and 320px bar fault.
 Neighbouring coverage belongs to Later8139; it does not silently expand 646.
+
+### Corrections from first hosted execution
+
+The first committed checks (`9d4575ca`) ran against the exact approved public
+bytes. Both engines caught desktop hover moving focus before the star click.
+WebKit also dropped touch clicks because the span cancelled pointerdown.
+The correction skips the star in the pointer-hover selection/focus path and
+cancels mousedown instead, as the existing message-bar controls already do.
+Only `message-menu.mjs` and `reply-stacks.mjs` change product bytes. Geometry,
+appearance, Core commands and the approved baseline archive are preserved.
+The archived approved case retains the actual focus red; the current cases
+must pass against the corrected source. The WebKit-specific pointerdown
+mutant must again fail the actual native first-tap assertion.
+
+`tests/historical_item_735.py` preserves the retired reveal runtime unit
+unchanged. It is excluded from unit discovery because its source mutations
+require the removed reveal callback. Native735 checks and archived evidence
+remain historical, outside646's selected cases, rather than being a toggle
+compatibility gate. This is retirement of superseded behavior, not a waiver
+of a current feature failure.
