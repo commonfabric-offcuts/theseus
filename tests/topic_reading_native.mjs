@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { waitingQuestions372Checks } from './waiting_questions_372_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
@@ -62,6 +63,7 @@ const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
+  await waitingQuestions372Checks({ check, page, until, view, control, shot, facts, observations, engine });
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = async (topic, said) => {

@@ -2783,12 +2783,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     const light = '#outcome-standing .state-line button.state-question';
     const o = await open(oid + '-light', '/?workspace=' + oid);
-    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(light)})?.textContent==='Waiting on you · 3 questions'`), 'the outcome light says three questions, and is a control');
+    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(light)})?.textContent==='Waiting on you · 4 questions'`), 'the outcome light says four questions, and is a control');
     const lit = [await asked(o, light, 'first press')];
-    for (const n of [2, 3, 4]) { await back(o, light, 'before press ' + n); lit.push(await asked(o, light, 'press ' + n)); }
+    for (const n of [2, 3, 4, 5]) { await back(o, light, 'before press ' + n); lit.push(await asked(o, light, 'press ' + n)); }
     assert.deepEqual(lit.slice(0, 2), ['OLDEST question in A', 'NEWER question in B'], 'after Back the light opens the next question, not the oldest again');
-    assert.match(lit[2], /question in C/, 'then the Conversation\'s');
-    assert.equal(lit[3], 'OLDEST question in A', 'and round to the oldest');
+    assert.deepEqual(lit.slice(2, 4), ['OLDEST question in C', 'NEWER question in C'], 'both Conversation questions once');
+    assert.equal(lit[4], 'OLDEST question in A', 'and round to the oldest');
     // The light's last press opened A; the outline on A's page goes on from there, to B, not A again.
     const waiting = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
     await until(() => o.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`), 'the outline shows Waiting on you');
