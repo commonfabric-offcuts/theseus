@@ -118,3 +118,11 @@ require the removed reveal callback. Native735 checks and archived evidence
 remain historical, outside646's selected cases, rather than being a toggle
 compatibility gate. This is retirement of superseded behavior, not a waiver
 of a current feature failure.
+
+The unmodified handoff checker exposed six stale act-ledger mutation needles
+inherited from the preview. The existing283/114/386/635/613 needles now match
+the same active code paths; their native coverage remains Later8139, not a
+new646 claim. The retired passive635 any-star title indicator row is replaced
+by646's first-message-only toggle row and current native matrix. No checker
+is weakened or edited. The live94-to-final handoff also finds an inherited
+899c03c Pipeline trailer error; immutable approved ancestry is not rewritten.

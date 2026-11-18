@@ -2500,8 +2500,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
-     ""
+     "    const sent = this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : [], { optimistic: !confirmed });",
+     "    const sent = Promise.resolve({});"
     ]
    ],
    "check": {
@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .stack-star') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -8597,7 +8597,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "host.addEventListener('click', event => this.claim(event.target), true);",
+     "host.addEventListener('click', event => { if (!event.target.closest?.('.stack-star')) this.claim(event.target); }, true);",
      "host.addEventListener('click', event => {}, true);"
     ]
    ],
@@ -30403,18 +30403,18 @@
    }
   },
   {
-   "item": 635,
-   "act": "The title bar shows the reader's star when any message of the dossier is starred by them",
+   "item": 646,
+   "act": "The second-line dossier control shows only this reader's star on the actual first message; a starred reply alone does not light it (supersedes the passive635 indicator)",
    "break": [
     [
      "web/reply-stacks.mjs",
-     "const marked = state.starred.has(dossierOf(stack));",
-     "const marked = starred;"
+     "const marked = first ? first.acts?.starred === true : (positionOf(stack)?.starred ?? []).includes(root);",
+     "const marked = [stack.head, ...stack.replies].some(item => item.acts?.starred) || (positionOf(stack)?.starred ?? []).length > 0;"
     ]
    ],
    "check": {
     "native": "reading",
-    "case": "reading stacks star title bar"
+    "case": "reading item 646 toggle privacy writing and original appearance"
    }
   },
   {
@@ -30438,8 +30438,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);",
-     "this.act('message.star', item, { starred: on }, []);"
+     "    const sent = this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : [], { optimistic: !confirmed });",
+     "    const sent = this.act('message.star', item, { starred: on }, [], { optimistic: !confirmed });"
     ]
    ],
    "check": {
@@ -31759,7 +31759,7 @@
    "break": [
     [
      "web/app.mjs",
-     "  if (root) await loadUntil(() => ({ id: root }));\n",
+     "  if (root) await loadUntil(() => current() ? { id: root } : null);\n",
      ""
     ]
    ],
