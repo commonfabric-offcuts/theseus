@@ -1264,7 +1264,7 @@ dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-widt
 .composer-edge::after{content:'';position:absolute;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--muted);opacity:.55}
 .composer-edge[data-edge=left]::after{left:3px}.composer-edge[data-edge=right]::after{right:3px}
 .composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
-dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge{display:none}
+dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[data-card-reply]>.composer-edge{display:none}
 @media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}

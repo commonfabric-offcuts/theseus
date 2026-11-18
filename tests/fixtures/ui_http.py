@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError

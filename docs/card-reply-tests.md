@@ -32,3 +32,5 @@ unsupported saved-copy row in real IndexedDB, then use native writing and
 Review controls. Full adoption and recipient/destination permutations outside
 these own cases remain explicit evidence gaps until exercised.
 Only the two allocated compose calls and single node-units call may run.
+
+When the existing Reader is embedded in a reply card (721), its floating resize controls are hidden, removed from the tab order and inactive. Returning to a floating Reader restores those controls without changing either mode’s retained width. The shared adapter has a red-first combined check with separately caught visibility and activity mutations; the existing 721 normal native cases record hidden/tab-stop state at the combined source.

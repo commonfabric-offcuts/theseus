@@ -82,3 +82,5 @@ proof; historical 358/358 is not that proof. Six historical starts remain spent.
 The 8667 correction allows at most six compose, two Python and two Node starts,
 sequentially, with two remaining unallocated under the whole-piece ceiling 18.
 Current run evidence belongs in the 650-correction-8667 report.
+
+When the existing Reader is embedded in a reply card (721), its floating resize controls are hidden, removed from the tab order and inactive. Returning to a floating Reader restores those controls without changing either mode’s retained width. The shared adapter has a red-first combined check with separately caught visibility and activity mutations; the existing 721 normal native cases record hidden/tab-stop state at the combined source.

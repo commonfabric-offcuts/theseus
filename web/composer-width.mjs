@@ -8,7 +8,7 @@ export function edgeWidth(width, delta, side, minimum, maximum) {
 export function composerWidth(dialog) {
   if (!dialog) return;
   const doc = dialog.ownerDocument, win = doc.defaultView;
-  const active = () => dialog.open && !dialog.classList.contains('notebook-mode');
+  const active = () => dialog.open && dialog.dataset.cardReply === undefined && !dialog.classList.contains('notebook-mode');
   // Choices belong to this element's lifetime. CSS selects the Reader's
   // current layout; New message has its own element and single choice.
   const widthProperty = () => dialog.id === 'reader'
@@ -58,6 +58,13 @@ export function composerWidth(dialog) {
     });
     dialog.append(edge); return edge;
   });
+  // The same Reader can be embedded in a message. Its owner calls this when
+  // moving it; presentation changes never overwrite either floating choice.
+  const syncPlacement = () => {
+    const embedded = dialog.dataset.cardReply !== undefined;
+    for (const edge of edges) { edge.hidden = embedded; edge.tabIndex = embedded ? -1 : 0; }
+  };
+  syncPlacement();
   dialog.dataset.widthEdges = '';
   dialog.addEventListener('close', () => {
     const held = drag; drag = null; delete dialog.dataset.widthDragging;
@@ -73,4 +80,5 @@ export function composerWidth(dialog) {
       edge.setAttribute('aria-valuenow', String(width)); edge.setAttribute('aria-valuetext', `${width} pixels wide`);
     }
   }).observe(dialog);
+  return syncPlacement;
 }

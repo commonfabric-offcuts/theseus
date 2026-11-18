@@ -101,6 +101,7 @@ export async function item721Compose(h) {
     const complete = JSON.stringify(paragraphs) === JSON.stringify(long.split('\n\n'));
     return { dock: r.parentElement === c && r.hasAttribute('data-card-reply') && c.getAttribute('role') === 'group' && !r.matches(':modal'),
       readers: document.querySelectorAll('#reader').length, writingFields: document.querySelectorAll('#writing-body').length,
+      resizeEdges: [...r.querySelectorAll(':scope > .composer-edge')].map(edge => ({ visible: visible(edge), hidden: edge.hidden, tabIndex: edge.tabIndex })),
       body: field.value, title: visible(document.querySelector('#reader-title')) && !!document.querySelector('#reader-title').textContent,
       close: visible(document.querySelector('#reader-close')), addressing: visible(document.querySelector('#who-chip')),
       whole: complete && s.maxHeight === 'none' && s.overflowY === 'visible' && parentStyle.maxHeight === 'none' && parentStyle.overflowY === 'visible' && source.scrollHeight - source.clientHeight <= tolerance.scrollPx && replyBox.top >= sourceBox.bottom - tolerance.edgePx,
@@ -323,6 +324,8 @@ export async function item721Compose(h) {
       const before = await snapshot(p, data.id);
       for (const key of ['dock', 'whole', 'title', 'addressing']) oracle(key, before);
       assert.equal(before.readers, 1); assert.equal(before.writingFields, 1);
+      assert.equal(before.resizeEdges.length, 2, 'combined Reader retains both floating controls');
+      assert.ok(before.resizeEdges.every(edge => !edge.visible && edge.hidden && edge.tabIndex === -1), 'inline reply exposes no resize control or resize tab stop');
       assert.ok(before.overflow <= ITEM721_TOLERANCE.edgePx, 'page has no horizontal overflow beyond 1 CSS px');
       await write(p);
       const modifier = await p.evaluate(() => /Mac/.test(navigator.platform) ? 'Meta' : 'Control');

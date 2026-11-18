@@ -33385,6 +33385,34 @@
     "native": "compose",
     "case": "item 650 Reader writing stacked light"
    }
+  },
+  {
+   "item": 650,
+   "act": "An embedded reply offers no visible or tabbable floating resize control",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const embedded = dialog.dataset.cardReply !== undefined;",
+     "const embedded = false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_composer_width.test.mjs"
+   }
+  },
+  {
+   "item": 650,
+   "act": "An event on an embedded reply edge cannot change the retained floating widths",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "dialog.open && dialog.dataset.cardReply === undefined && !dialog.classList.contains('notebook-mode')",
+     "dialog.open && !dialog.classList.contains('notebook-mode')"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_composer_width.test.mjs"
+   }
   }
  ]
 }

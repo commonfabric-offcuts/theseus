@@ -33,9 +33,31 @@ function pointerFixture(initial) {
     append(edge) { edges.push(edge); },
     addEventListener(name, fn) { listeners.set(name, fn); },
   };
-  composerWidth(dialog);
-  return { dialog, edges };
+  const sync = composerWidth(dialog);
+  return { dialog, edges, sync, properties };
 }
+
+test('items 721 and 650: embedded reply hides resize stops without changing floating widths', () => {
+  const { dialog, edges, sync, properties } = pointerFixture(1152);
+  const drag = delta => { edges[0].fire('pointerdown', 100); edges[0].fire('pointermove', 100 + delta); edges[0].fire('pointerup', 100 + delta); };
+  assert.ok(edges.every(edge => !edge.hidden && edge.tabIndex === 0), 'floating Reader has both resizing stops');
+  drag(16);
+  dialog.dataset.layout = 'wide'; drag(32);
+  const chosen = [...properties];
+  dialog.dataset.cardReply = ''; sync?.();
+  assert.ok(edges.every(edge => edge.hidden && edge.tabIndex === -1), 'embedded reply has no visible or tabbable resizing stop');
+  drag(80);
+  assert.deepEqual([...properties], chosen, 'even a stale event on an embedded edge cannot change either floating choice');
+  delete dialog.dataset.cardReply; sync?.();
+  assert.ok(edges.every(edge => !edge.hidden && edge.tabIndex === 0), 'floating Reader regains both resizing stops');
+  assert.deepEqual([...properties], chosen, 'returning to floating changes neither saved width');
+  dialog.dataset.layout = 'stacked';
+  assert.equal(dialog.getBoundingClientRect().width, 1120);
+  dialog.dataset.layout = 'wide';
+  assert.equal(dialog.getBoundingClientRect().width, 1088);
+  drag(16);
+  assert.equal(dialog.getBoundingClientRect().width, 1056, 'floating controls still resize');
+});
 
 test('item 650 Reader modes keep independent widths for their element lifetime', () => {
   const { dialog, edges } = pointerFixture(1152);

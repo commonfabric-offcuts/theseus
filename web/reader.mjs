@@ -90,7 +90,7 @@ export class Reader {
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { this.placeEnd(); if (this.dialog.open) this.applyLayout(); });
     this.bind();
-    composerWidth(this.dialog);
+    this.syncWidthEdges = composerWidth(this.dialog);
   }
   $(id) { return this.dialog.querySelector(`#${id}`); }
   get editor() { return this.sessions?.[this.mode]; }
@@ -410,6 +410,7 @@ export class Reader {
       this.dialog.dataset.cardReply = ''; this.dialog.setAttribute('role', 'region');
       card.append(this.dialog);
     }
+    this.syncWidthEdges?.();
   }
 
   // A feed/access change must never hide the active writing with its card.
