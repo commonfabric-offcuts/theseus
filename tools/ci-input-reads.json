@@ -4922,5 +4922,15 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/ui_card_editor_652_contract.test.mjs": {
+    "833db68d338b7cfc34a440e47091c86473c03a5d6e68687f7a0b934250ca8567": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "249f486437fd88ee02ca78295864c7ba22e24ec7c49e0601c901ad390f43a000": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
   }
 }
