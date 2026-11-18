@@ -143,7 +143,7 @@ def discover(files, declarations):
 
 # Complete execution input graph (item 734); distinct from definition freezing.
 MANDATORY = ('python-units', 'node-units', 'deploy-refusals', 'wake-replay')
-SCOPE_AUTHORITY = frozenset(('tools/ci-input-reads.json', 'tools/ci_input_reads.py',
+SCOPE_AUTHORITY = frozenset(('tools/grouped_admission.py', 'tools/compose_collector_775.py', 'tools/compose_inventory_779.cjs', 'tools/ci-input-reads.json', 'tools/ci_input_reads.py',
                        'tools/steps_for.py', 'tools/release_check.py',
                        'tools/unit_shards.py', 'tools/train.py'))
 

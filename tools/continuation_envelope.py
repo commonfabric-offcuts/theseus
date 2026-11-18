@@ -32,7 +32,7 @@ def git_bytes(git, head, path):
                 return handle.read()
 
 
-def run_fact(binding, github, repository, head, event):
+def run_fact(binding, github, repository, head, event, grouped=False):
     b.number(binding['run']); b.number(binding['attempt'])
     run = github.get('repos/%s/actions/runs/%d' % (repository, binding['run']))
     b.require(type(run.get('id')) is int and run['id'] == binding['run']
@@ -50,6 +50,21 @@ def run_fact(binding, github, repository, head, event):
               and workflow.get('name') == 'Checks', 'continuation workflow identity differs')
     jobs = github.get('repos/%s/actions/runs/%d/attempts/%d/jobs?per_page=100' %
                       (repository, binding['run'], binding['attempt']))
+    if grouped:
+        # Explicit bounded group route only. V1 still requires its single
+        # complete page, exactly as before. Authenticate every subsequent page.
+        total = jobs.get('total_count')
+        b.require(type(total) is int and 0 < total <= 512 and isinstance(jobs.get('jobs'), list)
+                  and len(jobs['jobs']) == min(total, 100), 'grouped incomplete first job page')
+        complete = list(jobs['jobs'])
+        for page in range(2, (total + 99) // 100 + 1):
+            part = github.get('repos/%s/actions/runs/%d/attempts/%d/jobs?per_page=100&page=%d' %
+                              (repository, binding['run'], binding['attempt'], page))
+            b.require(type(part.get('total_count')) is int and part['total_count'] == total
+                      and isinstance(part.get('jobs'), list)
+                      and len(part['jobs']) == min(100, total - len(complete)), 'grouped incomplete subsequent job page')
+            complete.extend(part['jobs'])
+        jobs = {'total_count': total, 'jobs': complete}
     b.require(type(jobs.get('total_count')) is int and isinstance(jobs.get('jobs'), list)
               and jobs['total_count'] == len(jobs['jobs']), 'continuation incomplete job page')
     by_id = {}
@@ -196,8 +211,10 @@ def manual_plan(workflow, authorized):
 def validate(source, judgment, git, github, repository, head, merged_context):
     b.fields(source, 'run attempt tested_merge base_at_run files inventory audit controller continuation')
     b.number(source['run']); b.number(source['attempt'])
-    env = b.fields(b.document(source['continuation']), 'version authorization original completion')
-    b.require(type(env['version']) is int and env['version'] == 1, 'unknown continuation version')
+    env = b.document(source['continuation'])
+    grouped = isinstance(env, dict) and type(env.get('version')) is int and env['version'] == 2
+    b.fields(env, 'version authorization original completion compose' if grouped else 'version authorization original completion')
+    b.require(type(env['version']) is int and env['version'] in (1, 2), 'unknown continuation version')
     auth = b.fields(b.document(env['authorization']), 'reviewer record source_head source_tree original_run original_attempt base_at_run pr original_workflow workflow_head workflow plan')
     b.words(auth['reviewer']); b.words(auth['record']); b.number(auth['pr'])
     b.number(auth['original_run']); b.number(auth['original_attempt'])
@@ -226,7 +243,7 @@ def validate(source, judgment, git, github, repository, head, merged_context):
               and prs[0].get('head', {}).get('sha') == head
               and {k: prs[0].get('base', {}).get(k) for k in ('ref', 'sha')} == source['base_at_run'],
               'continuation original PR/base differs')
-    newrun, newjobs = run_fact(completion, github, repository, auth['workflow_head'], 'workflow_dispatch')
+    newrun, newjobs = run_fact(completion, github, repository, auth['workflow_head'], 'workflow_dispatch', grouped=grouped)
     b.require(newrun['conclusion'] in ('success', 'failure'), 'continuation pending or incomplete completion')
     b.require(b.parents(git, auth['workflow_head']) == [head], 'continuation workflow parent differs')
     before, after = b.entries(git, head), b.entries(git, auth['workflow_head'])
@@ -236,9 +253,25 @@ def validate(source, judgment, git, github, repository, head, merged_context):
     b.require(b.artifact(auth['original_workflow']) == git_bytes(git, merge['sha'], WORKFLOW)
               and workflow_bytes == git_bytes(git, auth['workflow_head'], WORKFLOW),
               'continuation frozen workflow differs')
-    manual_plan(workflow_bytes, auth['plan'])
+    if not grouped:
+        manual_plan(workflow_bytes, auth['plan'])
+    else:
+        # V2's exact workflow, command, matrix and patched package are frozen
+        # by the separate source-patch review and actual archive certificates.
+        b.require(auth['plan'] == [{'name': 'compose-union-779', 'steps': ['native-compose']}],
+                  'grouped continuation must replace only the compose obligation')
     controller = b.controller_binding(source, judgment, github, repository, head, merged_context)
     b.require(controller['producer']['pr'] == auth['pr'], 'continuation controller PR differs')
+    compose_proof = None
+    if grouped:
+        from tools import grouped_admission
+        packet = b.document(env['compose'])
+        anchor = {k: source[k] for k in ('run', 'attempt', 'tested_merge', 'base_at_run', 'controller')}
+        anchor['partial_dispatch'] = packet['original_anchor']['partial_dispatch']
+        compose_proof = grouped_admission.validate(env['compose'], judgment, git, github, repository, head, anchor)
+        package = b.document(packet['package'])
+        b.require(package['workflow_head'] == auth['workflow_head'] and package['workflow'] == auth['workflow'],
+                  'grouped continuation workflow/package differs')
     inventory = b.document(source['inventory'])
     b.require(isinstance(inventory, dict) and set(inventory) == set(check.REQUIRED), 'incomplete source inventory')
     for name, rows in inventory.items():
@@ -343,9 +376,22 @@ def validate(source, judgment, git, github, repository, head, merged_context):
                   'continuation original partial truth differs')
         authorized = ci.plan_steps(auth['plan'])
         b.require(Counter(s for shard in authorized for s in shard) == Counter(missing)
-                  and set(newplacement) == {'check-%d' % i for i in range(len(authorized))},
+                  and (grouped or set(newplacement) == {'check-%d' % i for i in range(len(authorized))}),
                   'continuation exact missing-only plan differs')
-        for index, assigned in enumerate(authorized):
+        if grouped:
+            b.require(missing == ['native-compose'], 'grouped continuation has other missing logical steps')
+            packet_groups = b.document(env['compose'])['groups']
+            expected_refs = {r['id']: r for r in completion['archives']}
+            b.require(len(expected_refs) == len(packet_groups), 'grouped completion archive count differs')
+            for entry in packet_groups:
+                binding = entry['binding']
+                b.require(binding['run'] == completion['run'] and binding['attempt'] == completion['attempt']
+                          and binding['workflow_head'] == completion['workflow_head'], 'grouped completion run identity differs')
+                wanted = {k: binding[k] for k in ('id', 'name', 'job', 'archive')}
+                b.require(expected_refs.get(binding['id']) == wanted, 'grouped completion archive identity differs')
+            expected_archives = {r['binding']['name'] for r in packet_groups}
+            b.require(set(newplacement) == expected_archives, 'grouped completion archive inventory differs')
+        for index, assigned in enumerate([] if grouped else authorized):
             name = 'check-%d' % index; prefix = 'completion/' + name
             receipt = read(prefix + '/run.json'); raw = read(prefix + '/summary.json')
             dispatch = b.fields(read(prefix + '/dispatch-source.json'),
@@ -443,6 +489,12 @@ def validate(source, judgment, git, github, repository, head, merged_context):
         coverage = Counter(p['step'] for p in positions)
         if python_rows:
             coverage['python-units'] -= len(python_rows) - 1
+        if grouped:
+            coverage['native-compose'] += 1
+            positions.append({'step': 'native-compose', 'origin': 'authenticated-compose-union-779', 'artifact': env['compose']})
+            if not compose_proof['passed']:
+                raw_steps.append({'name': 'native-compose', 'passed': False, 'exit': 1,
+                                  'counts': {'raw_false': len(compose_proof['raw_false'])}})
         b.require(coverage == Counter(check.REQUIRED), 'continuation incomplete or duplicate union')
         # Check the original aggregate did not drop/retype any raw verdict. Only
         # Python partitions are combined; their individual failures stay above.
@@ -465,4 +517,5 @@ def validate(source, judgment, git, github, repository, head, merged_context):
                                'workflow_head': auth['workflow_head'], 'conclusion': newrun['conclusion']},
                 'partial_shards': partials, 'positions': positions,
                 'failed': sorted({s['name'] for s in raw_steps}), 'steps': raw_steps,
-                'red_count': len(reds), 'controller': controller}
+                'red_count': len(reds), 'controller': controller,
+                **({'compose': grouped_admission.record(compose_proof)} if grouped else {})}

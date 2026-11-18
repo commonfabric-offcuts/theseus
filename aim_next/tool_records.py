@@ -21,7 +21,7 @@ CHECKS = {"python": re.compile(r"tests/test_[^/]+\.py"), "node": re.compile(r"te
 # Never a tool's file (R3): deploy and the release checks stay ordinary code. The closed lists, read from the code that
 # guards each by tests/test_tool_records.py, so a file that starts being guarded there is named here or that test fails.
 # tools/train.py's DEPLOY_TOOL and MIGRATIONS (its CONTROLLER, .github/, is outside ROOTS):
-DEPLOY_OWN = ("aim_next/migrations.py", "tools/base_move.py", "tools/checks.py", "tools/ci-input-reads.json", "tools/ci_input_reads.py",
+DEPLOY_OWN = ("tools/grouped_admission.py", "tools/compose_collector_775.py", "tools/compose_inventory_779.cjs", "aim_next/migrations.py", "tools/base_move.py", "tools/checks.py", "tools/ci-input-reads.json", "tools/ci_input_reads.py",
               "tools/ci_known_reds.py", "tools/continuation_envelope.py", "tools/deploy.py", "tools/known_reds.py", "tools/quarantine.py",
               "tools/own_case_receipt.py", "tools/release_check.py", "tools/releases.py", "tools/steps_for.py", "tools/train.py")
 # tools/release_check.py and every file it runs besides the unit modules: release_check.harnesses(), the native harnesses

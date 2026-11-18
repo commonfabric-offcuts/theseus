@@ -4567,5 +4567,11 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/test_grouped_admission_779.py": {
+    "3686d8bc3fe4144381aef651778e4c36416bd5c55158a8d7d45eb09c9801200a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }

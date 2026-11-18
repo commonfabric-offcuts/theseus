@@ -43,7 +43,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # differs from event base"), the controller (.github/: the workflows and the policy they read) and the service's data
 # migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
-DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
+DEPLOY_TOOL = ("tools/grouped_admission.py", "tools/compose_collector_775.py", "tools/compose_inventory_779.cjs", "tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
                "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py")
 CONTROLLER = ".github/"
@@ -111,10 +111,10 @@ def load(path):
     except (OSError, ValueError, RecursionError, base_move.Refused) as error:
         raise Refused("no readable train at %s: %s" % (path, error))
     if not isinstance(train, dict) or set(train) not in (set(KEYS), set(KEYS) | {"base_move"}, set(KEYS) | {"scoped"},
-                                                       set(KEYS) | {"source_carry"}):
+                                                       set(KEYS) | {"source_carry"}, set(KEYS) | {"full_checks"}):
         if isinstance(train, dict) and 'source_carry' in train:
             raise Refused('source_carry is mutually exclusive with base_move and scoped')
-        raise Refused("the train is a JSON object with exactly %s, optionally base_move or scoped (mutually exclusive)" % ", ".join(KEYS))
+        raise Refused("the train is a JSON object with exactly %s, optionally base_move, scoped, source_carry or full_checks (mutually exclusive)" % ", ".join(KEYS))
     if not _number(train["pr"]):
         raise Refused("pr is the pull request's number, not %r" % (train["pr"],))
     for key in ("merge_commit", "merged_tree"):
@@ -140,6 +140,13 @@ def load(path):
         ids(judgment["verdict_checks"], "verdict_checks")
         if not _words(judgment["audit"]):
             raise Refused("the judgment names its audit, the message that read it")
+    if 'full_checks' in train:
+        if train['kind'] != 'judged-first' or judgment is None:
+            raise Refused('full_checks requires a judged-first judgment')
+        try:
+            base_move.fields(train['full_checks'], 'path sha256')
+        except base_move.Refused as error:
+            raise Refused(str(error))
     if "base_move" in train:
         if train["kind"] != "judged-first":
             raise Refused("base_move is only for a judged-first train")
@@ -342,6 +349,19 @@ def judge(path, sha, live, release_branch, repository, git, github):
                 raise Refused(str(error))
         else:
             judgment = before_merge(git, github, repository, train["judgment"], merge, tree)
+            if 'full_checks' in train:
+                try:
+                    full = base_move.document(train['full_checks'])
+                    base_move.require('compose' in full and 'continuation' not in full,
+                                      'full_checks requires the explicit grouped normal producer route')
+                    base_move.require(full['base_at_run'] == {'ref': release_branch, 'sha': live}
+                                      and full['tested_merge']['tree'] == tree,
+                                      'full_checks stale source/base')
+                    full_observed = base_move.full_source(full, judgment, git, github, repository, judgment['head'], None)
+                    base_move.require(full_observed['controller']['current_base'] == full['base_at_run'],
+                                      'full_checks current controller base differs')
+                except (base_move.Refused, ci.Refused, Unreadable, OSError, ValueError, KeyError, TypeError, IndexError, AttributeError, zipfile.BadZipFile) as error:
+                    raise Refused(str(error))
             if 'scoped' in train:
                 try:
                     scoped = validate_scoped(train['scoped'], judgment, git, github, repository,
@@ -351,6 +371,8 @@ def judge(path, sha, live, release_branch, repository, git, github):
     result = {"file": str(path), "pr": train["pr"], "kind": train["kind"], "merge_commit": merge, "merged_tree": tree,
             "release_branch": release_branch, "live": live, "items": train["items"], "hosted_run": hosted,
             "guarded_changes": kept, "judgment": judgment}
+    if 'full_checks' in train:
+        result['full_checks'] = {'evidence': train['full_checks'], 'observed': full_observed}
     if "base_move" in train:
         result["base_move"] = moved
     if "scoped" in train:

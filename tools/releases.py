@@ -359,6 +359,8 @@ def train_measurements(train):
     judgment "pending" and naming its PR. No release check ran here, so no count claims one did."""
     result = {"train": {key: train[key] for key in ("file", "pr", "kind", "merge_commit", "merged_tree", "release_branch",
                                                   "items", "hosted_run", "judgment")}}
+    if 'full_checks' in train:
+        result['train']['full_checks'] = train['full_checks']
     if "base_move" in train:
         result["train"]["base_move"] = train["base_move"]
     if "scoped" in train:

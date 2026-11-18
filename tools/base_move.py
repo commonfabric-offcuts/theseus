@@ -344,7 +344,11 @@ def audit_reds(source, judgment, head, reds):
     names = 'version reviewer record run attempt source_head tested_merge inventory files_sha256 summary_sha256 reds'
     if 'continuation' in source:
         names += ' continuation_sha256'
+    if 'compose' in source:
+        names += ' compose_sha256'
     audit = fields(document(source['audit']), names)
+    if 'compose' in source:
+        require(audit['compose_sha256'] == source['compose']['sha256'], 'source audit compose binding differs')
     if 'continuation' in source:
         require(audit['continuation_sha256'] == source['continuation']['sha256'], 'source audit continuation binding differs')
     require(type(audit['version']) is int and audit['version'] == 1, 'unknown source audit version')
@@ -374,7 +378,9 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
     if isinstance(source, dict) and 'continuation' in source:
         from tools import continuation_envelope
         return continuation_envelope.validate(source, judgment, git, github, repository, head, merged_context)
-    fields(source, 'run attempt tested_merge base_at_run files inventory audit controller')
+    grouped = isinstance(source, dict) and 'compose' in source
+    fields(source, 'run attempt tested_merge base_at_run files inventory audit controller compose' if grouped
+           else 'run attempt tested_merge base_at_run files inventory audit controller')
     number(source['run']); number(source['attempt'])
     base_fact(source['base_at_run'])
     merge = fields(source['tested_merge'], 'sha tree first_parent second_parent')
@@ -392,6 +398,11 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
             and run.get('event') == 'pull_request' and run.get('name') == 'Checks'
             and run.get('conclusion') in ('success', 'failure'), 'source run identity differs')
     controller = controller_binding(source, judgment, github, repository, head, merged_context)
+    compose_proof = None
+    if grouped:
+        from tools import grouped_admission
+        anchor = {k: source[k] for k in ('run', 'attempt', 'tested_merge', 'base_at_run', 'controller')}
+        compose_proof = grouped_admission.validate(source['compose'], judgment, git, github, repository, tested, anchor, mode='fullChecks')
     inventory = document(source['inventory'])
     require(isinstance(inventory, dict) and set(inventory) == set(release_check.REQUIRED), 'incomplete source inventory')
     for name, rows in inventory.items():
@@ -447,8 +458,11 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
         plan = ci.plan_steps(provenance['plan'])
         coverage = Counter(s for shard in plan for s in shard)
         require(set(coverage) == set(required)
-                and all(count == 1 or name == 'python-units' for name, count in coverage.items())
+                and all(count == 1 or name == 'python-units' or (grouped and name == 'native-compose') for name, count in coverage.items())
                 and set(names) == {'check-%d' % i for i in range(len(plan))}, 'source shard plan differs')
+        if grouped:
+            require(Counter(j.get('compose_group', {}).get('id') for j in provenance['plan'] if j.get('compose_group')) ==
+                    Counter(r['group'] for r in compose_proof['collector']['receipts']), 'source grouped plan differs')
         partitioned = coverage['python-units'] > 1 or any('python_shard' in job for job in provenance['plan'])
         python_parts, python_keys, python_files, python_indices = [], set(), set(), set()
         expected_python, empty_python = {}, set()
@@ -544,6 +558,7 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                                'shards': python_parts}
             require(canonical(by_name['python-units']) == canonical(combined_python), 'source Python aggregate differs')
         ran, reds, raw_steps, reports = [], [], [], []
+        actual_groups779 = []
         for shard in shards:
             name = shard['artifact']; out = root / name
             raw = read(name + '/summary.json'); receipt = read(name + '/run.json')
@@ -572,9 +587,21 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                     and shard.get('tools') == tools and shard.get('steps') == selected, 'source shard provenance differs')
             for step in steps:
                 name = step['name']; ran.append(name)
-                require((partitioned and name == 'python-units') or by_name.get(name) == step,
+                require((partitioned and name == 'python-units') or (grouped and name == 'native-compose') or by_name.get(name) == step,
                         'source aggregate step differs')
                 require(isinstance(inventory[name], (list, dict)) and bool(inventory[name]), 'empty source inventory')
+                if grouped and name == 'native-compose':
+                    receipts775 = compose_proof['collector']['receipts']
+                    require(step.get('compose_receipt') in receipts775, 'source actual group receipt differs')
+                    actual_receipt = step['compose_receipt']
+                    actual_groups779.append(actual_receipt['group'])
+                    require(provenance['plan'][int(shard['artifact'].split('-')[1])].get('compose_group', {}).get('id') == actual_receipt['group'],
+                            'source group assigned to wrong workflow job')
+                    require(step.get('passed') is actual_receipt['passed'] and step.get('exit') == actual_receipt['exit']
+                            and step.get('counts') == {'tests': len(actual_receipt['results']),
+                                                       'failed': sum(r['passed'] is False for r in actual_receipt['results'])},
+                            'source group summary verdict differs')
+                    continue
                 if name in ci.NATIVE:
                     require(release_check.ran_whole(step), 'partial source browser mode')
                     rows = ci.cases(step, out, inventory[name])
@@ -601,6 +628,17 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                 if step['passed'] is not True:
                     raw_steps.append({k: step[k] for k in ('name', 'passed', 'exit', 'counts')})
             require(raw.get('passed') is all(s['passed'] for s in steps), 'source raw verdict differs')
+        if grouped:
+            union775 = compose_proof['collector']
+            require(Counter(actual_groups779) == Counter(r['group'] for r in union775['receipts']), 'source missing/duplicate actual group execution')
+            expected_step = {'name': 'native-compose', 'tool': 'compose-group-union-775',
+                             'passed': union775['passed'], 'exit': 0 if union775['passed'] else 1,
+                             'counts': {'tests': len(union775['results']), 'failed': len(union775['raw_false'])},
+                             'compose_union': union775, 'shards': union775['receipts']}
+            require(canonical(by_name['native-compose']) == canonical(expected_step), 'source genuine 775 collector aggregate differs')
+            ran = [n for n in ran if n != 'native-compose'] + ['native-compose']
+            if not compose_proof['passed']:
+                raw_steps.append({k: expected_step[k] for k in ('name', 'passed', 'exit', 'counts')})
         if partitioned:
             ran = [name for name in ran if name != 'python-units'] + ['python-units']
         require(Counter(ran) == Counter(required), 'incomplete source shard coverage')
@@ -608,7 +646,8 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
         report_hashes(reports, git, tested)
         audit_reds(source, judgment, head, reds)
         return {'passed': summary['passed'], 'run': source['run'], 'attempt': source['attempt'],
-                'failed': summary['failed'], 'steps': raw_steps, 'red_count': len(reds), 'controller': controller}
+                'failed': summary['failed'], 'steps': raw_steps, 'red_count': len(reds), 'controller': controller,
+                **({'compose': grouped_admission.record(compose_proof)} if grouped else {})}
 
 
 def legacy_own_receipt(receipt, git, assembly, assembly_tree, expected):
@@ -818,8 +857,9 @@ def validate(ref, judgment, git, github, repository, live, merge, items, merged_
         result['source'].update(summary=data['source']['files']['release-check/summary.json'],
                                 provenance=data['source']['files']['release-check/provenance.json'],
                                 artifacts_sha256=digest(canonical(data['source']['files'])))
-        if 'continuation' in data['source']:
-            result['source']['continuation'] = data['source']['continuation']
+        for evidence_kind in ('continuation', 'compose'):
+            if evidence_kind in data['source']:
+                result['source'][evidence_kind] = data['source'][evidence_kind]
         return result
     except (ci.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise Refused('base move: invalid or incomplete evidence: %s' % error)
