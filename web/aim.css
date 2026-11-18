@@ -1254,6 +1254,18 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader[data-card-reply] .reading-pane>:not(#source-access-status,#source-update,.source-actions){display:none}
 #reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}
 
+/* Item 650: only horizontal width changes; the existing vertical rules hold.
+   The transparent 44px targets carry quiet neutral grips, never card edges. */
+dialog#reader[data-width-edges]{--composer-width:var(--composer-width-stacked,var(--widest))}
+dialog#reader[data-width-edges][data-layout=wide]{--composer-width:var(--composer-width-wide,var(--widest))}
+dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,var(--widest)),calc(100vw - 3rem));min-width:min(760px,calc(100vw - 3rem));margin-inline:auto}
+.composer-edge{position:absolute;z-index:6;top:calc(50% - 22px);width:44px;height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:ew-resize}
+.composer-edge[data-edge=left]{left:0}.composer-edge[data-edge=right]{right:0}
+.composer-edge::after{content:'';position:absolute;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--muted);opacity:.55}
+.composer-edge[data-edge=left]::after{left:3px}.composer-edge[data-edge=right]::after{right:3px}
+.composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
+dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge{display:none}
+@media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}

@@ -5609,5 +5609,32 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/composer_width_native.mjs": {
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "web/reader.mjs",
+        "web/inline-composer.mjs",
+        "web/composer-width.mjs",
+        "web/aim.css",
+        "web/writing-helpers.mjs",
+        "web/compose-bar.mjs",
+        "web/app.mjs",
+        "web/app-session.mjs",
+        "web/session.mjs",
+        "web/index.html",
+        "tests/reader_compose_native.mjs",
+        "tests/composer_width_native.mjs",
+        "tests/static_response_cache.mjs",
+        "tests/ui_static_response_cache.test.mjs",
+        "tests/ui_composer_width.test.mjs",
+        "tests/fixtures/ui_http.py"
+      ],
+      "scope": "repository"
+    },
+    "32432a18802d6bda33c812c5210691be16ee99ecaa6d1d139df2e64a175fbf13": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }

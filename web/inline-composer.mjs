@@ -8,6 +8,7 @@ import { ImagePick, clipboardHoldsImage, clipboardImage, readInTurn } from './im
 import { showLine } from './lines.mjs';
 import { ComposeBar } from './compose-bar.mjs';
 import { holdPlace } from './sheet-holder.mjs';
+import { composerWidth } from './composer-width.mjs';
 
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
@@ -29,6 +30,7 @@ export class InlineComposer {
     // place in the feed, just above More (reply-stacks.mjs), its writing kept. Shown only where the composer is
     // (aim.css), so it is never one more row of buttons.
     this.sheet = document.querySelector('#new-message-sheet');
+    composerWidth(this.sheet);
     document.querySelector('#new-message')?.addEventListener('click', () => this.pop());
     // Put back by the person (✕, Escape, a press outside), the composer folds to its line while still up, so it
     // comes back into its place at the height its holder kept there, and no card behind it moves (item 589).

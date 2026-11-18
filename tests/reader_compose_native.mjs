@@ -24,11 +24,12 @@ import assert from 'node:assert/strict';
 import { whisperOutlineCompose, archive704 } from './whisper_outline_native.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { item721Compose } from './item_721_compose.mjs';
+import { composerWidthCases } from './composer_width_native.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { createRequire } from 'node:module';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cardEditor652 } from './card_editor_652.mjs';
@@ -119,17 +120,17 @@ const results = [], measured = [], shots = [], contexts = new Set();
 let browser, engine;
 
 // at: the fixture the page reads, the cases' own unless one says otherwise.
-async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, prepare = async () => {}) {
+async function page(shape, scheme = 'light', path = '/?topic=t1', at = facts, prepare = null) {
   const options = SHAPES[shape];
   const context = await browser.newContext({ ...options, colorScheme: scheme });
   contexts.add(context);
   if (engine === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: at.origin });
   const mode = JSON.stringify(['aim-next', at.instance_id, 'reader-layout', 'mode']);
-  await context.addInitScript(([key, value]) => { try { localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
+  await context.addInitScript(([key, value]) => { try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch { /* a fresh page reads stacked */ } }, [mode, shape.endsWith('wide') ? 'wide' : 'stacked']);
   const p = await context.newPage();
   const errors = [];
   p.on('pageerror', error => errors.push(String(error)));
-  await prepare(p);
+  if (prepare) await prepare(p);
   await p.goto(at.origin + path);
   // A busy machine can take a while over the first load.
   await until(p, () => document.body?.dataset.ready === 'true', 'application bootstrap', undefined, 30000);
@@ -151,7 +152,10 @@ async function open(p, id, words = id === first ? 'First agent' : 'Second agent'
   if (p.touch) {
     await p.touchscreen.tap(x, y);
     await until(p, s => document.querySelector(s).classList.contains('lit'), 'the card lit', card);
-    await p.touchscreen.tap(x, y);
+    // Lighting a card can reposition its excerpt. Aim the second native tap
+    // at the card's current box, rather than its pre-light coordinates.
+    const litBox = await p.locator(card).boundingBox();
+    await p.locator(card).tap({ position: { x: litBox.width / 2, y: litBox.height * 0.6 } });
   } else {
     // A long message's excerpt becomes a box that scrolls under a resting
     // pointer; the cue under it ("Open to read it whole") opens it from there.
@@ -264,6 +268,8 @@ async function check(name, action) {
     if (results.at(-1)?.name === full) results.pop();
     results.push({ name: full, passed: false, error: failures.join('\nthen, ') }); console.log(`FAIL ${full}\n${failures.join('\nthen, ')}`);
   }
+  await mkdir(evidence, { recursive: true });
+  await appendFile(path.join(evidence, 'case-progress.jsonl'), JSON.stringify(results.at(-1)) + '\n');
   // A fixture that has exited answers nothing more: the run stops here, its
   // evidence written, rather than failing every case left.
   if (fixture.exitCode !== null || fixture.signalCode !== null) throw Error(`The fixture exited during "${full}": ${fixtureErrors()}`);
@@ -295,6 +301,7 @@ async function run() {
   await whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close });
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
+  await composerWidthCases({ check, page, open, press, until, picture, close, control, root, evidence, engine, second, HEIC });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
     await check(`item 644 ${shape} ${scheme}: opening, using and closing the card composer holds the page`, async () => {
@@ -2544,6 +2551,7 @@ try {
       browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
       try { await phase(); } finally { await browser.close(); browserClosed = true; }
       completedPhases.push(`${phase.name}:${engine}`);
+      await writeFile(path.join(evidence, 'phase-progress.json'), JSON.stringify({ plannedPhases, completedPhases, browserClosed, harnessCompleted: false }, null, 2));
     }
   }
   harnessCompleted = true;
