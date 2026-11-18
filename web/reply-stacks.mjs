@@ -324,6 +324,7 @@ export function headClick(list, entry, event) {
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
+  if (act === 'starred') { state.on?.starred?.(stack); return true; }
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
   if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
@@ -529,7 +530,17 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   row.replaceChildren(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
     ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
-    ...(starred ? [element(doc, 'span', 'stack-star', '★ Starred')] : []),
+    ...(starred ? [(() => {
+      const star = act('starred', 'stack-star', '★ Starred', 'Show the earliest message you starred in this dossier');
+      star.setAttribute('role', 'button'); star.tabIndex = 0;
+      star.setAttribute('aria-label', star.title);
+      star.onkeydown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault(); event.stopPropagation(); state.on?.starred?.(stack);
+        }
+      };
+      return star;
+    })()] : []),
     meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;

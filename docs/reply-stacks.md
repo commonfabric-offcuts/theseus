@@ -413,7 +413,12 @@ their acts.
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
   the message itself is new, ★ if the reader starred any message of the
   dossier, not only its first (item 635: a later reply, or one the page has
-  not loaded, which the dossier's position names), how many replied and who, and how many replies are new. The tab is two
+  not loaded, which the dossier's position names), how many replied and who, and how many replies are new.
+  Pressing that filled star shows the earliest message you starred in this
+  dossier, in message order, through the same paged reveal as the unread
+  badge (items 613/735, [title-star.md](title-star.md)); a reply behind
+  Earlier messages opens whole, with its star and the keys on it, in place.
+  The tab is two
   lines high: the short name, then the rest on one line that never wraps to
   a third (`stack-look.css`). When that line is short of room, who replied
   and what is new give way first, then the marks, whole glyphs dropped from

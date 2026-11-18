@@ -264,6 +264,9 @@
 .stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
 .stack-star{flex:none;color:var(--stack-star)}
+.stack-star[role=button]{cursor:pointer;position:relative}
+.stack-star[role=button]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+@media(pointer:coarse){.stack-star[role=button]::after{content:'';position:absolute;inset:50% 0 auto;transform:translateY(-50%);height:max(100%,44px);min-width:44px}}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
 /* On the tab (a compact row keeps .stack-meta whole, above), the count keeps its width and who replied and what is
    new give way, each a part of the line. */

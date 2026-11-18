@@ -268,6 +268,13 @@ press cannot reach.
   read", at a laptop's width and at 390, 375 and 320 on a phone, light and
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
+- `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
+  same two engines: "reading item 735 hidden starred reply red first and
+  restored" at 320, 375, 390 and 1280, light/dark. A title star shows the
+  earliest message you starred in that dossier, including a reply hidden by
+  Earlier messages, with its star, whole on screen. The "Core paging and
+  unchanged 613 unread reveal" cases keep the same landing for both inputs
+  ([title-star.md](title-star.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
   review shows ✅ Done beside its state; a click marks it Done, into the Done
   group, and the button goes; an active topic shows none", "header ✅ Done is
