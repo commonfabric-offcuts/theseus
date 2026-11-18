@@ -26,7 +26,8 @@ page or actor starts with no cached titles from the previous one.
 
 Rows join the outline's single Tab stop and native arrow navigation as children
 of their topic. Return, a click or a phone tap opens the canonical root in its
-actual topic through the existing writing guard. Children never reorder their
+actual topic. Within the current topic this opens a Reader; leaving the topic
+uses the existing writing guard. Children never reorder their
 parents, act as topics for reorder/write, or expose another reader's stars.
 An empty list adds no heading, placeholder or decorative control. This is a
 read-only navigation surface: it introduces no saving operation. Read-only
@@ -40,7 +41,8 @@ and its destination. No schema or migration changes are needed.
 and 1280, light and dark: available (long, equal and empty names), empty,
 live rename/star/unstar, reading/busy, transient error with Retry, refused
 read with Retry, keyboard, read-only outcome, folded parent, unloaded parent,
-unsaved writing that refuses navigation, and actor isolation with real denied
+same-topic unsaved writing kept per source, cross-topic unsaved writing that
+refuses leaving until saved (then reaches the actual destination), and actor isolation with real denied
 membership. The distinct text must meet 4.5:1 contrast. Measured layout uses
 named 2px geometry and 0.75px touch tolerances; an absent 14.4px indent and a
 30px target still fail. Source mutants break indent, touch size, distinct color
@@ -53,3 +55,11 @@ adds no visible row. Denied membership removes titles; a transient read error
 keeps confirmed titles, names the problem and offers Retry. Core checks also
 exercise whispers, private notes, removed membership, joined roots and paging;
 Node checks fence stale reads and preserve distinct real IDs across pages.
+
+The destination oracle observes the actual Reader source and the reply editor's
+source/destination after a native press, not a message parameter in the URL:
+opening a Reader consumes that parameter. Folded/unloaded checks first reveal
+and press the real child. Actor-isolation ends after its own denied-actor
+assertions, and failures capture state and screenshots before owned pages close.
+The route mutant opens a different real root, must fail that identity oracle,
+and is restored byte for byte before a passing control in the same engine run.

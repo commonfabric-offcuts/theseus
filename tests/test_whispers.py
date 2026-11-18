@@ -985,7 +985,8 @@ MESSAGE_READS = {
                            "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
-                           "so it never folds a whisper the reader is outside", 23),
+                           "so it never folds a whisper the reader is outside; the scoped stars canonical-root SELECT reads the first message and "
+                           "attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic", 24),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "

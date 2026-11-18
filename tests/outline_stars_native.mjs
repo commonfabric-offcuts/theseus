@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import {observeReader, readerSnapshot, assertReaderDestination} from './outline_stars_oracle.mjs';
 
 const WIDTHS = [320, 375, 390, 1280];
 // Measured geometry tolerances: 2px absorbs engine rounding but cannot hide a
@@ -10,7 +11,7 @@ const GEOMETRY_TOLERANCE_PX = 2;
 const TOUCH_TARGET_TOLERANCE_PX = 0.75;
 const row = id => `#outline .ol-dossier[data-dossier-id="${id}"]`;
 
-export async function item715Checks({check, page, until, control, facts, shot, observations, evidencePath}) {
+export async function item715Checks({check, page, until, control, view, facts, shot, observations, evidencePath}) {
   const press = async (p, selector, width) => {
     await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'nearest'})`);
     if (width === 1280) return p.point(selector);
@@ -29,8 +30,26 @@ export async function item715Checks({check, page, until, control, facts, shot, o
     if(width!==1280) await press(p,'#rail-open',width);
     const group=await p.evaluate(`Boolean(document.querySelector('#outline a[data-topic-id="${seed.topic}"]')?.closest('details:not([open])'))`);
     if(group) await press(p,`#outline .ol-outcome[data-workspace-id="${seed.workspace}"] details:has(a[data-topic-id="${seed.topic}"]) > summary`,width);
+    await p.evaluate(observeReader);
     await shot(p, label+'-initial'); // actual unmodified baseline, even while the feature is absent
     return p;
+  };
+  const capture = async (p, label, error = null) => {
+    const actual=await p.evaluate(readerSnapshot);
+    await writeFile(path.join(evidencePath,label+'-state.json'),JSON.stringify({actual,error:error?.stack??null,
+      calls:p.calls.map(c=>c.payload),errors:p.errors},null,2));
+    await shot(p,label);
+    return actual;
+  };
+  const opened = async (p, root, topic, label) => {
+    await until(()=>p.evaluate('Boolean(document.querySelector("#reader")?.open)'), 'native title press opens a Reader');
+    const actual=await capture(p,label);
+    const legacyURL={expected:root,actual:new URL(actual.url).searchParams.get('message')};
+    legacyURL.passed=legacyURL.actual===legacyURL.expected;
+    await writeFile(path.join(evidencePath,label+'-oracle.json'),JSON.stringify({legacyURL,actual,expected:{root,topic}},null,2));
+    observations.push({name:'item715 native red-first URL observation then Reader oracle',label,root,topic,legacyURL,actual});
+    assertReaderDestination(actual,root,topic);
+    return actual;
   };
   const loaded = (p, seed) => until(()=>p.evaluate(`document.querySelector('#outline .ol-dossiers[data-parent-topic-id="${seed.topic}"]')?.dataset.loaded==='true' && document.querySelector('#outline .ol-dossiers[data-parent-topic-id=\"${seed.topic}\"]').getAttribute('aria-busy')==='false'`), 'the scoped starred dossier read has settled under its parent');
   const act = async (seed, root, kind, args, prefix) => {
@@ -41,20 +60,22 @@ export async function item715Checks({check, page, until, control, facts, shot, o
     for(const state of ['available','empty','updates','busy','error','refused','keyboard','read-only','folded','unloaded','guarded','actor-isolation']) {
       await check(`rail item 715 ${state} at ${width} ${theme}, geometry tolerance 2px and touch tolerance 0.75px`,async()=>{
         const label=`item715-${state}-${width}-${theme}`, prefix=label+'-'+randomUUID();
-        const seed=await control({method:'item715_seed',operation_id:prefix,empty:state==='empty',read_only:state==='read-only',unloaded:state==='unloaded'});
+        const seed=await control({method:'item715_seed',operation_id:prefix,empty:state==='empty',read_only:state==='read-only',unloaded:state==='unloaded',cross_topic:state==='guarded'});
         const p=await up(seed,width,theme,label);
         let closed=false;
         try {
           await loaded(p,seed);
+          if(state==='guarded') await until(()=>p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row(seed.unloaded.root))}))`),'the cross-topic fixture title has loaded');
           if(state==='empty') {
             assert.equal(await p.evaluate(`document.querySelectorAll('#outline .ol-dossier').length`),0,'an empty parent adds no dossier or duplicate group');
             await shot(p,label); return;
           }
-          const ids = await p.evaluate(`[...document.querySelectorAll('#outline .ol-dossier')].map(e=>e.dataset.dossierId)`);
+          const ids = await p.evaluate(`[...document.querySelectorAll('#outline .ol-dossiers[data-parent-topic-id="${seed.topic}"] .ol-dossier')].map(e=>e.dataset.dossierId)`);
           assert.deepEqual(ids,[...seed.roots].reverse(),'newest stars first, equal titles retain separate real identities');
           assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(row(seed.roots[3]))}).textContent.trim()`),'★ Fallback words 3','empty name uses the feed preview');
           const geometry=await p.evaluate(`(()=>{const parent=document.querySelector('#outline a[data-topic-id="${seed.topic}"]'), pr=parent.getBoundingClientRect();
             return [...document.querySelectorAll('#outline .ol-dossier')].map(e=>{const b=e.getBoundingClientRect(),c=getComputedStyle(e);return {left:b.left-pr.left,right:b.right-pr.right,height:b.height,color:c.color,parent:getComputedStyle(parent).color,bg:getComputedStyle(document.documentElement).backgroundColor,title:e.title,level:e.getAttribute('aria-level')}})})()`);
+          await writeFile(path.join(evidencePath,label+'-geometry.json'),JSON.stringify({geometry,GEOMETRY_TOLERANCE_PX,TOUCH_TARGET_TOLERANCE_PX},null,2));
           for(const g of geometry) {
             assert.ok(g.left>=12-GEOMETRY_TOLERANCE_PX,'children are visibly tucked under their parent, tolerance 2px');
             assert.ok(g.right<=GEOMETRY_TOLERANCE_PX,'long titles stay within the parent width, tolerance 2px');
@@ -91,22 +112,58 @@ export async function item715Checks({check, page, until, control, facts, shot, o
           }
           if(state==='guarded') {
             await press(p,row(seed.roots[0]),width);
-            await until(()=>p.evaluate('document.getElementById("reader").open'),'native dossier press opens its message');
+            await opened(p,seed.roots[0],seed.topic,label+'-original');
             await p.point('#writing-body');
-            await p.send('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+            const fault=await control({method:'item715_save_fault',enabled:true});
+            assert.equal(fault.enabled,true,'isolated save refusal is installed before typing');
             const writing='Exact words kept for this original dossier — '+prefix;
             await p.send('Input.insertText',{text:writing}); await p.key('Escape');
             await until(()=>p.evaluate('!document.getElementById("reader").open'),'Escape keeps the reply and closes its Reader');
             if(width!==1280) await press(p,'#rail-open',width);
             await press(p,row(seed.roots[3]),width);
-            await until(()=>p.evaluate(`document.getElementById('topic-navigation-status').textContent.includes('not confirmed saved')`),'the real writing guard refuses navigation');
-            assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('message')`),seed.roots[0],'refusal keeps the original dossier destination');
-            assert.equal(await p.evaluate(`document.getElementById('writing-body').value`),writing,'refusal keeps the exact writing');
+            const same=await opened(p,seed.roots[3],seed.topic,label+'-same-topic');
+            assert.equal(same.navigation.includes('not confirmed saved'),false,'same-topic Reader opening does not invoke the leave-topic guard');
+            assert.equal(same.writing,'','another source does not inherit the original reply');
+            await p.key('Escape');
+            await until(()=>p.evaluate('!document.getElementById("reader").open'),'close the other source');
+            if(width!==1280) await press(p,'#rail-open',width);
+            await press(p,row(seed.roots[0]),width);
+            const returned=await opened(p,seed.roots[0],seed.topic,label+'-returned');
+            assert.equal(returned.writing,writing,'returning to the original source retains exact writing and destination');
+            await p.key('Escape');
+            await until(()=>p.evaluate('!document.getElementById("reader").open'),'close before leaving the topic');
+            if(width!==1280) await press(p,'#rail-open',width);
+            await press(p,row(seed.unloaded.root),width);
+            await until(()=>p.evaluate(`document.getElementById('topic-navigation-status').textContent.includes('not confirmed saved')`),'cross-topic navigation is refused by the real writing guard');
+            const refused=await capture(p,label+'-cross-topic-refused');
+            assert.equal(new URL(refused.url).searchParams.get('topic'),seed.topic,'refusal keeps the original topic');
+            assert.equal(refused.open,false,'refusal opens no Reader in the other topic');
+            assert.equal(refused.writing,writing,'refusal retains the exact writing');
+            assert.deepEqual(refused.context.sourceRef,{kind:'message',id:seed.roots[0]},'refusal keeps the original reply source');
+            assert.equal(refused.context.topicId,seed.topic,'refusal keeps the exact reply destination');
             assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'),false,'pressing a title sends no writing');
-            await shot(p,label+'-writing-kept');
-            await p.send('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});
+            const restored=await control({method:'item715_save_fault',enabled:false});
+            assert.ok(restored.refused>fault.refused,'the guard encountered an actual failed save');
+            await press(p,row(seed.roots[0]),width);
+            const kept=await opened(p,seed.roots[0],seed.topic,label+'-writing-kept');
+            assert.equal(kept.writing,writing,'the original reply remains readable after the guard');
+            await p.key('Escape');
+            await until(()=>p.evaluate('!document.getElementById("reader").open'),'close before retrying the actual destination');
+            if(width!==1280) await press(p,'#rail-open',width);
+            await press(p,row(seed.unloaded.root),width);
+            await until(()=>p.evaluate(`new URL(location.href).searchParams.get('topic')===${JSON.stringify(seed.unloaded.topic)} && document.body.dataset.ready==='true'`),'the restored save allows the actual destination');
+            // Moving in place loads a new app module, while Reader remains the shared build module.
+            const destination=await opened(p,seed.unloaded.root,seed.unloaded.topic,label+'-cross-topic-restored');
+            assert.equal(destination.writing,'','the new topic inherits no original writing');
+            const saved=await view('editor_state',{source_ref:{kind:'message',id:seed.roots[0]},topic_id:seed.topic,limit:10,unsent:true});
+            assert.equal(saved.draft.body,writing,'Core holds the exact original writing after the allowed move');
+            assert.deepEqual(saved.source_ref,{kind:'message',id:seed.roots[0]});
+            assert.deepEqual(saved.destination,{topic_id:seed.topic});
+            observations.push({name:'item715 same-topic and cross-topic writing',label,fault,restored,writing,saved});
           }
           if(state==='actor-isolation') {
+            assert.deepEqual(p.errors,[]);
+            await capture(p,label+'-primary-before-close');
             await p.close(); closed=true;
             await control({method:'server_stop'});
             Object.assign(facts,await control({method:'server_start',as_actor:'fixture-715-other'}));
@@ -123,11 +180,16 @@ export async function item715Checks({check, page, until, control, facts, shot, o
               }});
               await until(()=>q.evaluate(`!document.getElementById('app-status').hidden && document.getElementById('app-status').textContent.length>0`),'actual denied membership is shown');
               assert.equal(await q.evaluate(`document.querySelectorAll('#outline .ol-dossier').length`),0,'a denied actor sees no titles from the previous actor');
+              assert.deepEqual(q.errors,[]);
               await shot(q,label+'-denied');
+            } catch(error) {
+              if(q) await capture(q,label+'-actor-failure',error);
+              throw error;
             } finally {
               await q?.close(); await control({method:'server_stop'}); Object.assign(facts,await control({method:'server_start'}));
             }
           }
+          if(state==='actor-isolation') return;
           if(state==='updates') {
             await act(seed,seed.roots[3],'stack.name',{name:'Renamed live'},prefix);
             await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(row(seed.roots[3]))})?.textContent==='★ Renamed live'`),'rename arrives live');
@@ -167,13 +229,20 @@ export async function item715Checks({check, page, until, control, facts, shot, o
             await p.key('ArrowLeft');
             assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'),seed.topic,'Left returns to the actual parent');
             await p.key('ArrowDown'); await p.key('Enter');
-          } else if(['available','read-only'].includes(state)) await press(p,row(seed.roots[3]),width);
-          if(['available','keyboard','read-only','folded','unloaded','guarded','actor-isolation'].includes(state)) {
-            await until(()=>p.evaluate(`new URL(location.href).searchParams.get('message')===${JSON.stringify(seed.roots[3])}`),'the title opens its real dossier destination');
-            assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`),seed.topic,'destination stays in the real parent topic');
+          } else if(['available','read-only','folded','unloaded'].includes(state)) {
+            await press(p,row(state==='unloaded'?seed.unloaded.root:seed.roots[3]),width);
+          }
+          if(['available','keyboard','read-only','folded','unloaded'].includes(state)) {
+            await opened(p,state==='unloaded'?seed.unloaded.root:seed.roots[3],state==='unloaded'?seed.unloaded.topic:seed.topic,label+'-opened');
           }
           assert.deepEqual(p.errors,[]);
-        } finally {if(!closed) await p.close();}
+        } catch(error) {
+          if(!closed) await capture(p,label+'-failure-before-close',error);
+          throw error;
+        } finally {
+          if(state==='guarded') await control({method:'item715_save_fault',enabled:false});
+          if(!closed) await p.close();
+        }
       });
     }
   }
@@ -181,7 +250,7 @@ export async function item715Checks({check, page, until, control, facts, shot, o
     {name:'indent',file:'rails.css',from:'.ol-dossiers{margin:0 0 .15rem .9rem;',to:'.ol-dossiers{margin:0 0 .15rem 0;',expected:/tucked/},
     {name:'touch',file:'rails.css',from:'.ol-dossier{display:block;min-height:44px;',to:'.ol-dossier{display:block;min-height:30px;height:30px;',expected:/44px/},
     {name:'color',file:'rails.css',from:'padding:.55rem .5rem;color:var(--warn);font-size:.85rem',to:'padding:.55rem .5rem;color:var(--accent);font-size:.85rem',expected:/distinct/},
-    {name:'route',file:'outline-dossiers.mjs',from:"this.outline.open({kind:'topic',id:state.id,message:id}, link.title);",to:"this.outline.open({kind:'topic',id:state.id}, link.title);",expected:/canonical root/},
+    {name:'route',file:'outline-dossiers.mjs',from:"this.outline.open({kind:'topic',id:state.id,message:id}, link.title);",to:"this.outline.open({kind:'topic',id:state.id,message:state.stars.find(s=>s.dossier.id!==id).dossier.id}, link.title);",expected:/canonical root/},
   ];
   const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
   for(const mutation of mutations) await check(`rail item 715 applied ${mutation.name} source mutant and restored control`,async()=>{
@@ -199,6 +268,8 @@ export async function item715Checks({check, page, until, control, facts, shot, o
       try {
         await loaded(p,seed);
         const g=await p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(row(seed.roots[3]))}),b=e.getBoundingClientRect(),p=e.closest('.ol-dossiers').previousElementSibling.getBoundingClientRect();return {indent:b.left-p.left,height:b.height,color:getComputedStyle(e).color,token:getComputedStyle(e).getPropertyValue('--warn').trim()}})()`);
+        await writeFile(path.join(evidence,label+'-geometry.json'),JSON.stringify({phase,g,GEOMETRY_TOLERANCE_PX,TOUCH_TARGET_TOLERANCE_PX},null,2));
+        await capture(p,label+'-before-assertion');
         if(mutation.name==='indent') assert.ok(g.indent>=12-GEOMETRY_TOLERANCE_PX,'children are tucked under the parent, tolerance 2px');
         if(mutation.name==='touch') assert.ok(g.height>=44-TOUCH_TARGET_TOLERANCE_PX,'44px touch target, tolerance 0.75px');
         if(mutation.name==='color') {
@@ -207,12 +278,13 @@ export async function item715Checks({check, page, until, control, facts, shot, o
         }
         if(mutation.name==='route') {
           await press(p,row(seed.roots[3]),390);
-          try {await until(()=>p.evaluate(`new URL(location.href).searchParams.get('message')===${JSON.stringify(seed.roots[3])}`),'the native route opens its canonical root');}
-          catch {assert.fail('native title navigation must open its canonical root');}
-          assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`),seed.topic,'the native route retains its actual topic');
+          await opened(p,seed.roots[3],seed.topic,label+'-canonical-root');
         }
         await shot(p,label);
         assert.deepEqual(p.errors,[]);
+      } catch(error) {
+        await capture(p,label+'-failure-before-close',error);
+        throw error;
       } finally {await p.close();}
     };
     await control({method:'server_stop'});

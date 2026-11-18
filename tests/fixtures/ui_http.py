@@ -36,6 +36,8 @@ class FreshnessControls:
         self.http_media_publications = 0
         self.legacy_number = 0
         self.fatal = []
+        self.item715_refuse_saves = False
+        self.item715_refused_saves = 0
 
     def record(self, value):
         with self.lock:
@@ -120,6 +122,11 @@ class FreshnessControls:
                 with controls.lock:
                     controls.http_commands += 1
                     controls.http_delivery_acks += int(envelope.get("kind") == "delivery.ack")
+                    refuse = controls.item715_refuse_saves and envelope.get("kind") == "draft.save"
+                    if refuse:
+                        controls.item715_refused_saves += 1
+                if refuse:
+                    raise RequestError(503, "DATABASE_BUSY", "Item 715 isolated draft-save refusal")
                 return self.base.command(actor, envelope)
 
             def publish_media(self, *args, **kwargs):
@@ -654,6 +661,10 @@ def main():
                             answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
                                                   {"marked": request["marked"]}, {"message_id": message_id},
                                                   {"mark_revision": row[0] if row else 0})["result"])
+                    elif request["method"] == "item715_save_fault":
+                        with controls.lock:
+                            controls.item715_refuse_saves = request["enabled"]
+                            answer = {"enabled": controls.item715_refuse_saves, "refused": controls.item715_refused_saves}
                     elif request["method"] == "item715_seed":
                         prefix = request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
@@ -673,8 +684,8 @@ def main():
                             if not request.get("empty"):
                                 command("message.star", prefix + "-star-%d" % n, {"starred": True}, {"message_id": mid}, {"star_revision": 0})
                         unloaded = None
-                        if request.get("unloaded"):
-                            for n in range(22):
+                        if request.get("unloaded") or request.get("cross_topic"):
+                            for n in range(22 if request.get("unloaded") else 1):
                                 tid, opening = prefix + "-extra-%d" % n, prefix + "-extra-opening-%d" % n
                                 command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
                                         "title": "Unloaded parent" if n == 0 else "Later topic %d" % n, "participants": [],
