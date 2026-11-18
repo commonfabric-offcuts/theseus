@@ -589,9 +589,10 @@ def main():
                         path = destination / name
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_bytes(data)
-                    path = destination / "cover-refresh.mjs"
+                    path = destination / ("reader.mjs" if phase == "reader-tab-boundary" else "cover-refresh.mjs")
                     data = path.read_bytes()
                     mutations = {
+                        "reader-tab-boundary": (b"if (target.closest?.('#reader-cover')) {", b"if (false) {"),
                         "lost-pending": (b"const pending = refresh?.state === 'pending';", b"const pending = false;"),
                         "visible-text": ("local.error || (!pending && local.busy ? 'Requesting update…' : '')".encode(), "local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '')".encode()),
                         "keyboard-target": (b"control.className = 'cover-refresh-glyph';", b"control.tabIndex=-1; control.className = 'cover-refresh-glyph';"),

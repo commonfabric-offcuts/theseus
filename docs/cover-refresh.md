@@ -108,3 +108,12 @@ reports to keep the same read state. Completed covers are brought into view.
 Actual animation-frame samples and human/no-op/owner-Done screenshots describe
 only the intervals they record; they are not a claim about unobserved frames.
 All new evidence remains pending until the allocated pool returns.
+
+A trusted, uncancelled Tab can remain on the expanded cover summary in WebKit
+for both native Option-Tab and plain Tab. The Reader therefore owns the Tab
+boundary within its cover: eligible summary/controls in document order, then
+the next Reader stop; Shift-Tab follows the same order backwards. Disabled and
+negative-tabindex controls are skipped. A WebKit applied-source control removes
+this boundary and must reproduce the actual native access failure before exact
+restoration restores activation. This is keyboard access, with the approved
+cover presentation unchanged.

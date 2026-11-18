@@ -109,7 +109,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     }
     const reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
     const receipt = await p.evaluate(`({keys:window.coverKeys,focus:window.coverFocus,active:document.activeElement?.outerHTML,
-      details:[...document.querySelectorAll('#reader details')].map(e=>({id:e.id,open:e.open})),target:(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e?.getBoundingClientRect();return {html:e?.outerHTML,box:b?{x:b.x,y:b.y,width:b.width,height:b.height}:null}})()})`);
+      details:[...document.querySelectorAll('#reader details')].map(e=>({id:e.id,open:e.open})),target:(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e?.getBoundingClientRect();return {html:e?.outerHTML,tabIndex:e?.tabIndex,box:b?{x:b.x,y:b.y,width:b.width,height:b.height}:null}})()})`);
     observations.push({name:'item 738 native keyboard', selector, reverse, plainTab, reached, trace, receipt});
     await p.evaluate('window.coverWatchKeys=false');
     if (!reached) await shot(p, 'refresh738-keyboard-failure-' + observations.length);
@@ -367,14 +367,14 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     const topic = 'refresh738-mutants', ids = await setup(topic);
     const r = await control({ method: 'stack_act', kind: 'stack.cover_refresh', sender: facts.actor, message_id: ids.root, args: {}, operation_id: topic + '-request' });
     assert.equal(r.status, 'committed');
-    for (const phase of ['lost-pending', 'visible-text', 'small-target', 'keyboard-target']) await source(phase, topic, async receipt => {
+    for (const phase of ['lost-pending', 'visible-text', 'small-target', 'keyboard-target', ...(engine === 'webkit' ? ['reader-tab-boundary'] : [])]) await source(phase, topic, async receipt => {
       let p;
       try {
         p = await open(topic + '-' + phase, 'phone', topic, ids.root, GATE);
-        const where = await show(p, 'phone', topic, ids, phase === 'keyboard-target' ? 'reader' : 'sheet');
+        const where = await show(p, 'phone', topic, ids, ['keyboard-target', 'reader-tab-boundary'].includes(phase) ? 'reader' : 'sheet');
         assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
-        if (phase === 'keyboard-target') {
-          await assert.rejects(activate(p, 'phone', where + ' ' + CONTROL, true), /native Tab reaches refresh/, 'source removing the real keyboard stop must fail native key access');
+        if (['keyboard-target', 'reader-tab-boundary'].includes(phase)) {
+          await assert.rejects(activate(p, 'phone', where + ' ' + CONTROL, true), /native Tab reaches refresh/, 'source removing the real stop or Reader boundary must fail native key access');
           observations.push({ name: 'item 738 killed native keyboard mutant', phase });
           return;
         }

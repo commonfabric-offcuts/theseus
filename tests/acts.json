@@ -32325,6 +32325,21 @@
     "native": "reading",
     "case": "item 738 applied source controls"
    }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab leaves the expanded Reader cover summary and reaches its refresh control in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (target.closest?.('#reader-cover')) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
+   }
   }
  ]
 }
