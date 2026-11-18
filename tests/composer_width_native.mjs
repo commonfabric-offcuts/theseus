@@ -389,7 +389,7 @@ export async function composerWidthCases(h) {
     await press(p, '#new-message');
     await until(p, () => document.querySelector('#new-message-sheet').open, 'New message opens');
   }
-  async function lifetimeProof(shape, scheme, mutation = null) {
+  async function lifetimeProof(shape, scheme, mutation = null, phase = mutation ? `mutant-${mutation.name}` : 'normal') {
     const { p, a, applied } = await setup('Reader', 'writing', shape, scheme, { mutation });
     try {
     const n = at('New message'), saved = await kept(p, a), initial = await geometry(p, a);
@@ -402,7 +402,7 @@ export async function composerWidthCases(h) {
       near(g.center, g.view / 2, `${words}: centred`);
     };
     await width(a, defaults.stacked, 'stacked starts at its source-defined default');
-    await picture(p, 'item-650-lifetime-default-stacked');
+    await picture(p, `item-650-lifetime-${phase}-default-stacked`);
     await drag(p, a, 'left', 16, 0, touch);
     const stacked = defaults.stacked - 32;
     await width(a, stacked, 'stacked keeps its chosen width');
@@ -410,7 +410,7 @@ export async function composerWidthCases(h) {
     if (!phone) {
       await chooseMode(p, 'wide');
       await width(a, defaults.wide, 'unchosen Wide uses its own default without stacked leakage');
-      await picture(p, 'item-650-lifetime-default-wide');
+      await picture(p, `item-650-lifetime-${phase}-default-wide`);
       await drag(p, a, 'right', -32);
       wide = defaults.wide - 64;
       await width(a, wide, 'Wide keeps its own chosen width');
@@ -420,7 +420,7 @@ export async function composerWidthCases(h) {
       await width(a, wide, 'switching back restores Wide choice');
     }
     assert.deepEqual(await kept(p, a), saved, 'mode switches preserve exact writing, To, images and selection');
-    await picture(p, 'item-650-lifetime-reader-chosen');
+    await picture(p, `item-650-lifetime-${phase}-reader-chosen`);
     await putAway(p, a);
     await openNew(p);
     await width(n, defaults.stacked, 'New message has its independent default');
@@ -430,7 +430,7 @@ export async function composerWidthCases(h) {
     await drag(p, n, 'right', -16, 0, touch);
     await width(n, defaults.stacked - 32, 'New message keeps its own chosen width');
     assert.deepEqual(await kept(p, n), newSaved, 'New message resize keeps exact writing, To, images and selection');
-    await picture(p, 'item-650-lifetime-new-chosen');
+    await picture(p, `item-650-lifetime-${phase}-new-chosen`);
     await putAway(p, n); await openNew(p);
     await width(n, defaults.stacked - 32, 'New message close/reopen restores its choice');
     await putAway(p, n); await open(p, second);
@@ -450,10 +450,10 @@ export async function composerWidthCases(h) {
       await chooseMode(p, 'stacked');
       await width(a, defaults.stacked, 'reload restores stacked source-defined default');
     }
-    await picture(p, 'item-650-lifetime-reader-reloaded');
+    await picture(p, `item-650-lifetime-${phase}-reader-reloaded`);
     await putAway(p, a); await openNew(p);
     await width(n, defaults.stacked, 'reload restores independent New message default');
-    await picture(p, 'item-650-lifetime-new-reloaded');
+    await picture(p, `item-650-lifetime-${phase}-new-reloaded`);
     return applied;
     } finally { await close(p); }
   }
@@ -468,7 +468,7 @@ export async function composerWidthCases(h) {
   for (const mutation of lifetimeMutations) await check(`item 650 applied mutant ${mutation.name} and restored mode widths`, async () => {
     await assert.rejects(() => lifetimeProof('stacked', 'light', mutation), error => error.code === 'ERR_ASSERTION' && mutation.expected.test(error.message), `mode widths catch ${mutation.name} on its intended assertion`);
     await control({ method: 'reset_drafts' });
-    await lifetimeProof('stacked', 'light');
+    await lifetimeProof('stacked', 'light', null, `restored-${mutation.name}`);
     const changed = await readFile(path.join(evidence, `${engine}-item-650-${mutation.name}.mjs`));
     receipts.push({ name: mutation.name, engine, file: 'web/composer-width.mjs', original: hashes['web/composer-width.mjs'],
       mutated: createHash('sha256').update(changed).digest('hex'), caught: true, restored: true, restoredHash: hashes['web/composer-width.mjs'] });
