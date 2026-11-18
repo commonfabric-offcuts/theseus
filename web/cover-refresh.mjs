@@ -93,7 +93,7 @@ export function refreshControl(doc, cover, context) {
       };
     }
     const status = doc.createElement('span'); status.className = 'cover-refresh-status'; status.setAttribute('role', 'status');
-    status.textContent = local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '');
+    status.textContent = local.error || (!pending && local.busy ? 'Requesting update…' : '');
     const focused = host.contains(doc.activeElement);
     host.replaceChildren(control, status);
     if (focused) control.focus({ preventScroll: true });

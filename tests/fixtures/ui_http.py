@@ -597,7 +597,7 @@ def main():
                         "small-target": (b"control.className = 'cover-refresh-glyph';", b"control.style.cssText='width:1px;min-height:1px;height:1px;padding:0'; control.className = 'cover-refresh-glyph';"),
                     }
                     old, new = mutations[phase]
-                    assert data.count(old) == 1
+                    assert data.count(old) == 1, "Item 738 source marker must apply exactly once: " + phase
                     path.write_bytes(data.replace(old, new))
                     assert path.read_bytes() != data
                 server.build = server_module.web_build.load(destination)
@@ -730,11 +730,15 @@ def main():
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
                     elif request["method"] == "item_738_runtime":
                         answer = item738_runtime(request["phase"])
+                    elif request["method"] == "item_738_end":
+                        version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                        answer = command("outcome.end_set", request["operation_id"], {"state": request["state"]},
+                                         {"workspace_id": "w1"}, {"workspace_revision": version})
                     elif request["method"] == "item_738_audit":
                         with sqlite3.connect(str(path)) as db:
                             db.row_factory = sqlite3.Row
                             answer = {"requests": [dict(row) for row in db.execute("SELECT id,author_id,addressees,reply_to,intent,private_to FROM messages WHERE reply_to=?", (request["root"],))],
-                                      "operations": [dict(row) for row in db.execute("SELECT actor_id,operation_id,kind,outcome FROM operations WHERE kind='stack.cover_refresh'")]}
+                                      "operations": [dict(row) for row in db.execute("SELECT actor_id,id,kind,outcome FROM operations WHERE kind='stack.cover_refresh'")]}
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":

@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .cover-refresh-glyph') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -13669,8 +13669,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -20654,7 +20654,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
+     "SCHEMA_VERSION = \"48\"",
      "SCHEMA_VERSION = \"46\""
     ]
    ],
@@ -23136,8 +23136,8 @@
    "break": [
     [
      "web/app.mjs",
-     "freshness?.invalidate('acts', 0, true); freshness?.request();",
-     "freshness?.invalidate('acts', 0); freshness?.request();"
+     "reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }",
+     "reread: () => { freshness?.invalidate('acts', 0); freshness?.request(); }"
     ]
    ],
    "check": {
@@ -27743,8 +27743,8 @@
    "break": [
     [
      "aim_next/cli_covers.py",
-     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected",
-     "expected = found[\"cover_revision\"]"
+     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected\n        result = self.command(\"stack.cover\",",
+     "expected = found[\"cover_revision\"]\n        result = self.command(\"stack.cover\","
     ]
    ],
    "check": {
@@ -27757,8 +27757,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "joined: 'join_revision', cover: 'cover_revision' }",
-     "joined: 'join_revision' }"
+     "joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision' }",
+     "joined: 'join_revision', cover_refresh: 'cover_refresh_revision' }"
     ]
    ],
    "check": {
@@ -27958,8 +27958,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "'aside_revision', 'name_revision', 'place_revision'];"
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -31040,8 +31040,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'name_revision', 'place_revision', 'cover_revision'];",
-     "'name_revision', 'cover_revision'];"
+     "'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "'name_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -32294,6 +32294,21 @@
    ],
    "check": {
     "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "One native tap on a singleton cover refresh glyph requests the rewrite instead of only lighting the card",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!event.target.closest?.('a, .fold-line, .cover-refresh-glyph')",
+     "!event.target.closest?.('a, .fold-line')"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 singleton"
    }
   }
  ]

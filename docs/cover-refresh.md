@@ -86,3 +86,9 @@ rounding tolerance and the undersized-target control must still fail.
 These cases run only through the coordinator's allocated pool. Their presence
 is not a pass claim; the external report records source hashes, results,
 phase evidence, cleanup and visual inspection at the tested head.
+
+
+The singleton refresh button receives its own first tap, like the pending
+request link. The card's first-tap selection handler exempts this refresh glyph;
+its native singleton cases caught the original swallowed tap in both engines.
+The shared waiting dots keep their existing reduced-motion behavior.
