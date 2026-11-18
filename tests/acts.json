@@ -23782,8 +23782,8 @@
    "break": [
     [
      "web/reader.mjs",
-     "const words = this.callbacks.dossierName?.(source) || topic.title;",
-     "const words = topic.title;"
+     "const dossier = this.callbacks.dossierName?.(source), words = dossier || topic.title;",
+     "const dossier = this.callbacks.dossierName?.(source), words = topic.title;"
     ]
    ],
    "check": {
@@ -27046,6 +27046,152 @@
    ],
    "check": {
     "node": "tests/ui_folded_names.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Starred opens its message across topics with a valid message destination",
+   "break": [
+    [
+     "web/things-rail.mjs",
+     "message: star.message_id }, firstWords",
+     "message: star.message_id, land: true }, firstWords"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unloaded starred reply names its own dossier in the composer",
+   "break": [
+    [
+     "web/app.mjs",
+     "registry.current.dossierName = name;",
+     "registry.current.dossierName = null;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 .*name at"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Pressing the composer title reveals the dossier of the starred reply",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (reason === 'parent' && !p.sourceUnavailable",
+     "if (false && !p.sourceUnavailable"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 .*return at"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Returning to an old dossier preserves the frontier for unrelated unloaded history",
+   "break": [
+    [
+     "web/topic-views.mjs",
+     "if (!live && !anchored) this.olderCursor = answer.next_cursor;",
+     "if (!live) this.olderCursor = answer.next_cursor;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unnamed old dossier root uses its first line while a singleton keeps the topic title",
+   "break": [
+    [
+     "web/app.mjs",
+     "position.root_id !== id || position.has_other_messages",
+     "position.root_id !== id"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B1-root"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Core distinguishes visible dossier members from singletons, hidden whispers and replies joined elsewhere",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "position[\"has_other_messages\"] = others[root]",
+     "position[\"has_other_messages\"] = False"
+    ]
+   ],
+   "check": {
+    "python": "test_starred_dossier.py"
+   }
+  },
+  {
+   "item": 655,
+   "act": "An unloaded dossier title follows remote names, cleared names, joins and splits through freshness",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (key === 'acts' && done !== false && current())",
+     "if (false && done !== false && current())"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B2-fresh"
+   }
+  },
+  {
+   "item": 655,
+   "act": "A failed dossier metadata lookup still opens its exact source with a visible notice",
+   "break": [
+    [
+     "web/app.mjs",
+     "catch (error) { dossierError = error; }",
+     "catch (error) { throw error; }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B3-position|item 655 B3-root"
+   }
+  },
+  {
+   "item": 655,
+   "act": "Opening waits for presentation and abandons a source superseded while presenting",
+   "break": [
+    [
+     "web/app-session.mjs",
+     "this.current = presentation; await this.present(presentation);",
+     "this.current = presentation; this.present(presentation);"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_starred_dossier.test.mjs"
+   }
+  },
+  {
+   "item": 655,
+   "act": "A composer title return clears Only new only after preservation succeeds",
+   "break": [
+    [
+     "web/app.mjs",
+     "if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }",
+     "if (false) { here.onlyNew = false; paintConversationPage(); }"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 655 B4-return"
    }
   },
   {

@@ -175,6 +175,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     savedTimes: new Map(), savedTime: EditorRegistry.prototype.savedTime, localTopicVersion: EditorRegistry.prototype.localTopicVersion,
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
+    recoveryCandidates: async () => ({ items: [], nextCursor: null }), neighbors: async () => null,
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
     doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions, asides: this.asides }, editor); },
     asidesOf(editor) { return EditorRegistry.prototype.asidesOf.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions }, editor); },
@@ -203,8 +204,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     depart: () => events.push(['depart']), stay: () => events.push(['stay']),
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
-    Reader: class { constructor() { return reader; } },
-    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
+    Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
+    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -216,8 +217,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   loadPageScope(context, 'app.mjs');
   let source = webSource('app.mjs').replace(/^import [^;]*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('topicUnavailable' in value) topicUnavailable = value.topicUnavailable; },
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, present, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus, readerDossierName, enableFreshness,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; if ('topicUnavailable' in value) topicUnavailable = value.topicUnavailable; if ('stackFeed' in value) stackFeed = value.stackFeed; if ('here' in value) here = value.here; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
@@ -4129,7 +4130,7 @@ test('a message\'s Reader shows its writing\'s Review button as it opens', async
   const reading = { token: 1, source: { instance_id: 'fixture', source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', title: 'm1', body: '', attachments: [] },
     editors: { reply: modal }, mode: 'reply', opener: null, mark: null };
   f.registry.current = reading;
-  f.registry.options.present(reading);
+  await f.registry.options.present(reading);
   assert.equal(f.get('pending-submissions').firstElementChild?.textContent, 'Review 1 reply');
 });
 
@@ -4610,4 +4611,138 @@ test('on the conversation page a reply folded in its stack is never reported rea
   await settle(); await settle();
   assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
   assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
+});
+
+
+async function starred655() {
+  const f = fixture();
+  await f.initialize();
+  Object.assign(f.reader, { dialog: { open: false }, show() { this.dialog.open = true; }, paintPending() {}, paintRecipients() {} });
+  f.registry.neighbors = async () => null;
+  f.registry.recoveryCandidates = async () => ({ items: [], nextCursor: null });
+  const source = { instance_id: 'fixture', source_ref: { kind: 'message', id: 'old-root' }, topic_id: 't1', seq: 1, body: 'The unnamed first line.\nMore words.', attachments: [] };
+  const p = { token: 1, surface: 'reader', mode: 'reply', source, editors: { reply: { ...f.editor, offered: true } } };
+  f.registry.current = p;
+  const feed = { dossierName: () => null, arrange() {}, actsOf: () => ({}), asideOffer: () => null };
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, stackFeed: feed });
+  let position = { root_id: 'old-root', name: null, has_other_messages: true };
+  const read = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'stack_positions') return { instance_id: 'fixture', topic_id: 't1', items: [{ message_id: args.message_ids[0], stack_position: position }] };
+    if (name === 'topic_messages' && args.message_ids) return { instance_id: 'fixture', items: [{ id: position.root_id, body: 'The unnamed first line.', attachments: [] }] };
+    return read(name, args, options);
+  };
+  return { f, p, source, feed, setPosition: value => { position = value; } };
+}
+
+test('item 655 B1 unloaded unnamed roots and replies use the first line while singletons keep the topic fallback', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'an unloaded root with replies has the dossier first line');
+  setPosition({ root_id: 'old-root', has_other_messages: false, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), null, 'a singleton does not acquire a dossier title');
+  source.source_ref.id = 'old-reply';
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: null });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.', 'a reply uses its root, not its own words');
+});
+
+test('item 655 B2 freshness follows unloaded rename clear join split and loaded singleton without a stale cached name', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: 'old-root', has_other_messages: true, name: { text: 'Old name' } });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'Old name');
+  f.enableFreshness({});
+  for (const [position, expected] of [
+    [{ root_id: 'old-root', has_other_messages: true, name: { text: 'Renamed elsewhere' } }, 'Renamed elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+    [{ root_id: 'joined-root', has_other_messages: true, name: { text: 'Joined elsewhere' } }, 'Joined elsewhere'],
+    [{ root_id: 'old-root', has_other_messages: true, name: null }, 'The unnamed first line.'],
+  ]) {
+    setPosition(position);
+    await f.fresh.options.refresh('acts', 2, (name, args) => f.api.view(name, args), () => true);
+    assert.equal(f.readerDossierName(source), expected, 'freshness must refresh the unloaded source title too');
+  }
+  p.dossierName = 'Old cached name';
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  assert.equal(f.readerDossierName(source), null, 'a loaded singleton never falls back to a cached old dossier name');
+});
+
+for (const failedRead of ['stack_positions', 'topic_messages']) test(`item 655 B3 ${failedRead} lookup failure opens the exact source and shows a notice`, async () => {
+  const { f, p, source } = await starred655();
+  source.source_ref.id = 'old-reply';
+  const view = f.api.view;
+  f.api.view = async (name, ...args) => { if (name === failedRead) throw Error('Transient lookup refusal'); return view(name, ...args); };
+  await assert.doesNotReject(f.present(p), 'metadata failure must not reject presentation');
+  assert.equal(f.reader.dialog.open, true, 'metadata failure must not hide the source');
+  assert.equal(f.reader.presentation.source, source);
+  assert.match(f.get('reader-notice').textContent, /Dossier name could not be read/);
+});
+
+test('item 655 B4 title return clears Only new after preservation succeeds, while dismissal and refused close keep it', async () => {
+  const { f, p, source } = await starred655();
+  const here = { page: true, onlyNew: true, items: new Map(), view: null };
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id });
+  f.inject({ ...f.owners(), api: f.api, bootstrap: f.bootstrap, reader: f.reader, topic: f.topic, views: f.views, here });
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  f.reader.presentation = p;
+  assert.equal(await f.reader.callbacks.close(null, 'close'), true);
+  assert.equal(here.onlyNew, true, 'ordinary dismissal preserves the filter');
+  f.registry.current = p;
+  f.registry.close = async () => false;
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), false);
+  assert.equal(here.onlyNew, true, 'refused preservation changes no filter');
+  f.registry.close = async () => { f.registry.current = null; return true; };
+  assert.equal(await f.reader.callbacks.close(null, 'parent'), true);
+  assert.equal(here.onlyNew, false, 'an explicit return reveals the settled source by clearing Only new');
+});
+
+
+test('item 655 B1 a loaded root whose replies are still outside the page agrees with its scoped title', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  const position = { root_id: source.source_ref.id, name_revision: 0, at: { acts: 3 }, has_other_messages: true, name: null };
+  setPosition(position);
+  f.views.messages.set(source.source_ref.id, { id: source.source_ref.id, stack_position: position });
+  await f.present(p);
+  assert.equal(f.readerDossierName(source), 'The unnamed first line.');
+  f.views.messages.get(source.source_ref.id).stack_position = { ...position, name_revision: 1, at: { acts: 4 } };
+  assert.equal(f.readerDossierName(source), null, 'a later loaded position refuses stale cached metadata');
+});
+
+test('item 655 B2 an older dossier lookup cannot reverse a newer freshness answer', async () => {
+  const { f, p, source, setPosition } = await starred655();
+  setPosition({ root_id: source.source_ref.id, name: { text: 'Latest confirmed name' } });
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p);
+  await entered.promise;
+  await f.present(p);
+  held.resolve({ instance_id: 'fixture', topic_id: 't1', items: [{ message_id: source.source_ref.id,
+    stack_position: { root_id: source.source_ref.id, name: { text: 'Stale old name' } } }] });
+  await old;
+  assert.equal(f.readerDossierName(source), 'Latest confirmed name', 'the later lookup wins even when the older one finishes last');
+});
+
+test('item 655 B3 a metadata failure from an abandoned opening cannot paint over the newer Reader', async () => {
+  const { f, p } = await starred655();
+  const entered = defer(), held = defer(), view = f.api.view;
+  let first = true;
+  f.api.view = async (name, ...args) => {
+    if (name === 'stack_positions' && first) { first = false; entered.resolve(); return held.promise; }
+    return view(name, ...args);
+  };
+  const old = f.present(p).catch(error => error);
+  await entered.promise;
+  const next = { ...p, token: 2, source: { ...p.source, source_ref: { kind: 'message', id: 'newer-source' } } };
+  f.registry.current = next;
+  await f.present(next);
+  held.reject(Error('Abandoned read failed'));
+  await old;
+  assert.equal(f.reader.presentation, next);
+  assert.doesNotMatch(f.get('reader-notice').textContent, /Dossier name could not be read/);
 });

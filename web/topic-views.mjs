@@ -160,10 +160,11 @@ export class TopicViews {
         !integer(answer.relevant_versions?.[versionKey])) throw invalid('The list page is malformed.');
     return answer;
   }
-  messagesPage(answer, { initial = false, cursor, live = false } = {}) {
+  messagesPage(answer, { initial = false, cursor, live = false, anchored = false } = {}) {
+    // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
     this.page(answer, 'topic');
     const moved = this.learnUnread(answer);
-    if (!initial && !live && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
+    if (!initial && !live && !anchored && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
     const ids = new Set();
     for (const item of answer.items) {
@@ -182,7 +183,7 @@ export class TopicViews {
     // every run it overlaps; a page that does neither, such as the newest page
     // a commit reload reads after a gap, starts a run of its own.
     const joined = new Set(answer.items.map(item => this.runs.get(item.id)));
-    if (!initial) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
+    if (!initial && !anchored) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
     joined.delete(undefined);
     const run = joined.size ? joined.values().next().value : ++this.runCount;
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
@@ -214,7 +215,7 @@ export class TopicViews {
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
-    if (!live) this.olderCursor = answer.next_cursor;
+    if (!live && !anchored) this.olderCursor = answer.next_cursor;
     this.paint('messages');
     if (this.revised.size) this.paint('edited');
     if (this.yours.size) this.paint('yours');

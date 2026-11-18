@@ -25,8 +25,21 @@ who reads only that message, sent to them by name). A message of its
 own, which nobody answered or named, has the topic's name. A name given while
 the Reader is open shows at once. However long, the title keeps one line, cut
 off with an ellipsis, so the star, the archive button and ✕ keep their place;
-a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
-`readerDossierName` in `app.mjs`, `Reader.paintTitle`).
+a press on it goes back to that dossier, as ← does (`StackFeed.dossierName`,
+`readerDossierName` in `app.mjs`, `Reader.paintTitle`). Opening a reply from Starred has the same title and way
+back, including when another topic was on screen and the dossier is older
+than the loaded messages (item 655). Its name is read by message ID; pressing
+the title loads one page around the reply and reveals it in its dossier.
+An unnamed old root with replies uses its own first line; a singleton keeps
+the topic title. Names, cleared names and joins from another device follow
+freshness even while the source stays outside the feed. If the scoped name
+lookup fails, the Reader still opens the exact source and explains that its
+dossier name could not be read. A title return from a Conversation clears
+Only new so a settled source can be revealed; merely opening it keeps the
+filter. A loaded root whose replies are outside the page also uses the
+scoped name, only while its position is at least as current as the feed.
+The ordinary More messages frontier stays where it was, so the messages
+between that page and the newest ones are still reachable.
 
 A message of a dossier with a cover (item 624, [dossier-covers.md](dossier-covers.md))
 shows the cover as one quiet line above the message: "Cover", where the dossier

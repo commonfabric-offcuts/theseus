@@ -583,8 +583,8 @@ export class ThingsRail {
     })) };
   }
   // The reader's stars: this topic's (on a Conversation, this outcome's) first,
-  // then the rest under Elsewhere. A press lands on the message, its stack
-  // opened, where the page shows it; elsewhere it opens its topic on it.
+  // then the rest under Elsewhere. A press opens its composer in its topic;
+  // the composer names its dossier and its title returns there (item 655).
   // Unstar beside each takes the star off, wherever its message is.
   starredSection(stars, found, reader) {
     if (!stars.length) return null;
@@ -595,7 +595,7 @@ export class ThingsRail {
       const off = element(doc, 'button', { type: 'button', className: 'things-unstar', textContent: 'Unstar', title: 'Take the star off' });
       off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
       off.onclick = () => this.handles.unstar?.(star);
-      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id, land: true }, firstWords(star.excerpt, 70), sub), off);
+      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, firstWords(star.excerpt, 70), sub), off);
     };
     return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, here(star)])]), node: () => element(doc, 'div', {},
       ...(mine.length ? [element(doc, 'ul', { className: 'things-list' }, ...mine.map(row))] : []),
