@@ -24,7 +24,7 @@ export async function settleDialogCapture655(p) {
   const settled = await p.evaluate(`(async()=>{const d=document.querySelector('#reader');
     if(d.open){for(const animation of d.getAnimations()) await animation.finished;
       await new Promise(done=>requestAnimationFrame(done));}
-    return {open:d.hasAttribute('open'),animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+    return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
   assert.equal(qualifyDialogCapture655(settled), true, 'capture requires a settled dialog animation and opaque endpoint');
   return settled;
 }
@@ -1938,7 +1938,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           d.style.animation='none';void d.offsetWidth;if(saved===null)d.removeAttribute('style');else d.setAttribute('style',saved);
           const a=d.getAnimations().find(a=>a.animationName==='appear');
           if(!a)throw Error('actual dialog appear animation missing');a.pause();a.currentTime=30;
-          return {open:d.hasAttribute('open'),animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+          return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
         assert.equal(qualifyDialogCapture655(fading), false, 'actual paused appear surface is refused for capture');
         observations.push({ name: 'item 655 unqualified capture control', engine, theme, ...fading });
         await shot(p, image + '-' + theme + '-unqualified-control');
@@ -1946,7 +1946,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       }
       await settleCapture655(p);
       const actual = await p.evaluate(`import('/message-format.mjs').then(({drawnText})=>{const d=document.querySelector('#reader'),c=document.querySelector('#source-body'),r=d.getBoundingClientRect();
-        return {open:d.hasAttribute('open'),title:document.querySelector('#reader-title').textContent,source:drawnText(c),readable:c.textContent,
+        return {open:d.open,title:document.querySelector('#reader-title').textContent,source:drawnText(c),readable:c.textContent,
           notice:document.querySelector('#reader-notice').textContent,noticeShown:!document.querySelector('#reader-notice').hidden&&Boolean(document.querySelector('#reader-notice').getClientRects().length),writing:document.querySelector('#writing-body').value,
           onlyNew:document.querySelector('#messages').classList.contains('only-new'),box:{left:r.left,right:r.right,width:r.width},viewport:innerWidth}})`);
       for (const [key, value] of Object.entries(expected)) assert.equal(actual[key], value, `${state} ${theme}: ${key}`);
@@ -3271,7 +3271,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await press(p, device, '#new-message');
         await until(() => p.evaluate(`document.querySelector('#new-message-sheet').matches(':modal') && document.activeElement?.id === 'inline-writing-body'`), `${device} ${way}: the composer is up again`);
         const closing = await p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),holder=d.previousElementSibling;let heard=false;d.addEventListener('close',()=>{heard=true},{once:true});
-          d.close();return {open:d.hasAttribute('open'),heard,top:d.getBoundingClientRect().top,scroll:scrollY,holder:holder?.classList.contains('sheet-holder')?holder.getClientRects().length:null}})()`);
+          d.close();return {open:d.open,heard,top:d.getBoundingClientRect().top,scroll:scrollY,holder:holder?.classList.contains('sheet-holder')?holder.getClientRects().length:null}})()`);
         assert.deepEqual([closing.open, closing.heard, Math.abs(closing.top - before.composer.top) <= 1, Math.abs(closing.scroll - before.scroll) <= 1, closing.holder],
           [false, false, true, true, 0], `${device} ${way}: closed, before its close event is heard, the composer is where it rested and its holder draws nothing: ${JSON.stringify({ before: before.composer, closing })}`);
         await until(() => p.evaluate(`document.querySelector('#inline-composer').dataset.compose === 'line' && document.activeElement?.id === 'new-message'`), `${device} ${way}: the close heard, folded to its line`);
@@ -3290,7 +3290,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const p = await open(topic, device, topic, ids.a);
       // The sheet as it shows: open, modal, where it is, whether it is drawn, and whether a press on its middle reaches it.
       const sheet = () => p.evaluate(`(()=>{const d=document.querySelector('#new-message-sheet'),r=d.getBoundingClientRect(),at=r.width&&r.height?document.elementFromPoint(r.left+r.width/2,r.top+Math.min(r.height/2,40)):null;
-        return {open:d.hasAttribute('open'),modal:d.matches(':modal'),parent:d.parentElement.id,drawn:d.getClientRects().length>0&&r.width>0&&r.height>0,takes:Boolean(at&&d.contains(at)),
+        return {open:d.open,modal:d.matches(':modal'),parent:d.parentElement.id,drawn:d.getClientRects().length>0&&r.width>0&&r.height>0,takes:Boolean(at&&d.contains(at)),
           words:document.querySelector('#inline-writing-body').value,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
       await p.evaluate('scrollTo(0, 0)');
       await press(p, device, '#new-message');
