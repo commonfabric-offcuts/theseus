@@ -30,6 +30,12 @@ replaces the source with a newly received excerpt. A superseded source read
 cannot overwrite a newer revision or another reply owner. Writing stays in
 the same editor while the source changes.
 
+The existing journal owns attachment bytes. Its IDB adapter stores binary
+buffers in the byte row and reconstructs a Blob on read, retaining the row's
+identity, scope, metadata and exact size. It also reads existing Blob rows.
+This avoids WebKit's Blob/File object-store failure without changing editor
+snapshots, image ownership, publication, destinations or recovery choices.
+
 Under warp8627's bounded correction, a native drag over source words selects
 text and never opens Reader. Pointer movement owns this distinction before
 selection exists; checking only the selection at click time is insufficient.

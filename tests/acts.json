@@ -32259,9 +32259,9 @@
    "act": "The durable chooser copy publishes the exact selected image bytes",
    "break": [
     [
-     "web/uploads.mjs",
-     "new Blob([await blob.arrayBuffer()], { type: blob.type })",
-     "new Blob([new Uint8Array(blob.size)], { type: blob.type })"
+     "web/journal.mjs",
+     "const data = await bytes.blob.arrayBuffer();",
+     "const data = new ArrayBuffer(bytes.blob.size); // item 721 corrupt byte-store mutant"
     ]
    ],
    "check": {

@@ -75,3 +75,41 @@ test('item 721 recovery retains the originating request error before transaction
   await assert.rejects(journal.save({ context, key: editorKey(context) }), error => error === failure, 'the exact originating storage error is retained');
   assert.equal(puts, 1, 'the real journal reached the failed storage boundary');
 });
+
+test('item 721 the real journal adapter stores binary once and reads exact bytes and legacy Blob rows', async t => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator'), rows = new Map();
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: fakeLocks() } });
+  globalThis.indexedDB = fakeIndexedDB(() => {
+    let pending = 0;
+    const tx = { durability: 'strict', error: null, abort() { queueMicrotask(() => tx.onabort?.()); } };
+    const schedule = action => { pending++; queueMicrotask(() => { action(); if (!--pending) queueMicrotask(() => { if (!pending) tx.oncomplete?.(); }); }); };
+    tx.objectStore = () => ({
+      get(id) { const request = {}; schedule(() => request.onsuccess({ target: { result: rows.get(id) } })); return request; },
+      put(row) { const request = {}; schedule(() => { rows.set(row.id, structuredClone(row)); request.onsuccess?.(); }); return request; },
+    });
+    return tx;
+  });
+  t.after(() => { Object.defineProperty(globalThis, 'navigator', saved); delete globalThis.indexedDB; });
+  const { openJournal } = await import('../web/journal.mjs'), { editorKey } = await import('../web/editor.mjs');
+  const journal = await openJournal({ instanceId: 'i1', actor: 'person', win: fakeWindow() });
+  t.after(() => journal.close());
+  const context = { instanceId: 'i1', actor: 'person', kind: 'reply', sourceRef: { kind: 'message', id: 'source' }, topicId: 'topic' }, key = editorKey(context);
+  const original = new Uint8Array([1, 3, 9, 255]), metadata = { name: 'image.png', size: 4, type: 'image/png', last_modified: 0 };
+  const entry = { selection_id: 'selected', file: metadata, bytes_ref: null, bytes_state: 'capturing' };
+  const snapshot = () => ({ context, key, uploadState: { entries: [entry] } });
+  const bytes = { id: JSON.stringify([key, 'upload-bytes', entry.selection_id]), kind: 'upload-bytes-v1', scope: JSON.stringify(['i1', 'person']),
+    editorKey: key, selection_id: entry.selection_id, created_by_writer: journal.writerId, metadata, blob: new Blob([original], { type: metadata.type }) };
+  await journal.capture(key, snapshot, bytes, entry, () => true);
+  const stored = rows.get(bytes.id);
+  assert.ok(stored.data instanceof ArrayBuffer); assert.equal(stored.blob, undefined, 'IDB receives no Blob/File backing');
+  assert.deepEqual(new Uint8Array(stored.data), original); assert.equal(rows.size, 2, 'one byte row and one metadata row');
+  assert.equal(entry.bytes_state, 'durable');
+  const read = await journal.readBytes(key, bytes.id);
+  assert.deepEqual(new Uint8Array(await read.blob.arrayBuffer()), original); assert.equal(read.blob.type, metadata.type);
+  assert.equal(read.data, undefined, 'the logical read keeps the existing Blob interface');
+  rows.set(bytes.id, bytes);
+  assert.deepEqual(new Uint8Array(await (await journal.readBytes(key, bytes.id)).blob.arrayBuffer()), original, 'legacy Blob rows stay readable');
+  rows.set(bytes.id, { ...stored, scope: 'another instance' });
+  await assert.rejects(journal.readBytes(key, bytes.id), /retained image bytes are unavailable/, 'the physical representation never bypasses scope');
+  await assert.rejects(journal.save({ ...snapshot(), misplaced: original }), /identity does not match/, 'binary bytes remain forbidden inside editor metadata');
+});

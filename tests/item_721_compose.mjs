@@ -32,6 +32,11 @@ export async function item721Compose(h) {
     });
     await p.evaluate(async () => {
       window.__item721Trail = [];
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (value, ...args) {
+        if (value?.kind === 'upload-bytes-v1') window.__item721Trail.push({ kind: 'image-byte-store', binarySize: value.data?.byteLength, blob: value.blob instanceof Blob });
+        return put.call(this, value, ...args);
+      };
       // Observe the actual durable-byte boundary, preserving the exact return
       // or rejection. Uploads.capture's recovery path may handle the rejection;
       // that must not erase its diagnostic cause before a Ready assertion.
@@ -378,7 +383,14 @@ export async function item721Compose(h) {
       assert.equal(await p.evaluate(() => document.querySelector('#reader').matches(':modal')), true, 'explicit Return keeps the full Reader route');
       await picture(p, 'item-721-explicit-reader');
       const chooseReader = async () => {
-        const selected = await dragWords(p, p.locator('#source-body > [data-start]').first());
+        let selected;
+        if (p.touch) {
+          // The phone driver has no native touch-selection handles. Exercise
+          // the Reader's established Select All key through actual input.
+          await press(p, '#source-body > [data-start]');
+          await p.keyboard.press(modifier + '+a');
+          selected = await p.evaluate(() => getSelection().toString());
+        } else selected = await dragWords(p, p.locator('#source-body > [data-start]').first());
         assert.ok(selected.length > 0, 'ordinary Reader still permits native source selection');
         return selected;
       };
@@ -396,6 +408,13 @@ export async function item721Compose(h) {
       await press(p, '#quote-selection');
       await until(p, text => document.querySelector('#writing-body').value === text, 'ordinary explicit Quote preserves exact writing and source words', copied + '\n\n> ' + quotedWords + '\n\n');
       await picture(p, 'item-721-explicit-quote');
+      const withQuote = await p.locator('#writing-body').inputValue();
+      await press(p, '#reader-close'); await shut(p);
+      await light(p, data.id);
+      await press(p, card(data.id) + ' > .message-preview > .md-block'); await opened(p);
+      assert.equal(await p.evaluate(() => document.querySelector('#reader').matches(':modal')), true, 'a stationary explicit source click retains the full Reader route');
+      assert.equal(await p.locator('#writing-body').inputValue(), withQuote, 'explicit click preserves the same ordinary copied and quoted writing');
+      await picture(p, 'item-721-explicit-click');
       await receipt(p);
       await close(p);
     });

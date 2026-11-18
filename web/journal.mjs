@@ -1,7 +1,7 @@
 import { editorKey as keyFor } from './editor.mjs';
 import { ownsBytes, readableUploads } from './upload-state.mjs';
 const containsBytes = (value, seen = new Set()) => {
-  if (value instanceof Blob) return true;
+  if (value instanceof Blob || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return true;
   if (!value || typeof value !== 'object' || seen.has(value)) return false;
   seen.add(value);
   return (value instanceof Map ? [...value.keys(), ...value.values()] : value instanceof Set ? [...value] : Object.values(value)).some(v => containsBytes(v, seen));
@@ -279,13 +279,19 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
     return { id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 };
   };
   const validBytes = (bytes, row) => {
+    const size = bytes?.blob instanceof Blob ? bytes.blob.size : bytes?.data instanceof ArrayBuffer && bytes.blob === undefined ? bytes.data.byteLength : null;
     if (!bytes || row.active !== 1 || row.superseded_by || bytes.kind !== 'upload-bytes-v1' ||
         bytes.scope !== scope || bytes.editorKey !== row.editorKey || Object.hasOwn(bytes, 'active') ||
-        bytes.id !== JSON.stringify([row.editorKey, 'upload-bytes', bytes.selection_id]) || !(bytes.blob instanceof Blob)) return false;
+        bytes.id !== JSON.stringify([row.editorKey, 'upload-bytes', bytes.selection_id]) || size === null) return false;
     const owners = row.snapshot.uploadState?.entries?.filter(e => e.bytes_ref === bytes.id);
     if (owners?.length !== 1 || owners[0].selection_id !== bytes.selection_id) return false;
     const file = owners[0].file;
-    return file && ['name', 'size', 'type', 'last_modified'].every(k => file[k] === bytes.metadata?.[k]) && bytes.blob.size === file.size;
+    return file && ['name', 'size', 'type', 'last_modified'].every(k => file[k] === bytes.metadata?.[k]) && size === file.size;
+  };
+  const decodedBytes = bytes => {
+    if (bytes.blob instanceof Blob) return bytes;
+    const { data, ...row } = bytes;
+    return { ...row, blob: new Blob([data], { type: row.metadata.type }) };
   };
   const journal = new RecoveryJournal({
     put: (row, guard = () => true) => transact('readwrite', (store, _finish, get) => {
@@ -341,19 +347,25 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
       return row;
     },
     history: (key, options) => page(key, 0, options),
-    capture: (row, bytes, guard) => transact('readwrite', (store, _finish, get) => {
-      if (!valid(row, row.editorKey) || row.writerId !== writerId || !held.has(writerId) || !guard()) throw Error('Image capture ownership changed.');
-      get(row.id, existing => {
-        if (existing && (!valid(existing, row.editorKey) || existing.superseded_by)) throw Error('Image capture ownership changed.');
-        get(bytes.id, previous => {
-          if (previous || !validBytes(bytes, row) || !guard()) throw Error('Image bytes cannot be replaced.');
-          store.put(bytes); store.put(row);
+    capture: async (row, bytes, guard) => {
+      // Serialize outside the transaction. WebKit can reject both File and
+      // Blob backing when IDB stores them; buffers retain the same exact bytes.
+      const data = await bytes.blob.arrayBuffer();
+      const { blob, ...metadata } = bytes;
+      return transact('readwrite', (store, _finish, get) => {
+        if (!valid(row, row.editorKey) || row.writerId !== writerId || !held.has(writerId) || !guard()) throw Error('Image capture ownership changed.');
+        get(row.id, existing => {
+          if (existing && (!valid(existing, row.editorKey) || existing.superseded_by)) throw Error('Image capture ownership changed.');
+          get(bytes.id, previous => {
+            if (previous || !validBytes(bytes, row) || !guard()) throw Error('Image bytes cannot be replaced.');
+            store.put({ ...metadata, data }); store.put(row);
+          });
         });
       });
-    }),
+    },
     readBytes: (id, bytesId) => transact('readonly', (_store, finish, get) => get(id, row => {
       if (!row || !valid(row, row.editorKey) || row.writerId !== writerId || !held.has(writerId) || row.superseded_by) throw Error('Image recovery ownership changed.');
-      get(bytesId, bytes => { if (!validBytes(bytes, row)) throw Error('The retained image bytes are unavailable.'); finish(bytes); });
+      get(bytesId, bytes => { if (!validBytes(bytes, row)) throw Error('The retained image bytes are unavailable.'); finish(decodedBytes(bytes)); });
     })),
     releaseBytes: (next, stamp, ids, guard) => transact('readwrite', (store, finish, get) => get(next.id, row => {
       if (!valid(row, next.editorKey) || row.stamp !== stamp || row.writerId !== writerId || !held.has(writerId) || row.superseded_by || !guard()) { finish(false); return; }
