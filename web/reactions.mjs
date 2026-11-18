@@ -44,7 +44,7 @@ export function paintReactions(card, item, viewer, kind, doc = card.ownerDocumen
   if (line?.dataset.key === key) return;
   const empty = !value.thumbs.length && !item.go_ahead;
   if (empty) { line?.remove(); return; }
-  if (!line) { line = node(doc, 'span', undefined, 'message-reactions'); card.append(line); }
+  if (!line) { line = node(doc, 'span', undefined, 'message-reactions'); card.insertBefore(line, card.querySelector(':scope > .note-corner')); }
   line.dataset.key = key; line.replaceChildren();
   if (value.thumbs.length) {
     const names = value.thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id);

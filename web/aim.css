@@ -196,7 +196,9 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 /* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
 .selection-page #outcome-references-list{display:grid;grid-template-columns:1fr;gap:.35rem;overflow:visible;padding:0}.selection-page #outcome-references-list .nav-item{width:100%;max-width:none;margin:0;background:var(--panel);border-color:var(--line);padding:.85rem}.selection-page #outcome-references-list .nav-item:hover{background:var(--soft)}.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
 /* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
-.title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
+.title-row{display:flex;align-items:flex-start;gap:.75rem}/* Item 656: the same title field, in the header while renamed. */
+#topic-title-edit{flex:1;min-width:0;padding-top:.25rem}#topic-title-edit .rename-line{width:100%;min-width:0;margin:0;font:inherit;min-height:2.75rem}#topic-title-edit .notice{font-size:.875rem;overflow-wrap:anywhere;margin:.35rem 0 0}
+.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
 /* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
 .settings-gear{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}.settings-gear:hover{color:var(--ink);background:var(--soft)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}
@@ -898,6 +900,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .quote-pill{pointer-events:auto;min-height:2.5rem;padding:.3rem 1.1rem;border:0;border-radius:1.25rem;background:var(--ink);color:var(--panel);font-weight:600;box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .quote-pill:hover{background:var(--ink);filter:brightness(1.15)}
 .quote-key{margin-left:.5rem;opacity:.65;font-weight:500}
+/* The same pill on a phone's dossier selection; native selection UI stays native. */
+.dossier-quote-pill{position:fixed;z-index:21;min-width:44px;min-height:44px;white-space:normal}
+.dossier-quote-pill .quote-key{display:none}
+@media(pointer:coarse){.reply-stack .message-preview{-webkit-user-select:text;user-select:text}}
 /* The header: ↑ ↓ ⋯ ✕ as quiet marks, not boxes. */
 #reader-stepping{display:flex}
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
@@ -969,13 +975,29 @@ dialog.composer-home:not([open]){display:block;position:static;width:auto;height
 .composer-home:not([open]) .inline-composer{border:1px solid var(--line);border-radius:.9rem;background:var(--paper)}
 dialog.composer-home[open]{top:auto;bottom:1.5rem;height:calc(var(--vv-height,100dvh) - 3rem);max-height:calc(var(--vv-height,100dvh) - 3rem);overflow:visible}
 dialog.composer-home[open] .inline-composer{border:0;border-radius:1rem}
-/* Alone in the sheet the composer is the sheet's height, and its field takes what the head, a panel and the images leave, then scrolls; ⤢ has nothing to add there. Where the rest leaves less than one line (a small phone with the keyboard up, an image's choices open), the field keeps its line, every row above it keeps its whole height (min-content: the image strip and a panel, which scroll, would otherwise give way to nothing and be drawn under the rows beside them), and the composer scrolls inside itself, the field brought into view as the keyboard comes up (compose-bar.mjs), so nothing goes past the sheet. On a laptop the who panel opens in the composer, under the head, and + over the field's foot, as side by side, since a popover above the sheet would be off the screen. */
-dialog.composer-home[open] .inline-composer{height:100%;grid-template-rows:repeat(5,minmax(min-content,auto)) 1fr;align-content:stretch;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
-dialog.composer-home[open] .inline-composer>.field-box{align-self:stretch}
-dialog.composer-home[open] .inline-composer textarea{--fit:none;height:100%;max-height:none;padding-right:.9rem}
+/* The pencil's sheet floats over readable context. The Notebook uses the same
+   dialog but keeps its full-height reading surface and backdrop. */
+dialog.composer-home[open]:not(.notebook-mode){height:auto;overflow:hidden}
+dialog.composer-home:not(.notebook-mode)::backdrop{background:transparent;backdrop-filter:none}
+dialog.composer-home[open] .inline-composer{height:auto;max-height:calc(var(--vv-height,100dvh) - 3rem);grid-template-rows:repeat(5,minmax(min-content,auto)) minmax(2.5rem,auto);align-content:start;overflow-y:auto;scroll-padding-bottom:calc(.55rem + env(safe-area-inset-bottom))}
+dialog.composer-home[open] .inline-composer textarea{--fit:auto;height:auto;max-height:min(40dvh,calc(12 * 1.5em + 1.1rem));padding-right:.9rem}
+dialog.composer-home[open] .inline-composer textarea:placeholder-shown{white-space:nowrap}
 dialog.composer-home[open] .inline-composer .taller-field{display:none}
-@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.6rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{bottom:3.75rem}}
-@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}}
+/* An unavailable composer keeps the reason and its recovery control on separate rows. */
+#inline-composer:has(>#inline-retry:not([hidden])){grid-template-areas:"title title title title" "notice notice notice notice" "retry retry retry retry" "head head head head" "panel panel panel panel" "strip strip strip strip" "plus field review act";grid-template-rows:repeat(6,minmax(min-content,auto)) minmax(2.5rem,auto)}
+#inline-composer>#inline-retry{grid-area:retry}
+/* A thumbnail's center opens its choices. Remove has its own slot, even
+   before those choices open: a finger-sized corner overlay covers that center. */
+#inline-composer .image-choice>button[data-method=remove]{position:static;width:auto;height:auto;min-width:2.75rem;min-height:2.75rem}
+@media(max-width:760px){#inline-composer :is(button,input,textarea,select,[role=button]){min-width:2.75rem!important;min-height:2.75rem!important}}
+/* The inline menu spends room on choices, not padding or a keyboard-sized gap. */
+#inline-who-panel{gap:.25rem;padding:.25rem .5rem .35rem}
+#inline-who-panel .who-row{gap:.25rem}
+#inline-who-panel .who-sentence .audience-line{font-size:.8rem;line-height:1.35}
+#inline-who-panel .intent-row,#inline-who-panel .audience{gap:.25rem}
+#inline-who-panel .choice-chip{padding-inline:.55rem}
+@media(min-width:761px){dialog.composer-home[open] .inline-composer>.who-panel{position:static;grid-area:panel;width:auto;max-width:none;max-height:none;margin-bottom:.35rem;box-shadow:none}dialog.composer-home[open] .inline-composer>.plus-panel{position:static;grid-area:panel;width:auto;max-width:none;margin-bottom:.35rem;box-shadow:none}}
+@media(max-width:760px){dialog.composer-home[open]{width:100%;max-width:100%;height:calc(var(--vv-height,100dvh) - .75rem);max-height:calc(var(--vv-height,100dvh) - .75rem);margin:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));border-radius:1rem 1rem 0 0;border-width:1px 0 0}dialog.composer-home[open] .inline-composer{max-height:calc(var(--vv-height,100dvh) - .75rem)}#inline-who-panel{height:auto;max-height:var(--keyboard,min(45dvh,22rem));padding-bottom:calc(.5rem + env(safe-area-inset-bottom))}}
 .composer>.sheet-close{grid-area:title;justify-self:end;width:2.5rem;height:2.5rem;min-height:0;padding:0;border-color:transparent;background:transparent;color:var(--ink)}
 .composer-home:not([open]) .sheet-close{display:none}
 /* A new message has no message above it to keep in view: its field grows further. */
@@ -1009,7 +1031,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 /* A card's images (item 321), under its words: each as tall as it needs up to a line of cards, never wider than the card. Its name shows until it loads, or with what it waits on; once it shows, screen readers alone hear the name. */
 /* × stands beside its image, never over it; a small image still shows at a thumb's size. */
 .deck-images{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}.deck-image{display:flex;align-items:flex-start;gap:.3rem;margin:0;min-width:0;max-width:100%}
-.deck-image>.image-thumb{display:block;flex:0 1 auto;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:14rem;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.deck-image>.image-thumb{display:block;flex:none;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .deck-image-name{min-width:0;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.deck-image:not([data-state]):has(>.image-thumb:not([hidden]))>.deck-image-name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .deck-image:has(>.image-thumb[hidden])>.deck-image-name,.deck-image:not(:has(>.image-thumb))>.deck-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image[data-state]:has(>.image-thumb:not([hidden]))>.deck-image-name{order:1;align-self:center;max-width:12rem}
 .deck-image-remove{order:2;flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
@@ -1019,7 +1041,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
 /* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
 .md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
-.page-image>.image-thumb:not([hidden]){display:block;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:min(28rem,60dvh);object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.page-image>.image-thumb:not([hidden]){display:block;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
@@ -1207,12 +1229,29 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #skills-links a.nav-item:hover{background:var(--soft)}#skills-links a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;border-color:var(--line)}
 @media(max-width:760px){#skills-links{display:flex;overflow:auto;gap:.35rem;padding:.25rem}#skills-links a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}}
 /* A dossier's cover in the Reader (item 624, docs/dossier-covers.md): one quiet line above the message, where it stands and its payload's pill, that opens to the whole sheet (web/dossier-cover.mjs; its pills' look is web/stack-look.css's). On a phone it gives way while the reply is written, so the message keeps its lines. */
-#reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
-@media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
+#reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>#reader-cover-line{width:100%;min-height:0;border:0;border-radius:0;background:transparent;color:inherit;text-align:left;display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>#reader-cover-line>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>#reader-cover-line>.row-pill{flex:none;max-width:45%}#reader-cover[open]>#reader-cover-line>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
+@media(pointer:coarse){#reader-cover>#reader-cover-line{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
 
 /* A displayed thumbnail opens its image (651), with visible keyboard focus. */
 .image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Item 649: the corner owns a row after the content, before the card's normal
+   padding (including a covered sheet's overlap allowance). Flow also keeps a
+   static dossier root's corner on its own card without moving the folder tab. */
+.note-corner{position:static;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer}
+.note-corner:hover{color:var(--ink)}
+.note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
+.note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
+@media(forced-colors:active){.note-corner-glyph{background:CanvasText}}
+/* 653: the Notebook list's contain thumbnail beside the existing named Open.
+   Its square is reserved while loading; no image leaves Open as the fallback.
+   Keep both acts at least 44px, with wrapping for long file names on phones. */
+.attachment-control{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.4rem;max-width:100%;vertical-align:middle}
+.attachment-control>.attachment-open{min-width:44px;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.attachment-control>img.image-thumb{display:block;flex:none;align-self:center;width:3rem;height:3rem;min-width:44px;min-height:44px;object-fit:contain;margin:0;border-radius:.4rem}
+.attachment-control>img.image-thumb[hidden]{display:block!important}
+/* Override the Review list's larger passive-image result, only for thumbnails. */
+#review-content .pending-card .attachment-control>img.image-thumb{width:3rem;height:3rem;object-fit:contain;margin:0}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}

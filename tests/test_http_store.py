@@ -214,6 +214,36 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt
 
+    def test_item_769_http_cover_keeps_three_lines_in_storage_and_views(self):
+        self.committed(self.workspace_command())
+        self.committed(self.command("draft.save", "cover-opening-save", {
+            "source_ref": {"kind": "new_topic", "id": "cover-opening", "workspace_id": "w-test"},
+            "topic_id": "t-cover", "generation": "cover-generation", "body": "Cabin plan",
+            "attachments": [], "quotes": [], "addressees": [],
+            "opening": {"workspace_id": "w-test", "title": "Cabin", "participants": ["test-agent"]}
+        }, {"draft_id": "cover-draft"}, {"draft_revision": 0}))
+        self.committed(self.command("submission.prepare", "cover-prepare", {
+            "draft_id": "cover-draft", "submission_id": "cover-submission", "send_operation_id": "cover-send"
+        }, {"topic_id": "t-cover"}, {"draft_revision": 1}))
+        root = self.committed(self.command("topic.create_and_send", "cover-send", {
+            "submission_id": "cover-submission"}, {"topic_id": "t-cover"}))["result"]["message_id"]
+        stands = "Discussed: cabin\nDecisions: none\nNext: choose"
+        args = {"stands": stands, "waiting": [{"text": "Choose?", "default": "wait"}],
+                "payload": {"text": "Cabin plan", "message_id": root, "kind": "page", "link": "https://example.test/cabin"}}
+        written = self.committed(self.command("stack.cover", "cover-write", args, {"message_id": root}, {"cover_revision": 0}))
+        cover = written["result"]["cover"]
+        self.assertEqual(cover["stands"], stands)
+        self.assertEqual(cover["waiting"], args["waiting"])
+        self.assertEqual({key: cover["payload"][key] for key in args["payload"]}, args["payload"])
+        with sqlite3.connect(str(self.db)) as db:
+            stored = json.loads(db.execute("SELECT value FROM message_acts WHERE kind='cover'").fetchone()[0])
+        self.assertEqual(stored["stands"], stands)
+        self.assertIsNone(stored["payload"]["done"])
+        found = self.request("/api/view", {"name": "dossier_cover", "args": {"message_id": root}})
+        self.assertEqual(found["cover"], cover)
+        page = self.request("/api/view", {"name": "topic_messages", "args": {"topic_id": "t-cover"}})
+        self.assertEqual(page["items"][0]["acts"]["cover"], cover)
+
     def test_lost_http_send_ack_does_not_erase_successor_saved_through_core(self):
         self.committed(self.workspace_command())
         source = {"kind": "new_topic", "id": "opening", "workspace_id": "w-test"}

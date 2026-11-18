@@ -11,8 +11,14 @@ fold under it as they always have.
 
 A cover has three fields. Each is set or cleared on its own.
 
-- **Where it stands**: one line, at most 300 characters. Line breaks and runs
-  of spaces fold to single spaces.
+- **Where it stands**: at most 300 characters, including line breaks. LF
+  separates lines and stays a line break through command, storage and the
+  shared cover sheet (item 769). CRLF becomes LF: the CR is folded with the
+  other whitespace on its line. Within each LF-separated line, whitespace
+  folds to single spaces as before; outer whitespace is trimmed, and an
+  all-whitespace value clears the field. Interior blank lines stay blank.
+  Single-line values keep their existing normalization and look. These are
+  plain words: no label parsing, Markdown or inferred historical breaks.
 - **What waits on the owner**: at most four things, each with its default,
   the thing that happens if the owner says nothing. A thing that waits is at
   most 300 characters, and its default at most 200.
@@ -53,10 +59,8 @@ their word, as a person's whisper counts as their Tell
 ([whispers.md](whispers.md)), by a writer in that whisper. A reader outside it
 sees that the payload is done by the owner's word, but no link to the whisper.
 
-Two more ways to reach Done are not built yet: a promise kept by a time, and
-the record itself showing the work landed (a release, say). Both would set the
-same `done` value with their own `how`, so a page that reads `how` will show
-them when they come.
+A promise being kept or a release going live never gives Done. The owner’s
+acceptance is the only source of Done, including on covers with promises (717).
 
 ## What Core records
 
@@ -68,7 +72,7 @@ settles Done in the same transaction. Stepping back to 45 is refused
 once any cover was written, even one cleared since.
 
 The stored value is
-`{"stands": TEXT|null, "waiting": [{"text", "default"}…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
+`{"stands": TEXT|null, "waiting": [{"text", "default"}…], "promises": [PROMISE…], "payload": null|{"text", "message_id", "seq", "link", "kind", "done_by", "done"}}`,
 where `done_by` is the owner's reply the writer named, or `null`, and `done` is
 `null` or `{"how": "thumb"|"word", "by", "at_ms"}`. A word's `done` also
 carries the reply's `message_id` and `seq`.
@@ -78,7 +82,7 @@ carries the reply's `message_id` and `seq`.
 `stack.cover` names the dossier's first message as
 `target: {"message_id": "m-…"}`. It is fenced on
 `expected: {"cover_revision": N}`, and its `args` hold any of `stands`,
-`waiting` and `payload`. A payload is `{"text", "message_id"}`, with `link`,
+`waiting`, `payload` and `promises`. A payload is `{"text", "message_id"}`, with `link`,
 `kind` and `done_by` as it has them. A field given as `null`, `""` or `[]` is cleared, and
 a field left out is kept. A message that is not the dossier's first now is
 refused with `STACK_CHANGED`. A late write is refused with
@@ -97,7 +101,8 @@ same two people. Otherwise it is refused with `WHISPER_STAYS_PRIVATE`.
 ### Reading it
 
 Each message's `acts` (on `topic_messages` and `message_acts`) carry `cover`,
-null or `{"stands", "waiting", "payload", "by", "at_ms", "owner"}`, and
+null or `{"stands", "waiting", "payload", "by", "at_ms", "owner"}` (plus
+`promises` when any are recorded), and
 `cover_revision`. `by` and `at_ms` say who wrote the cover last and when, and
 `owner` is the outcome's owner, whose 👍 or named reply gives Done. A reader
 is told Done, not the `done_by` the writer named. Only the dossier's first
@@ -176,6 +181,16 @@ so the message keeps its lines ([reader.md](reader.md)).
 
 ## Checks
 
+Item 769: the focused Core/CLI cases in `tests/test_dossier_covers.py`, HTTP
+case in `tests/test_http_store.py` and shared drawing case in
+`tests/ui_dossier_cover.test.mjs` check literal LF source values separately
+from visual proof. The `reading item 769` cases in `tests/stack_native.mjs`
+(`native-reading`, `native-webkit-reading`) measure consecutive painted lines
+on the feed and the Reader's opened shared sheet at 320, 375, 390 and 1280,
+light and dark, through updates and reload. A single-line cover stays one
+line; waits, defaults, payload and unsent writing survive. Measured geometry
+uses `lineGeometryTolerancePx = 2`. Desktop WebKit is not physical iOS proof.
+
 `tests/test_dossier_covers.py` covers storage, merging, revisions and their
 refusals, Done by 👍 and by a named reply (and by no one else, and never by a
 reply nobody named, a question included), the earlier of the two when both
@@ -188,3 +203,98 @@ the step. The page is covered by the `reading covers …` cases in
 message is more than a page behind its newest reply, the Reader's sheet
 opening only where it is pressed (at 320, 375 and 390 and on a laptop), and the
 open Reader's line following a rewrite and the owner's 👍.
+
+## Promises (item 717)
+
+`stack.cover` also accepts `promises`, a list of at most eight explicit records.
+Omission keeps the list; `[]` clears it. Each record names `id` (stable within
+this cover), `text` (the exact source passage, at most 500 characters),
+`message_id`, `source_revision` (a positive integer), `due` and `state`.
+`due` is either null (shown as “No time given”) or
+`{"at_ms": INTEGER, "time_zone": "America/Los_Angeles"}`: an absolute instant
+and an IANA timezone supplied by the writer. No prose is parsed for a time.
+`state` is explicitly `promised`, `kept` or `missed`; passing the due time does
+not change it. A kept promise never sets Done. Only the existing owner's 👍
+or named reply on the payload does that. There is no scheduler or automatic
+closure, including for a release.
+
+Core checks the source is a visible message in this dossier, with the same
+privacy boundary as a payload, and that the exact text occurs in the named
+revision. It adds `seq`, `source_author`, `by`, `at_ms`, and `history` to each
+record. The due time also carries the offset and label resolved at recording
+(`offset_seconds`, `label`), so later timezone rules or the viewing device do
+not rewrite the promise's time. On a changed record its previous snapshot is
+appended to `history`, oldest first, without recursive history. Repeating the
+same inputs adds no history or act. Cover revision fences and operation retry
+identity work as for every cover write. Writers cannot supply history or these
+Core fields. All cover act revisions remain durable, including cleared lists.
+
+The cover sheet shows the exact promise and source citation, explicit status,
+current time with timezone, and each historical version's words, status and
+attribution. A changed historical time is struck through. A record without a
+time says so. A single-message dossier shows a compact promise pill with its
+time and status. As before, a single message has no dossier cover in the
+Reader; a message of a dossier uses its disclosure for the full sheet and history.
+These are reading surfaces: agents edit through the existing CLI/Core cover
+act, not a new browser form. Thus the cover itself has no saving, retry or
+refusal controls. Pending/refused/retried writes retain the last committed
+cover. The owner's existing payload acceptance controls remain authoritative.
+
+`aim-next cover MESSAGE --promises JSON` supplies this list explicitly; `[]`
+clears it. Readback includes each source, status, time and prior version.
+
+The item 717 native fit check keeps its 2px rounding tolerance and bounds the
+cover by the requested CSS width as well as the actual visual/layout viewport.
+It records those measurements before asserting, including for rendering mutants;
+mobile viewport expansion must not make an oversized cover pass. Every applied
+mutant retains its actual error, exact restored bytes and a separate restored
+control result, even when the error was not the intended one.
+
+Acceptance Tab diagnostics observe native keydown/keyup at window capture,
+bubble and after the input call returns, plus focusin/out, active elements and
+target visibility, disabled/inert and clipping ancestry. On failed traversal,
+a minimal details/summary/button in the same document is reached and operated
+with native keys after Escape closes the Reader. This calibration never replaces
+the failed acceptance assertion. Delivery/mapping and product causation remain
+unestablished until retained native events distinguish them; no diagnostic
+programmatically focuses a control or invokes a product handler.
+
+### Reader disclosure keyboard correction (717, warp 9174)
+
+The Reader's cover line is a native button disclosure. Its `aria-expanded`
+tracks the sheet's open attribute and `aria-controls` names the sheet. Native
+Tab and Shift-Tab move through the visible source citations, reading and writing
+and the existing owner controls; Return and Space toggle only the disclosure.
+No Tab handler advances focus on its behalf. Opening another message or losing
+the cover closes the disclosure; a rewrite of an open cover keeps it open.
+This replaces the Reader's details/summary path, which retained focus on its
+summary through 120 trusted uncancelled Option-Tab presses in each of four
+production acceptance states on the unchanged source. The native correction
+check restores that disclosure as an applied mutant and records its failure
+and the exact restored control. It does not claim a Safari or iOS device run.
+
+## Waiting count in the outline (item 756)
+
+`workspaces` items add `cover_waiting`, one per readable cover with a nonempty
+waiting list whose owner is the bound reader, over all unarchived topics of
+that outcome. Duplicate entries and cover revisions never multiply it.
+`workspace_topics` items carry the same field for that topic. A joined-away
+first message is no longer a cover until it heads its own dossier again.
+Archived topic lists may still display covers, but contribute zero to this
+count. The existing workspace membership/reached/ended lists govern which
+outcomes the outline sums; it reads no additional outcomes.
+
+The outline adds this contribution to its existing said/ask topic count; it
+keeps the light and the question-opening control's meaning. Pressing the same
+Waiting on you pill filters and unfilters as before, retaining topics with
+cover waits as well as topics waiting from said/ask reasons. Cover changes use
+the existing shared act commit notification, so no reload or background
+history reconstruction is needed.
+
+Schema 48 adds `cover_waiting`, a derived index holding only the current
+nonempty waiting covers, keyed by first message with outcome/topic indexes.
+Every cover act updates it in the same transaction. Migration alone fills it
+from the latest recorded cover revisions; downgrade drops only the derived
+index. Counts recheck current owner, archive state, first-message visibility
+and dossier root identity, seeking only this outcome's current candidates or
+a bounded topic page. No read or server migrates a store.

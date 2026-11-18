@@ -2,6 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { sheetHead } from './notebook_sheet_native.mjs';
 
+// Approved653: client dimensions exclude borders in the global border-box rule.
+// Both runner engines may round layout/client measurements by up to2 CSS px.
+export function readingThumbnailSize(image, said) {
+  const thumbnailGeometryTolerancePx = 2;
+  assert.ok(Number.isFinite(image.rootRem) && image.rootRem > 0, `${said}: measured root rem`);
+  const expectedWidth = 3 * image.rootRem - (image.boxSizing === 'border-box' ? image.borderX : 0);
+  const expectedHeight = 3 * image.rootRem - (image.boxSizing === 'border-box' ? image.borderY : 0);
+  assert.ok(Math.abs(image.width - expectedWidth) <= thumbnailGeometryTolerancePx &&
+    Math.abs(image.height - expectedHeight) <= thumbnailGeometryTolerancePx,
+  `${said}: 3rem square thumbnail (2px geometry tolerance): ${JSON.stringify(image)}`);
+  assert.equal(image.objectFit, 'contain', `${said}: thumbnail contains the whole image`);
+}
+
 // Images in a Notebook card (item 321, docs/decks.md "Images in a card"), in the real browser against the real
 // server, in Chrome and in Safari's engine: an image pasted or dropped into a card being written shows in it at once,
 // from this device, while it uploads; it becomes one of the page's attachments, named by a line of the card's words,
@@ -324,19 +337,14 @@ export async function cardImageChecks({ check, page, until, control, view, facts
   // image read.
   const drawnImages = (p, scope) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(scope + ' .page-image')})].map(f=>{const i=f.querySelector(':scope > img.image-thumb'),
     w=f.parentElement,s=getComputedStyle(w),inner=w.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight);
-    const b=i?getComputedStyle(i):null,edge=b?parseFloat(b.borderLeftWidth)+parseFloat(b.borderRightWidth):0;
+    const b=i?getComputedStyle(i):null;
     return {name:f.querySelector(':scope > .page-image-name').textContent,shown:Boolean(i&&!i.hidden&&i.complete&&i.naturalWidth>0),width:i?i.clientWidth:0,height:i?i.clientHeight:0,
-      natural:i?i.naturalWidth:0,room:inner-(b?.boxSizing==='border-box'?edge:0)}})`);
+      natural:i?i.naturalWidth:0,room:inner,rootRem:parseFloat(getComputedStyle(document.documentElement).fontSize),boxSizing:b?.boxSizing,objectFit:b?.objectFit,
+      borderX:b?parseFloat(b.borderLeftWidth)+parseFloat(b.borderRightWidth):0,borderY:b?parseFloat(b.borderTopWidth)+parseFloat(b.borderBottomWidth):0}})`);
   // Every read of the page's own images (its attachment, and the one it does not carry), by whatever source; the
   // topic's other images (its messages', the right rail's) are its own business.
   const imageReads = (p, id) => p.calls.filter(call => call.url.endsWith('/api/media/read') && [`${id}-media-0`, `gone-${id}`].includes(call.payload?.media_id))
     .map(call => [call.payload.media_id, call.payload.source_ref?.kind, call.payload.source_ref?.id]);
-  // An image at the size it reads at: as wide as it is, or as the words when it is wider, never a thumbnail.
-  const readingSize = (image, said) => {
-    // A browser counts a box's width in whole pixels (clientWidth), so the room it fills may round either way.
-    assert.ok(Math.abs(image.width - Math.min(image.natural, image.room)) <= 1, `${said}: the image is as wide as it is, or as the words: ${JSON.stringify(image)}`);
-    assert.ok(Math.abs(image.height - image.width * 300 / 480) <= 1, `${said}: in proportion: ${JSON.stringify(image)}`);
-  };
 
   await check('notebook card images the Reader shows a card\'s image at its reading size, read through the page; an image the page does not carry shows its name alone and reads nothing; a line that is words stays words; at 320, 390 and a laptop, light and dark', async () => {
     const id = 'nb-card-reader', body = ELSEWHERE(id);
@@ -348,7 +356,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       await until(async () => (await drawnImages(p, '#source-body')).some(image => image.shown), `${label}: the card's image shows in the Reader`);
       const drawn = await drawnImages(p, '#source-body');
       assert.deepEqual(drawn.map(image => [image.name, image.shown]), [['wide.png', true], ['gone.png · not on this page', false]], `${label}: the image, and the one not on the page by name`);
-      readingSize(drawn[0], label);
+      readingThumbnailSize(drawn[0], label);
       const words = await p.evaluate(`({text:document.querySelector('#source-body').textContent,code:[...document.querySelectorAll('#source-body code')].map(c=>c.textContent),
         web:[...document.querySelectorAll('#source-body a[href="https://example.invalid/web.png"]')].map(a=>a.textContent),pictures:document.querySelectorAll('#source-body img').length})`);
       assert.ok(!words.text.includes('![wide.png](') && !words.text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(words.text)}`);
@@ -390,7 +398,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
       await until(async () => (await drawnImages(p, BODY)).some(image => image.shown), `${label}: the card's image shows in place`);
       const drawn = await drawnImages(p, BODY);
       assert.deepEqual(drawn.map(image => [image.name, image.shown]), [['wide.png', true], ['gone.png · not on this page', false]], `${label}: the image, and the one not on the page by name`);
-      readingSize(drawn[0], label);
+      readingThumbnailSize(drawn[0], label);
       const text = await p.evaluate(`document.querySelector(${JSON.stringify(BODY)}).textContent`);
       assert.ok(!text.includes('![wide.png](') && !text.includes('![gone.png]('), `${label}: no image line shows as its markup: ${JSON.stringify(text)}`);
       assert.ok(text.includes(`\`![code.png](attachment:${id}-media-0)\`\n![web.png](https://example.invalid/web.png)`), `${label}: the lines that are words stay words: ${JSON.stringify(text)}`);

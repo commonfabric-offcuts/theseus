@@ -143,17 +143,20 @@ class RecoveryCase(StoreCase):
         self.assertFalse(recovered["destination_available"])
         self.assertFalse(recovered["source_available"])
         self.assertEqual(self.store.view("agent-a", "source", source)["error"]["code"], "FORBIDDEN")
-        updated = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "Recovered and edited", "generation": "gA"},
+        updated = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "Recovered and edited", "generation": "gA",
+                               "reply_without_quote": "I am updating recovered writing after losing access to its source."},
                                target={"draft_id": "d1"}, expected={"draft_revision": 1}, actor="agent-a")
         self.assertEqual(updated["status"], "committed", updated)
         note = self.command("note.save", {"source_ref": source, "body": "Edited note"}, target={"note_id": "n1"}, expected={"note_revision": 1}, actor="agent-a")
         self.assertEqual(note["status"], "committed", note)
         prepared = self.command("submission.prepare", {"draft_id": "d1", "submission_id": "s1", "send_operation_id": "cannot-send"},
                                 target={"topic_id": "t1"}, expected={"draft_revision": 2}, actor="agent-a")
-        self.assertEqual(prepared["status"], "committed", prepared)
-        sent = self.command("message.send", {"submission_id": "s1"}, target={"topic_id": "t1"}, op="cannot-send", actor="agent-a")
-        self.assertEqual(sent["error"]["code"], "FORBIDDEN")
-        self.assertEqual(self.store.view("agent-a", "submission", {"submission_id": "s1"})["body"], "Recovered and edited")
+        # Item 758 checks an agent reply's reach before rotating its writing.
+        # An explicit reason cannot bypass revoked access; private work stays.
+        self.assertEqual(prepared["error"]["code"], "FORBIDDEN", prepared)
+        self.assertEqual(self.sql("SELECT id FROM submissions WHERE id='s1'"), [])
+        self.assertEqual(self.store.view("agent-a", "editor_state", {"source_ref": source, "topic_id": "t1"})["draft"]["body"],
+                         "Recovered and edited")
         outsider = self.store.view("agent-b", "editor_state", {"source_ref": source, "topic_id": "t1"})
         self.assertEqual(outsider["error"]["code"], "FORBIDDEN")
 

@@ -9,6 +9,7 @@ a 👍 on the payload's message or by their own reply to it, which the writer na
 --done-by that is not the owner's reply to that message. Times are absolute local times.
 """
 
+import json
 import time
 
 from .cover_values import PAYLOAD_KINDS
@@ -22,7 +23,8 @@ def register(verb):
     cover = verb("cover")
     cover.add_argument("message")
     cover.add_argument("--expected", type=int)
-    # Where it stands, in one line; "" clears it.
+    cover.add_argument("--promises", help="Explicit promise records as JSON; [] clears them")
+    # Where it stands, retaining its lines; "" clears it.
     cover.add_argument("--stands")
     # What waits on the owner, each with its default: --waits TEXT --default TEXT, once per thing waiting, in order.
     cover.add_argument("--waits", action="append", default=[])
@@ -53,9 +55,15 @@ def cover_lines(root, revision, cover, owner):
         return ["no cover on the dossier of %s (revision %d)" % (root, revision)]
     lines = ["cover of the dossier of %s (revision %d, by %s at %s)" % (root, revision, cover["by"], _at(cover["at_ms"]))]
     if cover["stands"]:
-        lines.append("  stands: %s" % cover["stands"])
+        # Output.plain sanitizes embedded controls, including LF. Emit each
+        # supplied line separately so the terminal readback retains the breaks.
+        lines.extend(("  stands: " + cover["stands"]).split("\n"))
     for wait in cover["waiting"]:
         lines.append("  waits on %s: %s (default: %s)" % (owner, wait["text"], wait["default"]))
+    for promise in cover.get("promises", []):
+        for old in promise["history"]:
+            lines.append("    previously: %s · %s · %s [%s #%s r%s; source %s; recorded by %s]" % (old["text"], old["due"]["label"] if old["due"] else "No time given", old["state"], old["message_id"], old["seq"], old["source_revision"], old["source_author"], old["by"]))
+        lines.append("  promise: %s · %s · %s [%s #%s r%s; source %s; recorded by %s]" % (promise["text"], promise["due"]["label"] if promise["due"] else "No time given", promise["state"], promise["message_id"], promise["seq"], promise["source_revision"], promise["source_author"], promise["by"]))
     payload = cover["payload"]
     if payload:
         lines.append("  payload%s: %s  [%s #%s]%s" % (" (%s)" % payload["kind"] if payload.get("kind") else "", payload["text"],
@@ -68,6 +76,11 @@ class CoverVerbs:
     def cover_args(self):
         """The fields this run sets or clears, from its options; {} when it only reads."""
         options, args = self.options, {}
+        if options.promises is not None:
+            try:
+                args["promises"] = json.loads(options.promises)
+            except ValueError:
+                self.refuse("INVALID_ARGUMENT", "--promises is a JSON list; nothing was sent")
         if options.stands is not None:
             args["stands"] = options.stands
         if options.no_waits and options.waits:

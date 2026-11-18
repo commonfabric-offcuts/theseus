@@ -616,6 +616,8 @@ class Stacks:
         version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
                              (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
                               json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        if kind == "cover":
+            self._index_cover_wait(db, message, value)
         if not tell:
             return version
         for reader in [actor] if owner else self._message_readers(db, message, actor):

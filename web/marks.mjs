@@ -253,3 +253,22 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
   } else if (held) author.append(held);
   if (edited) { const mark = document.createElement('span'); mark.className = 'message-edited'; mark.append(' · Edited'); author.append(mark); }
 }
+
+// Item 649: a shortcut on the drawn card to the reader's own private note.
+// Use a span button, as the card's star does: the card itself is a button.
+export function paintNoteCorner(card, item, open, doc = document) {
+  let corner = card.querySelector(':scope > .note-corner');
+  if (item?.yours?.note !== true) { corner?.remove(); return; }
+  if (corner) { if (card.lastElementChild !== corner) card.append(corner); return; }
+  corner = doc.createElement('span'); corner.className = 'note-corner';
+  corner.setAttribute('role', 'button'); corner.tabIndex = 0;
+  corner.setAttribute('aria-label', 'Open your private note'); corner.title = 'Open your private note';
+  const ink = doc.createElement('span'); ink.className = 'note-corner-glyph carry-note';
+  ink.setAttribute('aria-hidden', 'true'); corner.append(ink);
+  const press = () => open(item.id, corner);
+  corner.onclick = event => { event.preventDefault(); event.stopPropagation(); press(); };
+  corner.onkeydown = event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); press(); }
+  };
+  card.append(corner);
+}

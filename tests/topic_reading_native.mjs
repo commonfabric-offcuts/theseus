@@ -17,9 +17,13 @@
 // (121), in the topic's composer and in the Reader; and what the keys select
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { passageChecks } from './item_758_native.mjs';
+import { waitingQuestions372Checks } from './waiting_questions_372_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
@@ -62,6 +66,7 @@ const HEARD = `(()=>{window.sent=[];window.sendReceipts=[];window.taps=0;window.
 // origin, as a person's earlier "Allow" leaves it; Safari's engine has none. engine: 'chrome' or 'webkit'.
 // windows: the browser's own windows, as it opens them: list() gives each page's id and address, close(id) closes one.
 export async function readingChecks({ check, page, until, view, control, shot, facts, observations, grant = null, windows, engine = 'chrome' }) {
+  await waitingQuestions372Checks({ check, page, until, view, control, shot, facts, observations, engine });
   // A topic of the person's own, with aim-core and aim-ux in it, and messages
   // said in order: each [name, {sender, body, ...}] as the fixture's agent_message takes it.
   const seed = async (topic, said) => {
@@ -238,6 +243,307 @@ export async function readingChecks({ check, page, until, view, control, shot, f
   const valueOf = (p, field) => p.evaluate(`document.querySelector(${JSON.stringify(field)}).value`);
   // Each image row under a writing: its words, "name · state".
   const imageRows = (p, host) => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].map(r=>r.firstElementChild.textContent)`);
+
+  // Item 649: the corner opens only this reader's note. Faults below hold or refuse
+  // the actual source/editor read; native clicks, taps and keys still start every act.
+  const noteFaults = `(()=>{const fetch_=window.fetch;window.noteFault=null;window.noteReads=0;
+    window.fetch=async function(input,init){let b;try{b=JSON.parse(init?.body)}catch{}
+      const applies=b?.name==='source'||b?.name==='editor_state';
+      if(applies&&window.noteFault){window.noteReads++;
+        if(window.noteFault==='busy'&&b.name==='editor_state')await new Promise(go=>window.releaseNote=go);
+        if(window.noteFault==='error')return new Response(JSON.stringify({error:{code:'VIEW_REFUSED',message:'item 649 note read refused'}}),{status:409,headers:{'Content-Type':'application/json'}});
+        if(window.noteFault==='unavailable'&&b.name==='source')return new Response(JSON.stringify({error:{code:'FORBIDDEN'}}),{status:200,headers:{'Content-Type':'application/json'}});
+        if(window.noteFault==='unavailable'&&b.name==='editor_state'){const r=await fetch_.call(this,input,init),j=await r.json();
+          j.source_available=false;return new Response(JSON.stringify(j),{status:r.status,headers:r.headers})}}
+      return fetch_.call(this,input,init)}})()`;
+  for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    // Named tolerance for all measured bounds in these cases, including the 44px target.
+    const layoutTolerancePx = 1;
+    const name = `item 649 ${size} ${theme}`;
+    const setupNote = async suffix => {
+      const topic = `note-649-${size}-${theme}-${suffix}`;
+      const ids = await seed(topic, [['note', { sender: 'aim-core', join: true, body: 'Check the exact destination before Friday.' }],
+        ['plain', { sender: 'aim-core', body: 'No note of mine on this message.' }]]);
+      const note = 'Private words — keep exactly.\nSecond line, with  two spaces.';
+      const reply = 'Unsent reply, still addressed here.';
+      await control({ method: 'private_writing', operation_id: topic + '-note', topic_id: topic, message_id: ids.note, kind: 'note', body: note });
+      await control({ method: 'private_writing', operation_id: topic + '-reply', topic_id: topic, message_id: ids.note, kind: 'draft', body: reply });
+      await control({ method: 'private_writing', operation_id: topic + '-theirs', topic_id: topic, message_id: ids.plain, kind: 'note', body: 'Another actor secret.', sender: 'aim-core' });
+      const p = await open(topic, size, topic, ids.note, noteFaults, undefined, q => q.send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-color-scheme', value: theme }] }));
+      return { p, topic, ids, note, reply, corner: card(ids.note) + ' > .note-corner' };
+    };
+    const pressCorner = async ({p, corner}) => {
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(corner)}))`), true, 'item 649: own saved note has a corner');
+      await centre(p, corner);
+      if (size === 'laptop') await p.point(corner); else await tap(p, corner);
+    };
+    const noteShown = async ({p, ids, note}, unavailable = false) => {
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#writing-label').textContent==='Private note'
+        && document.querySelector('#writing-body').value===${JSON.stringify(note)}`), name + ': exact note is shown');
+      assert.equal(await readerOn(p), unavailable ? '' : 'Check the exact destination before Friday.');
+      assert.equal(await p.evaluate("document.querySelector('#destination-label').hidden"), true, 'private writing has no send destination');
+      assert.equal(await p.evaluate("window.sent.includes('message.send')"), false, 'opening a note sends no message');
+    };
+    await check(`reading ${name} page comparison retains the message and its marks`, async () => {
+      const state = await setupNote('look'), {p,ids,note} = state;
+      await p.evaluate("document.fonts.ready");
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-page');
+      assert.equal(await p.evaluate("document.documentElement.scrollWidth<=innerWidth+1"), true, 'layoutTolerancePx=1: page fits');
+      // The old + / Show note route exists at the original source base too.
+      // Capture that same Reader surface before and after the corner shortcut.
+      const device = size === 'laptop' ? 'laptop' : 'phone';
+      await openReader(p, device, ids.note, 'Check the exact destination');
+      await press(p, device, '#plus-button');
+      await until(() => p.evaluate("!document.querySelector('#plus-panel').hidden"), 'existing plus panel is open');
+      await press(p, device, '#toggle-note');
+      await noteShown(state);
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-existing-note');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading ${name} normal corner opens the exact private note by pointer or touch and keyboard`, async () => {
+      const state = await setupNote('normal'), {p,corner,note,reply,topic,ids} = state;
+      await pressCorner(state);
+      await noteShown(state);
+      await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-note');
+      const b = await p.evaluate(`(()=>{const n=document.querySelector(${JSON.stringify(corner)}),b=n.getBoundingClientRect();return {w:b.width,h:b.height,name:n.getAttribute('aria-label'),title:n.title}})()`);
+      assert.ok(b.w>=44-layoutTolerancePx&&b.h>=44-layoutTolerancePx, 'layoutTolerancePx=1: note corner is a 44px target');
+      assert.equal(b.name, 'Open your private note'); assert.equal(b.title,b.name);
+      await closeReader(p, size==='laptop'?'laptop':'phone');
+      // Close returns to the corner; a native Tab/Shift-Tab returns there too.
+      await until(() => p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`), 'focus returns to note corner');
+      await p.key('Tab',8); await p.key('Tab');
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(corner)})`),true,'corner is a native tab stop');
+      await p.key('Enter'); await noteShown(state);
+      // Existing reply remains exact and in the same topic; the corner must never overwrite it.
+      const saved = await view('editor_state',{source_ref:{kind:'message',id:ids.note},topic_id:topic});
+      assert.equal(saved.note.body,note); assert.equal(saved.draft.body,reply);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    for (const branch of ['busy', 'error', 'unavailable']) await check(`reading ${name} ${branch} corner preserves writing and recovers to the same note`, async () => {
+      const state = await setupNote(branch), {p} = state;
+      await p.evaluate(`window.noteFault=${JSON.stringify(branch)}`);
+      await pressCorner(state);
+      await until(() => p.evaluate('window.noteReads>0'), 'the corner starts its real foreground read');
+      if(branch==='busy') {
+        await until(() => p.evaluate('typeof window.releaseNote==="function"'), 'editor read is waiting');
+        assert.equal(await readerOn(p),null,'no premature composer while opening');
+        await p.evaluate('(()=>{window.noteFault=null;window.releaseNote()})()');
+        await noteShown(state);
+      } else if(branch==='error') {
+        await until(() => p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 note read refused')"), 'read error is visible');
+        assert.equal(await readerOn(p),null,'a failed read exposes no note');
+        await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-error');
+        await p.evaluate('window.noteFault=null'); await pressCorner(state); await noteShown(state);
+      } else {
+        await noteShown(state, true);
+        assert.equal(await p.evaluate("document.querySelector('#send-reply').disabled"),true,'unavailable source holds saving while keeping the note');
+        assert.equal(await p.evaluate("document.querySelector('#retry-source').hidden"),false,'unavailable source offers Retry access');
+        await shot(p, 'reading-' + name.replaceAll(' ', '-') + '-unavailable');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading ${name} empty and other actor notes have no corner and clearing your note removes it`, async () => {
+      const state = await setupNote('private'), {p,ids,topic,corner} = state;
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.plain)+' > .note-corner')}))`),false,'another actor has no corner');
+      assert.equal(await p.evaluate("document.querySelector('#messages').textContent.includes('Another actor secret.')"),false,'no private words on the feed');
+      await pressCorner(state); await noteShown(state); await closeReader(p,size==='laptop'?'laptop':'phone');
+      await control({method:'private_writing',operation_id:topic+'-empty',topic_id:topic,message_id:ids.note,kind:'note',body:''});
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(corner)})`),'empty note removes its corner without reload');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
+  // B1/B2 final correction: these are real dossiers, not standalone cards.
+  // The negative control reinstates the original c2c48465 corner rules on the
+  // live page. It changes no DOM or handler and is removed in finally before
+  // native input. The original file SHA binds the control to preserved source.
+  const brokenCornerRules = `.message-card:has(>.note-corner){padding-bottom:2.75rem}
+    .note-corner{position:absolute;right:0;bottom:0;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;color:var(--muted);border-radius:.5rem;cursor:pointer;margin-left:0}`;
+  for (const size of ['phone-320', 'phone-375', 'phone', 'laptop']) for (const theme of ['light', 'dark']) {
+    const device = size === 'laptop' ? 'laptop' : 'phone';
+    // 1px permits subpixel rounding in both runners; the broken root is a
+    // whole card away and the broken reply loses 12px, so neither can pass.
+    const layoutTolerancePx = 1;
+    for (const shape of ['B1-root', 'B2-covered']) {
+      const name = `item 649 ${size} ${theme} ${shape}`;
+      const setup = async branch => {
+        const topic = `note-649-${size}-${theme}-${shape}-${branch}`;
+        const ids = await seed(topic, [
+          ['root', {sender:'aim-core', join:true, addressees:[facts.actor], body:'Root words belong to this first card.'}],
+          ['covered', {sender:'aim-core', reply_to:'root', addressees:[facts.actor], body:'Earlier reply words stay readable and selectable.'}],
+          ['last', {sender:'aim-core', reply_to:'root', addressees:[facts.actor], body:'Last reply has its own different private writing.'}],
+          ['absent', {sender:'aim-core', addressees:[facts.actor], body:'No note was saved on this separate card.'}]
+        ]);
+        const notes = {root:'Root private words — exactly.\nTwo  spaces.', covered:'Earlier reply private words — distinct.\nKeep  this.', last:'Last reply private words — different.\nOnly  here.'};
+        const drafts = {};
+        for (const key of ['root','covered','last']) {
+          await control({method:'private_writing', operation_id:topic+'-note-'+key, topic_id:topic, message_id:ids[key], kind:'note', body:notes[key]});
+          drafts[key] = 'Unsent reply for '+key+' — keep its destination.';
+          await control({method:'private_writing', operation_id:topic+'-draft-'+key, topic_id:topic, message_id:ids[key], kind:'draft', body:drafts[key]});
+        }
+        const p = await open(topic,size,topic,ids.root,noteFaults,undefined,q=>q.send('Emulation.setEmulatedMedia', {features:[{name:'prefers-color-scheme',value:theme}]}));
+        const section = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen`),'false','root starts collapsed');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root)+' > .note-corner')}).getClientRects().length`),0,'collapsed root exposes no corner');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.state`),'folded','fixture: native chevron starts at latest/unread');
+        await centre(p,section); await press(p,device,section);
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen==='true'`),'product: native chevron opens root');
+        observations.push({name:'reading '+name+' fixture reached native open dossier',branch,gesture:'chevron press',headOpen:true});
+        const key = shape === 'B1-root' ? 'root' : 'covered';
+        return {p,topic,ids,key,notes,drafts,corner:card(ids[key])+' > .note-corner'};
+      };
+      const geometry = async (s, key = s.key) => {
+        const selector = card(s.ids[key])+' > .note-corner';
+        await centre(s.p,selector);
+        await s.p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+        return s.p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[key]))}),n=c.querySelector(':scope > .note-corner'),
+          rect=e=>{const b=e.getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}},b=rect(n),host=rect(c),
+          content=[...c.children].filter(e=>e!==n&&!e.matches('.stack-head')).map(e=>rect(e)).filter(r=>r.width>0&&r.height>0),
+          misses=[];for(let dx=.5;dx<44;dx++)for(let dy=.5;dy<44;dy++){const x=b.left+dx,y=b.top+dy,h=document.elementFromPoint(x,y);
+            if(x<0||y<0||x>=innerWidth||y>=innerHeight||!n.contains(h))misses.push({dx,dy,hit:h?.className})}
+          return {key:${JSON.stringify(key)},b,host,contentBottom:Math.max(host.top,...content.map(r=>r.bottom)),misses:misses.slice(0,8),missCount:misses.length,
+            bottomCentreMiss:misses.some(m=>m.dx===22.5&&m.dy===43.5),
+            covered:c.dataset.stackCovered,tabPosition:getComputedStyle(c.closest('.reply-stack').querySelector('.stack-head')).position,
+            rootPosition:getComputedStyle(c.closest('.reply-stack').querySelector('.stack-head-card')).position,
+            overflow:document.documentElement.scrollWidth-innerWidth}})()`);
+      };
+      const assertGeometry = g => {
+        assert.ok(g.b.width>=44-layoutTolerancePx&&g.b.height>=44-layoutTolerancePx,'layoutTolerancePx=1: full 44px target');
+        assert.ok(g.b.left>=g.host.left-layoutTolerancePx&&g.b.right<=g.host.right+layoutTolerancePx&&g.b.top>=g.host.top-layoutTolerancePx&&g.b.bottom<=g.host.bottom+layoutTolerancePx,
+          'layoutTolerancePx=1: corner belongs inside its own card');
+        assert.ok(g.b.top>=g.contentBottom-layoutTolerancePx,'layoutTolerancePx=1: corner lies after all words and controls');
+        assert.ok(g.overflow<=layoutTolerancePx,'layoutTolerancePx=1: no horizontal page overflow');
+        // Hit testing is strict: a covered pixel is never counted as hittable.
+        assert.deepEqual(g.misses,[],'every sampled point across the entire target hits its own corner');
+        assert.equal(g.missCount,0,'all 1936 CSS pixel centres hit the corner, with no covered area counted');
+        assert.equal(g.rootPosition,'static','folder tab keeps its original containing block');
+        assert.equal(g.tabPosition,'absolute','folder tab stays absolute');
+        if(g.key==='covered')assert.equal(g.covered,'true','earlier reply really is covered by a following sheet');
+      };
+      const shown = async (s, key=s.key, unavailable=false) => {
+        await until(()=>s.p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#writing-label').textContent==='Private note'&&document.querySelector('#writing-body').value===${JSON.stringify(s.notes[key])}`),'exact distinct private note opens');
+        assert.equal(await readerOn(s.p),unavailable?'':key==='root'?'Root words belong to this first card.':key==='covered'?'Earlier reply words stay readable and selectable.':'Last reply has its own different private writing.');
+        assert.equal(await s.p.evaluate("document.querySelector('#destination-label').hidden"),true);
+        assert.equal(await s.p.evaluate("window.sent.includes('message.send')"),false,'opening private writing sends no message');
+      };
+      const pressOwn = async (s,key=s.key,bottom=false) => {
+        const selector=card(s.ids[key])+' > .note-corner';
+        assertGeometry(await geometry(s,key));
+        if(!bottom){await press(s.p,device,selector);return;}
+        const b=await s.p.box(selector),x=b.x+b.width/2,y=b.y+b.height-2;
+        if(device==='phone'){
+          await s.p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+          await s.p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+        }else{
+          await s.p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y});
+          await s.p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
+          await s.p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
+        }
+      };
+      const kept = async s => {
+        for(const key of [s.key,'last']){
+          const saved=await view('editor_state',{source_ref:{kind:'message',id:s.ids[key]},topic_id:s.topic});
+          assert.equal(saved.note.body,s.notes[key]);assert.equal(saved.draft.body,s.drafts[key]);
+          assert.equal(saved.destination.topic_id,s.topic,'reply keeps its destination');
+          assert.deepEqual(saved.source_ref,{kind:'message',id:s.ids[key]},'reply stays on its exact source');
+        }
+      };
+      await check(`reading ${name} normal own card and whole target with original-runtime negative and restored native presses`,async()=>{
+        const s=await setup('normal'),{p}=s;
+        const good=await geometry(s);observations.push({name:'reading '+name+' initial own-card geometry',good});assertGeometry(good);
+        // eb054586 called paintNoteCorner while only the author existed.
+        // Reapply that exact DOM order on the real page, then restore it.
+        let orderRed;
+        try {
+          await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[s.key]))}),n=c.querySelector(':scope > .note-corner');c.querySelector(':scope > .message-author').after(n)})()`);
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(s.corner)}).previousElementSibling.classList.contains('message-author')`),true,'failed-head placement mutation actually applied');
+          orderRed=await geometry(s);
+          observations.push({name:'reading '+name+' applied failed-head placement',source:'eb054586a92ee5acaec4d28c87e024695a1ca593',caseWithoutFix:'108d6535df16be155882a00291e77263ff75b780',orderRed});
+          assert.throws(()=>assertGeometry(orderRed),/corner lies after all words/,'failed-head corner before words is native red');
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-failed-head-red');
+        } finally {
+          await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[s.key]))});c.append(c.querySelector(':scope > .note-corner'))})()`);
+        }
+        assertGeometry(await geometry(s));
+        // The ledger's real size mutant must also fail native geometry.
+        let smallRed;
+        try {
+          await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-small-target';e.textContent='.note-corner{width:1rem;height:1rem}';document.head.append(e)})()`);
+          smallRed=await geometry(s);
+          observations.push({name:'reading '+name+' applied 16px ledger target mutant',smallRed});
+          assert.equal(smallRed.b.width,16,'16px size mutation actually applied');
+          assert.throws(()=>assertGeometry(smallRed),/full 44px target/,'small target is native red');
+        } finally { await p.evaluate("document.querySelector('#item649-small-target')?.remove()"); }
+        assertGeometry(await geometry(s));
+        let negative;
+        try{
+          await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-original-runtime-control';e.textContent=${JSON.stringify(brokenCornerRules)};document.head.append(e)})()`);
+          assert.equal(await p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(s.corner)})).position`),'absolute','broken source rule actually applied');
+          const broken=await geometry(s);
+          observations.push({name:'reading '+name+' applied original absolute placement',broken});
+          assert.throws(()=>assertGeometry(broken),/corner belongs inside|corner lies after|sampled point/,'original B1/B2 geometry must fail');
+          if(shape==='B2-covered')assert.ok(broken.bottomCentreMiss,'B2 original target really loses its bottom hit area to the following card');
+          assert.equal(await p.evaluate("document.querySelector('#item649-original-runtime-control').textContent"),brokenCornerRules,'exact negative rules applied');
+          negative={source:'c2c4846578a827a35dc798293c9a393f93e76bae',aimCssSha256:'0006765e03942889e5958e79d1dea997e67dee50f4f760bfe52f25ef773dded4',
+            rulesSha256:createHash('sha256').update(brokenCornerRules).digest('hex'),broken};
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-negative');
+        }finally{await p.evaluate("document.querySelector('#item649-original-runtime-control')?.remove()");}
+        assert.equal(await p.evaluate("Boolean(document.querySelector('#item649-original-runtime-control'))"),false,'negative stylesheet removed');
+        const restored=await geometry(s);assertGeometry(restored);
+        observations.push({name:'reading '+name+' applied original-runtime negative and restored',layoutTolerancePx,orderRed,smallRed,negative,restored});
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-card');
+        await pressOwn(s,s.key,true);await shown(s);await kept(s);
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-note');
+        await closeReader(p,device);
+        await until(()=>p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(s.corner)})`),'corner regains focus');
+        await p.key('Tab',8);await p.key('Tab');
+        assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(s.corner)})`),true,'native Tab reaches corner');
+        await p.key(' ');await shown(s);await closeReader(p,device);
+        await p.key('Enter');await shown(s);await closeReader(p,device);
+        await pressOwn(s,'last',true);await shown(s,'last');await closeReader(p,device);
+        await readerByClick(p,device,s.ids[s.key],s.key==='root'?'Root words':'Earlier reply words');
+        assert.equal(await p.evaluate("document.querySelector('#writing-label').textContent"),'Reply','message words still open ordinary reading/reply');
+        await kept(s);assert.deepEqual(p.errors,[]);await p.close();
+      });
+      for(const branch of ['busy','error','unavailable'])await check(`reading ${name} ${branch} whole target keeps exact writing and recovery`,async()=>{
+        const s=await setup(branch),{p}=s;
+        await p.evaluate(`window.noteFault=${JSON.stringify(branch)}`);
+        await pressOwn(s,s.key,true);
+        await until(()=>p.evaluate('window.noteReads>0'),'native corner starts foreground read');
+        if(branch==='busy'){
+          await until(()=>p.evaluate('typeof window.releaseNote==="function"'),'editor read waits');
+          assert.equal(await readerOn(p),null);
+          await p.evaluate('(()=>{window.noteFault=null;window.releaseNote()})()');await shown(s);
+        }else if(branch==='error'){
+          await until(()=>p.evaluate("document.querySelector('#app-status').textContent.includes('item 649 note read refused')"),'refused read is visible');
+          assert.equal(await readerOn(p),null);
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-error');
+          await p.evaluate('window.noteFault=null');await pressOwn(s,s.key,true);await shown(s);
+        }else{
+          await shown(s,s.key,true);
+          assert.equal(await p.evaluate("document.querySelector('#send-reply').disabled"),true);
+          assert.equal(await p.evaluate("document.querySelector('#retry-source').hidden"),false);
+        }
+        await shot(p,'reading-'+name.replaceAll(' ','-')+'-'+branch+'-note');
+        await kept(s);assert.deepEqual(p.errors,[]);await p.close();
+      });
+      await check(`reading ${name} absent other actor and empty note leave no corner or private words`,async()=>{
+        const s=await setup('privacy'),{p,topic}=s;
+        const absent=card(s.ids.absent)+' > .note-corner';
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(absent)}))`),false,'absent note has no corner');
+        await control({method:'private_writing',operation_id:topic+'-empty',topic_id:topic,message_id:s.ids[s.key],kind:'note',body:''});
+        await until(()=>p.evaluate(`!document.querySelector(${JSON.stringify(s.corner)})`),'empty saved note removes corner');
+        await control({method:'private_writing',operation_id:topic+'-theirs',topic_id:topic,message_id:s.ids[s.key],kind:'note',body:'Another actor secret B1 B2.',sender:'aim-core'});
+        // Reload the isolated origin to read the actual other-reader state.
+        await front(p);await p.send('Page.reload');
+        await until(()=>p.evaluate(`document.body.dataset.ready==='true'&&Boolean(document.querySelector(${JSON.stringify(card(s.ids[s.key]))}))`),'same topic reloads');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(s.corner)}))`),false,'other actor has no corner');
+        assert.equal(await p.evaluate("document.querySelector('#messages').textContent.includes('Another actor secret B1 B2.')"),false);
+        assert.deepEqual(p.errors,[]);await p.close();
+      });
+    }
+  }
 
   await check('reading the bar\'s 👍 and the card\'s 👍 count record a thumbs-up in Core, and pressing again takes it back', async () => {
     for (const device of Object.keys(DEVICES)) {
@@ -3189,6 +3495,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await p.close();
   });
 
+  await passageChecks({ check, until, view, control, shot, observations, engine },
+    { open, centre, press, openReader, closeReader, into, card, words });
+  await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
+    { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

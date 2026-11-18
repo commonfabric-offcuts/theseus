@@ -236,28 +236,23 @@ Escape is always what is shown now's (`unseen`).
 
 ## Size
 
-The Reader, where the composer has the message beside it, and the New
-message sheet, where it stands alone, are as tall as what shows of the window
-and grow with its width up to a maximum (item 400). On a laptop each keeps
-1.5rem of the dimmed page on every side and is at most 72rem wide, 100rem in
-Wide; the window decides the size, so it changes when the window does and
-never with what is written. A wider Reader changes what wraps and what
-overflows at 1440, so the native checks' message has one passage longer than
-any line, and the check that scrolls it reads it in a shorter window. On a phone, as in any window 760px wide or
-narrower, each is the window's width and as tall as what shows, above the
-keyboard when it is up (the sheet leaves .75rem of the dimmed page above it),
-so nothing goes past the screen, sideways or down, and Send stays in reach
-with the keyboard up. A phone turned sideways is wider than that, and is
-sized as a small laptop window. In Wide the reply's column is the Reader's
-whole height; in the New message sheet the composer is the sheet's height
-and its field takes what the head, an open panel and the images leave, then
-scrolls, so there is no taller toggle (⤢) there, while the stacked Reader's
-field keeps it where the window is narrow; on a laptop the sheet's who panel
-opens in it under the head, and + over the field's foot, as in Wide. Stacked, the reply
-stays as tall as its writing and the message has the rest; where the Reader
-is shorter than both (a small phone with the keyboard up, the reply holding
-an image), the field gives way, down to one line, before the reply has to
-scroll, so as much of the reply's head and images shows with Send as can.
+The Reader is as tall as the visible window and grows with its width up to
+72rem (100rem in Wide), keeping 1.5rem around it on a laptop. On a phone,
+it fills the visible window above the keyboard. The Wide reply fills its
+column; the stacked reply grows with the writing and leaves the rest for
+the message.
+
+The pencil's New message sheet instead floats at the bottom, over a clear,
+unblurred page (items 673, 670, 671). Its field starts at one line and grows
+with the text up to twelve lines or 40% of the window, then scrolls. It
+shrinks again as text is removed. The sheet fits its contents and never
+exceeds the visible window, keeping .75rem above on a phone and 1.5rem
+around it on a laptop. Its who and + panels open inside it. It needs no
+taller toggle. The inline who panel uses small gaps and padding, and takes
+only its content height on a phone (item 672); touch targets remain 44px.
+The Reader's own who panel and the separate phone naming sheet keep their
+existing layout. A Notebook page sharing the dialog keeps its full-height
+reading surface and backdrop.
 
 Shorter still, as on a 320-point phone with the keyboard up and an image
 whose Send was refused (its notice, the image's choices to Attach as
@@ -396,7 +391,10 @@ opening, which names its people as it is made, is unchanged.
 A quiet ✎ at the top of a topic opens the same composer with no message
 above it, focused and ready to type. It is the only control it adds to the
 page. ✕, Escape or a press on the backdrop closes it, keeping what was
-written, and focus returns to ✎. At rest the same composer is drawn in the
+written, and focus returns to ✎. Send or Cmd-Return closes this opening once
+Core confirms the message was sent. Empty, refused or unconfirmed sends
+leave it open with the recovery controls; a late answer never closes a
+later opening or newer writing. At rest the same composer is drawn in the
 feed, one line until written in, just above More: under the last dossier shown
 above More and over the More line (item 465). It is never moved while it is up,
 and a holder of its height keeps its place there, so no dossier behind the
@@ -426,8 +424,8 @@ holding a draft longer than its field (in the sheet, one written in its
 place in the feed first), holding an image, and holding a HEIC image that waits on a
 choice, its choices open (in the Reader by a refused Send, whose notice says
 why), the Reader and the New message sheet are each measured against the
-window: their height and width as above, the composer filling the sheet and
-Wide's column, the field reaching the composer's foot, a long draft scrolling
+window: the Reader fills it and the pencil sheet fits its content, the
+composer filling Wide's column, the wide field reaching the composer's foot, a long draft scrolling
 inside the field, a composer that scrolls inside itself having its field at
 one line (its minimum), no row of the composer drawn over another, what has focus
 showing (with the field in hand, Send too), ⤢ in the stacked Reader where
@@ -546,3 +544,10 @@ The recovered-state 3px diagnostic is specifically a background folded cue
 after that technical name, not Reader overflow, and is not waived by that
 older placement. Tony8674's supplied phone word, “yeah that works”, covers the
 precise smoke test and does not certify the engine matrix or every guard.
+The `item 673` cases in `tests/reader_compose_native.mjs` hold the pencil's
+bottom placement and clear backdrop, one-line growth and shrinkage, compact
+inline agent menu, confirmed Send and Cmd-Return closing exactly once, and
+interrupted preparation staying open. An unavailable composer keeps its
+reason and Retry on separate rows; Retry replaces the failed presentation,
+and the pencil then opens the restored composer. They run on a topic and Conversation,
+at 320, 375, 390 and laptop, light and dark, in Chromium and WebKit.

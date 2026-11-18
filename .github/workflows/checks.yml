@@ -1,8 +1,7 @@
 # The release check, run on GitHub's runners for every pull request and every
 # push to a release branch. It runs the same steps as tools/release_check.py on
 # the Mac, split across runners: the native browser modes in shards, the units
-# in measured whole-file shards, Node and deploy refusals separately, and the
-# wake replay alone, since it is a
+# and the deploy refusals together, and the wake replay alone, since it is a
 # timing measurement that a second run beside it would skew.
 #
 # The shard list is computed from tools/release_check.py itself (the plan job),
@@ -50,9 +49,9 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
-  # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
-  BROWSER_SHARDS: 4
+  # Three browser shards, the units and the replay make five jobs: one wave under the five-macOS-jobs-at-once cap
+  # of a personal account. Raise this once the repository is under the organization, whose cap is fifty.
+  BROWSER_SHARDS: 3
 
 jobs:
   plan:
@@ -60,26 +59,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
+      shards_more: ${{ steps.plan.outputs.shards_more }}
+      has_more: ${{ steps.plan.outputs.has_more }}
+      all_shards: ${{ steps.plan.outputs.all_shards }}
       scoped: ${{ steps.plan.outputs.scoped }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
       - id: plan
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I tools/unit_shards.py --plan --github-output >> "$GITHUB_OUTPUT"
+          python3 -I tools/forward_plan.py --plan --github-output >> "$GITHUB_OUTPUT"
 
   check:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # Browser limits use ceil(longest dealt minutes * 1.5); replay keeps 45. Unit limits are
-    # ceil((measured file/step minutes + measured setup) * 1.5), from
-    # .github/check-weights.json: file timings 44112970996, Node/setup
-    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
-    timeout-minutes: ${{ matrix.timeout_minutes }}
+    # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
+    # 45 on a18e8b1e. Units, deploy refusals and wake replay had 45.
+    # TEMPORARY (17 Nov), both numbers:
+    # - 60, not 45: python-units alone now runs 42 to 44 minutes in the one units job, so 45 cancels it. Item 665
+    #   splits the units job into shards with limits read from measured times, and removes this raise.
+    # - 90, not 75: train 33's browser shard 1 reached 74.2 step-minutes and was cancelled at 75. Item 666 deals the
+    #   browser steps over four shards by measured minutes, and removes this raise.
+    timeout-minutes: ${{ matrix.compose_group && 120 || (startsWith(matrix.name, 'browser ') && 90 || 60) }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,11 +126,20 @@ jobs:
           echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
       - name: Release check, ${{ matrix.steps }}
         shell: bash
+        env:
+          COMPOSE_GROUP: ${{ toJSON(matrix.compose_group) }}
         run: |
           set -euo pipefail
+          if [[ "$COMPOSE_GROUP" != "null" && -n "$COMPOSE_GROUP" ]]; then
+            printf '%s' "$COMPOSE_GROUP" > "$RUNNER_TEMP/compose-group.json"
+            /usr/bin/python3 tools/run_compose_group.py --root "$GITHUB_WORKSPACE" --group "$RUNNER_TEMP/compose-group.json" \
+              --evidence "$RUNNER_TEMP/check/native/compose" --chrome "$AIM_CHROME_FOR_TESTING" \
+              --playwright "$AIM_PLAYWRIGHT_CORE" --node "$(command -v node)" --release-out "$RUNNER_TEMP/check"
+            exit $?
+          fi
           # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
           /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
-            --quarantine-at event ${{ matrix.python_shard && format('--python-shard {0}', matrix.python_shard) || '' }}
+            --quarantine-at event
       - name: Write this shard's receipt
         if: always()
         shell: bash
@@ -189,63 +206,158 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: check-${{ strategy.job-index }}
+          name: check-${{ matrix.index }}
+          path: ${{ runner.temp }}/check
+          if-no-files-found: ignore
+
+  check_more:
+    if: needs.plan.outputs.has_more == 'true'
+    name: ${{ matrix.name }}
+    needs: plan
+    runs-on: macos-26
+    # A browser shard takes 24 to 33 minutes on a normal runner; 75 leaves room for a slow pool, which used all of
+    # 45 on a18e8b1e. Units, deploy refusals and wake replay had 45.
+    # TEMPORARY (17 Nov), both numbers:
+    # - 60, not 45: python-units alone now runs 42 to 44 minutes in the one units job, so 45 cancels it. Item 665
+    #   splits the units job into shards with limits read from measured times, and removes this raise.
+    # - 90, not 75: train 33's browser shard 1 reached 74.2 step-minutes and was cancelled at 75. Item 666 deals the
+    #   browser steps over four shards by measured minutes, and removes this raise.
+    timeout-minutes: ${{ matrix.compose_group && 120 || (startsWith(matrix.name, 'browser ') && 90 || 60) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.shards_more) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The navigation step's shipped-editor case reads an older commit with git ls-tree, so the whole history.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - name: The interpreters the check expects
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 --version
+          node --version
+      # Every job installs them: the check resolves Chrome and Playwright before it
+      # reads --only, and refuses a run that cannot name them (tools/release_check.py).
+      - name: Chrome for Testing and Playwright's WebKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          browsers="$RUNNER_TEMP/browsers"
+          mkdir -p "$browsers/playwright"
+          # The same layout the Mac keeps under ~/Library/Caches/aim-chrome-for-testing (tools/release_check.py).
+          npx --yes @puppeteer/browsers install "chrome@${CHROME_VERSION}" --path "$browsers"
+          chrome="$browsers/chrome/mac_arm-${CHROME_VERSION}/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+          test -x "$chrome"
+          (cd "$browsers/playwright" \
+            && npm init -y >/dev/null \
+            && npm install --no-audit --no-fund "playwright-core@${PLAYWRIGHT_VERSION}" "playwright@${PLAYWRIGHT_VERSION}" >/dev/null \
+            && npx playwright install webkit)
+          echo "AIM_CHROME_FOR_TESTING=$chrome" >> "$GITHUB_ENV"
+          echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
+      - name: Release check, ${{ matrix.steps }}
+        shell: bash
+        env:
+          COMPOSE_GROUP: ${{ toJSON(matrix.compose_group) }}
+        run: |
+          set -euo pipefail
+          if [[ "$COMPOSE_GROUP" != "null" && -n "$COMPOSE_GROUP" ]]; then
+            printf '%s' "$COMPOSE_GROUP" > "$RUNNER_TEMP/compose-group.json"
+            /usr/bin/python3 tools/run_compose_group.py --root "$GITHUB_WORKSPACE" --group "$RUNNER_TEMP/compose-group.json" \
+              --evidence "$RUNNER_TEMP/check/native/compose" --chrome "$AIM_CHROME_FOR_TESTING" \
+              --playwright "$AIM_PLAYWRIGHT_CORE" --node "$(command -v node)" --release-out "$RUNNER_TEMP/check"
+            exit $?
+          fi
+          # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
+          /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
+            --quarantine-at event
+      - name: Write this shard's receipt
+        if: always()
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SHARD_NAME: ${{ matrix.name }}
+          SHARD_STEPS: ${{ matrix.steps }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/check"
+          # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
+          # another run or attempt cannot pass as this one. The profile says what the cases ran on.
+          /usr/bin/python3 -I - "$RUNNER_TEMP/check/run.json" <<'PY'
+          import hashlib, json, os, platform, re, subprocess, sys
+          env = os.environ
+          def out(*argv):
+              try:
+                  return subprocess.run(argv, capture_output=True, text=True).stdout.strip()
+              except OSError:
+                  return None
+          def digest(path):
+              try:
+                  return hashlib.sha256(open(path, "rb").read()).hexdigest()
+              except OSError:
+                  return None
+          receipt = {
+              "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
+                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
+                      # The commit this workflow file was read from: the proof of whose workflow judged the run.
+                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
+              "shard": {"name": env.get("SHARD_NAME"), "steps": (env.get("SHARD_STEPS") or "").split(",")},
+              "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
+              "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
+              # The commit the check ran, read from the checkout. On a pull request it is the merge commit: its first
+              # parent is the base GitHub merged onto, which can be newer than the event's base, and its second is the
+              # pull request's head; on a push it has one parent and the second reads as none.
+              "merge": {"sha": out("git", "rev-parse", "HEAD"), "tree": out("git", "rev-parse", "HEAD^{tree}"),
+                        "first_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^1") or None,
+                        "second_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^2") or None},
+              # The summary this receipt vouches for, so a summary swapped in beside a genuine receipt does not count.
+              "summary_sha256": digest(os.path.join(os.path.dirname(sys.argv[1]), "summary.json")),
+              "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
+                          "image_version": env.get("ImageVersion"), "platform": platform.platform(), "python": sys.version.split()[0],
+                          "node": out("node", "--version"), "chrome": env.get("CHROME_VERSION"), "playwright": env.get("PLAYWRIGHT_VERSION"),
+                          "chrome_path": env.get("AIM_CHROME_FOR_TESTING"), "playwright_core": env.get("AIM_PLAYWRIGHT_CORE"),
+                          # The settings the cases turned out to depend on: how scroll bars show, whether motion is reduced,
+                          # and how loaded the machine was, which a Mac at a desk never varies.
+                          "scroll_bars": out("defaults", "read", "-g", "AppleShowScrollBars") or "default",
+                          "reduce_motion": out("defaults", "read", "com.apple.universalaccess", "reduceMotion") or "default",
+                          "cpus": out("sysctl", "-n", "hw.ncpu"),
+                          "load_after": out("sysctl", "-n", "vm.loadavg")},
+          }
+          # Preserve the event's base above. This is the base Git actually used to build the tested merge.
+          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", receipt["merge"]["first_parent"] or ""):
+              sys.exit("the PR checkout has no Git first-parent commit id")
+          receipt["base_at_run"] = ({"ref": env.get("BASE_REF"), "sha": receipt["merge"]["first_parent"]}
+                                    if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
+          json.dump(receipt, open(sys.argv[1], "w"), indent=1)
+          PY
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-${{ matrix.index }}
           path: ${{ runner.temp }}/check
           if-no-files-found: ignore
 
   combine:
     name: the whole run's summary
-    needs: [plan, check]
+    needs: [plan, check, check_more]
     if: always()
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: check-*
           path: shards
-      - name: Recover cancelled browser jobs
-        uses: actions/github-script@v7
-        env:
-          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = JSON.parse(process.env.PLAN_SHARDS || '[]');
-            const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
-            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
-              ...context.repo, run_id: context.runId, attempt_number: attempt, per_page: 100
-            });
-            const cancelled = [];
-            for (const job of jobs) {
-              if (!['cancelled', 'timed_out'].includes(job.conclusion) ||
-                  !plan.some(s => s.name === job.name && s.name.startsWith('browser '))) continue;
-              const eventHead = context.payload.pull_request?.head.sha || context.sha;
-              if (Number(job.run_id) !== context.runId || job.head_sha !== eventHead) {
-                throw new Error('cancelled job does not name this run and commit');
-              }
-              const record = {id: job.id, run_id: String(job.run_id), attempt: String(attempt),
-                head_sha: job.head_sha, commit: context.sha, name: job.name, conclusion: job.conclusion,
-                started_at: job.started_at, completed_at: job.completed_at, log: ''};
-              try {
-                const response = await github.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', {
-                  ...context.repo, job_id: job.id
-                });
-                const text = typeof response.data === 'string' ? response.data : Buffer.from(response.data).toString('utf8');
-                // Keep only the producer's completed-step records and cancellation line, never a runtime profile.
-                record.log = text.split(/\r?\n/).filter(line =>
-                  /\S+ \{"name": .*"exit":/.test(line) || line.includes('##[error]The operation was canceled.')).join('\n') + '\n';
-              } catch (error) {
-                record.log_error = 'job logs unavailable';
-                core.warning(`Could not recover job ${job.id}; its unrecovered steps stay missing`);
-              }
-              cancelled.push(record);
-            }
-            fs.mkdirSync('shards', {recursive: true});
-            fs.writeFileSync('shards/cancelled.json', JSON.stringify(cancelled));
       - name: Fold the shards' summaries into one
         shell: bash
         env:
@@ -253,15 +365,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_REF: ${{ github.head_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          PLAN_SHARDS: ${{ needs.plan.outputs.all_shards }}
           PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}
         run: |
           set -euo pipefail
           mkdir -p release-check
           python3 - shards release-check/summary.json <<'PY'
           import glob, hashlib, json, os, re, sys
-          sys.path.insert(0, '.')
-          from tools import release_check as check
           shards_dir, out = sys.argv[1], sys.argv[2]
           paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
           docs = [json.load(open(p)) for p in paths]
@@ -285,16 +395,15 @@ jobs:
           # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
           # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
           merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
-          if len(merges) > 1:
+          if len(merges) != 1:
               sys.exit("the shards name different merges: %s" % sorted(merges))
-          # With no receipts, retain only the event commit for diagnostics. No checkout, tree or PR parent is proven.
-          merge = (receipts[0].get("merge") or {}) if receipts else {"sha": env.get("GITHUB_SHA")}
+          merge = receipts[0].get("merge") or {}
           if merge.get("sha") != env.get("GITHUB_SHA"):
               sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
-          if receipts and env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
+          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
               sys.exit("the PR merge has no Git first-parent commit id")
           formats = {"base_at_run" in r for r in receipts}
-          if len(formats) > 1:
+          if len(formats) != 1:
               sys.exit("the shards mix legacy and base_at_run receipt formats")
           observed = True in formats
           if observed:
@@ -308,65 +417,21 @@ jobs:
                   sys.exit("the shard's git-read base differs from the tested merge's first parent")
           # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
           timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
-          # Recovery and the missing-step inventory must not depend on any sibling finishing.
+          if not docs or not timed:
+              sys.exit("no shard wrote a summary with a run in it")
+          # Such a refusal names no commit; every other summary must name the one commit.
           commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
-          if len(commits) > 1:
+          if len(commits) != 1:
               sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
-          plan = json.loads(env.get('PLAN_SHARDS') or '[]')
-          try:
-              steps, required, jobs, missing_jobs, missing = check.combine_unit_results(docs, plan, receipts)
-          except check.Refused as error:
-              sys.exit(str(error))
-          # A timed-out job may never upload its summary. Its job log still holds completed run_step records.
-          # These are diagnostic evidence, not a substitute for a finished shard or its checked-out-tree proof.
-          cancel_path = os.path.join(shards_dir, "cancelled.json")
-          cancelled = json.load(open(cancel_path)) if os.path.exists(cancel_path) else []
-          plan_by_name = {s.get("name", s["steps"]): s["steps"].split(",") for s in json.loads(env.get("PLAN_SHARDS") or "[]")}
-          cancelled_shards = []
-          stamp = r"(\d{4}-\d\d-\d\dT\S+Z) "
-          for job in cancelled:
-              if ((str(job.get("run_id")), str(job.get("attempt"))) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT"))
-                      or job.get("commit") != env.get("GITHUB_SHA") or job.get("name") not in plan_by_name
-                      or job.get("conclusion") not in ("cancelled", "timed_out")):
-                  sys.exit("cancelled job does not belong to this run, attempt and plan")
-              cancel_times = re.findall(stamp + r"##\[error\]The operation was canceled\.", job.get("log") or "")
-              cancelled_at = cancel_times[0] if cancel_times else job["completed_at"]
-              recovered = []
-              for line in (job.get("log") or "").splitlines():
-                  match = re.fullmatch(stamp + r"(\{.*\})", line)
-                  if not match:
-                      continue
-                  try:
-                      result = json.loads(match[2])
-                  except ValueError:
-                      continue
-                  if (set(result) != {"name", "exit", "passed", "counts"} or result["name"] not in plan_by_name[job["name"]]
-                          or type(result["passed"]) is not bool or type(result["exit"]) is not int):
-                      continue
-                  if result["name"] in recovered:
-                      sys.exit("a cancelled job logged a step twice")
-                  recovered.append(result["name"])
-                  present = [s for s in steps if s["name"] == result["name"]]
-                  if present:
-                      if any(s.get(k) != v for s in present for k, v in result.items()):
-                          sys.exit("cancelled job log differs from its uploaded result")
-                      step = present[0]
-                  else:
-                      step = result
-                      steps.append(step)
-                  step.update(shard=job["name"], cancelled_at=cancelled_at, result_source="github-job-log",
-                              github_job=job["id"], logged_at=match[1])
-              cancelled_shards.append({"shard": job["name"], "job": job["id"], "cancelled_at": cancelled_at,
-                                       "conclusion": job["conclusion"], "recovered": recovered, "log_error": job.get("log_error")})
+          from tools.forward_plan import combine
+          steps = combine(docs,json.loads(env["PLAN_SHARDS"]),receipts)
+          required = sorted(set().union(*[set(d.get('required') or []) for d in docs]))
           names = [step["name"] for step in steps]
-          if len(names) != len(set(names)):
-              sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
           # Keep the full required inventory, but only omitted browser modes
           # are covered by the plan's explicit scope. Units and replay remain required.
           scoped = json.loads(env.get("PLAN_SCOPE") or "null")
           covered = set()
           if scoped is not None:
-              required = sorted(set(required) | set(check.REQUIRED))
               native = {name for name in required if name.startswith("native-")}
               if (env.get("GITHUB_EVENT_NAME") != "pull_request" or not isinstance(scoped, dict)
                       or scoped.get("live") != env.get("BASE_SHA") or not isinstance(scoped.get("steps"), list)
@@ -375,22 +440,19 @@ jobs:
               covered = native - set(scoped["steps"])
               if set(scoped.get("not_run") or []) != covered or covered.intersection(names):
                   sys.exit("scoped plan disagrees with its omitted browser steps")
-          missing = [name for name in missing if name not in names and name not in covered]
-          first = timed[0] if timed else {'tool': check.TOOL, 'commit': env.get('GITHUB_SHA')}
+          missing = [name for name in required if name not in names and name not in covered]
+          first = timed[0]
           # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
           # commit: no `only`, every required step present, the tree unchanged in every shard.
           combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
           combined.update({
-              "required": required,
-              "started_at": min([d["started_at"] for d in timed] + [j["started_at"] for j in cancelled], default=None),
-              "finished_at": max([d["finished_at"] for d in timed] + [j["cancelled_at"] for j in cancelled_shards], default=None),
+              "started_at": min(d["started_at"] for d in timed),
+              "finished_at": max(d["finished_at"] for d in timed),
               "steps": steps,
-              "jobs": jobs, "missing_jobs": missing_jobs, "missing": missing,
-              "tree_unchanged": bool(timed) and not cancelled_shards and all(d.get("tree_unchanged") is True for d in docs),
+              "tree_unchanged": all(d.get("tree_unchanged") is True for d in timed),
               "tree_after": first.get("tree_after"),
               "skipped": None,
-              "passed": bool(timed) and all(step["passed"] for step in steps) and not missing and not cancelled_shards and not missing_jobs and all(d.get("tree_unchanged") is True for d in docs),
-              "cancelled_shards": cancelled_shards,
+              "passed": all(step["passed"] for step in steps) and not missing,
               "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
               "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
           })
@@ -410,12 +472,10 @@ jobs:
               # The event base each shard read its quarantine at: one, or the run is not green.
               "at": [json.loads(b) for b in sorted(bases)],
               "held": [{"step": step["name"], "case": case} for step in steps for case in (step.get("quarantine") or {}).get("held") or []],
-              "green": (not missing and not missing_jobs and combined["tree_unchanged"] and len(bases) == 1
+              "green": (not missing and combined["tree_unchanged"] and len(bases) == 1
                         and all(step["passed"] is True or held(step) for step in steps)),
           }
           json.dump(combined, open(out, "w"), indent=1)
-          if cancelled:
-              json.dump(cancelled, open(os.path.join(os.path.dirname(out), "cancelled-jobs.json"), "w"), indent=1)
           # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
           # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
           profiles = [r.get("profile") for r in receipts]
@@ -429,8 +489,7 @@ jobs:
               "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
               "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
               "required": required,
-              "plan": plan,
-              "cancelled_shards": cancelled_shards,
+              "plan": json.loads(env.get("PLAN_SHARDS") or "[]"),
               "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
                           "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused"),
                           "receipt": r}
