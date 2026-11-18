@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
@@ -691,6 +692,9 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":

@@ -62,6 +62,7 @@ import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -2408,6 +2409,11 @@ async function initialize() {
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
+  new DossierSelectionQuote({ host: $('messages'), template: $('quote-selection'),
+    entryOf: target => menu?.entryOf(target), selected: entry => menu?.passages.selected(entry),
+    eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
+      !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),

@@ -18,6 +18,7 @@
 // coming fully into view, and a click or a tap scrolling nothing (379).
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
@@ -3494,6 +3495,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
 
   await whisperOutlineReading({ check, until, control, facts, shot, engine, observations },
     { seed, open, centre, tap, lit, words });
+  await dossierSelectionQuoteChecks({ check, until, view, control, shot, facts, observations, engine, grant },
+    { seed, open, becomes, centre, tap, card, words, openReader, closeReader, into });
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
   await editChecks({ check, until, view, control, facts, shot, engine },

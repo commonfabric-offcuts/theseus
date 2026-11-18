@@ -914,6 +914,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .quote-pill{pointer-events:auto;min-height:2.5rem;padding:.3rem 1.1rem;border:0;border-radius:1.25rem;background:var(--ink);color:var(--panel);font-weight:600;box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .quote-pill:hover{background:var(--ink);filter:brightness(1.15)}
 .quote-key{margin-left:.5rem;opacity:.65;font-weight:500}
+/* The same pill on a phone's dossier selection; native selection UI stays native. */
+.dossier-quote-pill{position:fixed;z-index:21;min-width:44px;min-height:44px;white-space:normal}
+.dossier-quote-pill .quote-key{display:none}
+@media(pointer:coarse){.reply-stack .message-preview{-webkit-user-select:text;user-select:text}}
 /* The header: ↑ ↓ ⋯ ✕ as quiet marks, not boxes. */
 #reader-stepping{display:flex}
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
