@@ -31,8 +31,21 @@ export async function item721Compose(h) {
       })();
       pending.add(finished.then(() => ({ ok: true }), error => ({ ok: false, error: String(error) })));
     });
-    await p.evaluate(() => {
+    await p.evaluate(async () => {
       window.__item721Trail = [];
+      // Observe the actual durable-byte boundary, preserving the exact return
+      // or rejection. Uploads.capture's recovery path may handle the rejection;
+      // that must not erase its diagnostic cause before a Ready assertion.
+      const { RecoveryJournal } = await import('/journal.mjs');
+      const capture = RecoveryJournal.prototype.capture;
+      RecoveryJournal.prototype.capture = function (...args) {
+        window.__item721Trail.push({ kind: 'image-capture-start', size: args[2].blob.size, type: args[2].blob.type, blobClass: args[2].blob.constructor.name });
+        return capture.apply(this, args).then(result => {
+          window.__item721Trail.push({ kind: 'image-capture-committed' }); return result;
+        }, error => {
+          window.__item721Trail.push({ kind: 'image-capture-rejected', name: error.name, message: error.message }); throw error;
+        });
+      };
       const record = kind => {
         const reader = document.querySelector('#reader');
         window.__item721Trail.push({ kind, open: reader.open, modal: reader.matches(':modal'), dock: reader.hasAttribute('data-card-reply'),
