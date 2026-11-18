@@ -957,7 +957,6 @@ MESSAGE_READS = {
                               "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
                               "whoever asked, and their writing on the record, their next ask and the whispered replies that answered one "
                               "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
-    "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
@@ -965,7 +964,8 @@ MESSAGE_READS = {
                                   "operation id that shows nothing of any message", 2),
     "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
                                 "person's whisper replies to (its author and place, never shown), "
-                                "the conversation asks to someone who can no longer read it, and the latest message on the record", 7),
+                                "the conversation asks to someone who can no longer read it, and the latest message on the record; "
+                                "item 372 reader/topic-scoped eligible ask metadata under READABLE and VISIBLE", 8),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
     "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),
@@ -988,11 +988,17 @@ MESSAGE_READS = {
                            "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
                            "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
                            "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message; the scoped stars canonical-root SELECT reads the first message and attachment names only after StackRoots.root walks ancestry checked by visible(), within the readable topic", 28),
+    "aim_next/reply_passages.py": ("immutable reply-basis receipt lookup by message author/operation; source and topic reads "
+                                 "have already checked the message's visibility, and for_reader additionally checks "
+                                 "the parent through _message_access and withholds its basis during an edit hold; "
+                                 "keep_on_edit runs only after ownership/access checks", 1),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "
                            "VISIBLE as its writer reads it, refused as DONE_BY_OWNER otherwise, so no refusal names a whisper; and a "
-                           "cover's root, read under VISIBLE as the owner reads it before the owner's 👍 settles Done (item 624)", 3),
+                           "cover's root, read under VISIBLE as the owner reads it before the owner's 👍 settles Done (item 624); and the "
+                           "indexed current waiting cover's first message, counted only under VISIBLE for its current outcome owner "
+                           "in an unarchived topic (item 756)", 4),
     "aim_next/cover_values.py": ("the owner's own reply to a payload's message, by its author: one the owner wrote, which they always "
                                  "read, its writer's reach checked by covers.py; its id is shown only to a reader the next read finds it "
                                  "VISIBLE to (item 624)", 2),

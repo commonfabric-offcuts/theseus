@@ -158,6 +158,7 @@ export class Reader {
     // A click outside closes as × does: the writing, quotes and images are kept.
     closeOnOutsideClick(this.dialog, () => this.close(), window);
     this.$('reader-parent').onclick = () => this.close('parent');
+    this.$('reader-cover-line').onclick = () => this.setCoverOpen(!this.$('reader-cover').hasAttribute('open'));
     this.bindDivider();
     this.bindSwipe();
     this.$('toggle-note').onclick = () => this.switchMode();
@@ -357,7 +358,7 @@ export class Reader {
     this.topics = topics;
     // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
     // opened again, starts at the cover's one line (paintCover).
-    if (!same) this.$('reader-cover').open = false;
+    if (!same) this.setCoverOpen(false);
     this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
@@ -381,7 +382,8 @@ export class Reader {
     if (left) this.notice(KEPT);
     this.applyLayout();
     this.moveTo(this.positions.get(this.placeKey()) ?? 0);
-    if (!same) this.sourceBody.focus({ preventScroll: true });
+    if (mode === 'note') this.field.focus({ preventScroll: true });
+    else if (!same) this.sourceBody.focus({ preventScroll: true });
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -749,7 +751,7 @@ export class Reader {
     this.disarm();
     this.drawEditor();
     this.field.focus();
-    const caret = this.editor.draft.caret;
+    const caret = this.editor.draft.caret ?? { start: this.field.value.length, end: this.field.value.length };
     this.field.setSelectionRange(caret.start, caret.end);
   }
 
@@ -1018,11 +1020,16 @@ export class Reader {
   // Reader is open; a sheet opened stays open as its cover changes, and closes
   // when the message's dossier is another or its cover goes (show() closes it
   // for each message opened).
+  setCoverOpen(open) {
+    this.$('reader-cover').toggleAttribute('open', open);
+    this.$('reader-cover-line').setAttribute('aria-expanded', String(open));
+  }
+
   paintCover(source) {
     const found = source?.source_ref?.kind === 'message' ? this.callbacks.dossierCover?.(source) ?? null : null;
     const host = this.$('reader-cover'), line = this.$('reader-cover-line');
     const dossier = found?.rootId ?? null;
-    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
+    if (dossier !== (this.coverDossier ?? null)) { this.setCoverOpen(false); this.coverDossier = dossier; }
     const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId } : null;
     // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
     const key = found ? coverKey(found.cover, context) : '';
@@ -1033,10 +1040,11 @@ export class Reader {
     if (!found) { line.replaceChildren(); return; }
     const { cover } = found, shown = { ...context, owner: cover.owner };
     const words = document.createElement('span'); words.className = 'reader-cover-words';
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    words.textContent = cover.stands || cover.payload?.text || cover.promises?.[0]?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
-    host.append(coverSheet(document, cover, context));
+    const sheet = coverSheet(document, cover, context); sheet.id = 'reader-cover-sheet';
+    host.append(sheet);
   }
 
   paintOrigin(source) {

@@ -2502,6 +2502,12 @@
         "tests/fixtures/schema_46.sql"
       ],
       "scope": "repository"
+    },
+    "b156dfb45e99e96afb4834c9046f506a1dd8b167f3f5fa662e0f13bbf21b50ad": {
+      "inputs": [
+        "tests/fixtures/schema_47.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -4186,6 +4192,38 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/topic_title_native.mjs": {
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "bd617550c7fd2a4d393cee5a17806427acfaeb5e99c7006582e77d63439004de": {
+      "inputs": [
+        "tests/acts.json"
+      ],
+      "scope": "repository"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_app.test.mjs": {
     "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870": {
       "inputs": [],
@@ -4600,12 +4638,16 @@
   },
   "tests/ui_folded_names.test.mjs": {
     "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
-      "inputs": [],
-      "scope": "generated/system/product"
+      "inputs": [
+        "web/reply-stacks.mjs"
+      ],
+      "scope": "repository"
     },
     "66a02d4736568a6a1a82d2a26dd84821c31694b36bfae49e3edc7c0b8f8fffec": {
-      "inputs": [],
-      "scope": "generated/system/product"
+      "inputs": [
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
     },
     "5a63cfed37169284ee79c097693187334903b670b5ba16b9933258cdf7d1cd1c": {
       "inputs": [
@@ -4614,8 +4656,10 @@
       "scope": "repository"
     },
     "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
-      "inputs": [],
-      "scope": "generated/system/product"
+      "inputs": [
+        "web/app.mjs"
+      ],
+      "scope": "repository"
     }
   },
   "tests/ui_item_655_evidence.test.mjs": {
@@ -4937,8 +4981,10 @@
   },
   "tests/ui_card_editor_652_contract.test.mjs": {
     "833db68d338b7cfc34a440e47091c86473c03a5d6e68687f7a0b934250ca8567": {
-      "scope": "generated/system/product",
-      "inputs": []
+      "inputs": [
+        "web/aim.css"
+      ],
+      "scope": "repository"
     },
     "249f486437fd88ee02ca78295864c7ba22e24ec7c49e0601c901ad390f43a000": {
       "scope": "generated/system/product",
@@ -5004,6 +5050,247 @@
     "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
       "scope": "generated/system/product",
       "inputs": []
+    }
+  },
+  "tests/dossier_promises_native.mjs": {
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [
+        "web/index.html",
+        "web/reader.mjs"
+      ],
+      "scope": "generated/system/product"
+    },
+    "c3dde99ab6290eb3199130f7d9acd9e8579d4eb310631cc227f8e59caccb77bd": {
+      "inputs": [
+        "web/index.html",
+        "web/reader.mjs"
+      ],
+      "scope": "generated/system/product"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b:1": {
+      "inputs": [
+        "web/index.html",
+        "web/reader.mjs"
+      ],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "3b853582b35313e7fc85e7d9361e589257d4a82d107a0e57a95f4588a9894ea1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "tests/dossier_promises_native.mjs",
+        "tests/topic_reading_native.mjs",
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs",
+        "web/index.html",
+        "web/aim.css",
+        "web/layout.mjs",
+        "web/arrow-reach.mjs",
+        "web/message-menu.mjs",
+        "web/dossier-cover.mjs",
+        "web/reader.mjs",
+        "web/stack-look.css",
+        "aim_next/cover_promises.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/cli_covers.py"
+      ],
+      "scope": "repository"
+    },
+    "d9f0ed58e72b5bc63cd57f1ddbf55b04046283e93d8f9f1762c66c09ed2e77c1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_agent_reply_passages.py": {
+    "b8382076fcffc76ec9eefa1cc991f767dc4646a34fed6ccaaeea14763eb9c399": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/reader_compose_native.mjs": {
+    "45605a0b5e310b4002afd9a284b30d6ee05be19108422dd53d94fb68d9761307": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "45605a0b5e310b4002afd9a284b30d6ee05be19108422dd53d94fb68d9761307:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "45605a0b5e310b4002afd9a284b30d6ee05be19108422dd53d94fb68d9761307:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "45605a0b5e310b4002afd9a284b30d6ee05be19108422dd53d94fb68d9761307:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "d7b3643777a81c4d0bafa1d6da2821531a4b275dee9a32e1a3d7e165168303f0": {
+      "inputs": [
+        "tests/reader_compose_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "452c0c856b48dd6a7af1a162d03dfc2acdd3dc9f3f6dbc7201ba80d302043c8d": {
+      "inputs": [
+        "tests/pencil-inventory.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/pencil-states.mjs",
+        "tests/pencil-selection.mjs",
+        "tests/pencil-layout.mjs",
+        "web/app.mjs",
+        "web/inline-composer.mjs",
+        "web/aim.css",
+        "web/session.mjs",
+        "web/app-session.mjs",
+        "tests/fixtures/ui_http.py"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_pencil_mutants.test.mjs": {
+    "bd53985ca09f41620830a2e1dcd33bd522f8d586fdb892c8f52d84bf10c65262": {
+      "inputs": [
+        "tests/reader_compose_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "579771381e131c051465225118564a41c44ff4067d2c84747a625249f2203798": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "47dcfadb62f73589fef091a1e0608acff50ea191ef5e9dcd0a44c5e1a94c011f": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/ui_pencil_contract.test.mjs": {
+    "b56c2239cb7954550d5eb0635d95e1d4c1bbc290d647b13043de0bb5d0946062": {
+      "inputs": [
+        "tests/reader_compose_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "da202865bcd474afa5a129919a9ad196462195e6ad4a4d8d3422f61de148ac48": {
+      "inputs": [
+        "tests/acts.json"
+      ],
+      "scope": "repository"
+    },
+    "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/ui_pencil_final.test.mjs": {
+    "b56c2239cb7954550d5eb0635d95e1d4c1bbc290d647b13043de0bb5d0946062": {
+      "inputs": [
+        "tests/reader_compose_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/test_waiting_questions_372.py": {
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/image_buttons_653.mjs": {
+    "4dabbd7619f41bc23743908004b27ded4ffd587151b3dd65deecc6031965a60f": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css",
+        "web/page-image.mjs",
+        "web/image-pick.mjs",
+        "web/notebook-page.mjs",
+        "web/deck-page.mjs",
+        "tests/image_buttons_653.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/fixtures/ui_http.py"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81:1": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "654fd49c54035c6198c5a9369045c85d52808c998c3ced8594055e981704df81:2": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css"
+      ]
+    },
+    "4dabbd7619f41bc23743908004b27ded4ffd587151b3dd65deecc6031965a60f:1": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs",
+        "web/aim.css",
+        "web/page-image.mjs",
+        "web/image-pick.mjs",
+        "web/notebook-page.mjs",
+        "web/deck-page.mjs",
+        "tests/image_buttons_653.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/fixtures/ui_http.py"
+      ]
+    }
+  },
+  "tests/test_item_653_fixture.py": {
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/ui_image_buttons_653.test.mjs": {
+    "4d2394765421743034b9b1c68fbb60f3bbcf6cfe570769fc4075aa9f0e5ce128": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/test_cover_waiting_756_fixture.py": {
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   }
 }

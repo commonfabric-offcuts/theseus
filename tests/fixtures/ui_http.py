@@ -17,10 +17,13 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 from aim_next.stacks import KINDS as STACK_KINDS, current_acts
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from item_758_fixture import PassageFixture
 
 
 class FreshnessControls:
@@ -334,6 +337,10 @@ class GatedStore:
 
     def command(self, actor, envelope):
         return self.gate.command(self.base, actor, envelope)
+
+
+def item758_fixture(store, command, path, actor):
+    return PassageFixture(store, command, path, actor, "fixture-notebook-agent", "fixture-outside-agent")
 
 
 # Isolated wiring fixture. Actual Store and HTTP; stdin is a private fixture
@@ -658,6 +665,7 @@ def main():
             command("draft.save", operation + "-save", dict({
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
+                **{key: request[key] for key in ("reply_passage", "reply_without_quote") if key in request},
                 # An agent's message to someone says ask or tell; a case that names
                 # no intent tells. With "whisper": true it answers a whisper instead,
                 # which says neither.
@@ -675,6 +683,7 @@ def main():
             return read(command("message.send", operation, {"submission_id": operation + "-submission"},
                                 {"topic_id": topic_id}, sender=sender))
 
+        item758 = item758_fixture(store, command, path, actor)
         seed_number = 0
         # The Health checks' runner: one guard this process holds across their
         # acts, as a running runner does, and the token its acquisition gave.
@@ -691,6 +700,15 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                        if request.get("runtime_evidence"):
+                            answer["runtime_evidence"] = {"python": sys.version, "pycache_prefix": sys.pycache_prefix}
+                    elif request["method"] == "item758_begin":
+                        answer = item758.begin(request["topic"])
+                    elif request["method"] == "item758_finish":
+                        answer = item758.finish(request["topic"])
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -725,6 +743,33 @@ def main():
                         with controls.lock:
                             controls.item715_refuse_saves = request["enabled"]
                             answer = {"enabled": controls.item715_refuse_saves, "refused": controls.item715_refused_saves}
+                    elif request["method"] == "item756_seed":
+                        prefix = request["operation_id"]
+                        workspace = prefix + "-w"
+                        other = prefix + "-other"
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT INTO actors(id,kind,name) VALUES (?, 'human', 'Isolated other reader')", (other,))
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Cover waits fixture", "team": ["fixture-notebook-agent", other]})
+                        roots, topics = [], []
+                        for n in range(2):
+                            tid, opening = prefix + "-t%d" % n, prefix + "-o%d" % n
+                            command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
+                                    "title": "Cover topic %d" % n, "participants": ["fixture-notebook-agent", other],
+                                    "body": "Fictional cabin folder %d" % n, "attachments": []},
+                                    {"opening_id": opening}, {"opening_revision": 0})
+                            result = command("opening.publish", opening + "-publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+                            roots.append(result["result"]["message_id"])
+                            topics.append(tid)
+                        hidden = command("message.post", prefix + "-whisper", {"body": "Private cabin choice", "addressees": ["fixture-notebook-agent"], "whisper": True},
+                                         {"topic_id": topics[0]}, sender=other)["result"]["message_id"]
+                        wait = {"waiting": [{"text": "Private choice", "default": "Keep it"}]}
+                        command("stack.cover", prefix + "-hidden-cover", wait, {"message_id": hidden}, {"cover_revision": 0}, sender=other)
+                        answer = {"workspace": workspace, "topics": topics, "roots": roots, "hidden": hidden, "other": other}
+                    elif request["method"] == "item756_act":
+                        mid = request["message_id"]
+                        revision = store().view(actor, "dossier_cover", {"message_id": mid})["cover_revision"]
+                        answer = command("stack.cover", request["operation_id"], {"waiting": request["waiting"]},
+                                         {"message_id": mid}, {"cover_revision": revision})
                     elif request["method"] == "item715_seed":
                         prefix = request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
@@ -1201,10 +1246,15 @@ def main():
                                     "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
                                     "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
                         assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
+                        # Item 653: same source owner and lost-topic permission,
+                        # with an optional verified image beside the text file.
+                        named_attachments = [{"id": media_id}]
+                        if request.get("image"):
+                            named_attachments += published(prefix + "-image", [{"name": "screen.png", "image": "screen.png"}], agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
-                            "attachments": [{"id": media_id}],
+                            "attachments": named_attachments,
                             "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",

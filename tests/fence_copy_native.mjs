@@ -210,7 +210,7 @@ try {
           const rect = el.getBoundingClientRect(), modal = el.closest('dialog[open]');
           const controls = [...(modal ?? document).querySelectorAll('button,textarea,input,a[href],[role=button]')];
           const covered = controls.filter(control => {
-            if (control.matches('button.message-card') && control.contains(el)) {
+            if (control.matches('.message-card[role="button"]') && control.contains(el)) {
               // The button is the card's entire background. Its reserved
               // feedback line can overlap the background, never a child control.
               return false;

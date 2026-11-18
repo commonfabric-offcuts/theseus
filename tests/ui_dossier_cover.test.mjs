@@ -25,6 +25,22 @@ const DONE_BY_WORD = { how: 'word', by: 'owner', at_ms: 1_700_000_200_000, messa
 const of = (node, className) => [...node.descendants()].filter(each => each.classList.contains(className));
 const glyphs = node => [...node.descendants()].map(each => each.getAttribute('data-glyph')).filter(Boolean);
 
+test('item 769 the shared sheet draws literal stands lines without parsing labels or changing other fields', () => {
+  const stands = 'Discussed: cabin\nDecisions: none\nNext: choose';
+  const source = { ...COVER, stands }, original = JSON.stringify(source);
+  const sheet = coverSheet(miniDocument(), source, context());
+  assert.equal(of(sheet, 'cover-stands')[0].text, stands);
+  assert.equal(of(sheet, 'cover-stands')[0].children.length, 1, 'plain text in the existing span');
+  assert.equal(of(sheet, 'cover-wait').length, 1);
+  assert.equal(of(sheet, 'cover-note')[0].text, 'Default: booked Friday.');
+  assert.equal(of(sheet, 'cover-payload').length, 1);
+  assert.equal(of(sheet, 'cover-src')[0].text, '#12');
+  assert.equal(JSON.stringify(source), original, 'drawing leaves source words intact');
+  const oneLine = 'Discussed: cabin Decisions: none Next: choose';
+  assert.equal(of(coverSheet(miniDocument(), { ...COVER, stands: oneLine }, context()), 'cover-stands')[0].text, oneLine);
+  assert.notEqual(coverKey(source, context()), coverKey({ ...COVER, stands: oneLine }, context()), 'new breaks repaint');
+});
+
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
@@ -139,4 +155,41 @@ test('a dossier\'s cover comes with its place, so a stack of replies whose first
   assert.equal(stackCover({ head: reply('m-r1', 'm-root'), replies: [] }, { alone: true }), COVER, 'a lone reply\'s pills show its dossier\'s');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4, { cover: null, cover_revision: 0 }) }, replies: [] }), null, 'a dossier with no cover shows none');
   assert.equal(stackCover({ head: { ...reply('m-r1', 'm-root'), stack_position: at(4) }, replies: [] }), null, 'a place from a Core before covers carries none');
+});
+
+
+const PROMISE = { id: 'cabin', text: 'I will  book\nthe cabin.', message_id: 'm-promise', seq: 15,
+  source_revision: 1, source_author: 'agent-a', by: 'agent-a', at_ms: 1795000000000,
+  due: { at_ms: 1795024800000, time_zone: 'America/Los_Angeles', label: '2026-11-18 10:00 -08:00 · America/Los_Angeles' }, state: 'promised', history: [] };
+
+test('item 717 exact promise words time source and history are shown without inferring Done; the key follows promise-only edits', () => {
+  const promise = { ...PROMISE, state: 'missed', due: { at_ms: 1795111200000, time_zone: 'Pacific/Auckland', label: '2026-11-20 07:00 +13:00 · Pacific/Auckland' }, history: [PROMISE] };
+  const cover = { ...COVER, promises: [promise] }, sheet = coverSheet(miniDocument(), cover, context());
+  const rows = of(sheet, 'cover-promise');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dataset.state, 'missed');
+  assert.equal(of(rows[0], 'promise-words')[0].text, PROMISE.text);
+  assert.equal(of(rows[0], 'promise-time')[0].text, promise.due.label);
+  assert.equal(of(rows[0], 'promise-prior')[0].tag, 's');
+  assert.ok(of(rows[0], 'promise-prior')[0].text.includes(PROMISE.due.label));
+  assert.match(of(rows[0], 'cover-src')[0].getAttribute('aria-label'), /revision 1, by Scout/);
+  assert.equal(sheet.dataset.done, 'false');
+  assert.notEqual(coverKey(cover, context()), coverKey(COVER, context()));
+  const kept = coverSheet(miniDocument(), { ...cover, promises: [{ ...promise, state: 'kept' }] }, context('agent-b'));
+  assert.equal(kept.dataset.done, 'false');
+  assert.match(kept.text, /Waits on Ana/);
+});
+
+test('item 717 missing times stay explicit, same times are not struck, lone promises stay readable as pills', () => {
+  const p = { ...PROMISE, due: null, history: [{ ...PROMISE, due: null }] };
+  const cover = { ...COVER, stands: null, waiting: [], payload: null, promises: [p] };
+  const sheet = coverSheet(miniDocument(), cover, context());
+  assert.ok(sheet.text.includes('No time given'));
+  assert.equal(of(sheet, 'promise-prior').length, 0);
+  const pills = coverPills(miniDocument(), cover, context());
+  assert.ok(pills, 'a lone promise has a visible pill');
+  assert.equal(pills.children[0].dataset.state, 'promised');
+  assert.ok(pills.text.includes(PROMISE.text));
+  assert.ok(pills.text.includes('No time given'));
+  assert.equal(pills.children[0].title, 'Promise · Scout · #15, revision 1');
 });

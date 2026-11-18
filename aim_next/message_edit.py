@@ -566,6 +566,8 @@ class MessageEdit:
         # 5. Fenced on the revision the editor started from.
         now_words, current, _ = current_words(db, message["id"], plain=True)
         _revision(envelope["expected"], "message_revision", current)
+        from .reply_passages import keep_on_edit
+        keep_on_edit(db, message["id"], body)
         # 6-7. Words or an attachment, and words that differ.
         attachments = json.loads(db.execute("SELECT attachments FROM messages WHERE id=?", (message["id"],)).fetchone()[0])
         if not body.strip() and not attachments:

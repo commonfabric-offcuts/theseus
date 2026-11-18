@@ -1,0 +1,11 @@
+{
+  "commit": "1751b6d3ad0d5a2307efbf72ea526413fef913a4",
+  "preview": "c865e195d79db737e5af3f4ff56cc9cd217f8838",
+  "archive_sha256": "173c6b9e264b692eb27104893c64bd34cf03fb24c282df472f857cde20a4ed69",
+  "files": {
+    "app.mjs": "9646121e5fab0c7b112bdc542eaabd3e02246b7bc39c807ca8be63d9f20f68ec",
+    "aim.css": "6e9e63b462db6cc1a67d265e5c06e9c2ba4b1d729ad973f71abf2ef2caac8c50",
+    "stack-feed.mjs": "fb6f2d53dfcc6a9f287e1c2aa70afce542ad1237b400ac9cb8bb57145f6df5fa",
+    "dossier-selection-quote.mjs": null
+  }
+}

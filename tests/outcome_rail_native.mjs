@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { withPageCleanup } from './native-page-cleanup.mjs';
 
+import { item756Checks } from './cover_waiting_756_native.mjs';
+
 import { item715Checks } from './outline_stars_native.mjs';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
@@ -38,6 +40,7 @@ const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile
 const COMBOS = [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark']];
 
 export async function railChecks({ check, page, until, control, view, facts, shot, observations, evidencePath }) {
+  await item756Checks({check, page, until, control, view, facts, shot, observations, evidencePath});
   await item715Checks({check, page, until, control, view, facts, shot, observations, evidencePath});
   const open = (name, url, size = 'laptop', theme = 'light') => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
     await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
@@ -2384,7 +2387,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id||(b.closest('#topic-people')?'team':b.tagName))");
     const team = buttons.filter(b => b === 'team').length;
     assert.ok(team >= 1, 'the Team shows at least "+ Add": ' + JSON.stringify(buttons));
-    assert.deepEqual(buttons, ['settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
+    assert.deepEqual(buttons, ['topic-title-rename', 'settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
     const onTeam = () => p.evaluate("Boolean(document.activeElement?.closest('#topic-people'))");
     const onAdd = () => p.evaluate("Boolean(document.activeElement?.matches('#participants .add-chip'))");
     const firstId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].find(e=>e.checkVisibility()).dataset.id");
@@ -2399,7 +2402,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowUp');
     assert.equal(await keyedAt(p), 'message:' + firstId, '↑ from the second message goes to the first, not to the header');
     await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'settings-open', '↑ from the top message goes to the header\'s first button');
+    assert.equal(await keyedAt(p), 'topic-title-rename', '↑ from the top message goes to Rename topic, the first header button (item 656)');
+    await p.key('ArrowRight');
+    assert.equal(await keyedAt(p), 'settings-open', '→ goes to Topic settings');
     assert.equal(await ringed(p), 'solid', 'which wears the keys\' ring');
     await p.key('ArrowRight');
     assert.equal(await keyedAt(p), 'new-message', '→ goes to the next button');
@@ -2418,14 +2423,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'settings-open', '← goes to the button before');
     await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'topic-title-rename', '← reaches the rename pencil (item 656)');
+    await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:t1', '← past the first button goes to the outline, on the topic being read');
     await p.key('ArrowRight');
     await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'settings-open');
+    assert.equal(await keyedAt(p), 'topic-title-rename');
     await p.key('ArrowDown');
     assert.equal(await keyedAt(p), 'message:' + firstId, '↓ from the header goes back to the message the keys left');
     assert.notEqual(second, 'message:' + firstId);
     await p.key('ArrowUp');
+    await p.key('ArrowRight');
     await p.key('Enter');
     await until(() => p.evaluate("document.getElementById('topic-settings').open"), 'Return on the gear opens Topic settings');
     await p.key('Escape');
@@ -2786,12 +2794,12 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     };
     const light = '#outcome-standing .state-line button.state-question';
     const o = await open(oid + '-light', '/?workspace=' + oid);
-    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(light)})?.textContent==='Waiting on you · 3 questions'`), 'the outcome light says three questions, and is a control');
+    await until(() => o.evaluate(`document.querySelector(${JSON.stringify(light)})?.textContent==='Waiting on you · 4 questions'`), 'the outcome light says four questions, and is a control');
     const lit = [await asked(o, light, 'first press')];
-    for (const n of [2, 3, 4]) { await back(o, light, 'before press ' + n); lit.push(await asked(o, light, 'press ' + n)); }
+    for (const n of [2, 3, 4, 5]) { await back(o, light, 'before press ' + n); lit.push(await asked(o, light, 'press ' + n)); }
     assert.deepEqual(lit.slice(0, 2), ['OLDEST question in A', 'NEWER question in B'], 'after Back the light opens the next question, not the oldest again');
-    assert.match(lit[2], /question in C/, 'then the Conversation\'s');
-    assert.equal(lit[3], 'OLDEST question in A', 'and round to the oldest');
+    assert.deepEqual(lit.slice(2, 4), ['OLDEST question in C', 'NEWER question in C'], 'both Conversation questions once');
+    assert.equal(lit[4], 'OLDEST question in A', 'and round to the oldest');
     // The light's last press opened A; the outline on A's page goes on from there, to B, not A again.
     const waiting = `#outline .ol-outcome[data-workspace-id="${oid}"] .ol-waiting`;
     await until(() => o.evaluate(`Boolean(document.querySelector(${JSON.stringify(waiting)})?.getClientRects().length)`), 'the outline shows Waiting on you');

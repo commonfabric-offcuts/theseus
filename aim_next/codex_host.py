@@ -113,7 +113,7 @@ def answer(request):
     if method == "item/tool/requestUserInput":
         return "ask_in_theseus", {"id": request["id"], "error": {
             "code": -32601,
-            "message": "No answer was supplied. Ask the person in Theseus using your bound CLI: post TOPIC --asks PERSON --reply-to MESSAGE -. Read the post back, acknowledge the handled delivery separately, and finish this turn. Their reply arrives as a new delivery in this same saved thread. Never assume consent or an answer."}}
+            "message": "No answer was supplied. Ask the person in Theseus using your bound CLI: post TOPIC --asks PERSON --reply-to MESSAGE --quote-revision N --quote-start S --quote-end E -. Choose the actual raw-Markdown passage and current revision from source (offsets count Unicode code points), or use --without-quote REASON to explain its omission. Core inserts the quote or reason. Read the post back, acknowledge the handled delivery separately, and finish this turn. Their reply arrives as a new delivery in this same saved thread. Never assume consent or an answer."}}
     if method in ANSWERS:
         label, result = ANSWERS[method]
         return label, {"id": request["id"], "result": result}

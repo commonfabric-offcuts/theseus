@@ -13,7 +13,12 @@ and accepts neither a topic override nor a second reply target. A follow-up or
 correction can be the target: it remains in the same stack.
 
 The verb reuses `message.post`, its authorization/answerer rules, intent,
-attachment handling and durable CLI outbox. No Core command or schema changes.
+attachment handling and durable CLI outbox. Agent replies now require a passage
+choice or a stated reason ([agent-reply-passages.md](agent-reply-passages.md)).
+Use `--quote-revision N --quote-start S --quote-end E`, offsets in raw Markdown
+as Unicode code points, or `--without-quote REASON`. Core inserts the passage;
+caller-authored quotes alone do not satisfy this rule. The same options apply
+to `post --reply-to` and `whisper --reply-to`. No schema change is required.
 Missing/inaccessible targets fail without posting. Whispers are refused with
 `WHISPER_STAYS_PRIVATE` before attachment upload; use `whisper` to answer them.
 Recipients and ask/tell intent remain explicit; they are not copied from the
@@ -22,7 +27,7 @@ and acknowledge remain separate acts. `--part` preserves unfinished work in an
 outcome conversation; a progress report must not falsely claim completion.
 
 `post TOPIC` deliberately starts a new subject; its existing `--reply-to`
-option remains compatible for callers already using it. Shared guidance and
+option uses the same passage rule for agents. Shared guidance and
 hosted instructions teach `reply MESSAGE` for continuing work. No command can
 prove that an agent chose the right subject; a real subsequent task must show
 its progress and completion in the same stack after rollout.

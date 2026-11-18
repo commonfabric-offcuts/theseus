@@ -55,6 +55,8 @@ import { OutlineDossiers } from './outline-dossiers.mjs';
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
 export const asksIn = item => item?.light?.light === 'waiting' && item.light.short?.kind === 'asks' ? count(item.light.short.count) : 0;
+// Covers are separate from the light's said/ask topics; neither replaces the other.
+export const waitingIn = item => asksIn(item) + count(item?.cover_waiting);
 // What an outcome's row counts: folded, everything new inside it, the part
 // sent by name and its questions; open, what has no row of its own under it:
 // its Conversation's, and its Build topics', which the right rail lists in
@@ -71,7 +73,7 @@ export function countedWhere(item, conversation) {
 // Everything new and every question waiting, across every outcome listed.
 export function totals(items) {
   let fresh = 0, waiting = 0;
-  for (const item of items ?? []) { fresh += count(item.unread); waiting += asksIn(item); }
+  for (const item of items ?? []) { fresh += count(item.unread); waiting += waitingIn(item); }
   return { fresh, waiting };
 }
 // What is new outside the outcome being read: how much, in how many outcomes,
@@ -81,7 +83,7 @@ export function elsewhere(items, here) {
   for (const item of items ?? []) {
     if (item.id === here) continue;
     if (count(item.unread)) { fresh += count(item.unread); where += 1; }
-    waiting += asksIn(item);
+    waiting += waitingIn(item);
   }
   return { fresh, where, waiting };
 }
@@ -93,7 +95,7 @@ export function elsewhereWords({ fresh, where, waiting }) {
 // reader, is shown.
 export function shownUnder(filter, item) {
   if (filter === 'new') return count(item?.unread) > 0;
-  if (filter === 'waiting') return asksIn(item) > 0;
+  if (filter === 'waiting') return waitingIn(item) > 0;
   return true;
 }
 
@@ -653,7 +655,7 @@ export class OutlineRail {
       outcome.li.hidden = !visible;
       outcome.li.toggleAttribute('data-open', open);
       outcome.li.toggleAttribute('data-fresh', count(item.unread) > 0);
-      outcome.li.toggleAttribute('data-waiting', asksIn(item) > 0);
+      outcome.li.toggleAttribute('data-waiting', waitingIn(item) > 0);
       outcome.topics.hidden = !open;
       // The outcome being read waits for the page's own list, unless the outline has shown its topics before.
       outcome.own.hidden = Boolean(outcome.adopted) || (item.id === this.here && !outcome.rail);

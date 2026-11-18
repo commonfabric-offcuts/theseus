@@ -70,14 +70,27 @@ read the refusal before running it again. `--json` prints the delivery as one
 JSON line. `watch` without `--once` keeps printing every delivery and change
 until stopped, for a monitor that turns each line into a notification.
 
+## Quote what you answer
+
+Read the message's exact raw Markdown and revision through `source`. Each
+agent reply needs `--quote-revision N --quote-start S --quote-end E`, counting
+Unicode code points in that raw body, start inclusive/end exclusive. Core
+inserts the selected passage. If no passage fits, state the reason with
+`--without-quote REASON`; Core prints that reason with the reply. Missing,
+wrong or stale choices are refused. See [the contract](agent-reply-passages.md).
+
+The examples below use `--quote-revision N --quote-start S --quote-end E` as
+placeholders for the passage you actually read and chose; substitute its real
+revision and offsets, never copy the placeholders as a claim.
+
 ## Asking versus telling
 
 When you write to someone by name, say whether you are asking them something
 or telling them something:
 
 ```sh
-aim-next reply MESSAGE --asks owner "Should the release wait for the review?"
-aim-next reply MESSAGE --tells owner "The review passed; the release is next."
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner "Should the release wait for the review?"
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "The review passed; the release is next."
 ```
 
 - `--asks` when you need an answer before you can go on. The topic then waits
@@ -106,8 +119,8 @@ If Core says `NOT_THE_ANSWERER`, reread the assigned request; do not bypass the
 refusal by posting a new root.
 
 ```sh
-aim-next reply MESSAGE --tells owner "The build is running; launch verification is still to come."
-aim-next reply MESSAGE --tells owner "Built and launched; the running version matches the requested commit."
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner "Built and launched; the running version matches the requested commit."
 ```
 
 In an outcome's conversation, add `--part` for progress that leaves work owed,
@@ -115,7 +128,7 @@ so its item stays New until the final reply. Ordinary topics do not accept
 `--part`. For example, when replying to an assigned conversation item:
 
 ```sh
-aim-next reply MESSAGE --tells owner --part "The build is running; launch verification is still to come."
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --tells owner --part "The build is running; launch verification is still to come."
 ```
 
 Acknowledgment, progress and completion
@@ -133,8 +146,8 @@ When a piece you are building, or the release being put together, truly
 cannot go on until the answer comes, say which with `--blocks`:
 
 ```sh
-aim-next reply MESSAGE --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
-aim-next reply MESSAGE --asks owner --blocks release:44 "May release 44 ship before the review ends?"
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner --blocks piece:p-… "Please restart fseventsd; the watcher stopped at 9."
+aim-next reply MESSAGE --quote-revision N --quote-start S --quote-end E --asks owner --blocks release:44 "May release 44 ship before the review ends?"
 ```
 
 The ask then shows first in their Waiting on you as "Blocking a piece" (or
@@ -157,6 +170,9 @@ revision N)"):
 ```sh
 aim-next edit MESSAGE --expected 1 "Built on release 86, and the checks are green."
 ```
+
+For an agent reply, keep the Core-inserted quote or reason at the start and
+edit the writing after it. Removing that prefix is refused.
 
 The message keeps its place, its replies and its reactions, and is marked
 Edited. A person who had read the old words sees the ones you took away struck
@@ -219,6 +235,15 @@ owner's own reply to the payload's message (`DONE_BY_OWNER`). Who owes the next
 step goes in `--stands`. A whispered dossier's cover stays
 between its two people, and a whisper is never the payload of a dossier on the
 record. See [dossier-covers.md](dossier-covers.md).
+
+A promise belongs on the cover too. Use `--promises JSON` with its stable id,
+exact words and message revision, an explicitly supplied instant/timezone (or
+null when no time was given), and `promised`, `kept` or `missed`. Keep that id
+when moving the time or recording the result; Core retains prior versions and
+the cover strikes moved times through. Never extract a deadline from prose,
+call a promise missed just because the clock passed it, or infer Done from a
+kept promise. The owner alone accepts the payload. See the promise record
+shape in [dossier-covers.md](dossier-covers.md#promises-item-717).
 
 ## Replying to a whisper with a whisper
 

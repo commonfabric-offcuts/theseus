@@ -208,7 +208,7 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
     { name: 'no-new-tab', file: 'web/image-pick.mjs', from: "window.open(image.src, '_blank', 'noopener');", to: 'void image.src;', expected: /thumbnail opens a new tab/, target: 'card' },
     { name: 'strip-not-forwarded', file: 'web/image-rows.mjs', from: "openThumbnail(row.querySelector(':scope > img.image-thumb'), event);", to: 'void event;', expected: /thumbnail opens a new tab/, target: 'strip' },
     { name: 'no-keyboard-open', file: 'web/image-pick.mjs', from: "if (event.key === 'Enter') openThumbnail(image, event);", to: "if (false) openThumbnail(image, event);", expected: /thumbnail opens a new tab/, target: 'key' },
-    { name: 'first-touch-intercepted-mutant', file: 'web/message-menu.mjs', from: "!event.target.closest?.('a, .fold-line, .image-thumb')", to: "!event.target.closest?.('a, .fold-line')", expected: /thumbnail opens a new tab/, target: 'card' },
+    { name: 'first-touch-intercepted-mutant', file: 'web/message-menu.mjs', from: "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner')", to: "!event.target.closest?.('a, .fold-line, .note-corner')", expected: /thumbnail opens a new tab/, target: 'card' },
     { name: 'thumbnail-edits-card', file: 'web/image-pick.mjs', from: 'event?.preventDefault(); event?.stopPropagation();', to: 'event?.preventDefault();', expected: /the thumbnail does not edit its card/, target: 'parent' },
   ];
   for (const mutation of breaks) await check(`item 651 applied mutant ${mutation.name} and restored source`, async () => {
