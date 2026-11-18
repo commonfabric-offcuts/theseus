@@ -12,7 +12,8 @@ only, through indexes keyed by message. The first three come from
 `aim_next/topic_reading.py`:
 
 - `unread`: true while the message waits in one of the reader's unread groups,
-  the same deliveries the counts and the New line read. The reader's own
+  the same deliveries the counts and the New line read, by the one rule both
+  read (`SUBSCRIBED` and `ADDRESSED`, docs/attention.md, "In the browser"). The reader's own
   messages are never unread. Marks are not folded in: the page has its own
   (`web/marks.mjs`). An agent's edit of its own message makes it unread again
   for each person who had read it where their delivery of it counts (not a
@@ -209,7 +210,12 @@ is folded into it (docs/reply-stacks.md, "The head"). The row's second line
 never wraps: on a narrow tab who replied and what is new give way first, then
 its marks, whole glyphs dropped from the end, then who started it, cut short;
 the reply count always shows, as it did before the marks, so a phone may show
-fewer marks there than the card does.
+fewer marks there than the card does. The dossier's title bar glyphs (item
+473) take none of that row's room while they are hidden: the tab reaches as far
+as it does without them, and they stand on the folder's paper past its curved
+corner, inside its right edge. Selected on a phone, ⋯ takes the few pixels it
+needs there back from the tab (docs/reply-stacks.md, "The title bar and the
+message bar").
 
 They follow the person's writing as Core keeps it: a note saved in the
 Reader, or a reply saved there or on another device, marks the card once its
@@ -220,8 +226,10 @@ Another reader's note or draft never marks a card. `tests/card_marks_native.mjs`
 checks them in Chrome and Safari's engine at 320, 375 and 390 points with
 touch and on a laptop, light and dark, and at every width that a marked line
 holds no line showing nothing and the star's place stays inside the card,
-that every head row shows its reply count whole and only whole marks, and
-that a whisper's card says its marks in the name the browser gives it. In
+that every head row shows its reply count whole and only whole marks, that
+at 390 a dossier whose first message carries a picture alone keeps its image
+mark and who started it whole once a tap selects it and its title bar shows ⋯
+("picture-only head row at 390px …"), and that a whisper's card says its marks in the name the browser gives it. In
 Safari's engine that name is read from Playwright's accessibility snapshot,
 whose line for the card is quoted whole when the name holds ": ", as an image's
 "Image: screen.png" puts there; the check reads either form back to the exact
@@ -245,8 +253,11 @@ order and folds, and the one file that sets the look. In short:
 - Open, a dossier of more than seven messages shows its newest seven and one
   row for the rest, "8 earlier messages", which shows them all as rows in
   place for this visit, recording nothing (item 476).
-- A message whose parent is not loaded heads its own stack until the parent
-  loads.
+- The page groups messages by the dossier Core names for each, so one
+  dossier is one stack whatever of it is loaded (item 550,
+  docs/reply-stacks.md, "One dossier, one stack"): its name shows once.
+  Earlier messages shows what it loads where its button was, so no stack
+  higher up takes another head or another card.
 - The conversation page stacks its replies by the same rule. There a folded
   stack also keeps in view an item nothing has settled and an ask waiting
   on the reader, so a card's New tag and "Asks you" are never folded away
@@ -270,8 +281,8 @@ topic page, in the Conversation and in a dossier (`web/card-images.mjs`). Each
 verified inline image (PNG, JPEG, GIF, WebP) is a square the right rail's
 thumbnail size (4.2rem, `.things-thumbs`), in the order it was sent; the
 squares wrap on a phone and never run past the card. Each is named for a
-screen reader ("Image: screen.png") and shows its file's name under the
-pointer. A square holds its place, blank, from the moment it is drawn until
+screen reader ("Image: screen.png"); its displayed image names its
+“Open image in a new tab” action under the pointer. A square holds its place, blank, from the moment it is drawn until
 its picture comes, also while it waits to come near the window before its
 picture is asked for; only one whose read brings nothing shows the image's
 name instead, so a picture on its way never looks refused.
@@ -287,10 +298,11 @@ earlier-messages row) or further away reads nothing, so a long topic's load
 reads only the pictures near where the reader is. Scrolling a card near,
 unfolding it, or showing an earlier message whole reads its pictures then. When
 the topic becomes one the reader can no longer read, the thumbnails go at once
-with the right rail's pictures, and the page holds none of their bytes. The card
-stays one button: a press opens the Reader, where each attachment keeps its
-Open. A message with no image, a file that is not an image and a message shown
-as one row (folded, between others, or an earlier message's row) draw no
+with the right rail's pictures, and the page holds none of their bytes. A press
+on a displayed thumbnail opens its image in a new tab (item 651,
+docs/images.md); a press elsewhere on the card opens the Reader, where each
+attachment keeps its Open. A message with no image, a file that is not an image
+and a message shown as one row (folded, between others, or an earlier message's row) draw no
 thumbnails.
 
 - `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):

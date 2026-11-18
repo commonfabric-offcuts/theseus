@@ -21,6 +21,40 @@ the same Notebook writer at every width.
 states. Layout bounds use named tolerances; applied source mutants must fail
 those bounds and pass again after restoration.
 
+The 44px card targets and matching title clearance apply at phone widths
+(up to 760px) as well as with a coarse pointer. A phone viewport does not
+depend on the browser reporting its primary pointer correctly. At laptop
+widths, a fine pointer retains its existing controls.
+
+At those phone widths, every pressable inside `.notebook-sheet` has a
+44px minimum width and height, independent of pointer classification. This
+includes the header links and chips, Edit/Done/New card/Undo, writing and
+ask fields and the To picker, chevrons and speech bubbles, every recovery
+and conflict choice (including Try again and Discard my writing), image
+actions and thumbnails, fenced-text Copy, ordinary links and the changes
+summary. Native controls, links, summaries, button/link roles and elements
+with a tabindex share the floor; only the two minimum dimensions use
+`!important` so more-specific status and state rules cannot lower them.
+Ordinary links get an inline block so the minimum applies; the header glyph
+and speech-bubble links keep their own display. Hidden controls stay hidden.
+The in-place writer keeps the greater of 44px and its retained card height;
+the ask field keeps five rem, card thumbnails three rem in both dimensions,
+and coarse-pointer image choices three rem in height.
+The scope is the Notebook editor sheet; the full-page card editor retains
+its existing target rules, and other composers and Pipeline controls do not
+acquire this rule.
+
+The item 652 trail records actual pointer/hover media, viewport and input
+mode, computed control boxes and applicable CSS rules. Native chevron
+presses fold and restore the child without changing saved words. Opening a
+sheet's `memory.read` request is an observation of a request, not proof of
+completed rendering. Focus-entry failures retain the engine's original
+error, an immediate unmodified screenshot, active element, native DOM
+events, Edit handler entry/return and timed DOM mutations. These observations
+do not force focus or excuse a failed native press. Scenario screenshots,
+geometry and diagnostics retain their normal, mutant or restored suffix;
+the case names and six native-compose phases stay the same.
+
 ## The page is the deck
 
 A deck is an ordinary Notebook page (notebook-pages.md), so it keeps every
@@ -52,9 +86,24 @@ Whatever card a key leaves picked comes into view by the one rule for what
 the keys select (docs/interaction.md, "What the keys select comes into view"):
 one picked by ↑ ↓ ← →, moved by ⌘↑ ⌘↓, merged by ⇧⌘↑ ⇧⌘↓, moved in or out by
 Tab or ⇧Tab, put back by ⌘Z, left picked by ⌘⌫ or Escape, and a card being
-written that Return opens or ⌘↑ ⌘↓ move. A click on a card leaves the page
-where it is. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
+written that Return opens or ⌘↑ ⌘↓ move. Opening a card by click or touch, writing in it, and closing it with
+Escape or Done keep the page where it is (item 644). Rendering, saving and
+setting the caret do not reveal the whole card; only navigation between cards
+asks for a new place. If permission is refused while writing, the full page
+keeps its height while the writing controls are away, so closing the retained
+card cannot pull the page up from its end. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
 act a key starts reads the rule, whichever path paints the card.
+
+The item 644 cases in `tests/notebook_pages_native.mjs` sample scroll positions
+on every animation frame: the document, the sheet wrapper, the dialog and the
+visible `.notebook-sheet-page` (the sheet's actual overflow owner). Each sheet
+case first applies and restores a 350px jump to that owner and requires the
+same predicate to reject the trace, even after the owner returns to its start.
+This control covers normal, saving, refused, read-only, empty and error states
+at 320, 375, 390 and 1280px in both themes. The shared sampler and predicate
+also have a browser-free instrument control in
+`tests/ui_card_scroll_probe.test.mjs`; removing the sheet-owner sample must
+fail that check. This unit control alone does not establish native behavior.
 
 | act | laptop | phone |
 | --- | --- | --- |
@@ -212,7 +261,9 @@ images; once Core has it, it is attached to the page. Its name stays with it
 for screen readers; it shows beside the picture while the image uploads or after
 its upload failed, and in the picture's place while the picture does not show:
 before it loads, or when the page holds no such image ("· not on this page").
-An image smaller than a thumbnail shows at a thumbnail's size. The page's list of
+Clicking a displayed image opens it in a new tab, leaving the card and its
+writing in place (item 651, docs/images.md). An image smaller than a thumbnail
+shows at a thumbnail's size. The page's list of
 images under the head leaves an image a card shows to the card, unless it needs
 Retry. × takes the image off the page too, unless another card still shows it.
 Undo, bringing back the card's line, puts the image back on the page (and so
@@ -349,18 +400,20 @@ showing a page at a revision. Over the outcome's own page, which has no feed,
 it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
-The sheet's head is one line on a laptop: the page's title, Text and Cards as
-chips with the page's Draft toggle beside them, the saving sign, a Full page glyph (↗, `?cards=ITEM`, below) and ✕, each
-glyph named for screen readers and with a tooltip; on a phone it takes two
-lines, the title with ↗ and ✕, then the chips and the sign, which on a screen
-too narrow for both whole (320 points) takes a line of its own below the chips,
-never one over the other; each chip, and the Draft mark that stands for the
-toggle for someone who reads the page, is 44 points tall there. When the sign
-says what needs the person (a refused save with Try again and Discard my
-writing, a save paused, the device's copy unavailable), it takes a line of its
-own below the rest of the head at every width, on a laptop as on a phone, its
-words whole and wrapping and its buttons after them (44 points tall on touch),
-so a press on a chip always reaches the chip. Below it is one
+The sheet's head on a laptop has the page's title, Text and Cards as chips
+with the page's Draft toggle beside them, a Full page glyph (↗, `?cards=ITEM`,
+below) and ✕, each glyph named for screen readers and with a tooltip. On a
+phone the title and glyphs take the first row and the three chips the next;
+each chip, and the Draft mark that stands for the toggle for someone who
+reads the page, is 44 points tall there.
+
+The saving sign always has a row of its own below those controls, on the
+laptop and at every phone width (item 642). "Saved to Theseus", keeping a
+device copy, saving, uploading and every attention or read-only state change
+only that row: Text, Cards and Draft keep identical boxes while the status
+words change. Attention notices wrap whole there. A refusal's Try again and Discard
+my writing follow its words, wrapping when needed, and are 44 points tall on
+touch. An empty sign keeps its row. Below the head is one
 place that scrolls, containing the same vertical card list as the full page
 at every width. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
@@ -412,4 +465,9 @@ cards. The list and the in-place editor are the laptop's on a phone too, for
 now, with Done available above the cards.
 
 The checks are `tests/notebook_sheet_native.mjs`, in the `notebook` and
-`webkit-notebook` modes, at a laptop's width and a phone's.
+`webkit-notebook` modes. Its "notebook item 642" cases compare the controls'
+boxes across every saving-sign branch and during native typing/autosave, at
+320, 375, 390 and 1440 pixels, in light and dark. Geometry fixtures render the
+real `NotebookPage.writingChanged` branches; the typing case checks Core's
+confirmed words, focus and each painted frame. CSS mutants break the laptop
+row, the phone row and the old status width cap separately and restore each rule.

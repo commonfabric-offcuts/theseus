@@ -48,11 +48,12 @@ class CoordinatorCase(fixtures.ReaderCase):
     def test_the_coordinator_organises_a_topic_they_neither_made_nor_work_in(self):
         self.participation("agent-a", False)
         self.assertEqual(self.sql("SELECT count(*) FROM reply_horizons WHERE topic_id='t1' AND actor_id='agent-a'"), [(0,)])
-        # A plain member who has not written in it may do none of this.
+        # A plain member who has not written in it cannot rename, archive or change its state.
         for args in ({"title": "Renamed"}, {"archived": True}, {"state": "review"}):
             with self.subTest(args=args):
                 self.rejected(self.update(args, actor="agent-b"), "FORBIDDEN")
-        self.rejected(self.take_part("agent-b", True, actor="agent-b"), "FORBIDDEN")
+        self.committed(self.take_part("outsider", True, actor="agent-b"))
+        self.rejected(self.take_part("outsider", False, actor="agent-b"), "FORBIDDEN")
         self.assertIs(self.topic("agent-b")["reader_may_say"], False)
         # The coordinator may.
         self.assertIs(self.topic("agent-a")["reader_may_say"], True)
@@ -70,7 +71,7 @@ class CoordinatorCase(fixtures.ReaderCase):
         self.assertIsNone(self.topic()["coordinator_id"])
         self.rejected(self.member_set("outsider", True, actor="agent-a"), "FORBIDDEN")
         self.rejected(self.update({"title": "Renamed"}, actor="agent-a"), "FORBIDDEN")
-        self.rejected(self.take_part("agent-b", True, actor="agent-a"), "FORBIDDEN")
+        self.committed(self.take_part("agent-b", True, actor="agent-a"))
         self.committed(self.member_set("outsider", True, actor="owner"))
 
     def test_being_coordinator_grants_no_reading(self):

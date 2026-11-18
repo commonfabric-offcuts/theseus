@@ -128,17 +128,22 @@ fields ([agent-cli.md](agent-cli.md)). When to write the cover is in
 
 ## The page
 
-A dossier's cover is drawn as the folder's first sheet, after its first
-message's entry and before the chevron and the replies, both closed and open
-(`web/dossier-cover.mjs`). It is not drawn inside the first message's card,
+A dossier's cover is drawn as the folder's first sheet, after the entry of
+its displayed head and before the chevron and the replies, both closed and
+open (`web/dossier-cover.mjs`). It is not drawn inside the head's card,
 because a closed folder shows that card as its tab alone. When the first
 message is above the loaded page, the reply that heads what is loaded is the
 tab, and the sheet is drawn after it, from the dossier's place
-(`stackCover` in `web/stack-order.mjs`); once Earlier messages loads the first
-message, the one sheet moves to it. A dossier whose only loaded message is one
-reply has no folder to draw a sheet in: that card shows its dossier's cover as
-pills under who wrote it, as a message on its own does, until its first message
-loads. The sheet shows:
+(`stackCover` in `web/stack-order.mjs`). Earlier messages keeps an already
+displayed stack's head and place, even when it loads the dossier's first
+message; the one sheet stays with that stack and tab. The older messages
+appear where the button was, as described in [reply-stacks.md](reply-stacks.md),
+"What one stack never loses". When the page is read again and the first
+message becomes the stack's head, the one sheet is drawn after that head.
+A dossier whose only loaded message is one reply has no folder to draw a sheet
+in: that card shows its dossier's cover as pills under who wrote it, as a
+message on its own does. A cover sheet appears when the page gathers its
+messages into a folder. The sheet shows:
 
 - where the dossier stands;
 - its payload, with its kind as a label, its words, its link, a pill, and the

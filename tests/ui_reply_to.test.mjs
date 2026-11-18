@@ -242,6 +242,7 @@ test('a reply begun with a quote still goes to the author it was offered', t => 
   reply.offerAddressees(['fable']);
   const field = { value: '', focus() {}, setSelectionRange() {} };
   const reader = Object.assign(Object.create(Reader.prototype), {
+    narrow: {matches: true}, // The quote's address is independent of a phone's fixed layout.
     sessions: { reply }, presentation: {}, mode: 'reply', field, writes: () => true,
     source: { source_ref: { kind: 'message', id: 'm-1' }, body: 'Ship it' },
     selectedPassage: () => 'Ship it', disarm() {}, notice() {},

@@ -59,6 +59,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .creation-form #opening-body { min-height: 12rem; font-size: 16px; line-height: 1.6; }
 .creation-form pre { font: inherit; font-size: .88rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: .4rem 0; }
 .unread-count{display:inline-block;min-width:1.4rem;margin-left:.45rem;padding:0 .4rem;border-radius:1rem;background:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--ink);font-size:.72rem;font-weight:650;line-height:1.4rem;text-align:center;vertical-align:middle}.together{white-space:nowrap}.unread-count.addressed{background:var(--accent);color:var(--panel)}
+/* A topic's unread count leads to its oldest unread message (item 613): a press on it lands there, and on a phone it answers a finger 44px each way, reaching back over the title's end and never past the row's right. */.unread-count[data-lands]{cursor:pointer}@media(pointer:coarse),(max-width:760px){.unread-count[data-lands]{position:relative}.unread-count[data-lands]::after{content:'';position:absolute;top:50%;right:0;width:max(100%,44px);height:44px;transform:translateY(-50%)}}
 #sent-to-you h2{font-size:1rem;margin:0 0 .4rem}.sent-list{list-style:none;margin:0 0 1rem;padding:0}.sent-list li{padding:.35rem 0;border-bottom:1px solid var(--line)}.sent-list li.closed-topic button{margin-left:.4rem}
 /* A state stays one line; a long one ends in an ellipsis and its whole words are its title. */.topic-state{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:.45rem;padding:0 .45rem;border:1px solid var(--line);border-radius:1rem;color:var(--muted);font-size:.72rem;font-weight:600;line-height:1.35rem;vertical-align:middle}.topic-state[data-state=waiting]{color:var(--ink)}.topic-state.mine{border-color:var(--accent);color:var(--ink)}/* On a row shaded by hover or by being current, a plain state keeps a visible edge and readable words. */a.nav-item:is(:hover,[aria-current=page]) .topic-state:not(.mine):not([data-state=review]){border-color:var(--muted);color:var(--ink)}.topic-state[data-state=review]{border-color:var(--accent);color:var(--ink)}.opening-answers{margin:0 0 1rem;padding:.8rem 1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.opening-answers h2{font-size:.9rem;margin:0 0 .4rem}.opening-answers h3{font-size:.85rem;margin:.6rem 0 .3rem}.opening-answers blockquote{margin:0;color:var(--muted);overflow-wrap:anywhere}.started-topics{margin:0;padding-left:1.1rem}.started-topics li{margin:.25rem 0;overflow-wrap:anywhere}.responsibilities{margin:0 0 .5rem;padding:0;list-style:none;font-size:.9rem}.responsibilities li{margin:.15rem 0;overflow-wrap:anywhere}.responsibilities strong{margin-right:.15rem}.state-fields{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem;margin:.6rem 0}.state-fields input{min-width:12rem}.waiting-on-you{margin:0 0 1.5rem;padding:1rem 1.15rem;border:1px solid var(--accent);border-radius:.75rem;background:var(--panel)}.waiting-on-you h2{font-size:.9rem;margin:0 0 .5rem}.waiting-list{margin:0;padding-left:1.1rem}.waiting-list li{margin:.3rem 0;overflow-wrap:anywhere}
 .people-add { display: flex; align-items: center; gap: .4rem; flex: 1 1 14rem; }
@@ -204,7 +205,7 @@ main::after{content:"";display:block;height:var(--line-room,0px)}
 /* The people, the topic's Team in its header: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
 /* The topic's Team (item 465): on the title row's right, under the title, its pills and "+ Add" flush right, beside the subtitle; on a phone, under the subtitle. Its label sits on the first pill's line (baseline), and the people "+ Add" opens come in under the pills taking no width of their own, so opening it moves neither the label nor the subtitle. The subtitle keeps at least 6rem beside it: a Team that would leave it less wraps its pills, so the topic's state stays words, not a column one letter wide. Its spacing is kept modest (.75rem from the subtitle, .4rem from its label, .7rem inside a pill, as in "+ Add") so a Team of two and "+ Add" keeps one line at 1280 with room to spare even when a standard 15px scrollbar takes its width. */
 .topic-header>div{display:grid;grid-template-columns:minmax(6rem,1fr) auto;column-gap:.75rem}.topic-header>div>*{grid-column:1/-1}.topic-header>div>.topic-subtitle{grid-column:1}
-.topic-people{grid-column:2!important;grid-row:3;align-self:start;display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.4rem;max-width:min(36rem,62vw);margin-top:0}.topic-people .person-pill .pill-name{padding:0 .7rem}.topic-people .person-pill .wake-light{padding-right:.7rem}.topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.topic-people .participants{flex:0 1 auto;min-width:0;margin:0;align-items:center;justify-content:flex-end}
+.topic-people{grid-column:2!important;grid-row:3;align-self:start;display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:flex-end;gap:.4rem;max-width:min(36rem,62vw);margin-top:0}.topic-people .person-pill .pill-name{padding:0 .7rem}.topic-people .person-pill .wake-light{padding-right:.7rem}.topic-people h2{flex:none;margin:0;font-size:.8rem;font-weight:600;text-transform:none;letter-spacing:.08em;color:var(--muted)}.topic-people .participants{flex:0 1 auto;min-width:0;margin:0;align-items:center;justify-content:flex-end}
 /* Beside the subtitle, the people "+ Add" opens, and a notice, take no width of their own (contain), and no gap: the pills keep theirs as margins, so the Team is as wide open as closed. The pills and "+ Add" are the children of .chips, which draws no box of its own (display:contents), so the margins are theirs, each after the first. */
 @media(min-width:761px){.topic-people .participants{column-gap:0}.topic-people .participants>.chips>:not(:first-child){margin-inline-start:.4rem}.topic-people .participants>:is(.people-add,.notice){contain:inline-size}}
 @media(max-width:760px){.topic-people{grid-column:1/-1!important;grid-row:auto;justify-content:flex-start;max-width:none;margin-top:.6rem}.topic-people .participants{justify-content:flex-start}}
@@ -658,6 +659,9 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .reading-pane article .md-list-passage+.md-list-passage{margin-top:0}
 /* A message's ⋯ (docs/links.md, "A message's menu"): the last button on the message bar, and the Reader's header's, quiet until pointed at. Its menu is a short list as wide as its words. */
 .message-bar [data-act=more]{font-size:1.05rem;font-weight:700;line-height:1}
+/* Reply, Show full message and Fold are glyphs (glyphs.mjs, item 473), each named with that name as its tooltip. */
+.message-bar button:has(>.glyph){display:inline-grid;place-items:center}
+.message-bar button>.glyph{display:block;width:1.05rem;height:1.05rem}
 .message-bar [data-act=more].said{font-size:.78rem;font-weight:650;color:var(--accent)}
 .message-menu{min-height:2.25rem;min-width:2.25rem;padding:0 .45rem;border-color:transparent;background:transparent;color:var(--muted);font-size:1.15rem;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent}
 .message-menu:hover,.message-menu[aria-expanded=true]{border-color:var(--muted);background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
@@ -1019,7 +1023,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
-@media(pointer:coarse){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}.deck-status .deck-again{min-height:2.75rem}.deck-bubble{min-height:2.75rem}.deck-parent>.deck-editor{text-indent:2.75rem}}
+@media(pointer:coarse),(max-width:760px){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}.deck-status .deck-again{min-height:2.75rem}.deck-bubble{min-height:2.75rem}.deck-parent>.deck-editor{text-indent:2.75rem}}
 @media(max-width:760px){.deck-page{max-width:none}.deck-keys{display:none}.deck-ask{opacity:1}.deck-count{flex-basis:100%;text-align:center}.deck-bar button{flex:1}}
 
 .page-here-cards{display:inline-flex;align-items:center;min-height:44px;margin-right:.8rem}
@@ -1046,15 +1050,14 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
-/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the New message sheet, tall, its head one line on a laptop (title, Text / Cards, the saving sign, Full page, ✕), the page below it the one place that scrolls; on a phone the head takes two lines (three on the narrowest, the saving sign below the chips; what needs the person takes a line of its own below the rest at every width) and the shared card list scrolls below, as on the full page. */
+/* A Notebook page in the composer over the feed (notebook-sheet.mjs): the saving sign always has its own row below the title and controls. Changing its words never changes the columns or wraps the three view buttons (item 642). The page below is the one place that scrolls, with the shared vertical card list at every width (item 652). */
 dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-sheet{display:flex;flex-direction:column;height:100%;min-height:0}
-.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;grid-template-areas:"title views status full close";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
+.notebook-sheet-head{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;grid-template-areas:"title views full close" "status status status status";align-items:center;gap:.35rem .5rem;padding:.45rem .5rem .45rem 1.1rem;border-bottom:1px solid var(--line)}
 .notebook-sheet-title{grid-area:title;min-width:0;margin:0;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.notebook-sheet-views{grid-area:views;display:flex;align-items:center;gap:.25rem}.notebook-sheet-status{grid-area:status;min-width:0;max-width:16rem}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
+.notebook-sheet-views{grid-area:views;display:flex;align-items:center;gap:.25rem}.notebook-sheet-status{grid-area:status;min-width:0;max-width:none}.notebook-sheet-full{grid-area:full}.notebook-sheet-close{grid-area:close}
 .notebook-sheet-status .deck-status{min-height:0;flex-wrap:nowrap}.notebook-sheet-status .deck-status>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* What needs the person (a refusal, a save paused, a device copy unavailable, with Try again or Discard my writing) is the sign's one state of no fixed size: at every width it takes a line of its own under the rest of the head, its words whole and wrapping, its buttons after them, so it is never drawn over the chips or squeezed to nothing. */
-.notebook-sheet-head:has(.deck-status>[data-save=attention]){grid-template-areas:"title views . full close" "status status status status status"}
+/* Recovery controls follow the whole notice, wrapping below it when needed. */
 .notebook-sheet-status:has(.deck-status>[data-save=attention]){max-width:none}
 .notebook-sheet-status .deck-status:has(>[data-save=attention]){flex-wrap:wrap;justify-content:flex-start;gap:.35rem .5rem}
 .notebook-sheet-status .deck-status>[data-save=attention]{flex:1 1 12rem;white-space:normal;overflow:visible;overflow-wrap:anywhere}
@@ -1078,12 +1081,21 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 .notebook-back{max-width:16rem;min-height:2.75rem;padding:.3rem .6rem;overflow:hidden;text-overflow:ellipsis;color:var(--accent);font-size:.88rem;font-weight:600}
 @media(pointer:coarse){.notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-status .deck-status>button{min-height:2.75rem}.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}}
 @media(max-width:760px){
-  /* The head wraps as its parts fit whole: the title with ↗ and ✕, then Text, Cards and Draft with the saving sign beside them or, on a screen too narrow for both, on a line of its own below them. The sign's basis is fixed rather than its words', so the head keeps its lines while the words change; the time of the last save shows only while the sign has room for it beside its words. */
+  /* Item 652: every pressable in the Notebook editor sheet keeps a 44px floor,
+     regardless of pointer media or state-specific sizing (including refusals).
+     Only these minima win the cascade; the controls keep their own layout. */
+  .notebook-sheet :is(button,input,textarea,select,a[href],summary,[role=button],[role=link],[tabindex]){min-width:2.75rem!important;min-height:2.75rem!important}
+  /* Keep the larger minima already owned by writing and image controls. */
+  .notebook-sheet textarea.deck-editor{min-height:max(2.75rem,var(--kept,0px))!important}
+  .notebook-sheet textarea.deck-ask-field{min-height:5rem!important}
+  .notebook-sheet .deck-image>.image-thumb{min-width:3rem!important;min-height:3rem!important}
+  @media(pointer:coarse){.notebook-sheet button.image-option{min-height:3rem!important}}
+  .notebook-sheet a[href]:not(.sheet-glyph,.deck-bubble){display:inline-block}
+  /* Title and glyphs, then the three chips, then the sign in its own row at every phone width. */
   .notebook-sheet-head{display:flex;flex-wrap:wrap;padding:.3rem .35rem .45rem 1rem}
   .notebook-sheet-title{flex:1 1 calc(100% - 6.6rem)}.notebook-sheet-views{flex:none}
-  .notebook-sheet-status{flex:1 1 8rem;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
+  .notebook-sheet-status{flex:0 0 100%;max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   @container (max-width:12rem){.notebook-sheet-status .save-time{display:none}}
-  .notebook-sheet-status:has(.deck-status>[data-save=attention]){flex-basis:100%}
   .notebook-sheet-page{padding:0 .75rem .75rem}
   .notebook-sheet-views .notebook-views button,.notebook-sheet-views .notebook-draft-toggle,.notebook-sheet-views .notebook-draft-note,.notebook-sheet-page>.notebook-images>button{min-height:2.75rem}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
@@ -1198,3 +1210,13 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 #reader-cover{flex:none;min-width:0;margin:0 0 .5rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel)}#reader-cover>summary{display:flex;align-items:center;gap:.4rem;min-width:0;padding:.35rem .7rem;font-size:.85rem;cursor:pointer;-webkit-tap-highlight-color:transparent}#reader-cover>summary>.reader-cover-words{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:550}#reader-cover>summary>.row-pill{flex:none;max-width:45%}#reader-cover[open]>summary>.row-pill{display:none}#reader-cover>.dossier-cover{display:flex;padding:0 .7rem .6rem}#reader-cover:not([open])>.dossier-cover{display:none}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
+
+/* A displayed thumbnail opens its image (651), with visible keyboard focus. */
+.image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* Item 643: Done occupies the same space as + Add; touch reaches its names. */
+.topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
+.topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}
+.topic-people .add-chip::after{content:"+ Add";visibility:hidden}
+@media(pointer:coarse){.topic-people .add-chip,.topic-people .people-add button{min-height:2.75rem}}
+/* Why a press did nothing, said where it was (web/press-note.mjs, item 635): over the page, beside what was pressed, so nothing moves for it. */
+.press-note{position:absolute;pointer-events:none;z-index:1000;margin:0;max-width:min(22rem,calc(100vw - 32px));padding:.5rem .75rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);border-radius:.5rem;font-size:.85rem;line-height:1.4;font-weight:500;white-space:normal;overflow-wrap:anywhere;text-align:left;box-shadow:0 .25rem .9rem color-mix(in srgb,var(--ink) 18%,transparent)}

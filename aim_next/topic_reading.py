@@ -4,8 +4,8 @@ Two facts per message, both read for the page's own messages only, through
 indexes keyed by message, so a page never reads the topic's history:
 
 - `unread`: the message waits in one of the reader's unread groups (the
-  topic's subscription group of their current participation, or their direct
-  group), as the counts and the New line read it. Marks are the page's own
+  topic's subscription group while they take part in it, or their direct
+  group: `SUBSCRIBED` and `ADDRESSED`), as the counts and the New line read it. Marks are the page's own
   (`marks`), so they are not folded in here.
 - `replied`: the reader's newest reply to the message, `{id, sent_ms}`, or
   null. A reply is always in its parent's topic and the reader always sees
@@ -33,13 +33,22 @@ import json
 from .contract import _json
 
 
-def unread_groups(db, actor, topic_id, direct):
-    """The groups whose pending deliveries are unread for actor in one topic."""
-    groups = [row[0] for row in db.execute(
-        "SELECT g.id FROM topic_participants p CROSS JOIN delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
-        "ON g.recipient_id=p.actor_id AND g.kind='subscription' AND g.topic_id=p.topic_id AND g.participant_epoch=p.epoch "
-        "WHERE p.topic_id=? AND p.actor_id=? AND p.active=1 AND g.active=1", (topic_id, actor))]
-    return groups + ([direct["id"]] if direct is not None else [])
+# What is unread for a reader is one rule (docs/attention.md, "In the browser"; item 613): a delivery pending in one
+# of their groups that is active, or a mark (marks.MARKED). The groups are the subscription group of a topic they take
+# part in, which their leaving deactivates, and their one direct group. Each is read with delivery_groups g and the
+# reader for its ?. The counts (Delivery._unread), the oldest unread message a count leads to (Delivery._oldest_unread)
+# and a page's unread cards (unread_groups below) all read them, so a count above nought always leads to a message the
+# reader's pages of the topic hold, and nothing the reader cannot reach is counted.
+SUBSCRIBED = "g.recipient_id=? AND g.kind='subscription' AND g.active=1"
+ADDRESSED = "g.recipient_id=? AND g.kind='direct' AND g.topic_id='' AND g.participant_epoch=0 AND g.active=1"
+
+
+def unread_groups(db, actor, topic_id):
+    """The groups whose pending deliveries are unread for actor in one topic, by the counts' own rule."""
+    return [row[0] for row in db.execute(
+        "SELECT g.id FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 WHERE " + SUBSCRIBED + " AND g.topic_id=? "
+        "UNION ALL SELECT g.id FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 WHERE " + ADDRESSED,
+        (actor, topic_id, actor))]
 
 
 def reading_fields(db, actor, groups, items):

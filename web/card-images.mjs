@@ -2,7 +2,7 @@
 // a card"): on the topic page, in the Conversation and in a dossier, each
 // verified inline image a message carries shows as a thumbnail after its
 // words, the right rail's size, in the order it was sent. A press on the card
-// opens the Reader as before, where each attachment keeps its Open. A message
+// outside a thumbnail opens the Reader as before; a thumbnail opens its image in a new tab. A message
 // with no image draws nothing new.
 //
 // Each thumbnail reads its bytes through its own message (read), so Theseus
@@ -60,7 +60,7 @@ export function paintCardImages(card, item, read) {
     const key = keys[index], name = attachment.name || 'Image';
     let host = [...strip.children].find(each => each.dataset.key === key);
     if (!host) {
-      host = doc.createElement('span'); host.className = 'card-image'; host.dataset.key = key; host.setAttribute('role', 'img');
+      host = doc.createElement('span'); host.className = 'card-image'; host.dataset.key = key; host.setAttribute('role', 'group');
       const words = doc.createElement('span'); words.className = 'card-image-name'; words.setAttribute('aria-hidden', 'true');
       host.append(words); host.dataset.coming = '';
       whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });

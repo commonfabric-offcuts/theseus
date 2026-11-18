@@ -916,9 +916,22 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const refused = await until(() => p.calls.find(c => c.payload?.kind === 'message.send' && c.payload.operation_id !== firstSend.payload.operation_id), 'recorded R1a refusal');
     const rejected = await view('operation', { operation_id: refused.payload.operation_id }); assert.equal(rejected.error.code, 'REPLY_PATH_UNAVAILABLE');
     // The refused reply has its Review button once its send has ended: a reply on its way has none (item 118).
+    const reviewPending = async p => {
+      const selector = '#pending-submissions button', geometryTolerance = 2; // CSS pixels; a moving row must settle before its native hit test.
+      let last = null, stable = 0;
+      await until(async () => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center',behavior:'instant'}); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+        const now = await p.box(selector);
+        const visible = now && now.width > 0 && now.height > 0 && now.x >= -geometryTolerance && now.y >= -geometryTolerance && now.x + now.width <= now.viewportWidth + geometryTolerance && now.y + now.height <= now.viewportHeight + geometryTolerance;
+        const same = last && now && ['x', 'y', 'width', 'height'].every(key => Math.abs(now[key] - last[key]) <= geometryTolerance);
+        stable = visible && same ? stable + 1 : 0; last = now;
+        return stable >= 2;
+      }, `the refused reply's Review settles within ${geometryTolerance}px over three samples`);
+      await p.point(selector);
+    };
     await replace(p, 'Successor B is untouched');
     await until(() => p.evaluate('Boolean(document.querySelector("#pending-submissions button"))'), 'the refused reply has its Review button');
-    await p.point('#pending-submissions button');
+    await reviewPending(p);
     const card = '#review-content [data-id="' + refused.payload.args.submission_id + '"]';
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card)})?.textContent.includes(${JSON.stringify(rejected.error.message)})`), 'local recorded explanation');
     assert.equal(await field(p), 'Successor B is untouched');
@@ -929,7 +942,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     try { await until(() => q.evaluate('document.querySelector("#reader").open'), 'restored Notebook reader'); }
     catch (error) { observations.push({ name: 'restored Notebook failure', text: await q.evaluate('document.body.innerText'), errors: q.errors, calls: q.calls }); await shot(q, 'restored-notebook-failure'); throw error; }
     await until(() => q.evaluate("document.getAnimations().filter(x=>x.effect?.getTiming().iterations!==Infinity).every(animation=>animation.playState!=='running')"), 'settled restored Notebook');
-    await q.point('#pending-submissions button');
+    await reviewPending(q);
     await until(() => q.box(card), 'restored pending card');
     assert.equal(await q.evaluate(`document.querySelector(${JSON.stringify(card)}).textContent.includes(${JSON.stringify(rejected.error.message)})`), false, 'no eager per-card receipt read');
     q.intercept(payload => payload?.name === 'submission' && payload.args.submission_id === refused.payload.args.submission_id);

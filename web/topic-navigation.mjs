@@ -10,10 +10,11 @@ const afterId = (id,previous) => {
 };
 const badRoute = () => { throw Error('This destination link is incomplete or ambiguous. Open Outcomes to choose a place.'); };
 // An opening may name the message its topic answers ('from'); a topic, the
-// message to open in the Reader when it opens ('message', docs/links.md); a
-// topic or an outcome, a page of its Notebook to open ('page'), at a revision
-// ('revision') or as it stands.
-const OPTIONAL = {cards:['write','view'],opening:['from'],topic:['message','page','revision'],workspace:['page','revision']};
+// message to open in the Reader when it opens ('message', docs/links.md), or
+// that it opens at the oldest message still unread for the reader ('at':
+// 'unread', item 613, docs/attention.md); a topic or an outcome, a page of its
+// Notebook to open ('page'), at a revision ('revision') or as it stands.
+const OPTIONAL = {cards:['write','view'],opening:['from'],topic:['message','at','page','revision'],workspace:['page','revision']};
 const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
   const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
@@ -23,19 +24,22 @@ export function routeKey(route) {
   if (route.kind === 'cards' && route.view !== undefined && !['text','cards'].includes(route.view)) badRoute();
   // A page is named alone (not with a message), and a revision only with its page.
   if (('page' in route && 'message' in route) || ('revision' in route && !('page' in route)) || ('revision' in route && !REVISION.test(route.revision))) badRoute();
+  // Where a topic opens is one place: its oldest unread message, alone.
+  if ('at' in route && (route.at !== 'unread' || 'message' in route || 'page' in route)) badRoute();
   return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
 }
 export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
-  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
+  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
 }
-// A topic, opened at one of its messages when one is named.
-export const topicTarget = (id, message = null) => ({kind:'topic',id,...(message?{message}:{})});
+// A topic, opened at one of its messages when one is named, or at its oldest
+// unread message when at is 'unread' (item 613).
+export const topicTarget = (id, message = null, at = null) => ({kind:'topic',id,...(message?{message}:{}),...(at?{at}:{})});
 // A new opening in an outcome whose topic answers one message.
 export const startFrom = (workspace, message) => ({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID(),from:message});
 export function parseRoute(url) {
@@ -47,6 +51,8 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
+  // A topic opened at its oldest unread message: what its unread count leads to (item 613).
+  else if (keys.length===2 && p.has('topic') && p.has('at')) route={kind:'topic',id:p.get('topic'),at:p.get('at')};
   // A Notebook page's link: its topic's or its outcome's, the page, and perhaps its revision.
   else if ([2,3].includes(keys.length) && (p.has('topic') || p.has('workspace')) && p.has('page') && (keys.length===2 || p.has('revision')) && !(p.has('topic') && p.has('workspace'))) {
     route={kind:p.has('topic')?'topic':'workspace',id:p.get('topic') ?? p.get('workspace'),page:p.get('page'),...(p.has('revision')?{revision:p.get('revision')}:{})};
@@ -344,9 +350,12 @@ export class TopicRail {
     if (!link) {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
       // A topic waiting on the reader opens at the question (item 148): the Reader shows it.
+      // A press on its unread count opens it at its oldest unread message (item 613).
       link.onclick = event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault(); return this.open(item.id, this.title(item.id), this.question(item.id));
+        event.preventDefault();
+        if (landsOnUnread(event.target, event)) return this.open(item.id, this.title(item.id), null, 'unread');
+        return this.open(item.id, this.title(item.id), this.question(item.id));
       };
       this.links.set(item.id, link);
     }
@@ -491,15 +500,32 @@ export const questionOf = (item, reader) => (Array.isArray(item?.asks) ? item.as
 // rail alike (item 297): its unread count (marked when part of it was sent to
 // the reader by name), where it stands (Waiting on you, Ready for review…) and
 // the work ring. The caller has just set the row's title, so it holds no earlier mark.
+// A topic's unread count is also where its oldest unread message is reached
+// (item 613): a press on it opens the topic there, its dossier open and the
+// message on the screen (app.mjs, landOnUnread). The count is Core's, by the
+// rule the topic's oldest unread message is found by (docs/attention.md), so
+// it counts nothing the press cannot reach.
+export const UNREAD_TIP = 'Show the oldest unread message';
+// Return activates the row's existing keyboard stop (click detail 0), rather
+// than adding an interactive child inside its link/treeitem. A pointer keeps
+// the row's ordinary destination and chooses unread by pressing its count.
+export const landsOnUnread = (target, event = null) => Boolean(target?.closest?.('.unread-count[data-lands]') ||
+  event?.detail === 0 && target?.querySelector?.('.unread-count[data-lands]'));
 export function paintMarks(host, item, reader) {
-  paintUnread(host, item);
+  const count = paintUnread(host, item);
+  if (count) {
+    count.dataset.lands = 'unread'; count.title = UNREAD_TIP;
+    const keys = document.createElement('span'); keys.className = 'sr-only';
+    keys.textContent = '. Return shows the oldest unread message'; host.append(keys);
+  }
   paintState(host, item, reader);
   paintWork(host, item, reader);
 }
+// The count, or null when nothing waits unread.
 export function paintUnread(host, item) {
-  if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
+  if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return null;
   const addressed = Number.isSafeInteger(item.addressed) && item.addressed > 0 ? item.addressed : 0;
-  paintCount(host, item.unread, addressed ? 'unread-count addressed' : 'unread-count',
+  return paintCount(host, item.unread, addressed ? 'unread-count addressed' : 'unread-count',
     `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : ''));
 }
 // The revisions of a Notebook page since the reader last read it: 0 for a
@@ -531,8 +557,9 @@ function paintCount(host, count, className, said) {
   // wraps keeps its count on its last line; the rest still wraps anywhere, so
   // a long unbroken ending cannot push the row wider.
   const title = host.lastChild, words = title?.nodeType === 3 ? title.data.trimEnd() : '';
-  if (!words) { host.append(badge, spoken); return; }
+  if (!words) { host.append(badge, spoken); return badge; }
   const last = Array.from(graphemes.segment(words)).at(-1).segment, together = document.createElement('span');
   together.className = 'together'; title.data = words.slice(0, words.length - last.length);
   together.append(last, badge, spoken); host.append(together);
+  return badge;
 }

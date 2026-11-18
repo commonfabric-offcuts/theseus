@@ -15,7 +15,90 @@ const STATES = ['normal', 'writing', 'empty', 'busy', 'refused retry', 'refused 
 const INPUTS = ['web/aim.css', 'web/deck-page.mjs', 'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'tests/reader_compose_native.mjs', 'tests/card_editor_652.mjs', 'tests/ui_card_editor_652.test.mjs', 'tests/notebook_sheet_native.mjs', 'tests/notebook_card_images_native.mjs', 'tests/fixtures/ui_http.py', 'aim_next/web_build.py'];
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 
-export async function cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root }) {
+// Keep the exact Playwright error (name, message, stack and cause). The shared
+// compose wait replaces every rejection with a timeout; 652 needs its real cause.
+export function wait652(p, expression, description, arg, timeout = 8000) {
+  p.item652Stage = description;
+  return p.waitForFunction(expression, arg, { polling: 'raf', timeout });
+}
+
+export function scenarioFiles652(evidence, engine, shape, scheme, surface, state, suffix = '') {
+  const stem = `item-652-${surface}-${state}${suffix}`;
+  return { stem, prefix: path.join(evidence, engine, `${shape}-${scheme}-${stem}`) };
+}
+
+// Installed before navigation: observe native delivery and render/focus order,
+// without moving focus, delaying a press, or invoking a product handler.
+export function trace652({ host, field }) {
+  const describe = e => e && ({ tag: e.tagName, id: e.id, class: e.className?.baseVal ?? e.className,
+    name: e.getAttribute?.('aria-label'), text: e.matches?.('button') ? e.textContent : undefined });
+  const current = () => ({ active: describe(document.activeElement), editor: describe(document.querySelector(field)),
+    editorFocused: Boolean(document.querySelector(field) && document.activeElement === document.querySelector(field)),
+    cards: document.querySelector(host)?.querySelectorAll('.deck-card').length ?? 0,
+    pointerCoarse: matchMedia('(pointer:coarse)').matches, phoneWidth: matchMedia('(max-width:760px)').matches,
+    viewport: { width: innerWidth, height: innerHeight, maxTouchPoints: navigator.maxTouchPoints },
+    animations: document.getAnimations().map(a => ({ state: a.playState, name: a.animationName })) });
+  const trace = window.item652Trace = { timeOrigin: performance.timeOrigin, events: [], renders: [], markers: [] };
+  trace.mark = (kind, detail = {}) => trace.markers.push({ time: performance.now(), kind, ...current(), ...detail });
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'focusin', 'focusout']) {
+    document.addEventListener(type, event => {
+      if (!type.startsWith('focus') && !event.target.closest?.(host)) return;
+      trace.events.push({ time: performance.now(), type, trusted: event.isTrusted, target: describe(event.target),
+        pointerType: event.pointerType, defaultPrevented: event.defaultPrevented, ...current() });
+    }, true);
+  }
+  new MutationObserver(records => {
+    const relevant = records.filter(r => r.target.closest?.(host) || r.target.matches?.('#new-message-sheet,.notebook-sheet-pages,.notebook-sheet-status'));
+    if (relevant.length) trace.renders.push({ time: performance.now(), ...current(),
+      mutations: relevant.map(r => ({ type: r.type, attribute: r.attributeName, target: describe(r.target), added: r.addedNodes.length, removed: r.removedNodes.length })) });
+  }).observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
+}
+
+export function snapshot652({ host, field }) {
+  const root = document.querySelector(host), editor = document.querySelector(field);
+  const describe = e => e && ({ tag: e.tagName, id: e.id, class: e.className?.baseVal ?? e.className,
+    name: e.getAttribute('aria-label'), inputmode: e.getAttribute('inputmode'), connected: e.isConnected });
+  const rulesFor = element => {
+    const rules = [];
+    const walk = (list, conditions = []) => {
+      for (const rule of list) {
+        const next = rule.media ? [...conditions, { media: rule.conditionText, matches: matchMedia(rule.conditionText).matches }] : conditions;
+        if (rule.cssRules) walk(rule.cssRules, next);
+        else if (rule.selectorText && element.matches(rule.selectorText)) rules.push({ selector: rule.selectorText, css: rule.style.cssText, conditions: next });
+      }
+    };
+    for (const sheet of document.styleSheets) walk(sheet.cssRules);
+    return rules;
+  };
+  return { time: performance.now(), stage: 'snapshot', active: describe(document.activeElement), editor: describe(editor),
+    editorFocused: Boolean(editor && document.activeElement === editor),
+    media: Object.fromEntries(['(pointer:coarse)', '(pointer:fine)', '(any-pointer:coarse)', '(any-pointer:fine)', '(hover:hover)', '(hover:none)', '(max-width:760px)'].map(q => [q, matchMedia(q).matches])),
+    viewport: { innerWidth, innerHeight, clientWidth: document.documentElement.clientWidth, devicePixelRatio,
+      visual: visualViewport && { width: visualViewport.width, height: visualViewport.height, scale: visualViewport.scale },
+      maxTouchPoints: navigator.maxTouchPoints, rootFont: getComputedStyle(document.documentElement).fontSize },
+    controls: [...(root?.querySelectorAll('.deck-bar button,.deck-fold,.deck-bubble') ?? [])].filter(e => e.getClientRects().length).map(e => {
+      const r = e.getBoundingClientRect(), style = getComputedStyle(e);
+      return { ...describe(e), box: { x: r.x, y: r.y, width: r.width, height: r.height },
+        computed: Object.fromEntries(['width', 'height', 'min-width', 'min-height', 'font-size', 'padding', 'box-sizing'].map(k => [k, style.getPropertyValue(k)])), rules: rulesFor(e) };
+    }), trace: window.item652Trace && { timeOrigin: window.item652Trace.timeOrigin,
+      events: window.item652Trace.events, renders: window.item652Trace.renders, markers: window.item652Trace.markers } };
+}
+
+// Both captures are attempted immediately, without picture()'s animation wait.
+// Secondary capture errors stay visible and never replace the original failure.
+export async function failure652(p, prefix, selectors, error, requests, diagnosticSteps = []) {
+  const captures = await Promise.allSettled([
+    p.evaluate(snapshot652, selectors), p.screenshot({ path: prefix + '-failure.png' }),
+  ]);
+  const result = { stage: p.item652Stage, error: { name: error.name, message: error.message, stack: error.stack,
+    cause: error.cause && { name: error.cause.name, message: error.cause.message, stack: error.cause.stack } }, requests, diagnosticSteps,
+    diagnostics: captures[0].status === 'fulfilled' ? captures[0].value : null,
+    captureErrors: captures.flatMap((c, i) => c.status === 'rejected' ? [{ capture: i === 0 ? 'snapshot' : 'screenshot', error: c.reason.stack ?? String(c.reason) }] : []) };
+  await writeFile(prefix + '-failure.json', JSON.stringify(result, null, 2));
+}
+
+export async function cardEditor652({ check, page, press, picture, control, facts, engine, evidence, root }) {
+  const until = wait652;
   let serial = 0;
   const source = Object.fromEntries(await Promise.all(INPUTS.map(async f => [f, sha(await readFile(path.join(root, f)))])));
   const cssPath = path.join(root, 'web/aim.css'), css = await readFile(cssPath, 'utf8');
@@ -32,6 +115,8 @@ export async function cardEditor652({ check, page, until, press, picture, contro
     assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Card editor', body: state === 'empty' ? '' : BODY })).status, 'committed');
     const host = surface === 'sheet' ? '#new-message-sheet .notebook-sheet-page:not([hidden])' : '.deck-page';
     const field = `${host} .deck-editor`, status = surface === 'sheet' ? '#new-message-sheet .deck-status' : `${host} .deck-status`;
+    const { stem, prefix } = scenarioFiles652(evidence, engine, shape, scheme, surface, state, suffix);
+    const selectors = { host, field }, requests = [], diagnosticSteps = [];
     let fail = state.startsWith('refused') ? 'FORBIDDEN' : state === 'save error' || state.startsWith('conflict') ? 'NETWORK' : state === 'authority refusal' ? 'AUTHORITY_CHANGED' : null;
     let release, busyRequest, entered;
     const busyEntered = new Promise(done => { entered = done; });
@@ -39,6 +124,16 @@ export async function cardEditor652({ check, page, until, press, picture, contro
     let opened;
     const openingRead = new Promise(done => { opened = done; });
     const prepare = async p => {
+      await p.addInitScript(trace652, selectors);
+      const observed = request => {
+        if (!request.url().endsWith('/api/command') && !request.url().endsWith('/api/view')) return null;
+        const q = request.postDataJSON();
+        return q?.target?.item_id === id || q?.args?.item_id === id ? q : null;
+      };
+      for (const event of ['request', 'requestfinished', 'requestfailed']) p.on(event, request => {
+        const q = observed(request);
+        if (q) requests.push({ event, time: Date.now(), kind: q.kind ?? q.name, failure: request.failure() });
+      });
       if (state === 'device error') await p.addInitScript(() => {
         const put = IDBObjectStore.prototype.put;
         IDBObjectStore.prototype.put = function(value, ...rest) {
@@ -81,7 +176,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
       if (state === 'read error') {
         await until(p, () => document.body.textContent.includes('Page read unavailable'), 'read error is visible');
         assert.equal(await p.locator(field).count(), 0, 'a failed read never offers a blank editor to overwrite the page');
-        await picture(p, `item-652-${surface}-${state}`);
+        await picture(p, stem);
         return;
       }
       await until(p, h => Boolean(document.querySelector(h)?.querySelector('.deck-card,.deck-empty')), 'cards or empty page', host);
@@ -92,7 +187,23 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         assert.equal(await p.locator(field).count(), 0, 'read-only cards never open for writing');
         assert.equal(attempts.length, 0, 'read-only makes no save');
       } else if (state !== 'normal') {
-        await press(p, `${host} .deck-bar button:${state === 'empty' ? 'nth-of-type(2)' : 'first-of-type'}`);
+        const target = `${host} .deck-bar button:${state === 'empty' ? 'nth-of-type(2)' : 'first-of-type'}`;
+        // Observe the actual onclick installed by DeckPage. A delivered DOM
+        // click and an entered/returned handler are separate facts.
+        await p.evaluate(selector => {
+          const button = document.querySelector(selector), handler = button.onclick;
+          if (typeof handler !== 'function') throw Error('The native card control has no product handler');
+          button.onclick = function(event) {
+            window.item652Trace.mark('handler-enter', { trusted: event.isTrusted, label: this.textContent });
+            try { return handler.call(this, event); }
+            finally { window.item652Trace.mark('handler-return', { label: this.textContent }); }
+          };
+          window.item652Trace.mark('before-native-press');
+        }, target);
+        diagnosticSteps.push({ stage: 'before-native-press', diagnostics: await p.evaluate(snapshot652, selectors) });
+        p.item652Stage = 'native card writing press';
+        await press(p, target);
+        await p.evaluate(() => window.item652Trace.mark('native-press-returned'));
         await until(p, f => document.activeElement === document.querySelector(f), 'the native press focuses card writing', field);
         if (state !== 'empty') {
           await p.keyboard.press('ControlOrMeta+A');
@@ -110,7 +221,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
           await until(p, h => !document.querySelector(h).querySelector('.notebook-conflict').hidden, 'same-card conflict keeps both versions', host);
         }
       }
-      await picture(p, `item-652-${surface}-${state}${suffix}`);
+      await picture(p, stem);
       const servedCss = sha(await (await p.request.get(facts.origin + '/aim.css')).body());
       assert.equal(servedCss, sha(await readFile(cssPath)), 'the fixture serves the declared current CSS source, including a source mutant');
       const geometry = await p.evaluate(([h, f, st]) => {
@@ -119,9 +230,12 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         const box = document.querySelector(f), style = box && getComputedStyle(box);
         const controls = [...document.querySelector(h).querySelectorAll('.deck-bar button,.deck-fold,.deck-bubble'), ...document.querySelector(st).querySelectorAll('button')].filter(e => e.getClientRects().length);
         return { display: getComputedStyle(list).display, rows: rows.map(rect), sideways: document.documentElement.scrollWidth - innerWidth,
+          media: Object.fromEntries(['(pointer:coarse)', '(pointer:fine)', '(any-pointer:coarse)', '(hover:none)', '(max-width:760px)'].map(q => [q, matchMedia(q).matches])),
+          viewport: { width: innerWidth, height: innerHeight, maxTouchPoints: navigator.maxTouchPoints },
           box: box && { ...rect(box), border: parseFloat(style.borderTopWidth), font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight), words: box.value },
           controls: controls.map(e => ({ ...rect(e), name: e.getAttribute('aria-label') || e.textContent.trim(), title: e.title, glyph: e.matches('.deck-fold,.deck-bubble') })) };
       }, [host, field, status]);
+      diagnosticSteps.push({ stage: 'geometry', diagnostics: await p.evaluate(snapshot652, selectors) });
       const errors = [];
       const require = (ok, message) => { if (!ok) errors.push(message); };
       require(geometry.display === 'grid', 'the laptop list is the default, never a phone carousel');
@@ -140,7 +254,7 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         require(Boolean(c.name), 'every touch control has an accessible name');
         if (c.glyph) require(Boolean(c.title), `${c.name} has a tooltip`);
       }
-      await writeFile(path.join(evidence, engine, `${shape}-${scheme}-item-652-${surface}-${state}-geometry.json`), JSON.stringify({ geometry, errors, servedCss, GEOMETRY_PX, FONT_PX, TOUCH_PX }, null, 2));
+      await writeFile(prefix + '-geometry.json', JSON.stringify({ geometry, errors, servedCss, GEOMETRY_PX, FONT_PX, TOUCH_PX }, null, 2));
       // Check recovery even on the red baseline, before reporting its layout failure.
       if (state === 'busy') { assert.ok(release && busyRequest, 'a real save is held'); release(); await save(EXPECTED); }
       if (state.startsWith('refused') || state === 'save error') {
@@ -177,9 +291,24 @@ export async function cardEditor652({ check, page, until, press, picture, contro
         await until(p, f => !document.querySelector(f), 'Done leaves writing', field);
         assert.equal((await held(p, id)).body, EXPECTED, 'only the chosen card changes; child and following card stay exact');
       }
-      assert.deepEqual(p.errors, [], 'no page errors');
+      // Keep the geometry mutant's intended assertion before any new operation
+      // could fail for a secondary consequence of the broken layout.
       assert.deepEqual(errors, [], JSON.stringify({ geometry, GEOMETRY_PX, FONT_PX, TOUCH_PX }));
+      if (state === 'normal' || state === 'writing') {
+        const fold = `${host} .deck-card[data-index="0"] .deck-fold`;
+        await press(p, fold);
+        await until(p, h => document.querySelector(h)?.querySelector('.deck-card[data-index="1"]')?.hidden === true, 'native chevron folds the child', host);
+        await press(p, fold);
+        await until(p, h => document.querySelector(h)?.querySelector('.deck-card[data-index="1"]')?.hidden === false, 'native chevron restores the child', host);
+        assert.equal((await held(p, id)).body, state === 'writing' ? EXPECTED : BODY, 'native folding changes no saved words');
+      }
+      await writeFile(prefix + '-diagnostics.json', JSON.stringify({ requests, diagnosticSteps, diagnostics: await p.evaluate(snapshot652, selectors) }, null, 2));
+      assert.deepEqual(p.errors, [], 'no page errors');
       return geometry;
+    } catch (error) {
+      const [retained] = await Promise.allSettled([failure652(p, prefix, selectors, error, requests, diagnosticSteps)]);
+      if (retained.status === 'rejected') error.stack += `\nFailure evidence could not be retained: ${retained.reason.stack ?? retained.reason}`;
+      throw error;
     } finally { release?.(); await p.ctx.close(); }
   };
 
@@ -334,8 +463,8 @@ export async function cardEditor652({ check, page, until, press, picture, contro
       to: '.deck-cards{list-style:none;margin:0;padding:0;display:flex;gap:.45rem}.deck-card{flex:0 0 100%}', state: 'normal', caught: /laptop list/ },
     { name: 'separate editor', old: '.deck-editor{min-height:var(--kept,0px);padding:0;border:0;',
       to: '.deck-editor{min-height:var(--kept,0px);padding:0;border:3px solid var(--line);', state: 'writing', caught: /separate textarea border/ },
-    { name: 'small chevron', old: '@media(pointer:coarse){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}',
-      to: '@media(pointer:coarse){.deck-fold{width:1.75rem;height:1.75rem;min-height:1.75rem}', state: 'normal', caught: /44px touch target/ },
+    { name: 'small chevron', old: '@media(pointer:coarse),(max-width:760px){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}',
+      to: '@media(pointer:coarse),(max-width:760px){.deck-fold{width:1.75rem;height:1.75rem;min-height:1.75rem}', state: 'normal', caught: /44px touch target/ },
   ];
   for (const mutation of breaks) await check(`item 652 applied ${mutation.name} mutant and restored control`, async () => {
     assert.equal(css.split(mutation.old).length, 2, 'one source mutation site');

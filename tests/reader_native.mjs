@@ -2,6 +2,7 @@
 // This fixture proves UI interactions only; it has no Store or HTTP adapter.
 import assert from 'node:assert/strict';
 import { reachWith } from './compose-reach.mjs';
+import { quoteSelectionBlock } from './reader_quote_mutation.mjs';
 import { devtoolsControl, endRun } from './devtools_control.mjs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -44,7 +45,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/lines.mjs', 'web/api.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs', 'tests/devtools_control.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/lines.mjs', 'web/api.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs', 'tests/reader_quote_mutation.mjs', 'tests/devtools_control.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
@@ -520,7 +521,7 @@ try {
   for (const item of selectedCases) await runCase(item);
   if (['--mutations', '--review-gaps', '--anchor-control', '--finished'].includes(mode) && results.every(result => result.passed)) {
     // Quoting, from letting go of the selection to scrolling the field (web/reader.mjs).
-    const quoteBlock = /    window\.getSelection\(\)\?\.removeAllRanges\(\);\n    this\.field\.focus\(\);[\s\S]*?    this\.field\.scrollTop = this\.field\.scrollHeight;\n/.exec(await readFile(path.join(root, 'web/reader.mjs'), 'utf8'))?.[0] ?? '';
+    const quoteBlock = quoteSelectionBlock(await readFile(path.join(root, 'web/reader.mjs'), 'utf8'));
     const definitions = mode === '--mutations' ? [
       { name: 'empty-gallery-falls-through-to-send', file: 'web/editor.mjs', index: 3,
         from: "if (event.metaKey && event.shiftKey && writingEmpty && ['reader', 'reply'].includes(context)) return 'return-gallery';",
