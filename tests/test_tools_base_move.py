@@ -785,7 +785,7 @@ class ControllerProvenance(unittest.TestCase):
                 'digest': 'sha256:' + digest(data), 'workflow_run': {'id': 202, 'head_sha': self.controller_head}}
 
     def consume(self):
-        return base_move.controller_binding(self.source, self.judgment, self.provider, REPOSITORY, self.head)
+        return base_move.controller_binding(self.source, self.judgment, self.provider, REPOSITORY, self.head, None)
 
     def refuses(self, why):
         with self.assertRaisesRegex(base_move.Refused, why):

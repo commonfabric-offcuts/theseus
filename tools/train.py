@@ -211,7 +211,8 @@ def parents_of(git, commit):
 def pull_merge(git, github, repository, number, merge, release_branch):
     """Refused unless merge is pull request number's own merge commit: a merge (two parents) whose second parent is
     the pull request's head, which GitHub's pulls/N names as merged into release_branch with merge as its
-    merge_commit_sha. A commit that only says so in its message, or the branch's tip copied in, is not."""
+    merge_commit_sha. A commit that only says so in its message, or the branch's tip copied in, is not.
+    Return the verified PR answer for the explicit base-move provenance chain."""
     parents = parents_of(git, merge)
     if len(parents) != 2:
         raise Refused("%s has %d parent%s, so it is not PR #%d's merge commit, which merges the pull request's head into "
@@ -231,7 +232,7 @@ def pull_merge(git, github, repository, number, merge, release_branch):
         raise Refused("PR #%d was merged into %r, not %s" % (number, base, release_branch))
     if head != parents[1]:
         raise Refused("PR #%d's head is %r, not %s, the merge commit's second parent" % (number, head, parents[1]))
-    return parents
+    return pull
 
 
 def judged(github, repository, judgment):
@@ -276,7 +277,7 @@ def judge(path, sha, live, release_branch, repository, git, github):
     tree = tree_of(git, merge)
     if tree != train["merged_tree"]:
         raise Refused("the merge commit's tree is %s, not the merged_tree %s" % (tree, train["merged_tree"]))
-    pull_merge(git, github, repository, train["pr"], merge, release_branch)
+    merged_pull = pull_merge(git, github, repository, train["pr"], merge, release_branch)
     hosted = None
     if train["hosted_run"] is not None:
         hosted = listed(github, repository, "run", train["hosted_run"])
@@ -305,7 +306,8 @@ def judge(path, sha, live, release_branch, repository, git, github):
             judgment = {"head": next(iter(heads)), "producer_runs": runs, "verdict_checks": checks,
                         "audit": train["judgment"]["audit"]}
             try:
-                moved = base_move.validate(train["base_move"], judgment, git, github, repository, live, merge, train["items"])
+                moved = base_move.validate(train["base_move"], judgment, git, github, repository, live, merge, train["items"],
+                                           merged_pull, train["pr"], release_branch)
             except (base_move.Refused, Unreadable) as error:
                 raise Refused(str(error))
         else:

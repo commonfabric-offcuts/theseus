@@ -153,7 +153,7 @@ def controller_archive(ref, github, repository, controller, name):
         return {name: archive.read(name) for name in names}
 
 
-def controller_binding(source, judgment, github, repository, head):
+def controller_binding(source, judgment, github, repository, head, merged_context):
     data = fields(source['controller'], 'run attempt current_base verdict_artifact published_artifact')
     current = base_fact(data['current_base'])
     original = base_fact(source.get('base_at_run'))
@@ -195,10 +195,25 @@ def controller_binding(source, judgment, github, repository, head):
     listed = judgment['verdict_checks'][0]
     raw = github.get('repos/%s/check-runs/%d' % (repository, listed['id']))
     prs = raw.get('pull_requests')
-    require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == pr['number']
-            and prs[0].get('head', {}).get('sha') == head
-            and prs[0].get('base', {}).get('ref') == current['ref']
-            and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
+    if prs == []:
+        # Context comes only from the reviewed two-edge Git chain in validate,
+        # never from a manifest override or a missing/nonempty association.
+        require(isinstance(merged_context, dict), 'empty check association needs merged train context')
+        ctx = merged_context
+        pull = ctx['pull']
+        require(pull.get('number') == ctx['number'] == pr['number']
+                and pull.get('merged') is True and pull.get('merge_commit_sha') == ctx['merge']
+                and pull.get('head', {}).get('sha') == ctx['assembly']
+                and pull.get('base', {}).get('sha') == ctx['live']
+                and pull.get('base', {}).get('ref') == current['ref'] == ctx['release_branch']
+                and original['sha'] == ctx['original_base']
+                and current['sha'] in (ctx['original_base'], ctx['live'])
+                and head == ctx['source_head'], 'empty check association merged PR binding differs')
+    else:
+        require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == pr['number']
+                and prs[0].get('head', {}).get('sha') == head
+                and prs[0].get('base', {}).get('ref') == current['ref']
+                and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
     external = '%d-%d' % (source['run'], source['attempt'])
     # Plain early refusals require equal complete base facts and the exact
     # publication pair. Branch-named receipts also occur without a base move.
@@ -350,7 +365,7 @@ def audit_reds(source, judgment, head, reds):
     require(seen == set(actual), 'source audit missing original red')
 
 
-def full_source(source, judgment, git, github, repository, head):
+def full_source(source, judgment, git, github, repository, head, merged_context):
     fields(source, 'run attempt tested_merge base_at_run files inventory audit controller')
     number(source['run']); number(source['attempt'])
     base_fact(source['base_at_run'])
@@ -368,7 +383,7 @@ def full_source(source, judgment, git, github, repository, head):
             and run.get('run_attempt') == source['attempt'] and run.get('path') == '.github/workflows/checks.yml'
             and run.get('event') == 'pull_request' and run.get('name') == 'Checks'
             and run.get('conclusion') in ('success', 'failure'), 'source run identity differs')
-    controller = controller_binding(source, judgment, github, repository, head)
+    controller = controller_binding(source, judgment, github, repository, head, merged_context)
     inventory = document(source['inventory'])
     require(isinstance(inventory, dict) and set(inventory) == set(release_check.REQUIRED), 'incomplete source inventory')
     for name, rows in inventory.items():
@@ -534,7 +549,7 @@ def own_receipt(receipt, git, github, repository, assembly, assembly_tree, expec
     return legacy_own_receipt(receipt, git, assembly, assembly_tree, expected), None
 
 
-def validate(ref, judgment, git, github, repository, live, merge, items):
+def validate(ref, judgment, git, github, repository, live, merge, items, merged_pull, pr_number, release_branch):
     """The verified record, including all artifact references and review, or refusal."""
     try:
         data = fields(document(ref), 'version source_head original_base live_base live_release assembly_head assembly_tree source receipts review')
@@ -580,7 +595,10 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
                 require(result.get(path) == expected, 'scope widening or approved/base changes lost: ' + path)
         require(isinstance(review['conflict_paths'], list) and Counter(review['conflict_paths']) == Counter(overlap),
                 'resolution path scope differs')
-        observed = full_source(data['source'], judgment, git, github, repository, head)
+        merged_context = {'pull': merged_pull, 'number': pr_number, 'release_branch': release_branch,
+                          'merge': merge, 'assembly': assembly, 'live': live,
+                          'original_base': old, 'source_head': head}
+        observed = full_source(data['source'], judgment, git, github, repository, head, merged_context)
         obligations = review['obligations']
         require(isinstance(obligations, list) and bool(obligations), 'missing own-case obligations')
         expected = []
