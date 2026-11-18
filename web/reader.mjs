@@ -73,6 +73,8 @@ export class Reader {
   constructor(callbacks) {
     this.callbacks = callbacks;
     this.dialog = document.querySelector('#reader');
+    this.home = { parent: this.dialog.parentNode, next: this.dialog.nextSibling };
+    this.card = null;
     this.field = document.querySelector('#writing-body');
     this.sourceBody = document.querySelector('#source-body');
     this.mac = onMac();
@@ -261,7 +263,16 @@ export class Reader {
       if (!this.returnQuotes()) this.disarm();
     });
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
-    this.dialog.addEventListener('keydown', event => this.key(event));
+    this.dialog.addEventListener('keydown', event => {
+      if (this.card && event.target.closest('dialog') === this.dialog && event.key === 'Escape' && !event.isComposing) {
+        // A nonmodal inline reply gets no native dialog cancel event. Let
+        // ComposeBar put away its panel first, as in the phone composer.
+        this.compose.heard(event);
+        if (!event.defaultPrevented) { event.preventDefault(); this.escape(); }
+        return;
+      }
+      this.key(event);
+    });
   }
 
   async paste(event) {
@@ -311,6 +322,7 @@ export class Reader {
   }
 
   show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false, presentation, mode = 'reply' } = {}) {
+    const page = { left: window.scrollX, top: window.scrollY };
     ++this.viewToken;
     this.presentation = presentation;
     // Moving on to another message from one whose reply holds writing says it
@@ -343,6 +355,11 @@ export class Reader {
     this.opener = next;
     this.disarm();
     this.topics = topics;
+    // Only a confirmed source can dock in its own visible card. This is the
+    // same Reader and DOM, not another editor or a copied phone bar.
+    const card = presentation?.replyCard;
+    this.placeReply(!presentation?.sourceUnavailable && source.source_ref.kind === 'message' &&
+      card?.dataset.id === source.source_ref.id && card.isConnected && card.getClientRects().length ? card : null);
     // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
     // opened again, starts at the cover's one line (paintCover).
     if (!same) this.$('reader-cover').open = false;
@@ -363,13 +380,48 @@ export class Reader {
     this.drawAttachments(this.$('source-attachments'), source.attachments);
     this.drawEditor();
     this.paintPending();
-    if (!this.dialog.open) this.dialog.showModal();
+    if (!this.dialog.open) { if (this.card) this.dialog.show(); else this.dialog.showModal(); }
     // A message opens to be read: the reply is its one line until written in.
     if (!same) { this.kept = null; this.held = null; this.compose?.fold(); }
     if (left) this.notice(KEPT);
     this.applyLayout();
     this.moveTo(this.positions.get(this.placeKey()) ?? 0);
-    if (!same) this.sourceBody.focus({ preventScroll: true });
+    if (!same && !this.card) this.sourceBody.focus({ preventScroll: true });
+    if (this.card) window.scrollTo({ ...page, behavior: 'instant' });
+  }
+
+  // Move the one reply surface without changing its sessions, writing,
+  // uploads or destination. A nonmodal dialog keeps the existing event and
+  // control ownership while its writing sits in the card's face.
+  placeReply(card) {
+    if (card === this.card) return;
+    if (this.naming?.sheet.open) this.naming.sheet.close();
+    if (this.dialog.open) this.dialog.close();
+    if (this.card) {
+      this.card.removeAttribute('data-card-reply'); this.card.setAttribute('role', 'button');
+      this.dialog.removeAttribute('data-card-reply'); this.dialog.removeAttribute('role');
+      this.home.parent.insertBefore(this.dialog, this.home.next);
+    }
+    this.card = card;
+    if (card) {
+      card.dataset.cardReply = ''; card.setAttribute('role', 'group');
+      this.dialog.dataset.cardReply = ''; this.dialog.setAttribute('role', 'region');
+      card.append(this.dialog);
+    }
+  }
+
+  // A feed/access change must never hide the active writing with its card.
+  // Keep the same presentation in the full Reader if the card ceases to show.
+  keepReplyVisible() {
+    if (!this.card || this.card.isConnected && this.dialog.getClientRects().length) return;
+    this.expandReply();
+  }
+
+  expandReply() {
+    if (!this.card) return;
+    this.presentation.replyCard = null;
+    this.placeReply(null);
+    this.dialog.showModal(); this.applyLayout(); this.field.focus({ preventScroll: true });
   }
 
   // What changed in the Notebook page shown since the revision the reader
@@ -380,7 +432,7 @@ export class Reader {
     this.$('source-changes').open = true; this.$('source-changes').hidden = false;
   }
 
-  get layoutShape() { return this.narrow.matches ? 'stacked' : this.layout.mode; }
+  get layoutShape() { return this.card || this.narrow.matches ? 'stacked' : this.layout.mode; }
   // Wide or Stacked, from the ⋯ menu; a phone is always stacked, so it has no choice.
   get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layout.mode === 'wide' ? 'Stacked layout' : 'Wide layout'; }
   toggleLayout() {
@@ -506,6 +558,7 @@ export class Reader {
   get chosen() {
     const p = this.presentation;
     if (!this.source || p?.sourceUnavailable || p?.availabilityUnconfirmed) return false;
+    if (this.card) return Boolean(this.callbacks.cardSelection?.(this.card));
     const selection = window.getSelection();
     const selected = selection?.rangeCount && !selection.isCollapsed && this.sourceBody.contains(selection.getRangeAt(0).commonAncestorContainer);
     return Boolean(selected || this.hover?.pressed);
@@ -516,7 +569,9 @@ export class Reader {
   // Takes what a press on an offer of Quote (by: its id) would quote, before
   // the press moves the focus or lets the selection go; nothing when nothing is chosen.
   hold(by) {
-    this.held = this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
+    const cardWords = this.card && this.chosen ? this.callbacks.cardSelection?.(this.card) : null;
+    this.held = cardWords ? { excerpt: cardWords.text, revision: cardWords.revision, by }
+      : this.chosen ? { excerpt: this.selectedPassage(), place: this.quotedPlace(), by } : null;
     this.paintQuote();
   }
   paintQuote() {
@@ -603,6 +658,7 @@ export class Reader {
   // The source's own words a selection covers, never what the page shows for
   // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
+    if (this.card) return this.callbacks.cardSelection?.(this.card)?.text ?? '';
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
@@ -619,6 +675,7 @@ export class Reader {
   quote(given = '', revision = undefined) {
     if (this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed) { this.notice('Source availability needs to be checked before quoting.'); return; }
     const held = this.held; this.held = null;
+    const cardWords = this.card ? this.callbacks.cardSelection?.(this.card) : null;
     const excerpt = given || this.selectedPassage() || held?.excerpt;
     if (!excerpt || !this.sessions) return;
     const place = this.quotedPlace() ?? held?.place;
@@ -627,7 +684,7 @@ export class Reader {
     // after, and its own writing does not take that away.
     this.notice('');
     this.quoting = true;
-    try { this.quoteInto(excerpt, place, given ? revision : undefined); } finally { this.quoting = false; }
+    try { this.quoteInto(excerpt, place, given ? revision : cardWords?.revision ?? held?.revision); } finally { this.quoting = false; }
   }
 
   quoteInto(excerpt, place, revision = undefined) {
@@ -636,7 +693,7 @@ export class Reader {
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
-    if (!this.narrow.matches && this.layout.mode !== 'wide') {
+    if (!this.card && !this.narrow.matches && this.layout.mode !== 'wide') {
       this.layout.setMode('wide'); this.applyLayout();
     }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
@@ -718,7 +775,7 @@ export class Reader {
     const at = this.source?.source_ref;
     if (!this.sessions || at?.kind !== ref.kind || at.id !== ref.id) return false;
     if (this.mode === 'note') this.switchMode('reply');
-    this.field.focus();
+    this.field.focus({ preventScroll: Boolean(this.card) });
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     return true;
   }
@@ -1046,6 +1103,7 @@ export class Reader {
     if (pane) pane.className = (source && this.callbacks.paneClass?.(source)) || 'reading-pane';
   }
   hideUnavailableSource() {
+    this.expandReply();
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
     this.$('reader-title').textContent = 'Source unavailable';
     this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
@@ -1186,6 +1244,7 @@ export class Reader {
     // The naming sheet is a modal of its own: it goes with the Reader.
     if (this.naming?.sheet.open) this.naming.sheet.close();
     this.dialog.close();
+    this.placeReply(null);
     this.disarm();
     // An opener the open itself hid (Read it, once the last mark clears)
     // hands focus to the page rather than dropping it to the body.
@@ -1224,6 +1283,7 @@ export class Reader {
     if (event.isComposing || event.keyCode === 229) return;
     const target = event.target;
     if (event.key === 'Tab') {
+      if (this.card) return; // An inline reply is part of the page's tab order.
       // WebKit can leave native Tab on an expanded cover's summary even
       // though its controls are visible and the event was not cancelled.
       // Keep this boundary in the Reader's keyboard order in either engine;

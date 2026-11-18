@@ -112,6 +112,7 @@ test('capture owns one byte row; typing and caret persistence carry no Blob byte
   assert.ok(f.puts.filter(p => p.bytes).every(p => p.kind === 'upload-bytes-v1'));
   assert.equal([...f.rows.values()].filter(r => r.kind === 'upload-bytes-v1').length, 1);
 });
+
 test('every-put instrument rejects bytes hidden in metadata, independent of sibling count', () => {
   const row = { snapshot: { nested: { memory: new Blob(['wrong place']) } } };
   assert.equal(countBlobs(row), 11);
