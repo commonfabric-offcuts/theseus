@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicPages, TopicNavigation, topicPosition, routeHref, parseRoute } from '../web/topic-navigation.mjs';
+import { TopicPages, TopicNavigation, topicPosition, routeHref, parseRoute, topicTarget } from '../web/topic-navigation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { AttemptError, unreached } from '../web/api.mjs';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-// Earlier letters were active later, so a list in letter order is latest first.
-const topic = (id, title = id) => ({ id, title, workspace_id: 'w1', activity_ms: 1000 - id.charCodeAt(0) });
+// Earlier letters have newer stable positions, so a list in letter order is latest first.
+const topic = (id, title = id) => ({ id, title, workspace_id: 'w1', list_position: 1000 - id.charCodeAt(0) });
 const answer = (items, next = null) => ({ instance_id: 'i1', items, next_cursor: next === null || next.includes(':') ? next : topicPosition(topic(next)) });
 
 test('topic pages preserve current identity and allow repeated titles without duplicate links', () => {
   const pages = new TopicPages('i1', 'w1', topic('z', 'Same title'));
   pages.accept(answer([topic('a', 'Same title'), topic('b')], 'b'), null);
-  assert.deepEqual(pages.items.map(x => x.id), ['a', 'b', 'z'], 'the open topic is listed in its place by activity');
+  assert.deepEqual(pages.items.map(x => x.id), ['a', 'b', 'z'], 'the open topic is listed in its place by stable position');
   pages.accept(answer([topic('z', 'Same title')]), pages.next);
   assert.deepEqual(pages.items.map(x => x.id), ['a', 'b', 'z']); assert.equal(pages.next, null);
   pages.current = topic('z', 'Renamed'); assert.equal(pages.items.at(-1).title, 'Renamed');
@@ -22,8 +22,8 @@ test('topic pages reject foreign identity, repeated cursor and malformed rows wi
   pages.accept(answer([topic('a')], 'a'), null); const before = structuredClone(pages.items), at = pages.next;
   for (const invalid of [ { ...answer([topic('b')]), instance_id: 'other' }, answer([{ ...topic('b'), workspace_id: 'other' }]),
     answer([topic('b'), topic('b')]), answer([topic('b')], 'a'), answer([topic('b')], 'unrelated'), answer([{ ...topic('b'), title: null }]),
-    // Out of order, before the cursor, without an activity time, or belonging to another list.
-    answer([topic('c'), topic('b')]), answer([topic('a')]), answer([{ ...topic('b'), activity_ms: undefined }]), answer([{ ...topic('b'), activity_ms: -1 }]),
+    // Out of order, before the cursor, without an stable position, or belonging to another list.
+    answer([topic('c'), topic('b')]), answer([topic('a')]), answer([{ ...topic('b'), list_position: undefined }]), answer([{ ...topic('b'), list_position: -1 }]),
     answer([{ ...topic('b'), state: 'done' }]), answer([{ ...topic('b'), archived: true }]),
     { ...answer([topic('b')]), groups: { done: -1, archived: 0 } }, { ...answer([topic('b')]), groups: {} } ]) {
     assert.throws(() => pages.accept(invalid, at), JSON.stringify(invalid)); assert.deepEqual(pages.items, before);
@@ -31,8 +31,8 @@ test('topic pages reject foreign identity, repeated cursor and malformed rows wi
   assert.equal(pages.accept(answer([topic('c')]), 'stale'), false);
   // The same time orders by id, larger first, as the server does.
   const tied = new TopicPages('i1', 'w1', null);
-  tied.accept(answer([{ ...topic('b'), activity_ms: 5 }, { ...topic('a'), activity_ms: 5 }]));
-  assert.throws(() => tied.accept(answer([{ ...topic('a'), activity_ms: 5 }, { ...topic('b'), activity_ms: 5 }])));
+  tied.accept(answer([{ ...topic('b'), list_position: 5 }, { ...topic('a'), list_position: 5 }]));
+  assert.throws(() => tied.accept(answer([{ ...topic('a'), list_position: 5 }, { ...topic('b'), list_position: 5 }])));
   // Each list takes only its own topics, and the archived one the done ones after the rest.
   const archived = new TopicPages('i1', 'w1', null, 'archived');
   archived.accept(answer([{ ...topic('b'), archived: true }, { ...topic('a'), archived: true, state: 'done' }]));
@@ -263,6 +263,18 @@ test('a new Notebook page opens its empty card editor through an exact cards rou
   assert.throws(() => parseRoute(new URL('https://example.test/?cards=n-first&write=anything')), /incomplete|ambiguous/);
 });
 
+// Item 613: a topic's unread count opens the topic at its oldest unread message: its own address, alone.
+test('a topic opened at its oldest unread message has an address of its own, and it names no message or page beside it', () => {
+  const route = { kind: 'topic', id: 't-kitchen', at: 'unread' };
+  assert.equal(routeHref(route), '?topic=t-kitchen&at=unread');
+  assert.deepEqual(parseRoute(new URL('https://example.test/?topic=t-kitchen&at=unread')), route);
+  assert.deepEqual(topicTarget('t-kitchen', null, 'unread'), route);
+  assert.deepEqual(topicTarget('t-kitchen'), { kind: 'topic', id: 't-kitchen' }, 'a topic named alone opens as it always has');
+  for (const address of ['?topic=t-kitchen&at=newest', '?topic=t-kitchen&at=unread&message=m-1', '?topic=t-kitchen&at=unread&page=n-1'])
+    assert.throws(() => parseRoute(new URL('https://example.test/' + address)), /incomplete|ambiguous/, address);
+  assert.throws(() => routeHref({ kind: 'topic', id: 't-kitchen', at: 'unread', message: 'm-1' }), /incomplete|ambiguous/);
+});
+
 test('Notebook writing links name Text or Cards without changing the page identity',()=>{
   for(const view of ['text','cards']){
     const route={kind:'cards',id:'n-notes',view};
@@ -287,4 +299,18 @@ test('a draft page is marked in a listing and a page not marked is not', async (
     assert.match(DRAFT_TIP, /agents do not read this page until the mark is cleared/);
     assert.deepEqual(plain.children, []);
   } finally { globalThis.document = previous; }
+});
+
+
+test('item 641 the current topic and a page cursor keep their positions when activity changes', () => {
+  const a = { ...topic('a'), list_position: 10, activity_ms: 1 };
+  const b = { ...topic('b'), list_position: 20, activity_ms: 2 };
+  const pages = new TopicPages('i1', 'w1', a);
+  pages.accept({ instance_id: 'i1', items: [b], next_cursor: topicPosition(b) });
+  const cursor = pages.next;
+  pages.current = { ...a, activity_ms: 1000 };
+  assert.deepEqual(pages.items.map(item => item.id), ['b', 'a'], 'the open topic never jumps on a live topic read');
+  assert.equal(topicPosition(pages.current), topicPosition(a), 'activity cannot move a cursor');
+  pages.accept({ instance_id: 'i1', items: [{ ...a, activity_ms: 1000 }], next_cursor: null }, cursor);
+  assert.deepEqual(pages.items.map(item => item.id), ['b', 'a'], 'More lists the same topics once');
 });

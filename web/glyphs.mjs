@@ -9,7 +9,17 @@
 // of it: Edit, Rename and Edit page take the pencil of the topic's New
 // message, and Move below More the tray of the Reader's archive button. The
 // rest are drawn here once, on the 24-unit grid the pencil is drawn on.
+//
+// A dossier's title bar and a message's bar (item 473, docs/reply-stacks.md,
+// "The title bar and the message bar") show glyphs in place of words, the
+// button's name its tooltip: Reply, Show full message, Fold, Unfold and Bring
+// back above More take the drawings below, and Move below More the one of
+// BAR, which no menu item shows. On a phone the title bar's ⋯ offers its
+// Reply and Move below More as items, and they take a menu's glyphs: Reply the
+// title bar's own Reply, Move below More the Reader's tray.
 const DRAWN = {
+  // Reply, and Reply to the first message: an arrow turning back to the left.
+  reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   // Bring back above More: a tray, an arrow coming up out of it.
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },
   // Show full message: two arrows pointing out, up and down.
@@ -58,6 +68,16 @@ const DRAWN = {
   moveto: { d: 'M3 12h11 M10 8l4 4-4 4 M14 4h6v16h-6' },
   // Drop…: a circle with a cross.
   drop: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9 9l6 6 M15 9l-6 6' },
+  // A dossier's cover (item 624, its approved design page): a payload proposed, a box; done, a tick; what waits on
+  // the outcome's owner, a question in a circle.
+  payload: { d: 'M4 8l8-4 8 4v8l-8 4-8-4z M4 8l8 4 8-4 M12 12v8' },
+  kept: { d: 'M5 12.5l4.5 4.5L19 7.5' },
+  waits: { d: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5 M12 16.5v.01' },
+};
+// The bars' own glyphs (item 473), drawn as DRAWN's are, outside GLYPH_NAMES, which names a menu's.
+const BAR = {
+  // Move below More: a tray with an arrow going down into it.
+  aside: { d: 'M4 14v4.5h16V14 M12 4v10 M8 10l4 4 4-4' },
 };
 // Glyphs another control of the page draws (index.html), by that control's id: its own drawing, cloned.
 const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };
@@ -65,6 +85,7 @@ const BORROWED = { pencil: 'new-message', archive: 'reader-aside' };
 // stylesheet from data-text (aim.css), so the item's words, its textContent, stay its words alone.
 const TYPED = { quote: '❝' };
 
+// The glyphs a menu's items show.
 export const GLYPH_NAMES = Object.freeze([...Object.keys(DRAWN), ...Object.keys(BORROWED), ...Object.keys(TYPED)]);
 
 // The glyph called name, as an element of doc, size pixels square. An unknown
@@ -72,8 +93,8 @@ export const GLYPH_NAMES = Object.freeze([...Object.keys(DRAWN), ...Object.keys(
 export function glyph(name, doc = globalThis.document, size = 18) {
   const ns = 'http://www.w3.org/2000/svg';
   let node;
-  if (Object.hasOwn(DRAWN, name)) {
-    const { d, vb = '0 0 24 24', sw = '1.8', fill = false } = DRAWN[name];
+  if (Object.hasOwn(DRAWN, name) || Object.hasOwn(BAR, name)) {
+    const { d, vb = '0 0 24 24', sw = '1.8', fill = false } = Object.hasOwn(DRAWN, name) ? DRAWN[name] : BAR[name];
     node = doc.createElementNS(ns, 'svg');
     node.setAttribute('viewBox', vb);
     const path = doc.createElementNS(ns, 'path');
@@ -90,4 +111,10 @@ export function glyph(name, doc = globalThis.document, size = 18) {
   if (!Object.hasOwn(TYPED, name)) for (const [key, value] of Object.entries({ width: String(size), height: String(size), focusable: 'false' })) node.setAttribute(key, value);
   for (const [key, value] of Object.entries({ 'aria-hidden': 'true', class: 'glyph', 'data-glyph': name })) node.setAttribute(key, value);
   return node;
+}
+
+// Puts glyph name in button, unless it already shows it (the bars, item 473).
+export function showGlyph(button, name, doc = button.ownerDocument) {
+  if (button.firstElementChild?.dataset?.glyph === name && button.childNodes.length === 1) return;
+  button.replaceChildren(glyph(name, doc));
 }

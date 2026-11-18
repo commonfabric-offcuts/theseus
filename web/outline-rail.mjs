@@ -2,7 +2,8 @@
 // item 272; docs/rails.md): every outcome, folded but for the one being read,
 // so what is new anywhere shows at a glance. An outcome's row is its light,
 // its name and where it stands, and the whole row opens its Conversation and
-// its topics (Opened tidies every other away); folded, it carries
+// its topics (Opened tidies every other away). On a phone a folded outcome
+// first opens its topics without moving (item 654); folded, it carries
 // the count of everything new inside it; open, its own row counts its
 // Conversation and its Build topics (the right rail's), since each topic row
 // under it shows its own. The topic rows are today's
@@ -347,7 +348,9 @@ export class OutlineRail {
     topics.append(own);
     outcome = { id, item, li, row, name, title, standing, waiting, topics, own, newTopic, conversation: null, conversationRead: false, rail: null, adopted: null,
       parts: { host, more, retry, message, done, archived } };
-    // The name opens its Conversation. A click or a tap also folds its topics
+    // On a phone a collapsed outcome first opens its topics here (item 654),
+    // with no move and no drawer close; the next tap opens its Conversation.
+    // On a laptop the name opens its Conversation. A click also folds its topics
     // when they are open and opens them when folded (item 320), and that
     // choice holds through the move; Return, the keys' press, opens the
     // Conversation with its topics as before (⌘→ and ⌘← fold), and the outline
@@ -357,6 +360,17 @@ export class OutlineRail {
       if (!plainClick(event)) return;
       event.preventDefault();
       if (event.detail === 0) { this.opened.tidy(); this.paint(); this.open(this.nameTarget(outcome), outcome.item.title); return; }
+      if (this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
+        if (!this.isOpen(outcome.id)) {
+          // This link expanded in place: the drawer's bubbling link listener
+          // must not close it. The tree has already selected the pressed row.
+          event.stopPropagation();
+          this.setOpen(outcome, true);
+          return;
+        }
+        this.open(this.nameTarget(outcome), outcome.item.title);
+        return;
+      }
       const open = !this.isOpen(outcome.id);
       this.clickedExpansion = {id:outcome.id, open};
       this.setOpen(outcome, open);
@@ -536,7 +550,7 @@ export class OutlineRail {
       // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message) => this.open(topicTarget(topicId, message), topicTitle) });
+      read: args => this.read('workspace_topics', args, 'foreground'), open: (topicId, topicTitle, message, at) => this.open(topicTarget(topicId, message, at), topicTitle) });
     return outcome.rail;
   }
   // An outcome's topics, read again: the page's own list reads itself.

@@ -138,6 +138,19 @@ class FoldCase(StackCase):
         # A fold leaves the reader's star, and every other act, as it was.
         self.assertEqual((self.acts(message)["starred"], self.acts(message)["star_revision"]), (False, 0))
 
+    def test_an_act_names_the_newest_act_its_reader_had_heard_of_in_the_topic_before_it(self):
+        first, second = self.post(), self.post()
+        folded = self.committed(self.fold(first))
+        self.assertEqual(folded.get("acts_before"), 0, "the topic's first act follows none")
+        # Another reader's own act is theirs alone: this reader never hears of it.
+        self.committed(self.star(second, actor="agent-a"))
+        self.assertEqual(self.committed(self.fold(second)).get("acts_before"), folded["acts_version"])
+        # A short name is the topic's: this reader hears of it.
+        named = self.committed(self.name(second, "Plan"))
+        unfolded = self.committed(self.fold(first, on=False, revision=1))
+        self.assertEqual(unfolded.get("acts_before"), named["acts_version"])
+        self.assertNotIn("acts_before", self.committed(self.fold(first, on=False, revision=2)), "an act that records nothing names no act")
+
     def test_a_fold_is_fenced_on_its_revision_and_a_retry_answers_what_was_recorded(self):
         message = self.post()
         first = self.fold(message, op="fold-once")
@@ -454,6 +467,33 @@ class SharedCase(StackCase):
         cleared = self.store.view("owner", "stack_positions", {"topic_id": "t1", "message_ids": [parent]})["items"][0]["stack_position"]
         self.assertEqual((cleared.get("name", "absent"), cleared.get("name_revision")), (None, 2), "cleared, the dossier goes back to its first line")
 
+    def test_a_message_read_as_a_source_names_its_dossier_by_its_name_else_its_first_message_whatever_a_page_holds(self):
+        """Item 550: the Reader titles a reply by its dossier, never by the oldest reply a page has loaded. A message read
+        as a source carries its dossier: the first message's id, the name typed or minted, the first message as it begins,
+        and whether the dossier is that message alone (which keeps the topic's name, item 561). A reader who reads only
+        that message, sent to them by name, is told nothing more of the topic."""
+        root = self.post("Where shall the lantern club meet?\nThe hall or the boathouse.")
+        reply = self.post("The boathouse has the long table.", reply_to=root, actor="owner")
+        deeper = self.post("And the stove works.", reply_to=reply)
+        lone = self.post("A message nobody answered.")
+        dossier = lambda message, actor="owner": self.source({"kind": "message", "id": message}, actor)["dossier"]
+        for message in (root, reply, deeper):
+            self.assertEqual(dossier(message), {"root_id": root, "name": None, "alone": False,
+                                                "first": {"body": "Where shall the lantern club meet?\nThe hall or the boathouse.", "attachments": []}}, message)
+        self.assertEqual(dossier(lone), {"root_id": lone, "name": None, "alone": True, "first": {"body": "A message nobody answered.", "attachments": []}})
+        self.committed(self.name(root, "Lantern club hall", actor="agent-a"))
+        named = dossier(deeper, actor="agent-b")
+        self.assertEqual((named["root_id"], named["name"]["text"], named["name"]["by"], named["alone"]), (root, "Lantern club hall", "agent-a", False))
+        long = self.post("x" * 2500)
+        self.assertEqual(len(dossier(self.post("Short.", reply_to=long))["first"]["body"]), 2000, "the first message is cut where its first line is whole")
+        # The outsider reads only the message sent to them by name (its delivery made theirs here): it reads, and its dossier is not told.
+        named_to = self.post("For agent-a by name.", reply_to=root, addressees=["agent-a"], intent="tell")
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE deliveries SET recipient_id='outsider' WHERE message_id=?", (named_to,))
+            db.execute("UPDATE delivery_reasons SET reason='addressed' WHERE delivery_id IN (SELECT id FROM deliveries WHERE message_id=?)", (named_to,))
+        self.rejected(self.store.view("outsider", "source", {"source_ref": {"kind": "message", "id": root}}), "FORBIDDEN")
+        self.assertIsNone(self.source({"kind": "message", "id": named_to}, "outsider")["dossier"])
+
     def test_a_join_is_everyones_says_who_and_splits_back_out(self):
         first, second, third = self.post("First stack"), self.post("Second stack"), self.post("Third stack", actor="owner")
         joined = self.committed(self.join(second, first, actor="agent-a"))
@@ -538,7 +578,7 @@ class ReadCase(StackCase):
         shown = self.acts(message)
         self.assertEqual((shown["starred"], shown["placed"], shown["folded"], shown["name"]["text"], shown["joined"]), (True, 4, True, "Later", None))
         self.assertEqual(set(shown), {"aside", "aside_revision", "starred", "star_revision", "dealt", "deal_revision", "folded", "fold_revision", "placed", "place_revision",
-                                      "name", "name_revision", "joined", "join_revision"})
+                                      "name", "name_revision", "joined", "join_revision", "cover", "cover_revision"})
         # And the next act is fenced on it as on any other.
         self.committed(self.name(message, "Typed", revision=1))
 

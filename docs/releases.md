@@ -79,6 +79,11 @@ The view adds `deployed_ms` (the same time in epoch milliseconds),
  "native": {"pass": 208, "total": 208, "steps": {"journal": {"pass": 10, "total": 10}, "...": {}}}}
 ```
 
+Hosted Python jobs are partitions of one `python-units` step, not extra release
+checks. The combined summary adds their disjoint test counts once; a missing
+partition leaves that required step missing and the deploy refuses it
+([unit-shards.md](unit-shards.md)).
+
 A release the deploy took with known reds (docs/tools.md, "Known reds": browser
 cases the live release fails too) also lists them; their cases stay counted as
 failed in `native`:
@@ -199,6 +204,18 @@ record without a number on an instance with none is refused with
 
 `tools/deploy.py` writes the record (docs/tools.md); `tools/pipeline/build_pipeline.py`
 reads it to build the pipeline page.
+
+After recording a verified new release, the deploy fast-forwards the configured
+`release_branch` on the live checkout's `origin` remote to the recorded commit
+and reads the branch back from the remote. Its `12-release-branch.json` evidence
+keeps the branch, old head, shipped head and read-back; only an equal read-back
+is success. An ancestry check and an explicit lease on the fetched old head
+permit only a fast-forward from that unchanged head. A missing branch is never
+created, even if deleted between fetch and push; any intervening move refuses.
+Divergence, a failed push or an unreadable or unequal read-back exits non-zero,
+leaving the live release and its record as written. With no configured branch, the evidence says it was not moved;
+a dry run, refused deploy or restart never moves it. This evidence is separate
+from the immutable release record, which already states what went live.
 
 ## Releases recorded afterwards
 

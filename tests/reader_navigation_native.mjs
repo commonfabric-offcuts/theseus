@@ -235,14 +235,14 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const original = await run(p); await click(p, 't1');
     assert.equal(await run(p), original, 'current topic is a no-op');
     // Tab/↓/Return activation from ordinary document focus, never click().
-    // A press on the logo block's workspace name starts Tab there; Tab passes
-    // the notices before the outline (its New outcome pencil is one of its rows), which is one Tab stop on
-    // the topic being read, and ↓ moves on to the next (docs/interaction.md,
+    // A press on the workspace name, at the rail's foot under the outline (item 628), starts Tab there;
+    // Shift-Tab passes the outline's Keys back into the outline (its New outcome pencil is one of its rows),
+    // which is one Tab stop on the topic being read, and ↓ moves on to the next (docs/interaction.md,
     // "Keys across the panes").
     await p.evaluate('document.querySelector("#instance-label").scrollIntoView({block:"center"})'); await p.point('#instance-label');
     const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
-    for (let n = 0; n < tabLimit && !await p.evaluate('document.activeElement?.dataset.topicId'); ++n) await p.key('Tab');
-    assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't1', 'Tab reaches the outline on the topic being read');
+    for (let n = 0; n < tabLimit && !await p.evaluate('document.activeElement?.dataset.topicId'); ++n) await p.key('Tab', 8);
+    assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't1', 'Shift-Tab reaches the outline on the topic being read');
     // ↑ or ↓, whichever way the second topic is from the one being read.
     const way = await p.evaluate("(()=>{const rows=[...document.querySelectorAll('#outline [role=treeitem]')].filter(e=>e.checkVisibility()).map(e=>e.dataset.topicId);return rows.indexOf('t2')>rows.indexOf('t1')?'ArrowDown':'ArrowUp'})()");
     for (let n = 0; n < 10 && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key(way);

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from test_stacks import StackCase
+from test_agent_cli import AgentCLIBase
 from aim_next.store import Store
 
 
@@ -71,6 +72,92 @@ class AsideCase(StackCase):
         self.assertFalse(self.position(new)['below'])
         self.assertTrue(self.position(first)['below'], 'reply left with the split source')
 
+    def test_a_position_carries_its_first_messages_join_revision_so_a_page_of_replies_joins_the_dossier(self):
+        # Item 550: a page holding only a dossier's replies joins the whole dossier by its first message, fenced on
+        # the join revision Core holds for it, which the position carries; a dossier never joined says 0.
+        lantern, ferry = self.post('Lantern dossier'), self.post('Ferry dossier')
+        answer = self.post('An answer under the lantern dossier', reply_to=lantern)
+        self.assertEqual(self.position(answer).get('join_revision'), 0)
+        self.committed(self.join(lantern, ferry))
+        self.committed(self.join(lantern, None, revision=1))
+        self.assertEqual((self.position(answer)['root_id'], self.position(answer).get('join_revision')), (lantern, 2), 'joined and split back: 2')
+        self.rejected(self.join(lantern, ferry, revision=0), 'REVISION_CONFLICT')
+        self.committed(self.join(lantern, ferry, revision=2))
+        self.assertEqual(self.position(answer)['root_id'], ferry, 'the whole dossier joined')
+        self.assertEqual(self.position(answer).get('join_revision'), 0, 'its position is now the ferry dossier\'s')
+
+    def test_a_position_carries_the_readers_own_place_on_its_first_message_so_a_page_of_replies_keeps_it(self):
+        # Item 550: a reader's place for a dossier is on its first message, as its name is; a page holding only replies
+        # sorts the dossier by it and places it fenced on the revision the position carries. Theirs alone.
+        sailcloth, ferry = self.post('Sailcloth dossier'), self.post('Ferry dossier')
+        answer = self.post('An answer under the sailcloth dossier', reply_to=sailcloth)
+        later = self.post('A later answer to that answer', reply_to=answer)
+        place = lambda key, revision, mid=sailcloth, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': mid},
+                                                                               expected={'place_revision': revision}, actor=actor)
+        self.assertEqual([self.position(answer).get(key) for key in ('placed', 'place_revision')], [None, 0])
+        self.committed(place(2.5, 0))
+        self.assertEqual([(self.position(mid).get('placed'), self.position(mid).get('place_revision')) for mid in (answer, later)], [(2.5, 1)] * 2)
+        self.rejected(place(4.5, 0), 'REVISION_CONFLICT')
+        # The negatives: another reader's position holds no place of the owner's; a place on a reply is not the
+        # dossier's; another dossier's position holds its own.
+        self.assertEqual([self.position(answer, 'agent-a').get(key) for key in ('placed', 'place_revision')], [None, 0])
+        self.committed(place(9.5, 0, mid=answer))
+        self.assertEqual((self.position(later).get('placed'), self.position(later).get('place_revision')), (2.5, 1))
+        self.assertEqual((self.position(ferry).get('placed'), self.position(ferry).get('place_revision')), (None, 0))
+        self.committed(place(None, 1))
+        self.assertEqual((self.position(answer).get('placed'), self.position(answer).get('place_revision')), (None, 2), 'let new replies move it')
+
+    def test_a_position_carries_the_readers_own_places_on_the_dossiers_other_messages_the_most_recently_set_first(self):
+        # Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a
+        # reply or a stack later joined into the dossier. The position lists each such place of the reader's own on a
+        # message of the dossier, the most recently set first, whichever message is newer, so a page sorts the dossier
+        # by it while the first message carries none, and Let new replies move it can take each away.
+        sailcloth, ferry = self.post('Sailcloth dossier'), self.post('Ferry dossier')
+        older = self.post('An answer under the sailcloth dossier', reply_to=sailcloth)
+        newer = self.post('A later answer to that answer', reply_to=older)
+        side = self.post('A stack of its own, joined into the dossier later')
+        other = self.post('An answer under the ferry dossier', reply_to=ferry)
+        place = lambda mid, key, revision=0, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': mid},
+                                                                         expected={'place_revision': revision}, actor=actor)
+        places = lambda mid=newer, actor='owner': [(each['message_id'], each['placed'], each['place_revision']) for each in self.position(mid, actor)['places']]
+        self.assertEqual(places(), [], 'none placed: none listed')
+        self.committed(place(newer, 7))
+        self.committed(place(older, 3))
+        self.assertEqual(places(), [(older, 3, 1), (newer, 7, 1)], 'the most recently set first, though the other message is newer')
+        self.assertEqual(places(sailcloth), places(), 'every message of the dossier carries the same list')
+        self.assertTrue(all(isinstance(each['at_ms'], int) for each in self.position(newer)['places']), 'each says when it was set')
+        # A stack placed and then joined into the dossier brings its place into the list.
+        self.committed(place(side, 5))
+        self.committed(self.join(side, older))
+        self.assertEqual(places()[0], (side, 5, 1), 'the joined stack\'s place, the most recently set')
+        # The negatives: the first message's own place is the position's placed, not listed; a place taken away is not
+        # listed; another reader's places are theirs; another dossier lists only its own.
+        self.committed(place(sailcloth, 2.5))
+        self.assertEqual((self.position(newer)['placed'], [mid for mid, _, _ in places()]), (2.5, [side, older, newer]))
+        self.committed(place(newer, None, revision=1))
+        self.assertEqual(places(), [(side, 5, 1), (older, 3, 1)], 'a place taken away is not listed')
+        self.committed(place(older, 11, actor='agent-a'))
+        self.assertEqual((places(actor='agent-a'), places()), ([(older, 11, 1)], [(side, 5, 1), (older, 3, 1)]), 'each reader\'s own')
+        self.committed(place(other, 9))
+        self.assertEqual((places(ferry), places()), ([(other, 9, 1)], [(side, 5, 1), (older, 3, 1)]), 'another dossier lists its own alone')
+
+    def test_a_readers_listed_place_is_fenced_by_their_own_revisions_alone(self):
+        # Item 550: a reader's place on a message of the dossier is the latest of their own place acts there. Another
+        # reader placing that message again, so that it carries a later revision of theirs, neither hides this
+        # reader's place nor lists theirs; this reader placing it again lists the new place alone.
+        dossier = self.post('Lantern dossier')
+        answer = self.post('An answer about the harbour lanterns', reply_to=dossier)
+        place = lambda key, revision=0, actor='owner': self.command('stack.place', {'key': key}, target={'message_id': answer},
+                                                                    expected={'place_revision': revision}, actor=actor)
+        places = lambda actor='owner': [(each['message_id'], each['placed'], each['place_revision']) for each in self.position(dossier, actor)['places']]
+        self.committed(place(3))
+        self.committed(place(4, actor='agent-a'))
+        self.committed(place(5, revision=1, actor='agent-a'))
+        self.assertEqual((places(), places('agent-a'), places('agent-b')), ([(answer, 3, 1)], [(answer, 5, 2)], []),
+                         'mine stands though agent-a has reached a later revision on the same message; theirs is theirs')
+        self.committed(place(6, revision=1))
+        self.assertEqual((places(), places('agent-a')), ([(answer, 6, 2)], [(answer, 5, 2)]), 'my own later place replaces my earlier one')
+
     def test_undo_is_revision_fenced_and_retry_keeps_one_record(self):
         root = self.post()
         first = self.aside(root, self.latest(), op='put-aside-once')
@@ -137,6 +224,216 @@ class AsideCase(StackCase):
         self.assertEqual(answer['error']['code'], 'INVALID_ARGUMENT')
 
 
+class StarHoldCase(StackCase):
+    """A dossier holding a message the reader starred stays above More for that reader (item 635,
+    docs/dossier-below-more.md, "A star holds it above More"): Move below More is refused with its reason, and a star
+    made in a dossier below More brings it back. A star and the move are each the reader's own, so the hold is too."""
+
+    position, aside, latest = AsideCase.position, AsideCase.aside, AsideCase.latest
+
+    def dossier(self):
+        root = self.post('A plan for the shed roof')
+        first = self.post('Tin or felt?', reply_to=root)
+        later = self.post('Felt, two layers', reply_to=first)
+        return root, first, later
+
+    def test_a_star_on_a_later_message_holds_the_dossier_above_more_with_its_reason(self):
+        root, _, later = self.dossier()
+        self.committed(self.star(later))
+        refused = self.aside(root, self.latest())
+        self.rejected(refused, 'STARRED_IN_DOSSIER')
+        self.assertIn('has a message you starred', refused['error']['message'])
+        self.assertEqual(self.rows('aside'), [], 'nothing moved')
+        self.assertFalse(self.position(root)['below'])
+        self.assertEqual(self.position(root).get('starred'), [later], 'the position names the star the title bar shows')
+        # Its first message's star holds it the same way.
+        alone = self.post('A dossier of one')
+        self.committed(self.star(alone))
+        self.rejected(self.aside(alone, self.latest()), 'STARRED_IN_DOSSIER')
+
+    def test_another_readers_star_never_holds_and_unstarring_frees_it(self):
+        root, first, later = self.dossier()
+        self.committed(self.star(first, actor='agent-b'))
+        self.committed(self.aside(root, self.latest()))
+        self.assertTrue(self.position(root)['below'], "another reader's star does not hold yours")
+        self.rejected(self.aside(root, self.latest(), actor='agent-b'), 'STARRED_IN_DOSSIER')
+        self.assertEqual(self.position(root).get('starred'), [], "another reader's star is never on yours")
+        self.assertEqual(self.position(root, 'agent-b').get('starred'), [first])
+        self.committed(self.star(later, actor='agent-b'))
+        self.committed(self.star(first, on=False, revision=1, actor='agent-b'))
+        self.rejected(self.aside(root, self.latest(), actor='agent-b'), 'STARRED_IN_DOSSIER')
+        self.committed(self.star(later, on=False, revision=1, actor='agent-b'))
+        self.assertEqual(self.position(root, 'agent-b').get('starred'), [])
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.assertTrue(self.position(root, 'agent-b')['below'], 'unstarring the last star frees it')
+
+    def test_a_star_outside_the_dossier_does_not_hold_it(self):
+        root, _, _ = self.dossier()
+        elsewhere = self.post('Another dossier altogether')
+        self.post('Its reply', reply_to=elsewhere)
+        self.committed(self.star(elsewhere))
+        self.committed(self.aside(root, self.latest()))
+        self.assertTrue(self.position(root)['below'])
+        self.assertEqual(self.position(root).get('starred'), [])
+        self.rejected(self.aside(elsewhere, self.latest()), 'STARRED_IN_DOSSIER')
+
+    def test_starring_a_message_in_a_dossier_below_more_brings_it_back_for_that_reader_alone(self):
+        root, _, later = self.dossier()
+        self.committed(self.aside(root, self.latest()))
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.sql("DELETE FROM changes")
+        starred = self.committed(self.star(later))
+        self.assertEqual({key: self.position(root)[key] for key in ('below', 'through', 'aside_revision')},
+                         {'below': False, 'through': None, 'aside_revision': 2}, 'back above More, in the same act')
+        self.assertEqual(starred.get('brought_back'), {'root_id': root, 'aside_revision': 2})
+        self.assertTrue(self.position(root, 'agent-b')['below'], "another reader's move stands")
+        self.assertEqual(self.told(), [('actor', 'owner')])
+        self.assertEqual(starred['acts_version'], max(row[0] for row in self.sql("SELECT id FROM message_acts")))
+        # Unstarring later leaves it above More: the star brought it back, it does not hold it there alone.
+        self.committed(self.star(later, on=False, revision=1))
+        self.assertFalse(self.position(root)['below'])
+        # A star on a dossier above More writes no move.
+        other, _, other_later = self.dossier()
+        self.assertNotIn('brought_back', self.committed(self.star(other_later)))
+        self.assertEqual(len(self.rows('aside')), 3)
+
+    def test_queue42_combined_star_reports_the_watermark_before_either_act(self):
+        root, _, later = self.dossier()
+        moved = self.committed(self.aside(root, self.latest()))
+        before = moved["acts_version"]
+        self.sql("DELETE FROM changes")
+        starred = self.committed(self.star(later))
+        self.assertEqual(starred.get("acts_before"), before,
+                         "the combined star names the watermark before either of its records")
+        self.assertEqual(starred["acts_version"], before + 2,
+                         "the star and Bring back remain two records in one command")
+        self.assertEqual(starred["brought_back"], {"root_id": root, "aside_revision": 2})
+        self.assertEqual(self.told(), [("actor", "owner")], "only the final record announces the combined act")
+        self.assertFalse(self.position(root)["below"])
+
+    def test_a_starred_message_joined_into_a_dossier_below_more_keeps_it_above_more(self):
+        root, _, _ = self.dossier()
+        # Posted before the moves, so no newer message by someone else brings the dossier back once it joins.
+        kept = self.post('A note to keep')
+        self.committed(self.star(kept))
+        self.committed(self.aside(root, self.latest()))
+        self.committed(self.aside(root, self.latest(), actor='agent-b'))
+        self.committed(self.join(kept, root, actor='agent-a'))
+        self.assertFalse(self.position(root)['below'], 'your star keeps the dossier it joined above More')
+        self.assertTrue(self.position(root, 'agent-b')['below'], 'for you, not for others')
+        self.assertEqual(self.position(root).get('starred'), [kept])
+
+    def test_bring_back_is_never_refused_though_the_dossier_holds_the_readers_star(self):
+        # The hold refuses a move below More, never its way back: a starred stack joined into a dossier the reader
+        # moved below More (item 368) leaves their move standing, and their Bring back of it (through null, as
+        # Command-Z or the CLI's command verb sends it) is recorded, while the move made again is still refused.
+        root, _, _ = self.dossier()
+        kept = self.post('A note about the drainpipe')
+        self.committed(self.star(kept))
+        moved_to = self.latest()
+        self.committed(self.aside(root, moved_to))
+        self.committed(self.join(kept, root, actor='agent-a'))
+        self.assertEqual({key: self.position(root)[key] for key in ('through', 'starred', 'below')},
+                         {'through': moved_to, 'starred': [kept], 'below': False}, 'the move stands under the star')
+        back = self.committed(self.aside(root, None, revision=1))
+        self.assertEqual((back['through'], back['aside_revision'], back['changed']), (None, 2, True))
+        self.assertEqual({key: self.position(root)[key] for key in ('through', 'aside_revision', 'below')},
+                         {'through': None, 'aside_revision': 2, 'below': False})
+        self.rejected(self.aside(root, moved_to, revision=2), 'STARRED_IN_DOSSIER')
+        self.assertEqual(len(self.rows('aside')), 2, 'the move and its Bring back, and nothing for the refused move')
+
+
+class StarCoverMergeCase(StackCase):
+    """Train 35's cover and item 635's personal position share one partial-page contract."""
+
+    position, aside, latest = AsideCase.position, AsideCase.aside, AsideCase.latest
+
+    def test_queue42_partial_position_keeps_cover_stars_and_both_place_shapes(self):
+        root = self.post("Assembly roof plan")
+        later = self.post("Assembly roof materials", reply_to=root)
+        for mid, key in [(root, 1.5), (later, 2.5)]:
+            self.committed(self.command("stack.place", {"key": key}, target={"message_id": mid},
+                                        expected={"place_revision": 0}))
+        self.committed(self.command("stack.cover", {"stands": "Roof ready"}, target={"message_id": root},
+                                    expected={"cover_revision": 0}, actor="agent-a"))
+        self.committed(self.star(later))
+        pos = self.position(later)
+        self.assertEqual((pos["root_id"], pos["placed"], pos["place_revision"]), (root, 1.5, 1))
+        self.assertEqual([(x["message_id"], x["placed"]) for x in pos["places"]], [(later, 2.5)])
+        self.assertIn("starred", pos, "a partial position retains the reader star field")
+        self.assertEqual(pos["starred"], [later])
+        self.assertEqual(pos["cover"]["stands"], "Roof ready")
+        self.assertEqual(pos["cover_revision"], 1)
+        self.assertEqual(self.position(later, "agent-a")["starred"], [])
+        self.assertEqual(self.position(later, "agent-a")["places"], [])
+        self.rejected(self.aside(root, self.latest()), "STARRED_IN_DOSSIER")
+
+    def test_star_hold_and_return_preserve_cover_on_partial_pages(self):
+        root = self.post('A plan for the shed roof')
+        later = self.post('Felt, two layers', reply_to=root)
+        self.committed(self.command('stack.cover', {'stands': 'Materials chosen'},
+                                    target={'message_id': root}, expected={'cover_revision': 0}, actor='agent-a'))
+        cover = self.position(later)['cover']
+        self.assertIsNotNone(cover, 'a partial position retains the dossier cover')
+        self.assertEqual(cover['stands'], 'Materials chosen')
+        self.committed(self.aside(root, self.latest()))
+        self.committed(self.aside(root, self.latest(), actor='agent-a'))
+        returned = self.committed(self.star(later))
+        self.assertEqual(returned['brought_back'], {'root_id': root, 'aside_revision': 2})
+
+        def partial():
+            page = self.store.view('owner', 'topic_messages', {'topic_id': 't1', 'direction': 'before', 'limit': 1})
+            self.assertNotIn('error', page, page)
+            self.assertEqual([item['id'] for item in page['items']], [later], 'the root is outside the loaded page')
+            return page['items'][0]['stack_position']
+
+        place = partial()
+        self.assertEqual((place['root_id'], place['starred'], place['below'], place['cover_revision']),
+                         (root, [later], False, 1))
+        self.assertEqual(place['cover'], cover, 'the same position carries the cover and the reader\'s stars')
+        self.assertTrue(self.position(later, 'agent-a')['below'], 'another reader\'s move stays personal')
+        self.rejected(self.aside(root, self.latest(), revision=2), 'STARRED_IN_DOSSIER')
+        self.assertEqual(partial(), place, 'the refused move changes neither position nor cover')
+        self.committed(self.star(later, on=False, revision=1))
+        self.committed(self.aside(root, self.latest(), revision=2))
+        self.assertTrue(partial()['below'], 'unstarring frees the move with its cover intact')
+        self.committed(self.command('stack.cover', {'stands': 'Roof repaired'},
+                                    target={'message_id': root}, expected={'cover_revision': 1}, actor='agent-a'))
+        self.committed(self.star(root))
+        place = partial()
+        self.assertEqual((place['starred'], place['below'], place['cover_revision'], place['cover']['stands']),
+                         ([root], False, 2, 'Roof repaired'))
+        self.assertEqual(len(self.rows('cover')), 2, 'star and aside acts never rewrite the shared cover')
+
+
+class StarHoldCLICase(AgentCLIBase):
+    """The CLI has no verb of its own for Move below More, but its `command` verb sends any command, stack.aside among
+    them, through the same Core: an agent's star holds its dossier above More there too (item 635)."""
+
+    post, act, star, rows, latest = StackCase.post, StackCase.act, StackCase.star, StackCase.rows, AsideCase.latest
+
+    def aside_cli(self, root, actor='agent-a'):
+        command = self.envelope('stack.aside', {'message_id': root}, {'through': self.latest()}, {'aside_revision': 0})
+        return self.invoke('command', command, actor=actor, binding=self.captured_for(actor))
+
+    def test_the_cli_command_verb_is_refused_for_the_agents_own_star_and_not_for_anothers(self):
+        root = self.post('Gravel or pavers for the path?', actor='owner')
+        later = self.post('Pavers, laid on sand', actor='owner', reply_to=root)
+        # Another reader's star does not hold this agent's move.
+        self.committed(self.star(later))
+        self.committed(self.star(later, actor='agent-a'))
+        before = self.rows('aside')
+        code, result, _ = self.aside_cli(root)
+        self.assertEqual((code, result.get('status'), result.get('error', {}).get('code')), (2, 'rejected', 'STARRED_IN_DOSSIER'), result)
+        self.assertIn('has a message you starred', result['error']['message'])
+        self.assertEqual(self.rows('aside'), before, 'nothing moved')
+        # Unstarred, the same command moves it.
+        self.committed(self.star(later, on=False, revision=1, actor='agent-a'))
+        code, result, _ = self.aside_cli(root)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.committed(result)['through'], self.latest())
+
+
 class AsideMigrationCase(StackCase):
     def test_upgrade_and_back_preserve_schema_records_and_sequence_then_refuse_to_drop_any_aside(self):
         from aim_next.migrations import migrate, MigrationError
@@ -144,6 +441,8 @@ class AsideMigrationCase(StackCase):
         root = self.post('Migration root')
         self.committed(self.star(root))
         self.committed(self.fold(root))
+        # A star holds its dossier above More (item 635): the move is made on a dossier with none.
+        moved = self.post('Migration dossier moved below More')
         schema = self.sql("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")
         rows = self.sql('SELECT * FROM message_acts ORDER BY id')
         with sqlite3.connect(str(self.path)) as db:
@@ -155,9 +454,9 @@ class AsideMigrationCase(StackCase):
         self.assertEqual(self.sql("SELECT seq FROM sqlite_sequence WHERE name='message_acts'"), [(17,)])
         self.store = Store(self.path, 'test-instance', expected_binding=self.binding)
         receipt = self.command('stack.aside', {'through': self.sql('SELECT max(seq) FROM messages')[0][0]},
-                               target={'message_id': root}, expected={'aside_revision': 0})
+                               target={'message_id': moved}, expected={'aside_revision': 0})
         self.assertEqual(self.committed(receipt)['acts_version'], 18)
-        self.committed(self.command('stack.aside', {'through': None}, target={'message_id': root}, expected={'aside_revision': 1}))
+        self.committed(self.command('stack.aside', {'through': None}, target={'message_id': moved}, expected={'aside_revision': 1}))
         before = self.sql('SELECT * FROM message_acts ORDER BY id')
         with self.assertRaises(MigrationError) as caught:
             migrate(self.path, 'test-instance', self.binding, '37')

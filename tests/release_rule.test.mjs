@@ -124,3 +124,50 @@ test('a pause before any main-frame document is known excuses nothing', () => {
   r.refused(unnamed('early'), REFUSED);
   assert.deepEqual([r.excused, errors.map(e => e.requestId)], [[], ['early']]);
 });
+
+test('a named pause whose Network loader was omitted belongs to its captured old document',()=>{
+  const f=rule(paused('pause-a'));
+  f.r.refused({requestId:'pause-a',networkId:'net-a'},REFUSED);
+  assert.equal(f.r.unsettled.size,1);
+  f.r.observe(navigated('L2'));
+  assert.deepEqual(f.r.excused.map(e=>[e.requestId,e.reason]),[['pause-a','document replaced']]);
+  assert.equal(f.r.unsettled.size,0);
+});
+test('a late Network ownership report settles a refusal for an already replaced document',()=>{
+  const f=rule(navigated('L2'));
+  f.r.refused({requestId:'pause-a',networkId:'net-a'},REFUSED);
+  f.r.observe(sent('net-a','L1'));
+  assert.deepEqual(f.r.excused.map(e=>e.requestId),['pause-a']);
+  assert.equal(f.r.unsettled.size,0);
+});
+test('each refused interception survives independently when two pauses name one network request',()=>{
+  const f=rule(sent('net-a','L1'));
+  for(const requestId of ['pause-1','pause-2'])f.r.refused({requestId,networkId:'net-a'},REFUSED);
+  assert.equal(f.r.unsettled.size,2,'neither refusal overwrites the other');
+  f.r.observe(failed('net-a',true));
+  assert.deepEqual(f.r.excused.map(e=>e.requestId),['pause-1','pause-2']);
+});
+test('a named pause cannot borrow abandonment from its captured document when Network names another or delivery',()=>{
+  for(const later of [sent('net-a','L2'),response('net-a')]){
+    const f=rule(paused('pause-a'),later,navigated('L2'));
+    f.r.refused({requestId:'pause-a',networkId:'net-a'},REFUSED);
+    assert.deepEqual(f.r.excused,[]);
+    assert.equal(f.r.failed.length,later.method==='Network.responseReceived'?1:0);
+  }
+});
+test('release owns a pending command until its refusal has been observed and classified',async()=>{
+  const f=rule(sent('net-a','L1'));
+  let refuse;const command=new Promise((_,reject)=>{refuse=reject;});
+  const task=f.r.release({requestId:'pause-a',networkId:'net-a',request:{url:'/api/view'}},()=>command);
+  assert.equal(f.r.pending.size,1);
+  f.r.observe(navigated('L2'));
+  refuse(Object.assign(Error(REFUSED),{cdp:{message:REFUSED}}));
+  assert.equal(await task,false);
+  assert.deepEqual([f.r.pending.size,f.r.unsettled.size,f.r.failed.length,f.r.excused.length],[0,0,0,1]);
+});
+test('a command timeout is a failure even for an abandoned request; it is never a timeout waiver',async()=>{
+  const f=rule(sent('net-a','L1'),navigated('L2'));
+  await f.r.release({requestId:'pause-a',networkId:'net-a',request:{url:'/api/view'}},async()=>{throw Error('CDP timed out');});
+  assert.match(f.errors[0].message,/CDP timed out/);assert.deepEqual(f.r.excused,[]);
+  assert.equal(f.r.pending.size,0);
+});

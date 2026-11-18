@@ -85,7 +85,7 @@ It refuses (exit 2) before running anything when:
 
 Then it runs, one at a time:
 
-1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
+1. Python units: `/usr/bin/python3 tools/unit_shards.py` (`--python` to change the interpreter). It discovers the same unittest suite, prints wall time and its 25 slowest tests, and keeps file times in the step's `timing`. Hosted jobs pass `--only python-units --python-shard INDEX/TOTAL` to the release check; the measured whole-file deal, independent Node/deploy jobs, timeouts and combined count are described in [unit-shards.md](unit-shards.md).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
 3. The deploy's refusals: the `DeployRefuses` classes of `tests/test_tools_deploy.py` and every test of `tests/test_tools_train.py`, the merged train the deploy may take in place of a summary (`-p 'test_tools_*.py' -k test_tools_deploy.DeployRefuses -k test_tools_train.`), which the outcome's "deploy refuses" check reads.
 4. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes`, `header` and `health` among them), `tests/reader_openings_native.mjs`, the default and five modes of `tests/reader_native.mjs`, and the nine modes of `tests/webkit_native.mjs` that run checks again in Safari's engine, the phone check page, the New line and inviting an agent among them ([device-evidence.md](device-evidence.md)). A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
@@ -105,11 +105,11 @@ A summary with `skipped` is not a passed release check to anything but the deplo
 
 A small fix deploys on a scoped run, so that a one-line CSS change ships within the hour while its full run follows. `--scoped` names the live release's commit. The release check reads the paths changed between it and HEAD and chooses the browser steps those paths touch with `tools/steps_for.py` (below), from the rules at HEAD; it then runs the units, the deploy's refusals, those browser steps, each whole (every case of its mode), and the wake replay. A scoped run never chooses the deploy's refusals or the wake replay as steps a change touches: they always run beside the units, so what a scoped run omits is only the browser steps no changed path touches.
 
-A small fix is a change inside a bound: no path in `tools/`, `.github/` or `bin/`, not `aim_next/migrations.py`, and at most `SMALL_FIX_FILES` (6) paths changed. Six comes from the small fixes of 16 November, which each changed one to five files (the code, its CSS, the case that reads it, its act row and its doc: `8e352290` two, `d6368026` five, `15ab867e`, `c0c6938b` and `c2a20a10` three, `904d14aa` two); the nine-file set of touches merged that morning (`eae51af6`) is a feature's run. A change outside the bound is refused before anything runs ("a scoped run is for a small fix, and …; run the whole release check"). `--scoped` is refused with `--only` or `--live`, and refused unless it names the live release's full 40-character commit in lower case (a short commit, a ref or capitals are refused before anything runs, since the deploy compares the summary's `live` with the live HEAD exactly). A change whose rules at HEAD cannot be read, or that touches a browser step this release check does not run, is refused too.
+A small fix is a change inside a bound: no path in `tools/`, `.github/` or `bin/`, not `aim_next/migrations.py`, and at most `SMALL_FIX_FILES` (5) paths changed. Item 664 requires six files to run in full. Five covers the small fixes of 16 November, which each changed one to five files (the code, its CSS, the case that reads it, its act row and its doc: `8e352290` two, `d6368026` five, `15ab867e`, `c0c6938b` and `c2a20a10` three, `904d14aa` two); the nine-file set of touches merged that morning (`eae51af6`) is a feature's run. A change outside the bound is refused before anything runs ("a scoped run is for a small fix, and …; run the whole release check"). `--scoped` is refused with `--only` or `--live`, and refused unless it names the live release's full 40-character commit in lower case (a short commit, a ref or capitals are refused before anything runs, since the deploy compares the summary's `live` with the live HEAD exactly). A change whose rules at HEAD cannot be read, or that touches a browser step this release check does not run, is refused too.
 
 The summary says what it ran and what it did not in `scoped`: `steps` (the browser steps chosen), `live`, `changed`, `not_run` (every other browser step), `notes` (what the selection could not place) and `why`. The steps not run are not in `steps`, so no reader counts them as passed.
 
-A summary with `scoped` is not a passed release check to anything but the deploy, which reads the live checkout's HEAD and the paths changed from it to `SHA` itself, chooses the steps those paths touch again with `tools/steps_for.py` (the rules read at `SHA` through the live checkout's git, never from the summary), and takes the summary only when: that HEAD is the summary's `live`; the change is inside the bound; every step it chose is in the summary once, ran whole (its argument list is the harness and the step's flags, with no case filter after them: a run of one named case never counts) and passed; and the units, the deploy's refusals and the wake replay are there and passed, as for any summary. Only the browser steps it did not choose may be missing. Otherwise it refuses before anything is read further ("… ran only the browser steps a small fix touches beside the live commit …, but what changed since then touches native-colors, which it did not run"). A deploy that measures an outcome refuses every such summary, as it does a skip. A scoped summary is taken with `--known-reds` (below) as a whole run is: once the deploy has confirmed its scope, a browser step it did not run is one no changed path touches, and is not missing there.
+A summary with `scoped` is accepted by the hosted PR validator only after it independently chooses the same scope from the event base and tested commit ([scoped-ci.md](scoped-ci.md)). The deploy also accepts it, which reads the live checkout's HEAD and the paths changed from it to `SHA` itself, chooses the steps those paths touch again with `tools/steps_for.py` (the rules read at `SHA` through the live checkout's git, never from the summary), and takes the summary only when: that HEAD is the summary's `live`; the change is inside the bound; every step it chose is in the summary once, ran whole (its argument list is the harness and the step's flags, with no case filter after them: a run of one named case never counts) and passed; and the units, the deploy's refusals and the wake replay are there and passed, as for any summary. Only the browser steps it did not choose may be missing. Otherwise it refuses before anything is read further ("… ran only the browser steps a small fix touches beside the live commit …, but what changed since then touches native-colors, which it did not run"). A deploy that measures an outcome refuses every such summary, as it does a skip. A scoped summary is taken with `--known-reds` (below) as a whole run is: once the deploy has confirmed its scope, a browser step it did not run is one no changed path touches, and is not missing there.
 
 The selection can choose no browser step for a change it cannot place (a change in `aim_next/` that no harness names, say): `notes` says so, and the units and the full run that follows are what check it. The release record keeps `scoped` (docs/releases.md) with the steps not run and `full_judgment: "pending"`; the full run on the deployed head is attached to it with `tools/releases.py attach-judgment`, as for a train (below), and the Health page says it is pending until then. A red in that full run that is the fix's own reverts it, as a train's does after its judgment.
 
@@ -128,6 +128,12 @@ In the native harness most modes run in (`tests/reader_persistence_native.mjs`, 
 That harness writes two lines per case to the step's log: `{"case": NAME, "started": TIME}` the moment the case starts, written synchronously so that it survives a cancelled run, and the case's result with `started` and `finished` added once its cleanup is done. A run cancelled mid-case, as a job's time limit cancels one, leaves that case's start line with no result after it, so the log alone says which case was running and since when. The release check holds every step of that harness to these lines: a step passes only when its log has, for each case in `native.json` and in its order, the start line and then that case's result as `native.json` has it with the same `started` and a `finished` no earlier, and no other case lines (`case_lines` in `tools/release_check.py`; `tools/native.py` lists what is missing as `FAILED case lines: …`). The case `navigation harness case lines: …` sees its own start line already written when it begins.
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1), unless every failure in it is a case the quarantine holds (`--quarantine-at`, below).
+
+A Python file partition may complete with zero tests (for example, an empty
+package initializer). It still reports `Ran 0 tests` / `OK`, timings and exact
+file coverage. The combined Python step requires every partition and at least
+one test in total; an unpartitioned empty run still refuses
+([unit-shards.md](unit-shards.md)).
 
 Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several. The WebKit modes load playwright-core from `--playwright`, else `AIM_PLAYWRIGHT_CORE`, else the one version under `~/Library/Caches/deno/npm/registry.npmjs.org/playwright-core/`; it refuses when there are none or several, or the directory is not playwright-core.
 
@@ -148,7 +154,78 @@ Raw verdicts are never rewritten. A step whose case failed still has `passed: fa
 
 The summary's `quarantine` says which commit it was read at (`at`), how many cases it holds (`entries`), every held case (`held`) and `green`: the quarantine was read, every step ran (the check runs each step it names), the checkout did not change, and each step passed or is green. A quarantine that was not read is never green, even when every step passed; the raw `passed` speaks for that run. The run's exit is 0 when it passed or is green, so a step with one quarantined red reports green and names the case (each such step prints a line `{"name": …, "quarantined": […], "green": …}`, and the last line names them again), and a step with any other red is red. A quarantine that cannot be read (an event with no base, as a `workflow_dispatch` run has; a commit that is not earlier; a policy git cannot show; a malformed list) quarantines nothing: `quarantine.refused` says why, and every red stays red. Without the flag nothing is read, and the summary has no `quarantine`. The deploy reads steps' raw verdicts, so a local summary held green by the quarantine does not ship a commit; a merged train's push run does, through GitHub's judgment.
 
-The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present (a shard cancelled at its time limit leaves no summary, and one refused before running leaves a summary with no commit and no steps: either way its steps are missing), every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. Every other shard's summary must name the one commit checked.
+The Checks workflow plans a small-fix pull request with `tools/check_plan.py`, using the deploy's own `release_check.scope` and `small_fix_problems`. It deals only the chosen native steps beside units/deploy refusals and the parallel wake replay, omitting empty browser shards. Pushes, larger or forbidden diffs and unreadable scope always get the full run. The aggregate keeps `scoped` and never claims omitted modes passed; the validator independently rechooses its scope. [scoped-ci.md](scoped-ci.md) describes the plan and its dry run.
+
+The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present, no browser shard was cancelled, every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. A shard refused before running leaves a summary with no commit and no steps; its steps stay missing. Every other shard's summary must name the one commit checked. Cancelled browser jobs retain their logged results as described below. The combined summary's `jobs`, `missing_jobs` and `missing` name the planned jobs and absent results even if a cancelled job published nothing. Python's single required result needs every planned partition with disjoint files; its count is the sum of those partitions, and a missing partition leaves `python-units` missing. The plan contributes required names independently of surviving summaries.
+
+### Browser shard minutes (item 666)
+
+The plan deals browser steps largest first onto the lightest of four shards,
+using `.github/check-weights.json`. Each weight is the maximum finished step
+time from Checks runs 44007172971, 44044963750 and 44099688612 (17 November's
+brief, consecutive step-result timestamps); `sources` lists each step's run
+and minutes. The cancelled run contributes only steps it finished. The 48
+browser steps total 200.9 minutes and deal to 50.3, 50.2, 50.2 and 50.2,
+within five minutes of the 50.225-minute even split. `native-reading`,
+`native-rail`, `native-webkit-reading` and `native-compose` each have their own
+shard. A fifth long step goes onto the lightest shard when its turn comes:
+with only four shards, some long steps must then share one (today
+`native-webkit-rail` shares with `native-compose`). Ties retain step order and
+choose the first lightest shard, making a plan reproducible.
+
+The same deal accepts a scoped selection or a small fix's selected browser
+steps; the selection owns which steps run, and the weights own where they run.
+Empty shards are omitted. An unmeasured step takes the upper median of all
+measured weights (1.1 minutes today), or 1 minute with no measurements. That
+keeps it in the run without treating an unknown duration as zero; update its
+weight from the next full run.
+
+Each browser matrix entry carries its `minutes`, `timeout_minutes` and
+`timeout_source`: the ceiling of the longest dealt total plus half,
+`ceil(longest * 1.5)`, or 76 minutes for today's full selection. The runner
+reads that matrix field; a scoped selection recomputes it. Python partitions,
+Node and deploy refusals use their measured limits
+([unit-shards.md](unit-shards.md)); wake replay keeps 45 minutes. These
+eleven jobs can queue under an account's concurrent-job cap.
+
+The combined summary's `required` includes both the plan's steps and those
+named by the shard summaries. Every planned step with no result is named in
+`failed` and printed as `missing`, including every unreached step of a cancelled or
+refused shard, even when surviving summaries name only their own steps. A
+missing step makes both raw and quarantine verdicts red. The deploy still
+checks the required step inventory independently. The next merged train's
+full run is the wall-clock acceptance: all four browser jobs must finish
+inside their derived limits and within five minutes of an even split.
+
+When a browser job is cancelled at its limit, combine uses GitHub's
+[workflow-job log API](https://docs.github.com/en/rest/actions/workflow-jobs#download-job-logs-for-a-workflow-run)
+to recover completed step records even if the job never uploaded an artifact.
+It lists only this run's current attempt, matches the job to the plan and event
+head (a PR's head differs from the tested merge), and records the tested commit
+separately. Only completed `name/exit/passed/counts` lines are kept. Each recovered
+result retains those values and carries `shard`, `cancelled_at`, `github_job`,
+`logged_at` and `result_source: "github-job-log"`. If the artifact also has that
+result, the two must agree and the result appears once. `cancelled_shards` in
+the summary and provenance names the job, cancellation time and recovered steps.
+The cancel time is the log's cancellation event, falling back to GitHub's job
+completion time when that line is unavailable.
+
+Recovery also works when no sibling has a finished summary: all other artifacts
+may be absent or contain only refusals. Combine still writes the recovered
+results and the plan's complete missing-step inventory. With no receipts it
+names the event commit for diagnostics, leaving the merge tree and parents
+unknown; it never substitutes the event's PR base for a Git-read parent. With
+no finished summary it claims no unchanged checkout and both verdicts stay red.
+If no job times are available, the summary's start and finish times are null.
+
+Train 33 (44099688612) supplies the regression: two failed and four passed
+results survive, while its ten unreached steps stay missing. Unavailable logs
+leave every unrecovered step missing and name `log_error`; a job from another
+run, attempt or plan is refused. Cancellation keeps raw and quarantine verdicts
+red even after the last step result: it cannot prove the shard finished or its
+checkout stayed unchanged. Recovered counts are diagnostic evidence, never a
+release sample or an independent release verdict. This changes the producer
+only; the protected validator and deploy retain their own completeness checks.
 
 `tools/quarantine.py count` prints the number of quarantined cases, one plain number, from this checkout's policy, or `--at COMMIT` (a ref works) from that commit's: the board reads it. A malformed list prints no number and exits 2. `tools/quarantine.py passes SUMMARY…` prints, for each quarantined case, in how many of those summaries its whole step ran with the case in it and in how many of those it passed (`10 of 10  native-colors | …`), from each step's `quarantine.cases`.
 
@@ -429,7 +506,9 @@ It then stops the instance's runner and then its server, by the PIDs their own r
 
 The restarted server serves the new release as a new build (`aim_next/web_build.py`). A page a person opened on the old release keeps its modules until its next move, which loads the place on the new build, or, while its writing is not yet safe or has changed as the move waited, stays and says "Theseus updated." with Reload ([rails.md](rails.md#one-build-per-document)). A page loading as the server restarts, its `index.html` from the old server and its modules asked of the new one or of none, loads afresh on the new build, or says it could not open the page, with Reload; it does not stay blank.
 
-The record is written after the verify, not before the stop, because it states that a commit is live: before the restart the new code, its schema and its admin verb are not there yet, and a deploy that fails after stopping has not put the release live. Everything the records need is read and checked before anything stops, so the only step left at the end is the writes. A release that goes live without its record is not lost: the next deploy finds that the live HEAD is not the latest record's commit and records it first.
+After a new release verifies and its records are written, the deploy fast-forwards the config's `release_branch` on the live checkout's `origin` remote to the shipped `SHA`. It fetches that exact branch to read its old head and refuses if that head is not an ancestor of `SHA` (or the branch cannot be read). The push uses an explicit `--force-with-lease=refs/heads/BRANCH:OLD_HEAD` as a compare-and-swap: the remote must still name that exact fetched head. Together with the ancestry check this permits only a fast-forward; no unconditional force or `+` refspec is used. It never creates a missing branch, including one deleted between fetch and push. Any intervening move, including a rewind or a move within the shipped history, refuses rather than overwriting the operator's change. It then reads the exact branch back with `git ls-remote`, not a local ref: success requires that read-back to equal `SHA`, including when the branch was already there. `12-release-branch.json` keeps `branch`, `remote`, `old_head`, `new_head`, `read_back`, `moved` and `success`, and any refusal with the git results. A failure exits 1 with the verified release still live and its immutable release record kept. A new release with no `release_branch` writes that the branch was not moved and why; no branch is guessed. A dry run, a refused or unverified deploy, a failed release-record write, and a restart of the live commit never contact or move the remote branch.
+
+The record is written after the verify, not before the stop, because it states that a commit is live: before the restart the new code, its schema and its admin verb are not there yet, and a deploy that fails after stopping has not put the release live. Everything the records need is read and checked before anything stops. A release that goes live without its record is not lost: the next deploy finds that the live HEAD is not the latest record's commit and records it first. The remote branch result is separate deploy evidence, written after the release record, so a branch failure cannot change the record of what went live.
 
 ### A merged train: `--train FILE`
 
@@ -550,7 +629,7 @@ The config is a JSON object. Paths for profiles and routes are relative to `inst
 | `runner_profile`, `runner_id`, `routes` | the runner's profile, `--runner-id` and routes file |
 | `python` | optional; absolute interpreter, default `/usr/bin/python3` |
 | `outcome`, `reporter_profile` | optional, together: the outcome whose checks the deploy measures, and the profile of a member who is not its coordinator, who reads them, opens fix topics, writes the run and moves the release piece |
-| `release_branch`, `repository` | optional; needed for `--train` and `tools/releases.py attach-judgment`: the branch trains merge into (on GitHub, such as `release/live73`) and GitHub's `owner/name` of the repository that branch, its runs and its checks are read from |
+| `release_branch`, `repository` | optional; `release_branch` is the branch a verified new release fast-forwards on the live checkout's `origin` (such as `release/live73`); both keys are needed for `--train` and `tools/releases.py attach-judgment`: the branch trains merge into and GitHub's `owner/name` of the repository that branch, its runs and its checks are read from |
 
 An unknown or missing key is refused. Keep the live config beside the instance it describes, not in the repository.
 

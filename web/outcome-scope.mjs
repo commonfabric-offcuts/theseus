@@ -1,8 +1,9 @@
 // Inside an outcome the side rail shows only that outcome: "← Outcomes", then
 // its own sections in one order. The list of outcomes stays on the Outcomes
 // home and the new outcome page. Every page has the logo block (wordmark with
-// its presence dot, the workspace name, Turn on notifications) at the top of
-// its rail, or of its main column where it has no rail; there is no header bar.
+// its presence dot, Turn on notifications) at the top of its rail, or of its
+// main column where it has no rail, and the rail's foot (who you are on which
+// instance, the guide's ?, Health) at the end of the same; there is no header bar.
 
 // Top to bottom. Each section shows only when it has something; the
 // conversation and the pipeline join when their pieces land. The outcome's
@@ -41,12 +42,15 @@ export function wordsShown(kind, count = 0, named = null) {
 }
 
 // Moves the one logo block, then the page's notices, to the top of host (the
-// rail or main). The notices go as one group (index.html #page-notices: the
-// status line, the wakes', the updates' and why a move stayed), so where the
-// rail pins them they stack one under the other and never draw over each
-// other (rails.css). The nodes move, so their handlers stay.
+// rail or main), and the rail's foot to its end (item 628). The notices go as
+// one group (index.html #page-notices: the status line, the wakes', the
+// updates' and why a move stayed), so where the rail pins them they stack one
+// under the other and never draw over each other (rails.css). The nodes move,
+// so their handlers stay; a foot already last stays put, keeping its focus.
 export function placeBrand(host, doc = host.ownerDocument) {
   host.prepend(...[doc.querySelector('.brand'), doc.getElementById('page-notices')].filter(Boolean));
+  const foot = doc.querySelector('.rail-foot');
+  if (foot && host.lastElementChild !== foot) host.append(foot);
 }
 
 // One page inside an outcome. sections: [{name, node, load}] in any order;

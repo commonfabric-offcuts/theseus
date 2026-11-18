@@ -7,9 +7,26 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
+
+// Screenshot qualification, independent of how quickly an engine opens a dialog.
+export function qualifyDialogCapture655(state) {
+  const opacityTolerance655 = 0.001;
+  return !state.open || (state.animations.every(value => value === 'finished' || value === 'idle') &&
+    Math.abs(state.opacity - 1) <= opacityTolerance655);
+}
+
+export async function settleDialogCapture655(p) {
+  const settled = await p.evaluate(`(async()=>{const d=document.querySelector('#reader');
+    if(d.open){for(const animation of d.getAnimations()) await animation.finished;
+      await new Promise(done=>requestAnimationFrame(done));}
+    return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+  assert.equal(qualifyDialogCapture655(settled), true, 'capture requires a settled dialog animation and opaque endpoint');
+  return settled;
+}
 
 // helpers: what topic_reading_native.mjs's checks press and read with.
 export async function stackChecks({ check, until, view, control, shot, facts, observations, engine }, helpers) {
@@ -33,6 +50,216 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   };
   const dossierTheme = (p, theme) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
   const dossierFold = (topic, id, on = true) => control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: `${topic}-${id}-${on}`, args: { folded: on } });
+
+  // Item 645: use the same messages in each state, with sender changes and a
+  // whole card between folded runs. Capture the base before asserting the new rule.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const state of ['folded', 'opened']) await check(`reading item 645 ${state} consecutive sender names at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `sender-645-${state}-${device}-${theme}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original stays whole.' }],
+        ['a', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First folded words.' }],
+        ['b', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second folded words.' }],
+        ['c', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Another sender keeps its name.' }],
+        ['whole', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A whole card breaks the folded run.' }],
+        ['d', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First after the whole card.' }],
+        ['e', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second after the whole card.' }],
+      ]);
+      for (const name of ['a', 'b', 'c', 'd', 'e']) await dossierFold(topic, ids[name]);
+      const p = await open(topic, device, topic, ids.root);
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
+      const read = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+        visible=e=>!!e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}&&getComputedStyle(e).visibility!=='hidden';
+        return Object.fromEntries(Object.entries(ids).map(([name,id])=>{const e=c(id),a=e.querySelector(':scope > .message-folded > .folded-author');
+          return [name,{folded:e.dataset.folded==='true',name:visible(a)?a.textContent:'',words:e.querySelector(':scope > .message-folded > .folded-words')?.textContent??null,
+            wholeName:visible(e.querySelector(':scope > .message-author'))?e.querySelector(':scope > .message-author').textContent:null}]}))})()`);
+      const before = await read();
+      await centre(p, card(ids.b)); await away(p);
+      await shot(p, `item-645-${state}-${device}-${theme}-folded`);
+      if (state === 'opened') {
+        // Press the words: a suppressed name must not remove the row's target.
+        const target = card(ids.b) + ' > .message-folded > .folded-words';
+        await centre(p, target); await press(p, input, target);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.folded==='false'`), 'opening the repeated sender shows the whole card');
+        await until(async () => (await view('message_acts', { topic_id: topic })).items.some(x => x.message_id === ids.b && x.acts.folded === false), 'the native unfold is kept in Core');
+        const after = await read();
+        await shot(p, `item-645-opened-${device}-${theme}-whole`);
+        assert.ok(after.b.wholeName?.includes(other), 'opening a message shows its sender name again');
+        assert.equal(after.a.name, other, 'opening its neighbour keeps the first folded sender');
+        assert.equal(after.e.name, '', 'opening elsewhere leaves the other folded run grouped');
+        assert.equal(await readerOn(p), null, 'unfolding opens no Reader');
+      }
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].name), [other,'','aim-ux',other,''], 'only the first of consecutive folded messages from one sender shows its name; a sender change or whole card starts a new run');
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].words), ['First folded words.','Second folded words.','Another sender keeps its name.','First after the whole card.','Second after the whole card.'], 'folded words stay exact and in order');
+      assert.ok(before.root.wholeName?.includes(other) && before.whole.wholeName?.includes(other), 'whole messages retain their names');
+      assert.equal(await p.evaluate(`document.documentElement.scrollWidth>innerWidth+${layoutTolerance.overflowPx}`), false, 'no horizontal overflow beyond the case tolerance of 1 CSS px');
+      observations.push({ name: `item 645 ${state}`, device, theme, before });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
+  // Topic readiness precedes the background conversation read. Wait for its
+  // actual filter and item states before pressing either it or a dossier.
+  const item645ConversationReady = (p, ids) => until(() => p.evaluate(`(()=>{const button=document.querySelector('#conversation-show button');
+    return !!button && button.getClientRects().length>0 && window.fetchesOut===0 && ${JSON.stringify(ids)}.every(id=>{const card=document.querySelector('#messages .message-card[data-id="'+id+'"]');const entry=card?.parentElement?.classList.contains('message-fold')?card.parentElement:card;return !!entry?.dataset.item && entry.dataset.item!=='none'})})()`), 'item 645 conversation filter and item states are drawn after their background reads');
+  // Suppression changes only drawing. Both names stay available to accessibility;
+  // the fixture viewer's display label is You, not its record actor id.
+  const item645Attribution = async (p, ids) => assert.deepEqual(await p.evaluate(`${JSON.stringify(ids)}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return {text:e?.textContent,ariaHidden:e?.getAttribute('aria-hidden')}})`), ids.map(()=>({text:'You',ariaHidden:null})), 'exact viewer attribution remains in every folded row, including suppressed rows');
+
+  // Genuine original page bytes on the same isolated Core fixture, within the
+  // existing own case. No extra runner start or edited screenshot. Every page
+  // closes before exact candidate Build restoration, even on assertion failure.
+  const item645Runtime = async (phase, key, action) => {
+    const receipt = await control({ method: 'item_645_runtime', phase });
+    observations.push({ name: 'item 645 runtime', key, ...receipt });
+    try {
+      if (phase === 'original') {
+        const manifest = JSON.parse(await readFile(new URL('./fixtures/item_645_original_web.json', import.meta.url), 'utf8'));
+        assert.deepEqual(receipt.hashes, manifest.files, 'all original public source bytes match the original source manifest');
+      }
+      await action(receipt);
+    } finally {
+      const restored = await control({ method: 'item_645_runtime', phase: 'restored' });
+      observations.push({ name: 'item 645 runtime', key, ...restored });
+      assert.equal(restored.restored, true);
+      assert.deepEqual(restored.hashes, receipt.candidate_hashes, 'all final candidate public bytes are restored exactly');
+    }
+  };
+  const item645Names = (p, ids, layoutTolerance) => p.evaluate(`${JSON.stringify(ids)}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+  const item645Comparison = async ({ key, device, topic, ids, theme, head, layoutTolerance }) => {
+    const input = device === 'laptop' ? 'laptop' : 'phone';
+    for (const phase of ['original', ...(head && device === 'laptop' && theme === 'light' ? ['wrong-suppression', 'raw-attribution'] : [])]) {
+      await item645Runtime(phase, key, async receipt => {
+        let p;
+        try {
+          p = await open(key + '-' + phase, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+          assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true, 'the document runs the selected immutable source build');
+          await item645ConversationReady(p, head ? Object.values(ids) : [ids.root, ids.a, ids.b]);
+          if (!head) await dossierOpen(p, input, ids.root);
+          await dossierTheme(p, theme);
+          await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+          await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), phase + ': Only new is active');
+          const selected = head ? Object.values(ids) : [ids.b];
+          await until(() => p.evaluate(`${JSON.stringify(selected)}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), phase + ': comparison rows are drawn');
+          if (!head) await until(() => p.evaluate(`${JSON.stringify([ids.root,ids.a])}.every(id=>!document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length)`), 'original comparison hides both settled predecessors');
+          await centre(p, card(head ? ids.reply : ids.b)); await away(p);
+          if (phase === 'original') {
+            assert.deepEqual(await item645Names(p, selected, layoutTolerance), head ? ['You','You'] : ['You'], 'original runtime names each visible folded message');
+            await shot(p, key + '-before-on');
+            await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+            await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'original comparison filter is off');
+            await centre(p, card(head ? ids.reply : ids.b)); await away(p); await shot(p, key + '-before-off');
+          } else if (phase === 'wrong-suppression') {
+            assert.deepEqual(await item645Names(p, selected, layoutTolerance), ['You','You'], 'the real source mutation applied and wrongly names the repeated reply');
+            await assert.rejects(async () => assert.deepEqual(await item645Names(p, selected, layoutTolerance), ['You','']), { name: 'AssertionError' }, 'the actual native grouping assertion kills the applied source mutant');
+          } else {
+            await assert.rejects(() => item645Attribution(p, selected), { name: 'AssertionError' }, 'exact raw attribution kills the applied source mutant');
+          }
+          observations.push({ name: 'item 645 comparison control', key, phase, passed: true, stamp: receipt.stamp });
+          assert.deepEqual(p.errors, []);
+        } finally { if (p) await p.close(); }
+      });
+    }
+  };
+
+  // Independent review: Only new hides settled entries through CSS, rather
+  // than entry.hidden. The first row a person can see must name its sender.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    await check(`reading item 645 review Only new visible sender at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const key = `review-645-only-${device}-${theme}`;
+      const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
+      const topic = conversation.topic_id, ids = {};
+      for (const [name, sender, reply] of [['root', 'person', null], ['root-answer', facts.agent, 'root'], ['a', 'person', 'root'], ['b', 'person', 'root'], ['answer', facts.agent, 'a']]) {
+        ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name, topic_id: topic,
+          sender, body: key + ' ' + name, ...(reply ? { reply_to: ids[reply] } : { whole_topic: true }) })).result.message_id;
+      }
+      for (const name of ['a', 'b']) await dossierFold(key, ids[name]);
+      await item645Comparison({ key, device, topic, ids, theme, head: false, layoutTolerance });
+      const p = await open(key, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, [ids.root, ids.a, ids.b]);
+      await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
+      const visibleName = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-folded > .folded-author')});
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})()`);
+      await item645Attribution(p, [ids.a, ids.b]);
+      assert.equal(await visibleName(), '', 'before filtering, the repeated sender is suppressed');
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.root))}).getClientRects().length && !document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length && document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length>0`), 'the answered root and first row are hidden and the new row is shown');
+      await centre(p, card(ids.b)); await away(p); await shot(p, key);
+      await item645Attribution(p, [ids.a, ids.b]);
+      assert.equal(await visibleName(), 'You', 'the first visible folded message names its sender after Only new hides its predecessor');
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length>0`), 'the first folded row is drawn again');
+      assert.equal(await visibleName(), '', 'restoring the first row suppresses its repeated sender again');
+      await item645Attribution(p, [ids.a, ids.b]);
+      await centre(p, card(ids.b)); await away(p); await shot(p, key + '-off');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 Only new visible folded head at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const key = `head-645-only-${device}-${theme}`;
+      const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
+      const topic = conversation.topic_id, ids = {};
+      for (const name of ['root', 'reply']) ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name,
+        topic_id: topic, sender: 'person', body: key + ' ' + name,
+        ...(name === 'reply' ? { reply_to: ids.root } : { whole_topic: true }) })).result.message_id;
+      for (const id of Object.values(ids)) await dossierFold(key, id);
+      await item645Comparison({ key, device, topic, ids, theme, head: true, layoutTolerance });
+      const p = await open(key, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, Object.values(ids)); await dossierTheme(p, theme);
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
+      await until(() => p.evaluate(`${JSON.stringify(Object.values(ids))}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), 'Only new draws both the folded head and reply');
+      await centre(p, card(ids.reply)); await away(p); await shot(p, key);
+      const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(names, ['You', ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
+      await item645Attribution(p, Object.values(ids));
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again for the drawn head');
+      await item645Attribution(p, Object.values(ids));
+      const restored = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(restored, ['', 'You'], 'turning the filter off hides the closed head and names the first visible folded reply');
+      await centre(p, card(ids.reply)); await away(p); await shot(p, key + '-off');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `review-645-line-${device}-${theme}`;
+      const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Words across the New line ' + name, read: name === 'a' }]));
+      for (const id of Object.values(ids)) await dossierFold(topic, id);
+      const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
+      await dossierTheme(p, theme);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).nextElementSibling?.dataset.line==='new'`), 'the New line separates unread b from read a');
+      await centre(p, card(ids.b)); await away(p); await shot(p, topic);
+      const names = await p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(names, [other, '', other], 'a separating New line starts a named folded run');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 review standalone regroup after opening at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `review-645-alone-${device}-${theme}`;
+      const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Standalone folded words ' + name }]));
+      for (const id of Object.values(ids)) await dossierFold(topic, id);
+      const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
+      const input = device === 'laptop' ? 'laptop' : 'phone'; await dossierTheme(p, theme);
+      const names = () => p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(await names(), [other, '', ''], 'standalone folded messages share a name in drawn order');
+      const target = card(ids.b) + ' > .message-folded > .folded-words';
+      await centre(p, target); await press(p, input, target);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.folded==='false'`), 'the middle row opens');
+      assert.deepEqual(await names(), [other, '', other], 'opening the middle message starts a new named folded run below');
+      await centre(p, card(ids.b)); await away(p); await shot(p, topic);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 
   await check('reading dossier look overlaps visible cards by 12px without covering their words, including wrapped roots', async () => {
     for (const device of Object.keys(DEVICES)) for (const wrapped of [false, true]) {
@@ -268,7 +495,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // On its author, at the row's start: in a dossier "Folded" is said to a screen reader only (item 471).
         await centre(p, card(ids.folded));
         const before = await above();
-        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-author');
+        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-words');
         await until(async () => !(await look()).folded.folded, `${at}: a press on the row unfolds it`);
         await until(() => foldedInCore(ids.folded, false), `${at}: Core keeps the unfold`);
         for (const theme of ['light', 'dark']) {
@@ -501,8 +728,8 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
   };
-  // The ⋯ menu of a message, from its bar, and the words of its items. A dossier's folded row has no bar (item 471):
-  // on a laptop its menu is the right click's.
+  // The ⋯ menu of a message, from its bar, and the words of its items. A message lit with no bar (a dossier's one-row
+  // head): on a laptop its menu is the right click's.
   const menuOf = async (p, device, id) => {
     await light(p, device, id);
     if (device !== 'phone' && await bar(p) === null) await rightClick(p, card(id));
@@ -1101,6 +1328,563 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 635 (and 368, built here): a dossier holding a message the reader starred. Its title bar shows their star
+  // when any message of it is starred by them, not only its first; Move below More, in its menu and on the Reader's
+  // archive button, shows as ever and refuses with the reason "has a message you starred", said where it was pressed,
+  // and nothing moves; starring a message in a dossier below More brings it back above More. A star and the move are
+  // each the reader's alone, so the hold is too. On a laptop and by a finger at 320, 375 and 390, light and dark.
+  const HELD = 'This dossier has a message you starred: unstar it to move it below More';
+  const STAR_WIDTHS = [['laptop', 1280], ['phone', 320], ['phone', 375], ['phone', 390]];
+  const sizedTo = async (p, device, width) => { if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width }); };
+  // The title bar's star of the stack a message is in: shown, its words, and whether it stays inside the title bar.
+  const titleStar = (p, id) => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(card(id))})?.closest('.reply-stack'),row=s?.querySelector('.stack-head'),star=row?.querySelector(':scope > .stack-star');
+    if(!star||!star.getClientRects().length)return {shown:false};const r=star.getBoundingClientRect(),h=row.getBoundingClientRect();
+    return {shown:true,text:star.textContent,inside:r.left>=h.left-0.5&&r.right<=h.right+0.5&&r.top>=h.top-0.5&&r.bottom<=h.bottom+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  // The words a refused press says, where they show: 6px under what was pressed (side 'under'), or 6px over it where
+  // the window has no room below (side 'over', press-note.mjs), else neither (null); inside the window with its 16px
+  // gutter, read out (role=status), and nothing scrolling sideways.
+  const pressNote = (p, near) => p.evaluate(`(()=>{const n=document.querySelector('.press-note'),a=document.querySelector(${JSON.stringify(near)});if(!n||!n.getClientRects().length)return null;
+    const r=n.getBoundingClientRect(),b=a?.getBoundingClientRect();
+    return {text:n.textContent,role:n.getAttribute('role'),inside:r.left>=15.5&&r.right<=innerWidth-15.5&&r.top>=0&&r.bottom<=innerHeight,
+      side:!b?null:Math.abs(r.top-b.bottom-6)<=1.5?'under':Math.abs(b.top-r.bottom-6)<=1.5?'over':null,inDialog:Boolean(n.closest('dialog')),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  // Every frame from now until heldFrames: whether the dossier ever left its place above More (its section gone, or
+  // More drawn, which this topic has only for it). A refused press moves nothing on any frame.
+  const watchHeld = (p, id) => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(card(id))}).closest('.reply-stack');window.__held={frames:0,moved:0};
+    const look=()=>{const h=window.__held;if(!h)return;h.frames++;if(!s.isConnected||document.querySelector('#messages .stack-more'))h.moved++;requestAnimationFrame(look)};requestAnimationFrame(look)})()`);
+  const heldFrames = p => p.evaluate(`new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const h=window.__held;window.__held=null;done(h)})))`);
+  const positionIn = async (topic, id) => (await view('stack_positions', { topic_id: topic, message_ids: [id] })).items[0].stack_position;
+  // ⋯ of a message again: on a phone a tap on the message already lit opens the Reader (openReader), so another
+  // message is lit first, as a person taps elsewhere before coming back to it.
+  const menuAgain = async (p, device, id, elsewhere) => {
+    if (device === 'phone' && (await lit(p)).includes(id)) await light(p, device, elsewhere);
+    return menuOf(p, device, id);
+  };
+  // What these cases seed is read through at their end, as reading it on screen would, so the cases after them find the
+  // counts of new messages as they were: a wider count on the phone header's Outcomes button can wrap its row at 320.
+  const readAll = topic => control({ method: 'agent_message', operation_id: `${topic}-read`, topic_id: topic, whole_topic: true, sender: other, body: 'That is all for now.', read: true });
+  const starSeed = topic => seed(topic, [['lone', { sender: other, join: true, addressees: [facts.actor], body: 'A note on the gate hinges.' }],
+    ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
+    ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
+    ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'Two coats, then the trim.' }]]);
+
+  await check('reading stacks star title bar: a star on a later message lights the dossier\'s title bar, unstarring the last starred message clears it, and another reader\'s star or one outside the dossier never lights it', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-title-star-${device}-${width}`;
+      const ids = await seed(topic, [['other', { sender: other, join: true, addressees: [facts.actor], body: 'The shed list.' }],
+        ['otherReply', { sender: other, reply_to: 'other', addressees: [facts.actor], body: 'Nails and a level.' }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'Which paint for the porch?' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The grey from last spring.' }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'Two coats, then the trim.' }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      // Another reader's star, on the later reply: theirs alone, never on this reader's title bar.
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-theirs`, args: { starred: true } });
+      assert.equal((await actsOf(topic, ids.two, other))?.starred, true, `${device} ${width}: another reader starred the later reply, in Core`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'the page is at rest');
+      assert.deepEqual(await titleStar(p, ids.root), { shown: false }, `${device} ${width}: another reader's star never lights yours`);
+      // A star outside the dossier lights its own dossier's title bar only.
+      await menuOf(p, device, ids.otherReply); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.otherReply))?.starred === true, `${device} ${width}: the star outside it is in Core`);
+      await becomes(async () => (await titleStar(p, ids.other)).shown, true, `${device} ${width}: the other dossier's title bar shows its star`);
+      assert.deepEqual(await titleStar(p, ids.root), { shown: false }, `${device} ${width}: a star outside the dossier does not light it`);
+      // The reader's star on a later message, by its ⋯: the title bar shows it, though its first message is not starred.
+      await menuOf(p, device, ids.two); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === true, `${device} ${width}: Core holds the reader's star on the later reply`);
+      assert.equal((await actsOf(topic, ids.root))?.starred ?? false, false, `${device} ${width}: its first message is not starred`);
+      await becomes(async () => { const t = await titleStar(p, ids.root); return [t.shown, t.text, t.inside, t.sideways]; }, [true, '★ Starred', true, false],
+        `${device} ${width}: a star on a later message lights the title bar, inside it, nothing scrolling sideways`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-title-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Two stars, then each taken off: the title bar shows while any is left.
+      await menuOf(p, device, ids.one); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.one))?.starred === true, `${device} ${width}: a second star`);
+      await menuOf(p, device, ids.two); await choose(p, device, 'Unstar');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: the later star is taken off, in Core`);
+      await twoFrames(p);
+      assert.equal((await titleStar(p, ids.root)).shown, true, `${device} ${width}: with one star left the title bar still shows it`);
+      await menuOf(p, device, ids.one); await choose(p, device, 'Unstar');
+      await until(async () => (await actsOf(topic, ids.one))?.starred === false, `${device} ${width}: the last star is taken off, in Core`);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: unstarring the last starred message clears the title bar`);
+      assert.equal((await titleStar(p, ids.other)).shown, true, `${device} ${width}: the other dossier keeps its star`);
+      // The other reader's star is taken off again, so the cases after this one find their stars as they left them.
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-theirs-off`, args: { starred: false } });
+      assert.equal((await starsOf(other)).includes(ids.two), false, `${device} ${width}: the other reader's star is off`);
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  await check('reading stacks star hold: Move below More in a starred dossier\'s menu and the Reader\'s archive button show as ever and say why where they were pressed, moving nothing on any frame; another reader\'s star does not hold it and unstarring frees it', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-hold-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      // Where ⋯ was opened: the line of the message whose menu it is.
+      const line = `${card(ids.two)} > .message-author`;
+      // A star outside the dossier, which holds nothing of it, and the reader's own star on its later reply, by its ⋯.
+      await menuOf(p, device, ids.lone); await choose(p, device, 'Star for me');
+      await menuOf(p, device, ids.two); await choose(p, device, 'Star for me');
+      await until(async () => (await actsOf(topic, ids.two))?.starred === true && (await actsOf(topic, ids.lone))?.starred === true, `${device} ${width}: Core holds both stars`);
+      // Another reader stars a message of the dossier too: theirs alone.
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs`, args: { starred: true } });
+      await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      await watchHeld(p, ids.two);
+      // The menu's Move below More shows as ever; pressed, it says why under the title bar, and nothing moves.
+      const offered = await menuAgain(p, device, ids.two, ids.lone);
+      if (device === 'phone') { assert.ok(offered.includes('Move or join…'), `${width}: the phone's sheet offers its moves`); await choose(p, device, 'Move or join…'); await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].some(b=>b.firstChild.textContent==='Move below More')`), `${width}: the moves sheet`); }
+      else assert.ok(offered.includes('Move below More'), `laptop: the menu offers Move below More: ${offered}`);
+      await choose(p, device, 'Move below More');
+      await until(async () => (await pressNote(p, line))?.text === HELD, `${device} ${width}: the menu's press says why`);
+      assert.deepEqual(await pressNote(p, line), { text: HELD, role: 'status', inside: true, side: 'under', inDialog: false, sideways: false },
+        `${device} ${width}: said by the message whose ⋯ it was, where it was pressed, inside the window`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-hold-menu-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // The Reader's archive button shows as it does today, and a press, twice, says why under it.
+      await openReader(p, device, ids.two, 'Two coats');
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: the next press took the words away`);
+      const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,pressed:b.getAttribute('aria-pressed'),count:b.querySelector('.aside-count').textContent}))(document.querySelector('#reader-aside'))`);
+      await becomes(button, { shown: true, name: 'Move below More: 3 messages', title: 'Move below More: 3 messages', pressed: 'false', count: '3' }, `${device} ${width}: the archive button shows as ever`);
+      for (const n of [1, 2]) {
+        await press(p, device, '#reader-aside');
+        await until(async () => (await pressNote(p, '#reader-aside'))?.text === HELD, `${device} ${width}: press ${n} says why`);
+      }
+      assert.deepEqual(await pressNote(p, '#reader-aside'), { text: HELD, role: 'status', inside: true, side: 'under', inDialog: true, sideways: false },
+        `${device} ${width}: said under the archive button, in the Reader`);
+      assert.deepEqual(await button(), { shown: true, name: 'Move below More: 3 messages', title: 'Move below More: 3 messages', pressed: 'false', count: '3' }, `${device} ${width}: the button is as it was, not pressed`);
+      assert.equal(await p.evaluate(`Boolean(document.activeElement?.closest('#reader'))`), true, `${device} ${width}: the focus stays in the Reader`);
+      assert.ok((await readerOn(p))?.startsWith('Two coats'), `${device} ${width}: the Reader stays on the message`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-hold-reader-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out');
+      const frames = await heldFrames(p);
+      assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+      assert.deepEqual([(await actsOf(topic, ids.root))?.aside ?? null, (await positionIn(topic, ids.root)).below], [null, false], `${device} ${width}: Core holds no move`);
+      // Another reader's star (made before the presses above) does not hold this reader's move; unstarring the reader's
+      // own frees it. The Reader's star is pressed once it shows the reader's star, as a person sees it before pressing.
+      await becomes(() => p.evaluate(`document.querySelector('#reader-star').getAttribute('aria-pressed')`), 'true', `${device} ${width}: the Reader's star shows the reader's star`);
+      await press(p, device, '#reader-star');
+      await becomes(async () => [...await p.evaluate(`(b=>[b.getAttribute('aria-pressed'),b.title])(document.querySelector('#reader-star'))`), await said(p)],
+        ['false', 'Star for me', 'Star taken off'], `${device} ${width}: the Reader's star is pressed off, on the page`);
+      await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: the Reader's star takes the reader's star off, in Core`);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, false, `${device} ${width}: the title bar shows no star, though another reader starred a message`);
+      await press(p, device, '#reader-aside');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: unstarred, the dossier moves below More, in Core`);
+      await until(async () => (await button()).pressed === 'true', `${device} ${width}: the button shows it moved`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: and says nothing against it`);
+      await closeReader(p, device);
+      await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length)`), false, `${device} ${width}: the dossier is below More`);
+      assert.equal((await positionIn(topic, ids.lone)).below, false, `${device} ${width}: the starred message outside it stays where it is`);
+      await control({ method: 'stack_act', sender: other, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-theirs-off`, args: { starred: false } });
+      assert.equal((await starsOf(other)).includes(ids.one), false, `${device} ${width}: the other reader's star is off`);
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // Long words a message can carry, so a topic of them is taller than the window.
+  const fillerWords = n => `Allotment note ${n}. ` + 'Beans, then peas, then the long row of leeks along the fence. '.repeat(6);
+  // On a phone the stack's moves, Undo among them, sit behind "Move or join…" in ⋯ (StackFeed.menuItems).
+  const moveItem = async (p, device, label) => {
+    if (device === 'phone') {
+      await choose(p, device, 'Move or join…');
+      await until(() => p.evaluate(`[...document.querySelectorAll('.message-menu-list button')].some(b=>b.firstChild.textContent===${JSON.stringify(label)})`), `phone: the moves sheet offers ${label}`);
+    }
+    await choose(p, device, label);
+  };
+  const moreOpened = async (p, device) => {
+    if (await p.evaluate(`document.querySelector('#messages .stack-more')?.getAttribute('aria-expanded')!=='true'`)) { await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more'); }
+  };
+  // Where a box stands against the window: in it, or out of it.
+  const inWindow = (p, selector) => p.evaluate(`(r=>r.bottom>0&&r.top<innerHeight)(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
+
+  // Command-Z, or Undo in ⋯, right after a Bring back on a dossier starred since would move it below More again: it is
+  // held as any press on the move is (setAside, item 635), and says why by the dossier it would have moved. Undo in ⋯
+  // on a message of that dossier says it by that message. Otherwise, ⌘Z wherever the keys are and Undo in ⋯ of a
+  // message in another dossier, it is said under the dossier's title bar, which is brought into view where it was out
+  // of the window: never beside a message of another dossier, whose words "This dossier" and "unstar it" would point
+  // at the wrong thing. Nothing moves on any frame, Core holds no move, and nothing says it was put back. The undo
+  // before it, the first move's, is a Bring back and is never held. On a laptop by ⌘Z, and by a finger at 320, 375
+  // and 390 by Undo in ⋯'s moves (a phone has no ⌘Z), light and dark.
+  await check('reading stacks star undo: Command-Z or Undo in ⋯ after a Bring back on a dossier starred since moves nothing and says why by that dossier, bringing its title bar into view, never beside a message of another dossier; the Bring back before it is never held', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-undo-${device}-${width}`;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Where do the rain barrels go?' }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'By the shed, on blocks.' }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'Two of them, linked.' }],
+        ...Array.from({ length: 12 }, (_, i) => ['f' + i, { sender: other, addressees: [facts.actor], body: fillerWords(i) }])]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      const titleBar = `#messages .reply-stack[data-stack="${ids.root}"] .message-card[data-id="${ids.root}"] > .stack-head`;
+      const lineOf = id => `${card(id)} > .message-author`;
+      const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
+      const barTop = () => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(titleBar)}).getBoundingClientRect().top)`);
+      // Each round: the message the undo is asked for from (⋯ on it, or the keys on it), where the note is said,
+      // whether the title bar is in the window before the undo, whether the page is scrolled to its end after the
+      // keys reach the message (taking it and the title bar out of the window), and its screenshots' name. The topic's newest messages (f11 the
+      // newest, a message of its own: another dossier) are above the dossier.
+      const rounds = device === 'phone'
+        ? [['by the message whose ⋯ it was', ids.two, lineOf(ids.two), true, false, 'line'],
+          ['by ⋯ of a message in another dossier, the title bar out of the window: under the title bar, brought into view', ids.f11, titleBar, false, false, 'brought']]
+        : [['under the title bar', ids.two, titleBar, true, false, 'title'],
+          ['the keys on a message in another dossier, the title bar out of the window: under the title bar, brought into view', ids.f11, titleBar, false, false, 'brought'],
+          ['the title bar and the keys out of the window: under the title bar, brought into view', ids.f11, titleBar, false, true, 'brought-end']];
+      // ⌘Z where the keys are, or Undo in the ⋯ of the message a finger is on.
+      const undo = async on => { if (device === 'phone') { await menuAgain(p, device, on, on === ids.two ? ids.one : ids.f10); await moveItem(p, device, 'Undo'); } else await p.key('z', 4); };
+      for (const [round, on, near, barShown, toEnd, shotName] of rounds) {
+        const label = `${device} ${width} ${round}`;
+        await menuAgain(p, device, ids.two, ids.one); await moveItem(p, device, 'Move below More');
+        await until(async () => (await positionIn(topic, ids.root)).below, `${label}: moved below More, in Core`);
+        await moreOpened(p, device);
+        await becomes(async () => Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length`)), true, `${label}: More shows it`);
+        await menuAgain(p, device, ids.two, ids.one); await moveItem(p, device, 'Bring back above More');
+        await until(async () => !(await positionIn(topic, ids.root)).below, `${label}: brought back, in Core`);
+        await menuAgain(p, device, ids.two, ids.one); await choose(p, device, 'Star for me');
+        await until(async () => (await actsOf(topic, ids.two))?.starred === true, `${label}: starred, in Core`);
+        await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${label}: the title bar shows the star`);
+        await until(() => p.evaluate('window.fetchesOut === 0'), `${label}: the page is at rest`);
+        // Where the undo is asked for from: the keys on a message, or its ⋯ (opened in undo below, on a phone).
+        if (device !== 'phone') {
+          await keyTo(p, on);
+          if (toEnd) await p.evaluate('scrollTo(0, document.documentElement.scrollHeight)');
+          else await centre(p, card(on));
+          await becomes(() => inWindow(p, lineOf(on)), !toEnd, `${label}: the message the keys are on is ${toEnd ? 'out of' : 'in'} the window`);
+        } else await centre(p, card(on));
+        await becomes(() => inWindow(p, titleBar), barShown, `${label}: the title bar is ${barShown ? 'in' : 'out of'} the window`);
+        const before = await barTop();
+        await watchHeld(p, ids.two);
+        await undo(on);
+        await until(async () => (await pressNote(p, near))?.text === HELD, `${label}: the note says why`);
+        assert.deepEqual(await pressNote(p, near), { text: HELD, role: 'status', inside: true, side: 'under', inDialog: false, sideways: false },
+          `${label}: said under ${near}, inside the window`);
+        assert.equal((await status()).includes(HELD), false, `${label}: and not on the status line`);
+        // Never beside a message of another dossier: not by the line of the message the undo was asked for from.
+        if (on !== ids.two) assert.equal((await pressNote(p, lineOf(on))).side, null, `${label}: and not beside the message in another dossier`);
+        // The title bar shows where it was when it was in the window, and is brought into it when it was not.
+        if (barShown) assert.ok(Math.abs((await barTop()) - before) <= 1, `${label}: the undo scrolled nothing`);
+        else assert.equal(await inWindow(p, titleBar), true, `${label}: the title bar is brought into the window`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-undo-${shotName}-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+        await until(() => p.evaluate('window.fetchesOut === 0'), `${label}: nothing is out`);
+        const frames = await heldFrames(p);
+        assert.ok(frames.frames > 2 && frames.moved === 0, `${label}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+        assert.deepEqual([(await positionIn(topic, ids.root)).below, (await actsOf(topic, ids.root))?.aside ?? null], [false, null], `${label}: Core holds no move`);
+        assert.equal((await status()).includes('not saved'), false, `${label}: nothing was sent to be refused: ${await status()}`);
+        assert.notEqual(await said(p), 'Put back', `${label}: nothing says it was put back`);
+        // The undo before it is the first move's, a Bring back: never held, and put back.
+        await undo(on);
+        await becomes(() => said(p), 'Put back', `${label}: the Bring back's undo is put back`);
+        await until(() => p.evaluate('window.fetchesOut === 0'), `${label}: and answered`);
+        assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${label}: no note says anything against it`);
+        assert.equal((await status()).includes('not saved'), false, `${label}: Core refused nothing: ${await status()}`);
+        assert.equal((await positionIn(topic, ids.root)).below, false, `${label}: still above More`);
+        await menuAgain(p, device, ids.two, ids.one); await choose(p, device, 'Unstar');
+        await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${label}: unstarred, in Core`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // Where the held dossier is not drawn at all (an agents-only dossier, with Show agent coordination off), nothing on
+  // the page is that dossier's to say it by: ⌘Z, or Undo in ⋯ of a message of another dossier, says why on the page's
+  // status line, as any refusal is, never beside the message the keys or the ⋯ were on, and shows nothing the reader
+  // hid. On a laptop by ⌘Z, and by a finger at 320, 375 and 390 by Undo in ⋯'s moves, light and dark.
+  await check('reading stacks star undo hidden: Command-Z or Undo in ⋯ held for a dossier Show agent coordination hides says why on the status line, never beside a message of another dossier, and shows nothing hidden', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-undo-hidden-${device}-${width}`;
+      const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'The cold frame lids are on.' }],
+        ['mine', { sender: other, join: true, addressees: [facts.actor], body: 'Seed potatoes came today.' }],
+        ['root', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Compost turning, between agents' }],
+        ['reply', { sender: 'aim-ux', join: true, addressees: ['aim-core'], reply_to: 'root', body: 'Turned it on Tuesday.' }]]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`, toggle = `${section} > .stack-toggle`, filter = '#agent-coordination-show button';
+      const status = () => p.evaluate(`document.getElementById('app-status').textContent`);
+      const shown = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
+      const lineOf = id => `${card(id)} > .message-author`;
+      const fold = () => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.fold`);
+      // ⋯ of the dossier's first message, shown whole: the dossier open by its chevron (from its quiet row, folded,
+      // then open: item 394), so its words show and a press on them brings its bar. On a phone a tap on a lit card
+      // opens the Reader, so a message of another dossier is lit first, as a person taps elsewhere before coming back.
+      const rootMenu = async () => {
+        for (const [from, to] of [['head', 'folded'], ['folded', 'open']]) {
+          if (await fold() !== from) continue;
+          await centre(p, toggle); await press(p, device, toggle);
+          await becomes(fold, to, `${device} ${width}: from its chevron, ${from} to ${to}`);
+        }
+        assert.equal(await fold(), 'open', `${device} ${width}: the dossier is open`);
+        if (device === 'phone') await light(p, device, (await lit(p)).includes(ids.mine) ? ids.primer : ids.mine);
+        return menuOf(p, device, ids.root);
+      };
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(section)})?.dataset.compact === 'true'`), `${device} ${width}: the agents-only dossier is one quiet row`);
+      await rootMenu(); await moveItem(p, device, 'Move below More');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width}: moved below More, in Core`);
+      await moreOpened(p, device);
+      await becomes(shown, true, `${device} ${width}: More shows it`);
+      await rootMenu(); await moveItem(p, device, 'Bring back above More');
+      await until(async () => !(await positionIn(topic, ids.root)).below, `${device} ${width}: brought back, in Core`);
+      // A star on a message of the dossier, any of them, holds it.
+      const inIt = async () => (await starsOf(facts.actor)).filter(id => id === ids.root || id === ids.reply);
+      await rootMenu(); await choose(p, device, 'Star for me');
+      await until(async () => (await inIt()).length === 1, `${device} ${width}: a message of the dossier is starred, in Core`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      // Show agent coordination off: the dossier is not drawn.
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(shown, false, `${device} ${width}: Show agent coordination hides the dossier`);
+      await watchHeld(p, ids.root);
+      if (device === 'phone') { await menuAgain(p, device, ids.mine, ids.primer); await moveItem(p, device, 'Undo'); }
+      else { await keyTo(p, ids.mine); await p.key('z', 4); }
+      await until(async () => (await status()).includes(HELD), `${device} ${width}: the reason is said on the status line`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('.press-note'))`), false, `${device} ${width}: no note shows, beside the message of another dossier or anywhere`);
+      assert.equal(await p.evaluate(`(s=>Boolean(s.getClientRects().length)&&(r=>r.top>=0&&r.bottom<=innerHeight)(s.getBoundingClientRect()))(document.getElementById('app-status'))`), true,
+        `${device} ${width}: the status line shows in the window`);
+      assert.equal(await shown(), false, `${device} ${width}: the hidden dossier stays hidden`);
+      assert.equal(await inWindow(p, lineOf(ids.mine)), true, `${device} ${width}: the message the undo was asked from stays in view`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-undo-status-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: nothing is out`);
+      const frames = await heldFrames(p);
+      assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+      assert.deepEqual([(await positionIn(topic, ids.root)).below, (await actsOf(topic, ids.root))?.aside ?? null], [false, null], `${device} ${width}: Core holds no move`);
+      assert.notEqual(await said(p), 'Put back', `${device} ${width}: nothing says it was put back`);
+      // Show agent coordination on again, and the star taken off, so the cases after this one find the stars as they were.
+      await centre(p, filter); await press(p, device, filter);
+      await becomes(shown, true, `${device} ${width}: Show agent coordination shows it again`);
+      await rootMenu(); await choose(p, device, 'Unstar');
+      await until(async () => (await inIt()).length === 0, `${device} ${width}: unstarred, in Core`);
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // A note shows over what it is said beside where the window has no room below (press-note.mjs): Move below More from
+  // ⋯ on a message at the bottom of the window, in a dossier holding the reader's star. The message is lit where it
+  // is, by the pointer or a finger, with nothing scrolling it to the middle first. On a laptop and by a finger at 320,
+  // 375 and 390, light and dark.
+  await check('reading stacks star note over: Move below More from ⋯ on a message at the bottom of the window says why over the message, inside the window, and nothing moves', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-over-${device}-${width}`;
+      // The dossier first, so the newer messages above it give the page room to show it at the window's bottom.
+      // Read already, so nothing new draws the page to it once open.
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which hose for the far beds?', read: true }],
+        ['one', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The long green one.', read: true }],
+        ['two', { sender: other, reply_to: 'one', addressees: [facts.actor], body: 'With the brass nozzle.', read: true }],
+        ...Array.from({ length: 8 }, (_, i) => ['f' + i, { sender: other, addressees: [facts.actor], body: fillerWords(i), read: true }])]);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-star`, args: { starred: true } });
+      await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the title bar shows the star`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      const line = `${card(ids.two)} > .message-author`;
+      // How far the line's bottom is above the window's, the same across two frames (null while it moves).
+      const fromBottom = () => p.evaluate(`new Promise(done=>{const l=document.querySelector(${JSON.stringify(line)}),gap=()=>innerHeight-l.getBoundingClientRect().bottom,first=gap();
+        requestAnimationFrame(()=>requestAnimationFrame(()=>done(Math.abs(gap()-first)<0.5?Math.round(first):null)))})`);
+      // 60px: under the line there is no room for the note (two lines or more at every width) with its 6px gap and 16px gutter.
+      await p.evaluate(`(l=>scrollBy(0,l.getBoundingClientRect().bottom-(innerHeight-60)))(document.querySelector(${JSON.stringify(line)}))`);
+      await becomes(async () => Math.abs((await fromBottom()) - 60) <= 2, true, `${device} ${width}: the message's line sits 60px above the window's bottom: ${await fromBottom()}`);
+      const placed = await fromBottom();
+      // Where a finger lands on its words, the page hit-tests them (else what is there, and the window's size, say why).
+      const aim = await p.evaluate(`(()=>{const w=document.querySelector(${JSON.stringify(words(ids.two))}).getBoundingClientRect(),x=w.x+Math.min(12,w.width/2),y=w.y+Math.min(12,w.height/2),h=document.elementFromPoint(x,y);
+        return {hit:Boolean(h&&h.closest(${JSON.stringify(card(ids.two))})),x,y,innerHeight,viewport:visualViewport&&[visualViewport.height,visualViewport.scale,visualViewport.offsetTop],scrollWidth:document.documentElement.scrollWidth,at:h?h.tagName+'.'+h.className:null}})()`);
+      assert.equal(aim.hit, true, `${device} ${width}: the message's words are where a finger lands: ${JSON.stringify(aim)}`);
+      if (device === 'phone') await tap(p, words(ids.two)); else await p.point(line, 'move');
+      await until(async () => (await lit(p)).includes(ids.two) && (await bar(p)) !== null, `${device} ${width}: the message lights where it is, with its bar`);
+      await press(p, device, '.message-bar [data-act=more]');
+      await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device} ${width}: ⋯ opens the menu`);
+      await watchHeld(p, ids.two);
+      await moveItem(p, device, 'Move below More');
+      await until(async () => (await pressNote(p, line))?.text === HELD, `${device} ${width}: the press says why`);
+      assert.deepEqual(await pressNote(p, line), { text: HELD, role: 'status', inside: true, side: 'over', inDialog: false, sideways: false },
+        `${device} ${width}: said over the message whose ⋯ it was, inside the window`);
+      assert.equal(await fromBottom(), placed, `${device} ${width}: nothing scrolled`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-note-over-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: nothing is out`);
+      const frames = await heldFrames(p);
+      assert.ok(frames.frames > 2 && frames.moved === 0, `${device} ${width}: on no frame did the dossier leave its place: ${JSON.stringify(frames)}`);
+      assert.equal((await positionIn(topic, ids.root)).below, false, `${device} ${width}: Core holds no move`);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: `${topic}-unstar`, args: { starred: false } });
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  await check('reading stacks star brings back: starring a message in a dossier below More, by its ⋯ or the Reader\'s star, brings the dossier back above More for that reader alone', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-back-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      const section = `#messages .reply-stack[data-stack="${ids.root}"]`;
+      // Above More: drawn, and before More where More is drawn.
+      const above = () => p.evaluate(`(()=>{const s=document.querySelector(${JSON.stringify(section)}),m=document.querySelector('#messages .stack-more');
+        return Boolean(s?.getClientRects().length)&&(!m||Boolean(s.compareDocumentPosition(m)&Node.DOCUMENT_POSITION_FOLLOWING))})()`);
+      const moreOpen = async () => { if (await p.evaluate(`document.querySelector('#messages .stack-more')?.getAttribute('aria-expanded')!=='true'`)) { await centre(p, '#messages .stack-more'); await press(p, device, '#messages .stack-more'); } };
+      const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      // Another reader put it below More too: theirs stays.
+      await control({ method: 'stack_act', sender: other, kind: 'stack.aside', message_id: ids.root, operation_id: `${topic}-theirs`, args: { through: await newest() } });
+      for (const way of ['menu', 'reader']) {
+        await openReader(p, device, ids.two, 'Two coats');
+        await press(p, device, '#reader-aside');
+        await until(async () => (await positionIn(topic, ids.root)).below, `${device} ${width} ${way}: moved below More, in Core`);
+        await closeReader(p, device);
+        await becomes(above, false, `${device} ${width} ${way}: the dossier is below More`);
+        await moreOpen();
+        await becomes(async () => Boolean(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length`)), true, `${device} ${width} ${way}: More shows it`);
+        // Chrome holds Core's answer to the star, and the reads that would tell the page of it, so the page is seen
+        // to show the dossier back above More at once, as Core makes it, before it has heard so (StackFeed.star).
+        const holds = payload => payload?.kind === 'message.star' || ['message_acts', 'stack_positions'].includes(payload?.name);
+        const holding = engine === 'chrome' && way === 'menu';
+        if (holding) p.intercept(holds);
+        if (way === 'menu') { await menuAgain(p, device, ids.two, ids.lone); await choose(p, device, 'Star for me'); }
+        else { await openReader(p, device, ids.two, 'Two coats'); await press(p, device, '#reader-star'); }
+        if (holding) {
+          await until(() => p.held.some(entry => entry.payload?.kind === 'message.star'), `${device} ${width}: Core's answer to the star is held`);
+          await becomes(above, true, `${device} ${width}: before the page has Core's answer, the dossier shows above More at once`);
+          p.intercept(null);
+          for (const entry of p.held.splice(0)) await p.release(entry);
+        }
+        await until(async () => { const at = await positionIn(topic, ids.root); return !at.below && at.through === null; }, `${device} ${width} ${way}: the star brought it back above More, in Core`);
+        assert.equal((await actsOf(topic, ids.two))?.starred, true, `${device} ${width} ${way}: and the message is starred`);
+        assert.notEqual((await actsOf(topic, ids.root, other))?.aside ?? null, null, `${device} ${width} ${way}: another reader's move stands`);
+        if (way === 'reader') {
+          await becomes(() => p.evaluate(`(b=>[b.getAttribute('aria-label'),b.getAttribute('aria-pressed')])(document.querySelector('#reader-aside'))`), ['Move below More: 3 messages', 'false'], `${device} ${width}: the archive button offers the move again`);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-back-reader-${device}-${width}-${theme}`); }
+          await dossierTheme(p, 'light');
+          await closeReader(p, device);
+        }
+        await becomes(above, true, `${device} ${width} ${way}: the dossier is above More again, on the page`);
+        await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width} ${way}: its title bar shows the star`);
+        if (way === 'menu') {
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-back-menu-${device}-${width}-${theme}`); }
+          await dossierTheme(p, 'light');
+          // Unstarred, it stays above More: the star brought it back, and the move is not made again by itself.
+          await menuAgain(p, device, ids.two, ids.lone); await choose(p, device, 'Unstar');
+          await until(async () => (await actsOf(topic, ids.two))?.starred === false, `${device} ${width}: unstarred, in Core`);
+          assert.equal((await positionIn(topic, ids.root)).below, false, `${device} ${width}: unstarred, it stays above More`);
+          await becomes(above, true, `${device} ${width}: and on the page`);
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // A star Core holds on a message the page has not loaded (made on another device, on a dossier longer than the
+  // page) lights the title bar of each stack the page draws of that dossier and holds the move; Earlier messages,
+  // which loads the starred message, draws its star once; taken off on another device, the move goes.
+  await check('reading stacks star unloaded: a star on a message of the dossier the page has not loaded lights its title bar and holds the move, before and after Earlier messages loads it', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-star-unloaded-${device}`;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'The fence plan, from the start.', read: true }],
+        ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: 'Fence post ' + i, read: true }])]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r0, operation_id: `${topic}-star`, args: { starred: true } });
+      const p = await open(topic, device, topic, ids.r34);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r0))}))`), false, `${device}: the starred message is outside the loaded page`);
+      await becomes(async () => (await titleStar(p, ids.r34)).shown, true, `${device}: the title bar shows the star Core holds on a message not loaded`);
+      await menuOf(p, device, ids.r34);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(async () => (await pressNote(p, `${card(ids.r34)} > .message-author`))?.side === 'under', `${device}: the move says why, under the message whose ⋯ it was`);
+      assert.equal((await pressNote(p, `${card(ids.r34)} > .message-author`)).text, HELD);
+      assert.equal((await positionIn(topic, ids.root)).below, false, `${device}: Core holds no move`);
+      const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+      for (let page = 0; !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.r0))}))`); page++) {
+        assert.ok(page < 3, `${device}: Earlier messages reaches the starred message`);
+        const count = await cards();
+        await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+        await until(async () => (await cards()) > count, `${device}: Earlier messages reads an older page`);
+      }
+      await becomes(() => p.evaluate(`[...document.querySelectorAll('#messages .stack-head > .stack-star')].filter(e=>e.getClientRects().length).length`), 1, `${device}: the whole dossier loaded is one stack, its title bar starred once`);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.r0, operation_id: `${topic}-unstar`, args: { starred: false } });
+      await becomes(async () => (await titleStar(p, ids.r34)).shown, false, `${device}: taken off on another device, the title bar shows no star`);
+      await menuOf(p, device, ids.r34);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(async () => (await positionIn(topic, ids.root)).below, `${device}: unstarred, the dossier moves below More`);
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+
+  // Core holds the rule for every entry point: a move sent before the page has read a star the reader made on another
+  // device (its reads held here) is refused by Core, its reason said on the status line as any refusal is, and the
+  // dossier is where Core holds it, above More. Chrome only: Safari's harness cannot hold the page's reads.
+  if (engine === 'chrome') await check('reading stacks star refused by Core: Move below More, sent before the page has read a star made on another device, is refused by Core with its reason, and the dossier stays above More', async () => {
+    for (const [device, width] of STAR_WIDTHS) {
+      const topic = `stack-star-core-${device}-${width}`;
+      const ids = await starSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await sizedTo(p, device, width);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${device} ${width}: the page is at rest`);
+      const reads = payload => ['message_acts', 'stack_positions', 'stars'].includes(payload?.name);
+      p.intercept(reads);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.two, operation_id: `${topic}-elsewhere`, args: { starred: true } });
+      await until(() => p.held.some(entry => reads(entry.payload)), `${device} ${width}: the page's read of the star made elsewhere is held`);
+      assert.equal((await titleStar(p, ids.root)).shown, false, `${device} ${width}: the page has not read the star`);
+      await menuOf(p, device, ids.two);
+      if (device === 'phone') await choose(p, device, 'Move or join…');
+      await choose(p, device, 'Move below More');
+      await until(() => p.evaluate(`document.getElementById('app-status').textContent.includes(${JSON.stringify(HELD)})`), `${device} ${width}: Core's refusal is said, with its reason`);
+      assert.deepEqual([(await actsOf(topic, ids.root))?.aside ?? null, (await positionIn(topic, ids.root)).below], [null, false], `${device} ${width}: Core holds no move`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `star-core-refused-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      p.intercept(null);
+      for (const entry of p.held.splice(0)) await p.release(entry);
+      await becomes(async () => (await titleStar(p, ids.root)).shown, true, `${device} ${width}: the star read, the title bar shows it`);
+      await becomes(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.two))})?.getClientRects().length) && !document.querySelector('#messages .stack-more')`), true,
+        `${device} ${width}: the dossier is above More, where Core holds it`);
+      assert.deepEqual(p.errors, []); await p.close();
+      await readAll(topic);
+    }
+  });
+  else observations.push({ name: 'reading stacks star refused by Core', engine, held: 'holds the page\'s reads with the Chrome harness\'s request interception, which Safari\'s harness does not offer' });
+
+  // The Reader's star and archive button keep the text a press lands on when they are painted again (docs/reader.md):
+  // Safari sends no click for a press whose node left the page before the release, and a repaint held for a press
+  // (press-hold.mjs) runs at its release, so a press that a repaint lands during was lost there. Each control is held
+  // down while the page reads a star the reader made on another device, then let go; the press is taken.
+  await check('reading stacks the Reader\'s star and archive button take a press that a repaint lands during', async () => {
+    const topic = 'stack-reader-press-repaint';
+    const ids = await starSeed(topic);
+    const p = await open(topic, 'laptop', topic, ids.root);
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page is at rest');
+    await openReader(p, 'laptop', ids.two, 'Two coats');
+    // A star made elsewhere on the message outside the dossier, which the page reads while the press is held: the
+    // read is answered, the page at rest, and two frames on its repaint waits for the release.
+    const starElsewhere = async (on, step) => {
+      await p.evaluate(`(()=>{window.watched=false;window.watchFor=${JSON.stringify({ read: 'message_acts', words: ids.lone })};return true})()`);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.lone, operation_id: `${topic}-${step}`, args: { starred: on } });
+      await until(() => p.evaluate('window.watched === true'), `${step}: the page read the star made elsewhere while the press is held`);
+      await until(() => p.evaluate('window.fetchesOut === 0'), `${step}: and is at rest`);
+      await twoFrames(p);
+    };
+    const pressAcross = async (selector, step, on) => {
+      const b = await p.box(selector), x = b.x + b.width / 2, y = b.y + b.height / 2;
+      const taps = await p.evaluate('window.taps');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await starElsewhere(on, step);
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await until(async () => (await p.evaluate('window.taps')) > taps, `${step}: the press is a click`);
+    };
+    // The archive button, pressed on its count: the dossier moves below More.
+    await becomes(() => p.evaluate(`document.querySelector('#reader-aside').getAttribute('aria-label')`), 'Move below More: 3 messages', 'the archive button offers the move');
+    await pressAcross('#reader-aside .aside-count', 'archive', true);
+    await until(async () => (await positionIn(topic, ids.root)).below, 'the archive button pressed across a repaint moves the dossier below More, in Core');
+    await becomes(() => p.evaluate(`document.querySelector('#reader-aside').getAttribute('aria-pressed')`), 'true', 'and shows it moved');
+    // The star, pressed on its glyph: the message is starred, which brings its dossier back above More (item 635).
+    await becomes(() => p.evaluate(`document.querySelector('#reader-star').getAttribute('aria-pressed')`), 'false', 'the Reader\'s star is not pressed');
+    await pressAcross('#reader-star', 'star', false);
+    await until(async () => (await actsOf(topic, ids.two))?.starred === true, 'the Reader\'s star pressed across a repaint stars the message, in Core');
+    await becomes(() => p.evaluate(`(b=>[b.getAttribute('aria-pressed'),b.textContent])(document.querySelector('#reader-star'))`), ['true', '★'], 'and shows it starred');
+    assert.equal((await positionIn(topic, ids.root)).below, false, 'the star brought the dossier back above More');
+    assert.deepEqual(p.errors, []); await p.close();
+    await readAll(topic);
+  });
+
   // Item 561: the Reader's title, beside its archive button, names the dossier a reply there is written into: its name,
   // typed or minted, as the dossier's tab shows it. A dossier nobody has named yet shows its first line, as its tab
   // does, and a name given while the Reader is open shows at once. A long name stays on one line, cut off with an
@@ -1111,6 +1895,349 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     const range=document.createRange();range.selectNodeContents(b??h);const lines=new Set([...range.getClientRects()].filter(r=>r.width>0).map(r=>Math.round(r.top))).size;
     const cut=[b,h].some(e=>e&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow==='ellipsis'),title=h.getBoundingClientRect(),aside=box('reader-aside'),close=box('reader-close');
     return {text:h.textContent,button:Boolean(b),lines,cut,aside:inside(aside)&&aside.left>=title.right-0.5,close:inside(close),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const network = async (p, before = false) => {
+    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
+    if (engine === 'chrome') {
+      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
+      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
+        drop: entry => { take(p.held, entry); return p.fail(entry); },
+        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
+        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
+    }
+    const held = []; let test = null;
+    await p.pw.route(facts.origin + '/api/*', async route => {
+      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
+      if (!test?.(payload)) return route.continue();
+      held.push({ payload, route, response: before ? null : await route.fetch() });
+    });
+    return { hold: given => { test = given; }, held: () => held,
+      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
+      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
+      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
+  };
+  // #7715: named tolerances apply to every measured edge/extent below. A 2px
+  // moving-target mutant still fails the shared tapStableTolerancePx=0.5 check.
+  const viewportEdgeTolerancePx655 = 1, visibleExtentTolerancePx655 = 0.5;
+  const settleCapture655 = settleDialogCapture655;
+  const capture655 = async (p, image) => {
+    const settled = await settleCapture655(p);
+    observations.push({ name: 'item 655 qualified capture', image, engine, ...settled });
+    await shot(p, image);
+  };
+  const proof655 = async (p, state, expected, image) => {
+    for (const theme of ['light', 'dark']) {
+      await dossierTheme(p, theme);
+      if (state === 'B1-loaded') {
+        // Negative capture control: replay the actual CSS appear animation, pause
+        // in its fade, and prove it cannot qualify. Restore the original inline
+        // animation bytes and let that animation finish before the real image.
+        await settleCapture655(p);
+        const fading = await p.evaluate(`(()=>{const d=document.querySelector('#reader'),saved=d.getAttribute('style');
+          d.style.animation='none';void d.offsetWidth;if(saved===null)d.removeAttribute('style');else d.setAttribute('style',saved);
+          const a=d.getAnimations().find(a=>a.animationName==='appear');
+          if(!a)throw Error('actual dialog appear animation missing');a.pause();a.currentTime=30;
+          return {open:d.open,animations:d.getAnimations().map(a=>a.playState),opacity:Number(getComputedStyle(d).opacity)}})()`);
+        assert.equal(qualifyDialogCapture655(fading), false, 'actual paused appear surface is refused for capture');
+        observations.push({ name: 'item 655 unqualified capture control', engine, theme, ...fading });
+        await shot(p, image + '-' + theme + '-unqualified-control');
+        await p.evaluate(`document.querySelector('#reader').getAnimations().forEach(a=>a.play())`);
+      }
+      await settleCapture655(p);
+      const actual = await p.evaluate(`import('/message-format.mjs').then(({drawnText})=>{const d=document.querySelector('#reader'),c=document.querySelector('#source-body'),r=d.getBoundingClientRect();
+        return {open:d.open,title:document.querySelector('#reader-title').textContent,source:drawnText(c),readable:c.textContent,
+          notice:document.querySelector('#reader-notice').textContent,noticeShown:!document.querySelector('#reader-notice').hidden&&Boolean(document.querySelector('#reader-notice').getClientRects().length),writing:document.querySelector('#writing-body').value,
+          onlyNew:document.querySelector('#messages').classList.contains('only-new'),box:{left:r.left,right:r.right,width:r.width},viewport:innerWidth}})`);
+      for (const [key, value] of Object.entries(expected)) assert.equal(actual[key], value, `${state} ${theme}: ${key}`);
+      if (expected.source) assert.ok(actual.readable.startsWith(expected.source.split('\n')[0]), `${state} ${theme}: source words are painted`);
+      if (['B3-position', 'B3-root'].includes(state)) {
+        assert.match(actual.notice, /Dossier name could not be read/, `${state} ${theme}: failure notice says why`);
+        assert.equal(actual.noticeShown, true, `${state} ${theme}: failure notice is visible`);
+      }
+      if (actual.open) {
+        assert.ok(actual.box.width > visibleExtentTolerancePx655 && actual.box.left >= -viewportEdgeTolerancePx655 && actual.box.right <= actual.viewport + viewportEdgeTolerancePx655,
+          `${state} ${theme}: Reader fits (viewportEdgeTolerancePx655=1, visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual.box)}`);
+      }
+      observations.push({ name: 'item 655 state', state, theme, engine, expected, actual, tolerances: { viewportEdgeTolerancePx655, visibleExtentTolerancePx655 } });
+      await capture655(p, image + '-' + theme);
+    }
+  };
+  const returned655 = async (p, id, state, image) => {
+    for (const theme of ['light', 'dark']) {
+      await dossierTheme(p, theme);
+      const actual = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))}),r=c?.getBoundingClientRect();return {shown:Boolean(c?.getClientRects().length),top:r?.top,bottom:r?.bottom,height:innerHeight}})()`);
+      assert.ok(actual.shown && actual.top < actual.height - visibleExtentTolerancePx655 && actual.bottom > visibleExtentTolerancePx655,
+        `${state} ${theme}: source in view (visibleExtentTolerancePx655=0.5): ${JSON.stringify(actual)}`);
+      observations.push({ name: 'item 655 returned source', state, engine, theme, actual, tolerances: { visibleExtentTolerancePx655 } });
+      await capture655(p, image + '-' + theme);
+    }
+  };
+  // Passive frame sampling catches a transient repaint too. Never calls a
+  // product handler or uses the sample to pace the native gesture.
+  const trace655 = p => p.evaluate(`(()=>{window.item655Frames=[];window.item655Tracing=true;const frame=()=>{
+    if(!item655Tracing)return;item655Frames.push({open:document.querySelector('#reader').open,
+      onlyNew:document.querySelector('#messages').classList.contains('only-new'),source:document.querySelector('#source-body').textContent,
+      title:document.querySelector('#reader-title').textContent,notice:document.querySelector('#reader-notice').textContent});requestAnimationFrame(frame)};requestAnimationFrame(frame)})()`);
+  const traced655 = async (p, state, expected) => {
+    const frames = await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>{item655Tracing=false;done(item655Frames)})))');
+    assert.ok(frames.length >= 2, state + ': actual frames were sampled');
+    for (const frame of frames) for (const [key, value] of Object.entries(expected))
+      if (key === 'source') assert.ok(frame.source.startsWith(value), state + ': no transient source replacement');
+      else assert.equal(frame[key], value, `${state}: every frame keeps ${key}`);
+    observations.push({ name: 'item 655 every frame', state, engine, expected, frames });
+  };
+  // Item 655: an old starred reply is outside the page's loaded range. The first dossier and the
+  // topic deliberately have different names, and Starred is pressed from a different topic.
+  for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const rule of ['name', 'return', 'linked-name', 'linked-return']) await check(`reading item 655 ${rule} at ${width}: Starred and the dossier agree on the composer title and its way back`, async () => {
+      const topic = `item-655-${rule}-${width}`, elsewhere = topic + '-elsewhere';
+      const ids = await seed(topic, [
+        ['first', { sender: other, join: true, addressees: [facts.actor], body: 'First dossier root.' }],
+        ['firstReply', { sender: other, reply_to: 'first', addressees: [facts.actor], body: 'First dossier reply.' }],
+        ['second', { sender: other, addressees: [facts.actor], body: 'Second dossier root.' }],
+        ['star', { sender: other, reply_to: 'second', addressees: [facts.actor], body: 'The starred reply in the second dossier.' }],
+        ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Later independent message ${n}.`, read: true }]),
+      ]);
+      for (const [id, name] of [[ids.first, 'First dossier'], [ids.second, 'Second dossier']])
+        await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: id, operation_id: topic + id + '-name', args: { name } });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.star, operation_id: topic + '-star', args: { starred: true } });
+      const awayIds = await seed(elsewhere, [['away', { sender: other, join: true, addressees: [facts.actor], body: 'Another topic is on screen.' }]]);
+      const linked = rule.startsWith('linked-');
+      const p = await open(topic, device, linked ? topic : elsewhere, linked ? ids.f33 : awayIds.away, '', linked ? `/?topic=${topic}&message=${ids.star}` : `/?topic=${elsewhere}`);
+      try {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        if (!linked) {
+        if (device === 'phone') await press(p, device, '#things-open');
+        const section = '#things .things-sec[data-key=starred]';
+        await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy') !== 'true' && Boolean(document.querySelector('${section}:not([hidden])')?.getClientRects().length)`), 'the rail has read and drawn Starred');
+        if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
+        const link = `${section} .things-starred a[href*="message=${ids.star}"]`;
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length)`), 'the open Starred section draws the exact reply');
+        await centre(p, link); await press(p, device, link);
+        }
+        await until(async () => (await readerOn(p))?.startsWith('The starred reply in the second dossier.'), 'Starred opens the exact reply in the composer');
+        assert.equal(await p.evaluate(`new URL(location.href).searchParams.get('topic')`), topic, 'the reply belongs to its own topic');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.second))}))`), false, 'the dossier root is outside the loaded page');
+        const title = await titleOf(p);
+        await proof655(p, rule + '-unloaded', { open: true, ...(rule.endsWith('name') ? { title: 'Second dossier' } : {}), source: 'The starred reply in the second dossier.' }, `item-655-${rule}-${width}-starred`);
+        if (rule.endsWith('name')) assert.equal(title.text, 'Second dossier', 'Starred titles the composer with the second dossier name, never the topic or first dossier');
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'pressing the title closes the composer');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'the title return has finished its reads');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await capture655(p, `item-655-${rule}-${width}-${theme}-after-close`); }
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.star))})?.getClientRects().length)`), 'the title returns to the second dossier, including its old reply');
+        const landed = await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(ids.star))}), s=c.closest('.reply-stack');
+          return {name:s?.querySelector('.stack-name')?.textContent,topic:new URL(location.href).searchParams.get('topic')}})()`);
+        assert.equal(landed.topic, topic, 'the return never goes to the topic left before Starred');
+        await returned655(p, ids.star, rule + '-return', `item-655-${rule}-${width}-dossier`);
+        await openReader(p, device, ids.star, 'The starred reply in the second dossier.');
+        assert.equal((await titleOf(p)).text, 'Second dossier', 'opening the same reply from its dossier agrees');
+        await proof655(p, rule + '-loaded', { open: true, title: 'Second dossier', source: 'The starred reply in the second dossier.' }, `item-655-${rule}-${width}-loaded`);
+        assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === ids.star)?.acts.starred, true, 'navigation never takes the star off');
+        assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.first, ids.second] })).items.every(i => i.stack_position.below === false), true, 'navigation moves neither dossier below More');
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
+  // Review regressions: every state of the same title/return at the phone widths and laptop.
+  const openStar655 = async (p, device, id) => {
+    if (device === 'phone') await press(p, device, '#things-open');
+    const section = '#things .things-sec[data-key=starred]';
+    await until(() => p.evaluate(`document.querySelector('#things .things-sections')?.getAttribute('aria-busy') !== 'true' && Boolean(document.querySelector('${section}:not([hidden])')?.getClientRects().length)`), 'Starred is ready');
+    if (!await p.evaluate(`document.querySelector('${section}').open`)) await press(p, device, section + ' > summary');
+    const link = `${section} .things-starred a[href*="message=${id}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(link)})?.getClientRects().length)`), 'Starred draws the source link');
+    await centre(p, link); await press(p, device, link);
+  };
+  for (const [device, width] of [['phone', 320], ['phone', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const rule of ['B1-root', 'B1-reply', 'single', 'B2-fresh', 'B3-position', 'B3-root']) await check(`reading item 655 ${rule} at ${width}: unloaded dossier title states`, async () => {
+      const topic = `item-655-review-${rule}-${width}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Unnamed dossier first line.\nThe rest stays as written.' }],
+        ...(rule === 'single' ? [] : [['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Unloaded dossier reply.' }]]),
+        ['else', { sender: other, addressees: [facts.actor], body: 'Other dossier first line.' }],
+        ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Independent later message ${n}.`, read: true }]),
+      ]);
+      const target = rule === 'B1-root' || rule === 'single' ? ids.root : ids.reply;
+      if (rule === 'B2-fresh') await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-name', args: { name: 'Old dossier name' } });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: target, operation_id: topic + '-star', args: { starred: true } });
+      const p = await open(topic, device, topic, ids.f33, 'window.holdReads=true;');
+      try {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        const bad = rule.startsWith('B3-');
+        let net;
+        if (bad) {
+          net = await network(p, true);
+          net.hold(payload => rule === 'B3-position' ? payload?.name === 'stack_positions' && payload.args?.message_ids?.includes(target)
+            : payload?.name === 'topic_messages' && payload.args?.message_ids?.includes(ids.root));
+        }
+        await openStar655(p, device, target);
+        if (bad) {
+          const held = await until(() => net.held()[0], 'the dossier metadata read is held');
+          net.hold(null);
+          await net.answer(held, 503, { error: { code: 'DATABASE_BUSY', message: 'Dossier lookup busy for item 655.' } });
+        }
+        await until(async () => (await readerOn(p)) !== null, 'the source opens even if dossier metadata is unavailable');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.root))}))`), false, 'opening reads no old feed page');
+        if (bad) {
+          await until(() => p.evaluate(`document.querySelector('#reader-notice').textContent.includes('Dossier name could not be read')`), 'the Reader explains the metadata failure');
+          assert.ok((await readerOn(p)).startsWith('Unloaded dossier reply.'), 'failure preserves the exact source');
+          assert.equal(await p.evaluate(`document.querySelector('#reader-close').disabled`), false, 'the Reader remains closable');
+        } else {
+          const expected = rule === 'single' ? 'Reading ' + topic : rule === 'B2-fresh' ? 'Old dossier name' : 'Unnamed dossier first line.';
+          await becomes(async () => (await titleOf(p)).text, expected, 'the title names this dossier, with the topic fallback only for a singleton');
+          if (rule === 'B2-fresh') {
+            for (const [suffix, root, name, expectedName] of [
+              ['rename', ids.root, 'New dossier name from another device', 'New dossier name from another device'],
+              ['clear', ids.root, '', 'Unnamed dossier first line.'],
+            ]) {
+              await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: root, operation_id: topic + '-' + suffix, args: { name } });
+              await becomes(async () => (await titleOf(p)).text, expectedName, 'freshness follows an unloaded dossier rename or cleared name');
+              await proof655(p, 'B2-' + suffix, { open: true, title: expectedName, source: 'Unloaded dossier reply.' }, `item-655-B2-${suffix}-${width}`);
+            }
+            await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.else, operation_id: topic + '-other-name', args: { name: 'Joined dossier name' } });
+            await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-join', args: { into: ids.else } });
+            await becomes(async () => (await titleOf(p)).text, 'Joined dossier name', 'freshness follows the new root after a join');
+            await proof655(p, 'B2-join', { open: true, title: 'Joined dossier name', source: 'Unloaded dossier reply.' }, `item-655-B2-join-${width}`);
+            await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: topic + '-split', args: { into: null } });
+            await becomes(async () => (await titleOf(p)).text, 'Unnamed dossier first line.', 'a split drops the old joined name');
+            await proof655(p, 'B2-split', { open: true, title: 'Unnamed dossier first line.', source: 'Unloaded dossier reply.' }, `item-655-B2-split-${width}`);
+          }
+        }
+        const sourceWords = target === ids.root ? 'Unnamed dossier first line.\nThe rest stays as written.' : 'Unloaded dossier reply.';
+        const expectedTitle = bad || rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.';
+        await proof655(p, rule, { open: true, source: sourceWords, title: expectedTitle }, `item-655-review-${rule}-${width}-reader`);
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'the title closes the Reader');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))})?.getClientRects().length)`), 'the title reveals the same source');
+        await returned655(p, target, rule + '-return', `item-655-review-${rule}-${width}-return`);
+        await openReader(p, device, target, target === ids.root ? 'Unnamed dossier first line.' : 'Unloaded dossier reply.');
+        await becomes(async () => (await titleOf(p)).text, rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', 'opening from the dossier agrees after every state change');
+        await proof655(p, bad ? 'B3-recovered' : rule + '-loaded', { open: true, source: sourceWords, title: rule === 'single' ? 'Reading ' + topic : 'Unnamed dossier first line.', notice: '' }, `item-655-review-${rule}-${width}-loaded`);
+        if (rule === 'single') {
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: target, operation_id: topic + '-single-name', args: { name: 'Named singleton' } });
+          await becomes(async () => (await titleOf(p)).text, 'Named singleton', 'a loaded singleton can be named');
+          await proof655(p, 'single-named', { open: true, title: 'Named singleton', source: sourceWords }, `item-655-single-named-${width}`);
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: target, operation_id: topic + '-single-clear', args: { name: '' } });
+          await becomes(async () => (await titleOf(p)).text, 'Reading ' + topic, 'clearing the loaded singleton never revives its cached name');
+          await proof655(p, 'single-cleared', { open: true, title: 'Reading ' + topic, source: sourceWords }, `item-655-single-cleared-${width}`);
+        }
+        assert.equal((await view('message_acts', { topic_id: topic })).items.find(i => i.message_id === target)?.acts.starred, true, 'no title read or return unstars the source');
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+
+      if (rule === 'B1-root') {
+        // The root is on the newest page; all its members predate that page.
+        // Joining the older branch into it creates this real Core membership.
+        const partial = topic + '-partial', members = await seed(partial, [
+          ['old', { sender: other, join: true, addressees: [facts.actor], body: 'Older joined branch.' }],
+          ['reply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'Reply outside the root page.' }],
+          ...Array.from({ length: 34 }, (_, n) => ['f' + n, { sender: other, addressees: [facts.actor], body: `Partial page filler ${n}.`, read: true }]),
+          ['root', { sender: other, addressees: [facts.actor], body: 'Loaded root with older members.' }],
+        ]);
+        await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: members.old, operation_id: partial + '-join', args: { into: members.root } });
+        const q = await open(partial, device, partial, members.root);
+        try {
+          if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(members.root))}))`), true, 'the root is on the loaded page');
+          assert.equal(await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(members.reply))}))`), false, 'the members are outside the loaded page');
+          const positions = (await view('stack_positions', { topic_id: partial, message_ids: [members.old, members.reply, members.root] })).items;
+          assert.equal(positions.length, 3, 'all three exact fixture messages have a position');
+          assert.ok(positions.every(i => i.stack_position.root_id === members.root && i.stack_position.has_other_messages), 'real joined membership has the exact loaded root');
+          observations.push({ name: 'item 655 loaded root unloaded members', engine, width, members, positions });
+          await openReader(q, device, members.root, 'Loaded root with older members.');
+          await proof655(q, 'B1-loaded', { open: true, source: 'Loaded root with older members.', title: 'Loaded root with older members.' }, `item-655-B1-loaded-${width}`);
+          await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: members.root, operation_id: partial + '-name', args: { name: 'Named loaded root' } });
+          await becomes(async () => (await titleOf(q)).text, 'Named loaded root', 'loaded root follows its name');
+          await proof655(q, 'B1-loaded-named', { open: true, title: 'Named loaded root' }, `item-655-B1-loaded-named-${width}`);
+          assert.deepEqual(q.errors, []);
+        } finally { await q.close(); }
+      }
+      if (rule === 'B2-fresh' || rule === 'B3-position') {
+        const q = await open(topic + '-late', device, topic, ids.f33, 'window.holdReads=true;');
+        try {
+          if (device === 'phone') await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          const net = await network(q, true);
+          let once = true;
+          net.hold(payload => once && payload?.name === 'stack_positions' && payload.args?.message_ids?.includes(target) && (once = false, true));
+          await openStar655(q, device, target);
+          const held = await until(() => net.held()[0], 'the old opening metadata is held');
+          net.hold(null);
+          // A native second opening supersedes the first; no application handler
+          // is invoked by the test. The late response must change no newer Reader.
+          await openReader(q, device, ids.f33, 'Independent later message 33.');
+          if (rule === 'B2-fresh') {
+            await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-late-name', args: { name: 'Newest confirmed dossier name' } });
+            await closeReader(q, device);
+            await openStar655(q, device, target);
+            await becomes(async () => (await titleOf(q)).text, 'Newest confirmed dossier name', 'a newer opening gets the latest name');
+            const stale = await view('stack_positions', { topic_id: topic, message_ids: [target] });
+            stale.items.find(i => i.message_id === target).stack_position.name.text = 'Stale late name';
+            await trace655(q);
+            await net.answer(held, 200, stale);
+            await until(() => q.evaluate('window.fetchesOut === 0'), 'the late answer has finished');
+            await proof655(q, 'B2-late', { open: true, title: 'Newest confirmed dossier name', source: 'Unloaded dossier reply.' }, `item-655-B2-late-${width}`);
+            await traced655(q, 'B2-late', { open: true, title: 'Newest confirmed dossier name', source: 'Unloaded dossier reply.' });
+          } else {
+            await trace655(q);
+            await net.answer(held, 503, { error: { code: 'DATABASE_BUSY', message: 'Abandoned dossier metadata failed.' } });
+            await until(() => q.evaluate('window.fetchesOut === 0'), 'the abandoned failure has finished');
+            await proof655(q, 'B3-abandoned', { open: true, source: 'Independent later message 33.', title: 'Reading ' + topic, notice: '' }, `item-655-B3-abandoned-${width}`);
+            await traced655(q, 'B3-abandoned', { open: true, source: 'Independent later message 33.', title: 'Reading ' + topic, notice: '' });
+          }
+          assert.deepEqual(q.errors, []);
+        } finally { await q.close(); }
+      }
+    });
+    await check(`reading item 655 B4-return at ${width}: a settled Conversation dossier returns through Only new`, async () => {
+      const name = `item-655-conversation-${width}`;
+      await control({ method: 'navigation_workspaces', workspaces: [{ id: name, title: name, team: ['fable'], coordinator: 'fable' }] });
+      const topic = (await view('conversation', { workspace_id: name })).conversation.topic_id;
+      const root = (await control({ method: 'agent_message', operation_id: name + '-root', topic_id: topic, sender: facts.actor, body: 'Settled starred conversation item.' })).result.message_id;
+      await control({ method: 'agent_message', operation_id: name + '-answer', topic_id: topic, sender: 'fable', reply_to: root, body: 'The coordinator answered this item.' });
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: root, operation_id: name + '-star', args: { starred: true } });
+      await control({ method: 'agent_message', operation_id: name + '-new', topic_id: topic, sender: facts.actor, body: 'An unrelated item still needs an answer.' });
+      const p = await open(name, device, topic, root, '', '/?conversation=' + name);
+      try {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        const filter = '#conversation-show button';
+        await until(() => p.evaluate(`Boolean(document.querySelector('${filter}')?.getClientRects().length)`), 'Only new is offered');
+        await press(p, device, filter);
+        await until(() => p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), 'Only new is active');
+        assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(root))})?.getClientRects().length)`), false, 'the settled dossier is hidden by the filter');
+        await openStar655(p, device, root);
+        await until(async () => (await readerOn(p))?.startsWith('Settled starred conversation item.'), 'Starred opens the settled source without resetting the filter');
+        assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), true, 'opening alone keeps the chosen filter');
+        await proof655(p, 'B4-open', { open: true, source: 'Settled starred conversation item.', onlyNew: true }, `item-655-review-B4-${width}-reader`);
+        await trace655(p);
+        await closeReader(p, device);
+        await proof655(p, 'B4-dismissed', { open: false, onlyNew: true }, `item-655-review-B4-${width}-dismissed`);
+        await traced655(p, 'B4-dismissed', { onlyNew: true });
+        await openStar655(p, device, root);
+        await until(async () => (await readerOn(p))?.startsWith('Settled starred conversation item.'), 'the settled source opens again');
+        // A real local preservation failure, armed before native typing. No
+        // close handler is replaced; restoring storage allows the same close.
+        await p.evaluate(`(()=>{window.item655Transaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Item 655 quota failure','QuotaExceededError');return item655Transaction.apply(this,args)}})()`);
+        try {
+          await press(p, device, '#writing-body');
+          await p.send('Input.insertText', { text: 'Exact writing kept on refused title return.' });
+          await trace655(p);
+          await press(p, device, '#reader-title .reader-topic');
+          await until(() => p.evaluate(`document.querySelector('#reader-notice').textContent.includes('Not closed: this device could not keep your writing')`), 'the failed preservation refuses title return');
+          await proof655(p, 'B4-refused', { open: true, onlyNew: true, source: 'Settled starred conversation item.', writing: 'Exact writing kept on refused title return.' }, `item-655-review-B4-${width}-refused`);
+          await traced655(p, 'B4-refused', { open: true, onlyNew: true, source: 'Settled starred conversation item.' });
+        } finally { await p.evaluate('IDBDatabase.prototype.transaction=item655Transaction'); }
+        await press(p, device, '#reader-title .reader-topic');
+        await until(async () => await readerOn(p) === null, 'the title closes the Reader');
+        assert.equal(await p.evaluate(`document.querySelector('#messages').classList.contains('only-new')`), false, 'the title return clears Only new so its settled source can show');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(root))})?.getClientRects().length)`), 'the settled dossier is revealed');
+        await proof655(p, 'B4-return', { open: false, onlyNew: false }, `item-655-review-B4-${width}-return-page`);
+        await returned655(p, root, 'B4-return', `item-655-review-B4-${width}-return`);
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
   await check('reading stacks the Reader\'s title names the dossier its reply goes into, its first line until it is named, on one line however long', async () => {
     const ROOT = 'Where shall we stay for the cabin week?\nThe lake or the hills, either is fine.';
     const LONG = 'The cabin week plan, with every booking, the lake, the long drive up and who brings the food for all seven days';
@@ -1164,10 +2291,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  // Item 378, the count where Core's dossier is drawn as more than one stack: its first message is older than the page
-  // loaded, and two of its replies on the page are two stacks. The button moves the whole dossier, both stacks, so its
-  // count names both stacks' messages; a message of another dossier stays where it is.
-  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, where the page draws it as two stacks, its first message not loaded', async () => {
+  // Item 378, the count where Core's dossier's first message is older than the page loaded: two of its replies on the
+  // page are its two branches, which the page draws as one stack (item 550). The button moves the whole dossier, so
+  // its count names both answers; a message of another dossier stays where it is.
+  await check('reading stacks the Reader\'s archive button counts every message that moves with the dossier, its first message not loaded and its two answers one stack', async () => {
     for (const device of Object.keys(DEVICES)) {
       const topic = 'stack-archive-split-' + device;
       const said = [['root', { sender: other, join: true, addressees: [facts.actor], body: 'An old question everyone answers.', read: true }]];
@@ -1179,10 +2306,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       const shownId = id => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${id}"]')?.getClientRects().length)`);
       const drawn = () => p.evaluate(`[${JSON.stringify(ids.a)},${JSON.stringify(ids.b)},${JSON.stringify(ids.f29)}].map(id=>Boolean(document.querySelector('#messages [data-id="'+id+'"]')?.getClientRects().length))`);
       await becomes(drawn, [true, true, true], `${device}: both answers and the newest filler are drawn`);
-      // The page as this case needs it: the dossier's first message not loaded, and its two answers in two stacks.
+      // The page as this case needs it: the dossier's first message not loaded, and its two answers one stack (item 550).
       assert.deepEqual(await p.evaluate(`(()=>{const own=id=>document.querySelector('#messages [data-id="'+id+'"]'),stackOf=id=>own(id).closest('.reply-stack')?.dataset.stack??id;
-        return {root:Boolean(own(${JSON.stringify(ids.root)})),apart:stackOf(${JSON.stringify(ids.a)})!==stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, apart: true },
-        `${device}: the old question is not loaded, and its two answers are two stacks`);
+        return {root:Boolean(own(${JSON.stringify(ids.root)})),together:stackOf(${JSON.stringify(ids.a)})===stackOf(${JSON.stringify(ids.b)})}})()`), { root: false, together: true },
+        `${device}: the old question is not loaded, and its two answers are one stack`);
       const button = () => p.evaluate(`(b=>({shown:b.getClientRects().length>0,name:b.getAttribute('aria-label'),title:b.title,count:b.querySelector('.aside-count').textContent,pressed:b.getAttribute('aria-pressed')}))(document.querySelector('#reader-aside'))`);
       await openReader(p, device, ids.b, 'Second answer');
       for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
@@ -1198,6 +2325,687 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await closeReader(p, device);
       await becomes(drawn, [false, false, true], `${device}: both answers went below More, as the count said, and the filler stays`);
       assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.f29] })).items[0].stack_position.below, false, `${device}: Core moved no other dossier`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: one dossier is one stack, whatever of it is loaded. The lantern dossier's first message and the fork
+  // under it are older than the page loads; replies made straight under the first message, and under the fork, are
+  // the page's. Before this item each such branch was a stack of its own, and each took the dossier's minted name.
+  // Read as a person sees it on a laptop and by a finger at 320, 375 and 390, light and dark: the name shows once,
+  // every loaded reply is in its stack, and its count is right. Another dossier above the page stays its own, under
+  // its own first line and no "Named by"; a dossier whose first message is loaded reads as before; Earlier messages,
+  // pressed twice (the fork loads, then the first message), never splits or doubles the dossier.
+  await check('reading stacks one dossier whose fork sits above the loaded page is one stack: its name once, every loaded reply in it, its count right; another dossier stays its own, and Earlier messages neither splits nor doubles it (item 550)', async () => {
+    const minter = 'aim-ux', words = 'Lantern hinge repair';
+    const lantern = ['a1', 'b1', 'a2', 'c1', 'b2', 'c2'];
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-one-dossier-' + device;
+      const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+      const said = [['root', say(other, 'Can the lantern shop mend the brass hinge by Thursday?', { join: true })],
+        ['ferry', say(other, 'Who keeps the ferry timetable this month?')]];
+      for (let n = 0; n < 30; n++) said.push(['g' + n, say(other, `Harbour note ${n}, a message of its own.`)]);
+      said.push(['fork', say(minter, 'The shop opens at nine; I will ask about the hinge.', { join: true, reply_to: 'root' })]);
+      for (let n = 0; n < 29; n++) said.push(['f' + n, say(other, `Market note ${n}, a message of its own.`)]);
+      said.push(['a1', say(minter, 'The smith can solder it on Wednesday.', { reply_to: 'root' })],
+        ['b1', say(other, 'Ask whether the glass is covered too.', { reply_to: 'root' })],
+        ['a2', say(other, 'Wednesday suits; book it.', { reply_to: 'a1' })],
+        ['c1', say(other, 'Nine is too late for me; can you go at eight?', { reply_to: 'fork' })],
+        ['s1', say(other, 'I can keep it until the twentieth.', { reply_to: 'ferry' })],
+        ['b2', say(minter, 'The glass is covered; only the hinge is extra.', { reply_to: 'b1' })],
+        ['c2', say(minter, 'Eight works; I will go first thing.', { reply_to: 'c1' })],
+        ['s2', say(minter, 'Thanks; I will take it after that.', { reply_to: 's1' })],
+        ['near', say(other, 'Bring a spare wick to the shop?')],
+        ['near1', say(minter, 'Two spare wicks are in the drawer.', { reply_to: 'near' })]);
+      const ids = await seed(topic, said);
+      // The first agent to reply mints the lantern dossier's name; the ferry dossier keeps its first line.
+      const minted = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.root, operation_id: `${topic}-mint`, args: { name: words, minted: true } });
+      assert.equal(minted.status, 'committed', `${device}: the namer mints the lantern dossier's name`);
+      const p = await open(topic, device, topic, ids.near1);
+      // The page as a person reads it: each tab drawn, by its name, mark and count; which stack each message is in.
+      const look = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},own=k=>document.querySelector('#messages [data-id="'+ids[k]+'"]');
+        const stackOf=k=>{const e=own(k);return e?(e.closest('.reply-stack')?.dataset.stack??ids[k]):null},key=id=>Object.keys(ids).find(k=>ids[k]===id)??id;
+        const tabs=[...document.querySelectorAll('#messages .reply-stack .stack-head')].filter(r=>r.getClientRects().length)
+          .map(r=>({stack:key(r.closest('.reply-stack').dataset.stack),name:r.querySelector('.stack-name').textContent,named:Boolean(r.querySelector('.stack-named')),count:r.querySelector('.stack-count').textContent}));
+        const lantern=${JSON.stringify(lantern)}.concat(own('fork')?['fork']:[],own('root')?['root']:[]);
+        return {loaded:{root:Boolean(own('root')),fork:Boolean(own('fork'))},named:tabs.filter(t=>t.name===${JSON.stringify(words)}),
+          lantern:[...new Set(lantern.map(stackOf).map(key))],ferry:[stackOf('s1'),stackOf('s2')].map(key),near:[stackOf('near'),stackOf('near1')].map(key),
+          ferryTab:tabs.find(t=>t.stack===key(stackOf('s2')))??null,sideways:document.documentElement.scrollWidth>innerWidth,
+          once:(c=>c.length===new Set(c).size)([...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>e.dataset.id))}})()`);
+      const ferryTab = (stack, name, count = '1 reply') => ({ stack, name, named: false, count });
+      // Earlier messages shows the fork, then the first message, where its button was, each a card of its own (item
+      // 550's fix round, B1): the dossier's stack keeps its head, its name once and its count, and the ferry dossier's
+      // first message, loaded with the first page before it, shows so too.
+      const ferry = ferryTab('s1', 'I can keep it until the twentieth.');
+      const stages = [
+        { loaded: { root: false, fork: false }, lantern: ['a1'], ferry },
+        { loaded: { root: false, fork: true }, lantern: ['a1', 'fork'], ferry },
+        { loaded: { root: true, fork: true }, lantern: ['a1', 'fork', 'root'], ferry }];
+      for (const [at, stage] of stages.entries()) {
+        if (at) {
+          const cards = await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+          await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+          await until(async () => (await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`)) > cards, `${device}: Earlier messages reads an older page`);
+        }
+        const want = { loaded: stage.loaded, named: [{ stack: 'a1', name: words, named: true, count: '5 replies' }], lantern: stage.lantern,
+          ferry: [stage.ferry.stack, stage.ferry.stack], near: ['near', 'near'], ferryTab: stage.ferry, sideways: false, once: true };
+        for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+          if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await becomes(look, want, `${device} ${width}, ${['the first message and the fork above the page', 'the fork loaded', 'the first message loaded'][at]}: the lantern dossier is one stack under a1, its name once with its mark and 5 replies, what Earlier messages loaded of it cards of their own where the button was; the ferry dossier is its own under its first line; the loaded dossier reads as before`);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-one-dossier-${device}-${width}-${at}-${theme}`); }
+          await dossierTheme(p, 'light');
+        }
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: Earlier messages, pressed under a dossier's stack whose first message and older replies are above the
+  // page, fills that stack where the button was. Each older message comes in as a whole card a sheet gap below the
+  // one before, newest first and its first message last, none tucked under another; the stack's head stays its head
+  // and the cards already shown hold still. Shot before and after at 320, 375, 390 and on a laptop, light and dark.
+  await check('reading stacks Earlier messages fills the stack it was under with whole cards where the button was: what was shown holds still and the stack keeps its head (item 550)', async () => {
+    const older = ['o0', 'o1', 'o2', 'o3', 'o4'], loaded = ['a1', 'a2', 'a3', 'a4', 'a5'];
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'stack-more-fills-' + device;
+      const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+      const said = [['root', say(other, 'Should the pier lamps be relit before the tide fair?', { join: true })]];
+      for (const [n, name] of older.entries()) said.push([name, say(n % 2 ? other : 'aim-ux', `Pier lamp ${n}: the wick is trimmed and the glass wiped.`, { reply_to: 'root', ...(n ? {} : { join: true }) })]);
+      for (const [n, name] of loaded.entries()) said.push([name, say(n % 2 ? 'aim-ux' : other, `Lamp post ${n + 1} is lit and holding in the wind.`, { reply_to: 'root' })]);
+      for (let n = 0; n < 25; n++) said.push(['q' + n, say(other, `Quay note ${n}, a message of its own.`)]);
+      const ids = await seed(topic, said);
+      const p = await open(topic, device, topic, ids.q24);
+      const key = `(id=>{const m=${JSON.stringify(ids)};return Object.keys(m).find(k=>m[k]===id)??id})`;
+      const widths = device === 'phone' ? [320, 375, 390] : [1280];
+      const shots = async (at, into) => {
+        for (const width of widths) {
+          if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await p.evaluate(into);
+          for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-fills-${device}-${width}-${at}-${theme}`); }
+          await dossierTheme(p, 'light');
+        }
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+      };
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.root}"]'))`), false, `${device}: the dossier's first message is above the page`);
+      await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), `${device}: Earlier messages is offered`);
+      await shots(0, "document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const before = await p.evaluate(`(()=>{const key=${key},cards=[...document.querySelectorAll('#messages .message-card[data-id]')].filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1),b=last.getBoundingClientRect();
+        return {last:key(last.dataset.id),lastTop:Math.round(b.top),lastBottom:Math.round(b.bottom),stack:key(last.closest('.reply-stack')?.dataset.stack??null)}})()`);
+      const count = await p.evaluate("document.querySelectorAll('#messages .message-card[data-id]').length");
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length > ${count} && Boolean(document.querySelector('#messages [data-id="${ids.root}"]'))`), `${device}: Earlier messages loads the dossier's older messages`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const after = await p.evaluate(`(()=>{const key=${key},last=document.querySelector('#messages .message-card[data-id="${ids[before.last]}"]');
+        const filled=[...document.querySelectorAll('#messages [data-stack-filled="true"]')],box=e=>e.getBoundingClientRect();
+        const runs=filled.slice(1).map((e,i)=>Math.round(box(e).top-box(filled[i]).bottom));
+        return {lastTop:Math.round(box(last).top),filled:filled.map(e=>key(e.dataset.id)),stacks:[...new Set(filled.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],
+          head:key(document.querySelector('#messages [data-id="${ids.a5}"]').closest('.reply-stack')?.dataset.stack??null),
+          first:filled.length?Math.round(box(filled[0]).top):null,gaps:[...new Set(runs)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await shots(1, `document.querySelector('#messages [data-id="${ids[before.last]}"]').scrollIntoView({block:'start'})`);
+      const seen = JSON.stringify({ before, after });
+      assert.equal(before.stack, 'a1', `${device}: the last card above Earlier messages is in the dossier's stack, headed by its oldest loaded reply: ${seen}`);
+      assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1, `${device}: the cards already shown hold still: ${seen}`);
+      assert.deepEqual(after.filled, [...older].reverse().concat('root'), `${device}: the older messages fill the stack newest first, its first message last: ${seen}`);
+      assert.deepEqual(after.stacks, ['a1'], `${device}: every older message is in the stack Earlier messages was under: ${seen}`);
+      assert.equal(after.head, 'a1', `${device}: the stack keeps its head; its first message, now loaded, does not take it: ${seen}`);
+      assert.equal(after.gaps.length, 1, `${device}: the older cards are one even run: ${seen}`);
+      assert.ok(after.gaps[0] > 0, `${device}: no older card tucks under the one before: ${seen}`);
+      assert.ok(Math.abs(after.first - (before.lastBottom + after.gaps[0])) <= 1, `${device}: the first older card follows the last shown as each follows the one before: ${seen}`);
+      assert.equal(after.sideways, false, `${device}: nothing runs off the side`);
+      observations.push({ name: 'Earlier messages fills its stack', engine, device, before, after });
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550, its fix round's B1: Earlier messages shows every older message it loads where the button was, whichever
+  // dossier it is of. The last card above the button is a message of its own; the older page holds only replies of a
+  // dossier whose first message is above the page and whose stack, its five newer replies, sits higher up. Each older
+  // reply comes in below that last card, newest first, a whole card a gap below the one before; the cards shown hold
+  // still, and the stack higher up keeps its head and takes none of them. On a laptop and by a finger at 390, 375 and
+  // 320, light and dark, before (0) and after (1).
+  await check('reading stacks Earlier messages shows every older message it loads where the button was, those of a dossier whose stack sits higher up too: the cards shown hold still and that stack keeps its head (item 550)', async () => {
+    const topic = 'stack-more-apart';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Which boat takes the regatta marks out on Saturday?', { join: true })]];
+    for (let n = 1; n <= 34; n++) said.push(['o' + n, say(n % 2 ? 'aim-ux' : other, `Mark ${n}: its buoy is painted and its line coiled.`, { reply_to: 'root', ...(n === 1 ? { join: true } : {}) })]);
+    said.push(['x', say(other, 'The slipway gate sticks; oil it before the weekend.')]);
+    for (let n = 1; n <= 5; n++) said.push(['a' + n, say(n === 5 ? facts.actor : n % 2 ? other : 'aim-ux', `Launch ${n} is fuelled and its crew named.`, { reply_to: n === 5 ? 'a4' : 'root' })]);
+    for (let n = 1; n <= 24; n++) said.push(['n' + n, say(other, `Harbour board note ${n}, a message of its own.`)]);
+    const ids = await seed(topic, said);
+    // Merge B3: the original sheet must not multiply into payload/waiting pills on apart cards.
+    const cover = { stands: 'The regatta is ready', waiting: [{ text: 'Launch on Saturday?', default: 'launch at dawn' }],
+      payload: { text: 'The marks are ready', message_id: ids.a4, kind: 'answer' } };
+    const written = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+      operation_id: topic + '-b3-cover', args: cover });
+    assert.equal(written.status, 'committed', JSON.stringify(written));
+    const older = Array.from({ length: 30 }, (_, n) => 'o' + (34 - n));
+    const key = `(id=>{const m=${JSON.stringify(ids)};return Object.keys(m).find(k=>m[k]===id)??id})`;
+    for (const [name, device] of [['laptop', 'laptop'], ['phone', 'phone'], ['phone-375', 'phone'], ['phone-320', 'phone']]) {
+      const p = await open(`${topic}-${name}`, name, topic, ids.n24);
+      const width = await p.evaluate('innerWidth');
+      await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), `${name}: Earlier messages is offered`);
+      const coverCounts = () => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll('#messages .dossier-cover')];return {
+        sheets:sheets.length,pills:document.querySelectorAll('#messages .row-pills').length,
+        stands:sheets[0]?.querySelector('.cover-stands')?.textContent??null,
+        payload:sheets[0]?.querySelector('.pill-payload')?.dataset.state??null,
+        waits:sheets[0]?.querySelectorAll('.cover-wait').length??0,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const expectCover = async (phase, expected = { sheets: 1, pills: 0, stands: cover.stands, payload: 'proposed', waits: 1, sideways: false }) => {
+        assert.deepEqual(await coverCounts(), expected, `${name}: B3 ${phase}: one cover, no repeated pills on apart cards`);
+      };
+      await expectCover('before More');
+      const shots = async at => { for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-apart-${name}-${width}-${at}-${theme}`); } await dossierTheme(p, 'light'); };
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      await shots(0);
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const before = await p.evaluate(`(()=>{const key=${key},cards=[...document.querySelectorAll('#messages .message-card[data-id]')].filter(e=>e.getBoundingClientRect().height>0),last=cards.at(-1),b=last.getBoundingClientRect();
+        const a=document.querySelector('#messages .message-card[data-id="${ids.a5}"]'),s=a.closest('.reply-stack');
+        return {last:key(last.dataset.id),lastTop:Math.round(b.top),lastBottom:Math.round(b.bottom),head:key(s?.dataset.stack??null),aTop:Math.round(a.getBoundingClientRect().top),
+          count:s?.querySelector('.stack-count')?.textContent??null,loaded:${JSON.stringify(older.map(k => ids[k]))}.filter(id=>document.querySelector('#messages [data-id="'+id+'"]')).length}})()`);
+      assert.deepEqual([before.last, before.head, before.loaded], ['x', 'a1', 0], `${name}: the last card above Earlier messages is a message of its own, the dossier's five replies one stack higher up under a1, and no older reply loaded: ${JSON.stringify(before)}`);
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`${JSON.stringify(older.map(k => ids[k]))}.every(id=>document.querySelector('#messages [data-id="'+id+'"]'))`), `${name}: Earlier messages loads the thirty older replies`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const after = await p.evaluate(`(()=>{const key=${key},box=e=>e.getBoundingClientRect(),card=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]');
+        const x=card(${JSON.stringify(ids.x)}),a=card(${JSON.stringify(ids.a5)}),s=a.closest('.reply-stack'),old=${JSON.stringify(older.map(k => ids[k]))}.map(card);
+        const runs=old.slice(1).map((e,i)=>Math.round(box(e).top-box(old[i]).bottom));
+        return {lastTop:Math.round(box(x).top),lastBottom:Math.round(box(x).bottom),aTop:Math.round(box(a).top),head:key(s?.dataset.stack??null),count:s?.querySelector('.stack-count')?.textContent??null,
+          shown:old.filter(e=>box(e).height>0).length,order:old.every((e,i)=>!i||box(e).top>box(old[i-1]).top),below:old.every(e=>box(e).top>=box(x).bottom),
+          into:[...new Set(old.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],first:Math.round(box(old[0]).top),gaps:[...new Set(runs)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await p.evaluate(`document.querySelector('#messages [data-id="${ids.x}"]').scrollIntoView({block:'start'})`);
+      await shots(1);
+      await expectCover('after first More');
+      const seen = JSON.stringify({ before, after });
+      assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1 && Math.abs(after.aTop - before.aTop) <= 1, `${name}: the cards already shown hold still: ${seen}`);
+      assert.deepEqual([after.head, after.count], ['a1', before.count], `${name}: the stack higher up keeps its head and its count: ${seen}`);
+      assert.deepEqual([after.shown, after.order, after.below], [30, true, true], `${name}: every older reply shows below the last card shown, newest first: ${seen}`);
+      assert.deepEqual(after.into, [null], `${name}: none of them goes into the stack higher up, or into a stack of its own: ${seen}`);
+      assert.equal(after.gaps.length, 1, `${name}: the older cards are one even run: ${seen}`);
+      assert.ok(after.gaps[0] > 0 && Math.abs(after.first - (before.lastBottom + after.gaps[0])) <= 1, `${name}: the first older card follows the last shown as each follows the one before: ${seen}`);
+      assert.equal(after.sideways, false, `${name}: nothing runs off the side`);
+      // Pressed again (re-review B1): the last card above the button is now o5, a card of its own of that same
+      // dossier. What the second press loads of it (o4..o1 and its first message) comes in below o5 too, newest
+      // first, the same even run; nothing shown moves, and the stack higher up still takes none of it.
+      await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+      const last = older.at(-1), oldest = ['o4', 'o3', 'o2', 'o1', 'root'];
+      const again = () => p.evaluate(`(()=>{const key=${key},box=e=>e.getBoundingClientRect(),card=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]');
+        const o=card(${JSON.stringify(ids[last])}),x=card(${JSON.stringify(ids.x)}),a=card(${JSON.stringify(ids.a5)}),s=a.closest('.reply-stack'),old=${JSON.stringify(oldest.map(k => ids[k]))}.map(card).filter(Boolean);
+        const run=[o,...old],gaps=run.slice(1).map((e,i)=>Math.round(box(e).top-box(run[i]).bottom));
+        return {lastTop:Math.round(box(o).top),xTop:Math.round(box(x).top),aTop:Math.round(box(a).top),head:key(s?.dataset.stack??null),count:s?.querySelector('.stack-count')?.textContent??null,
+          loaded:old.length,shown:old.filter(e=>box(e).height>0).length,order:old.every((e,i)=>!i||box(e).top>box(old[i-1]).top),below:old.every(e=>box(e).top>=box(o).bottom),
+          into:[...new Set(old.map(e=>key(e.closest('.reply-stack')?.dataset.stack??null)))],gaps:[...new Set(gaps)],sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      const pressed = await again();
+      assert.equal(pressed.loaded, 0, `${name}: before the second press none of the oldest five is loaded: ${JSON.stringify(pressed)}`);
+      await press(p, device, '#more-messages');
+      await until(() => p.evaluate(`${JSON.stringify(oldest.map(k => ids[k]))}.every(id=>document.querySelector('#messages [data-id="'+id+'"]'))`), `${name}: Earlier messages, pressed again, loads the oldest five`);
+      await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+      const twice = await again();
+      await p.evaluate(`document.querySelector('#messages [data-id="${ids[last]}"]').scrollIntoView({block:'start'})`);
+      await shots(2);
+      await expectCover('after second More, including the root');
+      const seen2 = JSON.stringify({ pressed, twice });
+      assert.ok([['lastTop'], ['xTop'], ['aTop']].every(([k]) => Math.abs(twice[k] - pressed[k]) <= 1), `${name}: pressed again, the cards already shown hold still: ${seen2}`);
+      assert.deepEqual([twice.head, twice.count], ['a1', before.count], `${name}: pressed again, the stack higher up keeps its head and its count: ${seen2}`);
+      assert.deepEqual([twice.shown, twice.order, twice.below], [5, true, true], `${name}: pressed again, each of the oldest five shows below o5, newest first: ${seen2}`);
+      assert.deepEqual(twice.into, [null], `${name}: pressed again, none goes into the stack higher up, or into a stack of its own: ${seen2}`);
+      assert.deepEqual(twice.gaps, after.gaps, `${name}: pressed again, they follow o5 as the first press's cards follow one another: ${seen2}`);
+      assert.equal(twice.sideways, false, `${name}: pressed again, nothing runs off the side`);
+      // Same element's branches: folded/open sheet; no cover; stands only; waiting only;
+      // payload proposed, accepted by the owner's thumb or named reply, and restored after clearing.
+      // Read-only/no-save/error controls do not exist on this derived cover display.
+      const toggle = `#messages .reply-stack[data-stack="${ids.a1}"] > .stack-toggle`;
+      for (const level of ['open', 'folded']) {
+        await centre(p, toggle); await press(p, device, toggle);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state === '${level}'`), `${name}: ${level} cover`);
+        await expectCover(level);
+      }
+      for (const [state, args, payload, waits] of [
+        ['empty', { stands: null, waiting: [], payload: null }, null, 0],
+        ['stands', { stands: cover.stands, waiting: [], payload: null }, null, 0],
+        ['waiting', { stands: cover.stands, waiting: cover.waiting, payload: null }, null, 1],
+        ['proposed', cover, 'proposed', 1],
+        ['thumb', cover, 'done', 1],
+        ['word', { ...cover, payload: { ...cover.payload, done_by: ids.a5 } }, 'done', 1],
+      ]) {
+        if (state === 'thumb') {
+          const thumb = await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.a4, operation_id: `${topic}-${name}-thumb` });
+          assert.equal(thumb.status, 'committed', JSON.stringify(thumb));
+        }
+        if (state === 'word') {
+          await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.a4, thumbed: false, operation_id: `${topic}-${name}-unthumb` });
+        }
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+          operation_id: `${topic}-${name}-${state}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        const expected = { sheets: state === 'empty' ? 0 : 1, pills: 0, stands: state === 'empty' ? null : cover.stands, payload, waits, sideways: false };
+        await until(async () => JSON.stringify(await coverCounts()) === JSON.stringify(expected), `${name}: B3 ${state} cover arrives without duplicate pills`);
+        await expectCover(state, expected);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-more-apart-${name}-${width}-b3-${state}-${theme}`); }
+        await dossierTheme(p, 'light');
+        observations.push({ name: 'B3 cover state', engine, device: name, state, ...await coverCounts() });
+      }
+      // Restore the fixture's proposed payload before the next independent device visit.
+      await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, args: cover, operation_id: `${topic}-${name}-restore` });
+      observations.push({ name: 'Earlier messages shows a dossier\'s older replies where the button was', engine, device: name, before, after, pressed, twice });
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550, its fix round's B2: a stack gathered under a first message the page has not loaded is headed by one of
+  // its replies, each a card of its own before 550. Folded, that reply's words show, as every reply kept in view shows:
+  // unread, read, and under the dossier's minted name on its tab; opened, too. The negative: a stack headed by its own
+  // first message folds that message to its tab, as before. On a laptop and by a finger at 390, 375 and 320, light and dark.
+  await check('reading stacks folded, a stack gathered under a first message above the page shows the words of the reply heading it, unread or read, named or not; a first message heading its stack folds to its tab (item 550)', async () => {
+    const topic = 'stack-gathered-head', minter = 'aim-ux', words = 'Net loft rota';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, ...more });
+    const said = [['unreadRoot', say(other, 'Who mends the herring nets this month?', { join: true, read: true })],
+      ['readRoot', say(other, 'Where do the spare oars hang?', { read: true })]];
+    for (let n = 0; n < 25; n++) said.push(['f' + n, say(other, `Pier note ${n}, a message of its own.`, { read: true })]);
+    said.push(['u1', say(minter, 'I can take the first week of the nets.', { join: true, reply_to: 'unreadRoot' })],
+      ['u2', say(other, 'I will take the second.', { reply_to: 'unreadRoot' })],
+      ['u3', say(minter, 'The twine arrives on Tuesday.', { reply_to: 'unreadRoot' })],
+      ['u4', say(other, 'Then the third week is mine.', { reply_to: 'unreadRoot' })],
+      ['r1', say(other, 'On the hooks by the boat shed door.', { reply_to: 'readRoot', read: true })],
+      ['r2', say(minter, 'Two of them are cracked.', { reply_to: 'readRoot', read: true })],
+      ['r3', say(other, 'I will glue them on Friday.', { reply_to: 'readRoot', read: true })],
+      ['lone', say(other, 'Is the tide table pinned up?', { read: true })],
+      ['lone1', say(minter, 'Pinned by the bell.', { reply_to: 'lone', read: true })]);
+    const ids = await seed(topic, said);
+    const minted = await control({ method: 'stack_act', sender: minter, kind: 'stack.name', message_id: ids.unreadRoot, operation_id: `${topic}-mint`, args: { name: words, minted: true } });
+    assert.equal(minted.status, 'committed', 'the namer mints the nets dossier\'s name');
+    const names = Object.fromEntries(Object.entries(ids).map(([k, id]) => [id, k]));
+    // Each stack by a reply in it: its head, fold, the tab's name and how much of each message's words show.
+    const seen = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},names=${JSON.stringify(names)},height=k=>{const c=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]');return Math.round(c?.querySelector(':scope > .message-preview')?.getBoundingClientRect().height??0)};
+      const stack=k=>{const s=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]').closest('.reply-stack');return {head:names[s.dataset.stack],fold:s.dataset.fold,name:s.querySelector('.stack-name')?.textContent??null}};
+      return {unread:{...stack('u4'),words:['u1','u2','u3','u4'].map(height).map(h=>h>0)},read:{...stack('r3'),words:['r1','r2','r3'].map(height).map(h=>h>0)},
+        loaded:{...stack('lone1'),words:['lone','lone1'].map(height).map(h=>h>0)},roots:['unreadRoot','readRoot'].filter(k=>document.querySelector('#messages [data-id="'+ids[k]+'"]')),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+    const want = fold => ({ unread: { head: 'u1', fold, name: words, words: [true, true, true, true] }, read: { head: 'r1', fold, name: 'On the hooks by the boat shed door.', words: [true, true, true] },
+      loaded: { head: 'lone', fold: 'folded', name: 'Is the tide table pinned up?', words: [false, true] }, roots: [], sideways: false });
+    for (const [name, device] of [['laptop', 'laptop'], ['phone', 'phone'], ['phone-375', 'phone'], ['phone-320', 'phone']]) {
+      const p = await open(`${topic}-${name}`, name, topic, ids.lone1);
+      const width = await p.evaluate('innerWidth');
+      await becomes(() => seen(p), want('folded'), `${name}: folded, each gathered stack shows its head reply's words, unread or read, the nets dossier under its minted name; the stack headed by its own first message shows it as its tab alone`);
+      await centre(p, card(ids.u1));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-gathered-head-${name}-${width}-folded-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Opened, the head reply still shows whole; folded again, as before.
+      const toggle = `#messages .reply-stack[data-stack="${ids.u1}"] > .stack-toggle`;
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(async () => (await seen(p)).unread, { ...want('folded').unread, fold: 'open' }, `${name}: opened, the nets dossier shows every message whole`);
+      await centre(p, card(ids.u1));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-gathered-head-${name}-${width}-open-${theme}`); }
+      await dossierTheme(p, 'light');
+      await centre(p, toggle); await press(p, device, toggle);
+      await becomes(async () => (await seen(p)).unread, want('folded').unread, `${name}: folded again, its head reply's words still show`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: a dossier whose first message is above the page is one stack of its branches, and it joins as a whole,
+  // as it is named and put aside: ⇧⌘↑ sends the join for that first message, every loaded message of it shows in the
+  // stack above at once, while the join waits for its answer, and Core joins the whole dossier; ⌘Z puts it back as it
+  // was. A branch someone joined on its own and splits back out shows apart at once, under its own first line and not
+  // the name of the dossier it left, and once Core answers it is one stack with its dossier's other branch again.
+  await check('reading stacks a dossier whose first message is above the page joins as a whole: ⇧⌘↑ shows every loaded message of it in the stack above at once and Core joins its first message, ⌘Z puts it back; a branch split back out shows apart at once (item 550)', async () => {
+    const HOLD = `(()=>{window.heldActs=[];const f=window.fetch;window.fetch=function(input,init){let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
+      if(b&&b.kind&&(window.holdKinds||[]).includes(b.kind))return new Promise(go=>window.heldActs.push(go)).then(()=>f.call(this,input,init));
+      return f.call(this,input,init)};window.letActs=()=>{window.holdKinds=null;for(const go of window.heldActs.splice(0))go()}})()`;
+    const topic = 'stack-join-dossier';
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Where should the rowing club keep its oars?', { join: true })]];
+    for (let n = 0; n < 30; n++) said.push(['f' + n, say(other, `Boathouse note ${n}, a message of its own.`)]);
+    said.push(['a1', say(other, 'The long rack by the slipway has room.', { reply_to: 'root' })],
+      ['b1', say('aim-ux', 'The loft stays dry in winter.', { join: true, reply_to: 'root' })],
+      ['a2', say('aim-ux', 'The rack it is, then.', { reply_to: 'a1' })],
+      ['top', say(other, 'Who mends the cox box before Saturday?')],
+      ['top1', say('aim-ux', 'I can mend it on Friday.', { reply_to: 'top' })]);
+    const ids = await seed(topic, said);
+    await control({ method: 'stack_act', sender: other, kind: 'stack.name', message_id: ids.top, operation_id: `${topic}-top-name`, args: { name: 'Cox box repair' } });
+    // The oars dossier's first message was joined once and split back out, so Core holds its join at revision 2: the
+    // page's join of the dossier, which has not loaded that message, is fenced on the revision its position carries.
+    for (const into of [ids.top, null]) {
+      const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.root, operation_id: `${topic}-root-${into}`, args: { into } });
+      assert.equal(answer.status, 'committed', `the first message joined into ${into}`);
+    }
+    const p = await open(topic, 'laptop', topic, ids.top1, HOLD);
+    const shown = async () => (await stacks(p, ids)).slice(0, 2);
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the first message is outside the loaded page');
+    await becomes(shown, ['top', 'a1'], 'the cox box stack, then the oars dossier as one stack of its two branches');
+    const joinedInto = async id => (await actsOf(topic, id, other))?.joined?.into ?? null;
+    // ⇧⌘↑ from the oars dossier, its answer held: every loaded message of it shows in the stack above at once.
+    await p.evaluate(`window.holdKinds = ['stack.join']`);
+    await keyTo(p, ids.a2);
+    await p.key('ArrowUp', 12);
+    await becomes(async () => (await look(p, ids, 'top'))?.rows, ['a1', 'b1', 'a2', 'top1'], '⇧⌘↑ shows every loaded message of the dossier in the stack above at once, oldest first');
+    assert.deepEqual(await shown(), ['top', 'f29'], 'and no stack of it is left');
+    assert.equal(await p.evaluate('window.heldActs.length'), 1, 'one join waits for its answer');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.root)) === ids.top, 'Core joins the dossier\'s first message, for everyone');
+    assert.deepEqual([await joinedInto(ids.a1), await joinedInto(ids.b1)], [null, null], 'and no branch on its own');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the join\'s answer and the positions read after it land');
+    assert.deepEqual([await shown(), (await look(p, ids, 'top')).rows], [['top', 'f29'], ['a1', 'b1', 'a2', 'top1']], 'answered, the page reads the same');
+    // ⌘Z puts it back as it was, at once.
+    await p.evaluate(`window.holdKinds = ['stack.join']`);
+    await p.key('z', 4);
+    await becomes(shown, ['top', 'a1'], '⌘Z shows the dossier back as its own stack at once');
+    await p.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.root)) === null, 'and Core splits its first message back out');
+    // A branch someone joined on its own (here a1, into the cox box stack), then split back out, its answer held: the
+    // positions it carries name the cox box dossier until Core answers, so it shows apart under its own first line.
+    await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.a1, operation_id: `${topic}-a1-join`, args: { into: ids.top } });
+    const q = await open(`${topic}-branch`, 'laptop', topic, ids.top1, HOLD);
+    await becomes(async () => (await stacks(q, ids)).slice(0, 2), ['top', 'b1'], 'the branch joined on its own is in the cox box stack');
+    await dossierOpen(q, 'laptop', ids.top);
+    await becomes(async () => (await look(q, ids, 'top'))?.rows.filter(row => !row.startsWith('join')), ['a1', 'a2', 'top1'], 'under its join line, with its reply');
+    await q.evaluate(`window.holdKinds = ['stack.join']`);
+    const split = '#messages .stack-join-line .stack-split';
+    await centre(q, split); await q.point(split);
+    const apart = () => q.evaluate(`(()=>{const ids=${JSON.stringify(ids)},stackOf=k=>{const e=document.querySelector('#messages [data-id="'+ids[k]+'"]');return e?.closest('.reply-stack')?.dataset.stack??ids[k]};
+      const name=k=>document.querySelector('#messages .reply-stack[data-stack="'+stackOf(k)+'"] .stack-name')?.textContent??null;
+      return {a1:stackOf('a1')===ids.a1,a2:stackOf('a2')===ids.a1,top:stackOf('top1')===ids.top,name:name('a1'),b1:stackOf('b1')===ids.b1}})()`);
+    await becomes(apart, { a1: true, a2: true, top: true, name: 'The long rack by the slipway has room.', b1: true },
+      'Split back out shows the branch apart at once, under its own first line and not the cox box dossier\'s name, the cox box stack without it');
+    await q.evaluate('window.letActs()');
+    await until(async () => (await joinedInto(ids.a1)) === null, 'Core splits it');
+    await becomes(async () => (await stacks(q, ids)).slice(0, 2), ['top', 'a1'], 'answered, the branch is one stack with its dossier\'s other branch again');
+    await shot(q, 'stack-join-dossier');
+    assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    await q.close(); await p.close();
+  });
+
+  // Item 550: what the reader set on a dossier whose first message is above the page holds as Earlier messages loads
+  // more of it. The shipyard dossier's first message, and an older reply made straight under it, are above the page;
+  // loading them gives the dossier's one stack another head each time (the older reply, then the first message), and
+  // the stack stays as the reader left it (docs/experience-guidelines.md, "Your place holds"). The seed: the first
+  // message, 30 messages of their own, the older reply, 29 more, then nine replies of the dossier and two other stacks.
+  const shipyardSeed = topic => {
+    const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+    const said = [['root', say(other, 'Where should the shipyard keep the spare sailcloth?', { join: true })],
+      ['ferry', say(other, 'Who checks the buoy lights this week?')]];
+    for (let n = 0; n < 30; n++) said.push(['g' + n, say(other, `Dock note ${n}, a message of its own.`)]);
+    said.push(['old', say('aim-ux', 'The loft above the rope store is dry.', { join: true, reply_to: 'root' })]);
+    for (let n = 0; n < 29; n++) said.push(['f' + n, say(other, `Quay note ${n}, a message of its own.`)]);
+    said.push(['a1', say('aim-ux', 'The chandlery has an empty shelf.', { reply_to: 'root' })],
+      ['b1', say(other, 'Not near the tar barrels, please.', { reply_to: 'root' })],
+      ['a2', say(other, 'The chandlery shelf works for me.', { reply_to: 'a1' })],
+      ['c1', say(other, 'The loft leaks in March.', { reply_to: 'old' })],
+      ['b2', say('aim-ux', 'Agreed; well away from the tar.', { reply_to: 'b1' })],
+      ['c2', say('aim-ux', 'Then not the loft.', { reply_to: 'c1' })],
+      ['a3', say('aim-ux', 'I will clear the shelf on Monday.', { reply_to: 'a2' })],
+      ['b3', say(other, 'The tar goes to the far shed anyway.', { reply_to: 'b2' })],
+      ['a4', say(other, 'Monday suits the sailmaker.', { reply_to: 'a3' })],
+      ['s1', say(other, 'I can check them on Tuesday.', { reply_to: 'ferry' })],
+      ['near', say(other, 'Is the slipway winch fixed?')],
+      ['near1', say('aim-ux', 'Fixed this morning.', { reply_to: 'near' })]);
+    return seed(topic, said);
+  };
+  // The shipyard dossier as drawn, found by a reply in it whatever heads it: its head, state, the earlier-messages
+  // row's words while it shows, each message shown top to bottom by how it shows (as earlierLook), its place line,
+  // which of the older messages are loaded, which of those show as cards of their own outside its stack (apart:
+  // Earlier messages shows them where its button was, item 550), and whether the page scrolls sideways.
+  const shipyardLook = (p, ids) => {
+    const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+    return p.evaluate(`(()=>{const names=${JSON.stringify(names)},ids=${JSON.stringify(ids)},s=document.querySelector(${JSON.stringify(card(ids.a2))})?.closest('.reply-stack');if(!s)return null;
+      const shown=e=>e.getClientRects().length>0,b=s.querySelector(':scope > .stack-replies > .stack-earlier'),cardOf=e=>e.classList.contains('message-card')?e:e.querySelector('.message-card');
+      const face=c=>c.dataset.earlier==='true'?'row':c.dataset.folded==='true'?'folded':shown(c.querySelector(':scope > .message-preview'))?'card':'tab',line=s.querySelector(':scope > .stack-placed-line');
+      return {head:names[s.dataset.stack],fold:s.dataset.fold,button:b&&shown(b)?b.textContent:null,messages:[s.firstElementChild,...[...s.querySelector(':scope > .stack-replies').children].filter(e=>e.dataset.id&&shown(e))]
+        .map(e=>names[cardOf(e).dataset.id]+':'+face(cardOf(e))),placed:line&&shown(line)?line.querySelector('.stack-placed-words').textContent:null,
+        loaded:['old','root'].filter(k=>document.querySelector('#messages [data-id="'+ids[k]+'"]')),
+        apart:['old','root'].filter(k=>{const c=document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]');return c&&c.closest('.reply-stack')!==s&&c.getBoundingClientRect().height>0}),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  };
+  const earlierPage = async (p, device) => {
+    const cards = await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+    await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+    await until(async () => (await p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`)) > cards, `${device}: Earlier messages reads an older page`);
+  };
+  const SEVEN = ['a2', 'c1', 'b2', 'c2', 'a3', 'b3', 'a4'].map(key => key + ':card');
+
+  await check('reading stacks a dossier whose first message is above the page stays as the reader left it when Earlier messages loads an older reply to that first message, then the first message: open, its newest seven held, its earlier-messages row as it was (item 550)', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      const at = `${device} ${width}px`, topic = `stack-dossier-earlier-${device}-${width}`, ids = await shipyardSeed(topic);
+      const p = await open(topic, device, topic, ids.near1);
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+      await becomes(async () => (await shipyardLook(p, ids))?.head, 'a1', `${at}: the shipyard dossier is one stack under a1, its first message and the older reply above the page`);
+      // Opened, it shows its newest seven and one row for the two before them; a reply arriving joins the seven and
+      // hides none, as they were counted when it opened.
+      await dossierOpen(p, device, ids.a1);
+      const open1 = { head: 'a1', fold: 'open', button: '2 earlier messages', messages: ['a1:tab', ...SEVEN], placed: null, loaded: [], apart: [], sideways: false };
+      await becomes(() => shipyardLook(p, ids), open1, `${at}: opened, the newest seven and one row for a1 and b1`);
+      ids.n1 = (await control({ method: 'agent_message', operation_id: `${topic}-n1`, topic_id: topic, source: 'topic', sender: other, addressees: [facts.actor], reply_to: ids.a4, body: 'The sailmaker confirms Monday.' })).result.message_id;
+      await becomes(() => shipyardLook(p, ids), { ...open1, messages: ['a1:tab', ...SEVEN, 'n1:card'] }, `${at}: a reply arriving joins the seven, hiding none`);
+      // Earlier messages loads the older reply: it shows where the button was, a card of its own (item 550's fix
+      // round, B1), and the stack stays as it was, open under a1, the seven it showed still shown, its row as it was.
+      await earlierPage(p, device);
+      await becomes(() => shipyardLook(p, ids), { ...open1, messages: ['a1:tab', ...SEVEN, 'n1:card'], loaded: ['old'], apart: ['old'] },
+        `${at}: the older reply loaded shows where the button was, and the dossier stays open under a1 with the same seven shown`);
+      await centre(p, card(ids.a2));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-earlier-${device}-${width}-older-${theme}`); }
+      await dossierTheme(p, 'light');
+      // The row opened shows the earlier ones as rows; Earlier messages again loads the first message, which shows
+      // where the button was too, and the rows stay open, the seven still whole.
+      const row = `#messages .reply-stack[data-stack="${ids.a1}"] > .stack-replies > .stack-earlier`;
+      await centre(p, row); await press(p, device, row);
+      await becomes(async () => (await shipyardLook(p, ids)).messages, ['a1:row', 'b1:row', ...SEVEN, 'n1:card'], `${at}: the row opened, the two as rows`);
+      await earlierPage(p, device);
+      await becomes(() => shipyardLook(p, ids), { head: 'a1', fold: 'open', button: null, messages: ['a1:row', 'b1:row', ...SEVEN, 'n1:card'], placed: null, loaded: ['old', 'root'], apart: ['old', 'root'], sideways: false },
+        `${at}: the first message loaded shows where the button was, and the dossier stays open under a1, its earlier ones still rows and the seven whole`);
+      await centre(p, card(ids.a2));
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-earlier-${device}-${width}-first-${theme}`); }
+      await dossierTheme(p, 'light');
+      // The negative: the chevron still folds it, and it shows latest and unread, its own state for this visit.
+      await centre(p, `#messages .reply-stack[data-stack="${ids.a1}"] > .stack-toggle`); await press(p, device, `#messages .reply-stack[data-stack="${ids.a1}"] > .stack-toggle`);
+      await becomes(async () => (await shipyardLook(p, ids)).fold, 'folded', `${at}: the chevron folds it`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  await check('reading stacks a dossier the reader placed, its first message above the page, keeps its place as Earlier messages loads an older reply and then that first message, and after a reload; the place is on its first message, for the reader alone (item 550)', async () => {
+    // Core's answers to the moves are held until let go, so what shows before they land is the page's own.
+    const HOLD = `(()=>{window.heldActs=[];const f=window.fetch;window.fetch=function(input,init){let b=null;try{b=init&&typeof init.body==='string'?JSON.parse(init.body):null}catch(e){}
+      if(b&&b.kind&&(window.holdKinds||[]).includes(b.kind))return new Promise(go=>window.heldActs.push(go)).then(()=>f.call(this,input,init));
+      return f.call(this,input,init)};window.letActs=()=>{window.holdKinds=null;for(const go of window.heldActs.splice(0))go()}})()`;
+    const topic = 'stack-dossier-place', ids = await shipyardSeed(topic);
+    let p = await open(topic, 'laptop', topic, ids.near1, HOLD);
+    const top = async (q, seeded = ids) => (await shipyardLook(q, seeded))?.head === (await stacks(q, seeded))[0];
+    await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['near', 's1', 'a1'], 'newest on top: the winch, the buoy lights, then the shipyard dossier');
+    await p.evaluate(`window.holdKinds = ['stack.place']`);
+    await keyTo(p, ids.a1);
+    await p.key('ArrowUp', 4); await p.key('ArrowUp', 4);
+    await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['a1', 'near', 's1'], '⌘↑ twice puts the shipyard dossier on top at once, its answers held');
+    // Every frame drawn while the answers land and the positions are read again keeps it on top.
+    await p.evaluate(`(()=>{window.tops=[];const first=()=>[...document.querySelector('#messages').children].find(e=>(e.dataset.id||e.classList.contains('reply-stack'))&&e.getClientRects().length);
+      const look=()=>{const e=first();window.tops.push(e?.dataset.stack??e?.dataset.id??null);if(!window.stopTops)requestAnimationFrame(look)};look()})()`);
+    await p.evaluate('window.letActs()');
+    await until(async () => typeof (await actsOf(topic, ids.root))?.placed === 'number', 'Core holds the place on the dossier\'s first message, which the page has not loaded');
+    assert.deepEqual([(await actsOf(topic, ids.a1))?.placed ?? null, (await actsOf(topic, ids.root, other))?.placed ?? null], [null, null], 'not on the reply heading the stack, and not for another reader');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the places are answered and read again');
+    const tops = await p.evaluate('window.stopTops = true, window.tops');
+    assert.deepEqual([...new Set(tops)], [ids.a1], `every frame as the answers landed kept it on top: ${JSON.stringify(tops.slice(0, 40))}`);
+    assert.equal((await shipyardLook(p, ids)).placed, 'Placed here by you');
+    for (const [step, loaded] of [['the older reply loaded', ['old']], ['the first message loaded', ['old', 'root']]]) {
+      await earlierPage(p, 'laptop');
+      await becomes(async () => { const look = await shipyardLook(p, ids); return [look.head, look.loaded, look.apart, look.placed, await top(p)]; }, ['a1', loaded, loaded, 'Placed here by you', true],
+        `${step}: it shows where the button was, and the dossier keeps its head, still on top where the reader placed it`);
+      if (loaded.length === 1) {
+        await p.evaluate('scrollTo(0, 0)');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-dossier-place-laptop-1280-old-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
+    }
+    await p.close();
+    p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
+    await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['a1', 'near', 's1'], 'after a reload it is on top');
+    await earlierPage(p, 'laptop');
+    await becomes(async () => [(await shipyardLook(p, ids)).head, await top(p)], ['a1', true], 'and Earlier messages leaves it there');
+    // Let new replies move it: the place goes from the first message, and the dossier sorts by its newest reply.
+    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
+    await becomes(async () => (await stacks(p, ids)).slice(0, 3), ['near', 's1', 'a1'], 'Let new replies move it: it goes where its newest reply puts it');
+    await until(async () => (await actsOf(topic, ids.root))?.placed === null, 'and Core holds none on its first message');
+    await shot(p, 'stack-dossier-place-laptop');
+    assert.deepEqual(p.errors, []); await p.close();
+    // By a finger at each phone width: placed on another of the reader's devices, it is on top with its place line,
+    // before and after Earlier messages, and nothing scrolls sideways.
+    const phone = 'stack-dossier-place-phone', more = await shipyardSeed(phone);
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: more.root, operation_id: `${phone}-place`, args: { key: 1000000 } });
+    for (const width of [320, 375, 390]) {
+      const q = await open(`${phone}-${width}`, 'phone', phone, more.near1);
+      await q.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+      for (const [step, at] of [['as loaded', 'a1'], ['the older reply loaded', 'old']]) {
+        if (at === 'old') await earlierPage(q, 'phone');
+        await becomes(async () => { const look = await shipyardLook(q, more); return [look.head, look.placed, look.sideways, await top(q, more)]; }, ['a1', 'Placed here by you', false, true],
+          `phone ${width}px, ${step}: the placed dossier is on top under a1, with its place line`);
+        const line = await q.evaluate(`(r=>({left:r.left,right:r.right}))(document.querySelector(${JSON.stringify(card(more.a2))}).closest('.reply-stack').querySelector(':scope > .stack-placed-line').getBoundingClientRect())`);
+        assert.ok(line.left >= 0 && line.right <= width, `phone ${width}px: the place line fits the screen: ${JSON.stringify(line)}`);
+        await q.evaluate('scrollTo(0, 0)');
+        for (const theme of ['light', 'dark']) { await dossierTheme(q, theme); await shot(q, `stack-dossier-place-phone-${width}-${at}-${theme}`); }
+        await dossierTheme(q, 'light');
+      }
+      assert.deepEqual(q.errors, []); await q.close();
+    }
+  });
+
+  // Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a reply
+  // or a stack later joined into the dossier, and such places are in the store. The first message carrying none, the
+  // place set last on any message of the dossier places it, whichever message heads its stack as Earlier messages loads
+  // more of it; Let new replies move it takes every such place away, and ⌘Z puts each back.
+  await check('reading stacks a dossier placed on messages that do not head its stack, as places were set before item 550, keeps its place and place line through Earlier messages; Let new replies move it takes every such place away and ⌘Z puts each back (item 550)', async () => {
+    const topic = 'stack-dossier-place-on-replies', ids = await shipyardSeed(topic);
+    const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+    // b1 and a2 answer under the first message, above the page; a1, older than both, heads the stack as loaded.
+    assert.deepEqual([(await place(ids.b1, 1000000, 1)).status, (await place(ids.a2, 2000000, 2)).status], ['committed', 'committed'], 'places on b1, then a2');
+    const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
+    const p = await open(topic, 'laptop', topic, ids.near1);
+    await becomes(async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await top(p)]; }, ['a1', 'Placed here by you', true],
+      'the dossier is on top, above newer stacks, with its place line, by the places on b1 and a2, which do not head its stack');
+    await earlierPage(p, 'laptop');
+    await becomes(async () => { const look = await shipyardLook(p, ids); return [look.head, look.loaded, look.apart, look.placed, await top(p)]; }, ['a1', ['old'], ['old'], 'Placed here by you', true],
+      'Earlier messages loads an older reply, which shows where the button was: the stack keeps its head, and the place holds');
+    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids)).placed], [['near', 's1', 'a1'], null], 'Let new replies move it: it goes where its newest reply puts it, its place line gone');
+    const held = async () => Promise.all([ids.b1, ids.a2, ids.root].map(async mid => (await actsOf(topic, mid))?.placed ?? null));
+    await until(async () => JSON.stringify(await held()) === JSON.stringify([null, null, null]), 'Core holds no place on b1, a2 or the first message');
+    await keyTo(p, ids.near); await p.key('z', 4);
+    await until(async () => JSON.stringify(await held()) === JSON.stringify([1000000, 2000000, null]), '⌘Z: Core holds b1 and a2 placed again, each as it was');
+    await becomes(async () => [(await shipyardLook(p, ids)).placed, await top(p)], ['Placed here by you', true], 'and the page shows it on top with its place line');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 550: places set before item 550 on two messages of a dossier that disagree, the one set last winning. Let new
+  // replies move it takes both away, and ⌘Z puts both back so that the same one wins: the dossier is where it was, on
+  // the page and after a reload. Each way round: set last on top, and set last at the bottom.
+  await check('reading stacks a dossier placed on two of its messages that disagree is where the one set last puts it, after Let new replies move it and ⌘Z, and after a reload (item 550)', async () => {
+    for (const [way, first, last] of [['top', -1000000, 2000000], ['bottom', 2000000, -1000000]]) {
+      const topic = `stack-dossier-undo-order-${way}`, ids = await shipyardSeed(topic);
+      const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+      assert.deepEqual([(await place(ids.b1, first, 1)).status, (await place(ids.a2, last, 2)).status], ['committed', 'committed'], `${way}: b1 placed, then a2, set last`);
+      const where = async q => { const look = await shipyardLook(q, ids), all = await stacks(q, ids);
+        return [look?.placed, look?.head === all[0] ? 'top' : look?.head === all.at(-1) ? 'bottom' : 'between']; };
+      let p = await open(topic, 'laptop', topic, ids.near1);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: a2's place, set last, puts the dossier there`);
+      const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+      await centre(p, unplace); await p.point(unplace);
+      const held = async () => Promise.all([ids.b1, ids.a2, ids.root].map(async mid => (await actsOf(topic, mid))?.placed ?? null));
+      await until(async () => JSON.stringify(await held()) === JSON.stringify([null, null, null]), `${way}: Core holds no place on b1, a2 or the first message`);
+      await becomes(async () => (await where(p))[0], null, `${way}: the place line goes`);
+      await keyTo(p, ids.near); await p.key('z', 4);
+      await until(async () => JSON.stringify(await held()) === JSON.stringify([first, last, null]), `${way}: ⌘Z, Core holds b1 and a2 placed again`);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: ⌘Z puts the dossier back where a2's place, still the one set last, puts it`);
+      assert.deepEqual(p.errors, []); await p.close();
+      p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
+      await becomes(() => where(p), ['Placed here by you', way], `${way}: and there after a reload`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 550: a stack headed by a reply the reader placed on itself, before item 550. Let new replies move it, the page
+  // settled, then ⌘Z with Core's answers to its place acts held: the place line and the place show at once, as they did
+  // before item 550, and stay once Core answers.
+  if (engine === 'chrome') await check('reading stacks ⌘Z of Let new replies move it on a stack placed on the reply heading it shows the place at once, before Core answers (item 550)', async () => {
+    const topic = 'stack-dossier-undo-at-once', ids = await shipyardSeed(topic);
+    assert.equal((await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: ids.a1, operation_id: `${topic}-place-1`, args: { key: 2000000 } })).status, 'committed', 'a1, heading the stack, placed on top');
+    const top = async q => (await shipyardLook(q, ids))?.head === (await stacks(q, ids))[0];
+    const p = await open(topic, 'laptop', topic, ids.near1);
+    const state = async () => { const look = await shipyardLook(p, ids); return [look?.head, look?.placed, await top(p)]; };
+    await becomes(state, ['a1', 'Placed here by you', true], 'on top by the place on a1, which heads the stack');
+    const unplace = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-unplace`;
+    await centre(p, unplace); await p.point(unplace);
+    await becomes(state, ['a1', null, false], 'Let new replies move it: the place line goes');
+    await until(async () => (await actsOf(topic, ids.a1))?.placed === null, 'Core holds no place on a1');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'the page has every answer, its positions read again');
+    const places = payload => payload?.kind === 'stack.place';
+    p.intercept(payload => places(payload));
+    await keyTo(p, ids.near); await p.key('z', 4);
+    await until(() => p.held.some(entry => places(entry.payload)), 'the first place act of ⌘Z reached Core, its answer held');
+    await p.evaluate('new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done)))');
+    const atOnce = await state();
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    await becomes(state, ['a1', 'Placed here by you', true], 'once Core answers, it stays');
+    assert.deepEqual(atOnce, ['a1', 'Placed here by you', true], '⌘Z shows the place line and the place at once');
+    // ⌘Z sends a1's place once Core has answered the first message's (the page's acts go one after another), after
+    // the held answer is let go: wait on Core holding it.
+    await until(async () => (await actsOf(topic, ids.a1))?.placed === 2000000, 'and Core holds a1 placed again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 550: the negatives. A place on the dossier's first message wins over one set on another of its messages, and a
+  // place in another dossier places that dossier alone.
+  await check('reading stacks a place on a dossier\'s first message wins over one set on another of its messages before item 550, and a place in another dossier places that dossier alone (item 550)', async () => {
+    const topic = 'stack-dossier-place-first-wins', ids = await shipyardSeed(topic);
+    const place = (mid, key, n) => control({ method: 'stack_act', sender: facts.actor, kind: 'stack.place', message_id: mid, operation_id: `${topic}-place-${n}`, args: { key } });
+    assert.equal((await place(ids.s1, 3000000, 1)).status, 'committed', 'a place on s1, in the buoy-lights dossier');
+    let p = await open(topic, 'laptop', topic, ids.near1);
+    await becomes(async () => [(await stacks(p, ids)).slice(0, 3), (await shipyardLook(p, ids))?.placed], [['s1', 'near', 'a1'], null], 's1\'s place puts its own dossier on top, and places the shipyard dossier nowhere');
+    await p.close();
+    assert.deepEqual([(await place(ids.b1, 1000000, 2)).status, (await place(ids.root, -1000000, 3)).status], ['committed', 'committed'], 'b1 placed on top, then the first message at the bottom');
+    p = await open(`${topic}-again`, 'laptop', topic, ids.near1);
+    await becomes(async () => [(await stacks(p, ids))[0], (await stacks(p, ids)).at(-1), (await shipyardLook(p, ids))?.placed], ['s1', 'a1', 'Placed here by you'], 'the first message\'s place puts the dossier at the bottom, b1\'s set before it or not');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 550: a stack someone joined into one branch of a dossier whose first message is above the page, a branch that
+  // does not head the dossier's one stack, keeps its join line and Split back out there, on a laptop and by a finger
+  // at 320, 375 and 390; Split back out shows it apart and Core holds it split.
+  await check('reading stacks a stack joined into a branch of a dossier above the page, not the branch heading its one stack, keeps its join line and Split back out there (item 550)', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `stack-joined-branch-${device}`;
+      const say = (sender, body, more = {}) => ({ sender, addressees: [facts.actor], body, read: true, ...more });
+      const said = [['root', say(other, 'When do we repaint the boathouse doors?', { join: true })]];
+      for (let n = 0; n < 30; n++) said.push(['f' + n, say(other, `Paint note ${n}, a message of its own.`)]);
+      said.push(['a1', say('aim-ux', 'After the spring regatta.', { join: true, reply_to: 'root' })],
+        ['b1', say(other, 'The east door is peeling worst.', { reply_to: 'root' })],
+        ['x', say(other, 'Who has the wide brushes?')],
+        ['x1', say('aim-ux', 'They are in the tack room.', { reply_to: 'x' })],
+        ['a2', say(other, 'After the regatta suits me.', { reply_to: 'a1' })],
+        ['top', say(other, 'Is the launch fuelled?')],
+        ['top1', say('aim-ux', 'Fuelled on Sunday.', { reply_to: 'top' })]);
+      const ids = await seed(topic, said);
+      const joined = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.x, operation_id: `${topic}-x-join`, args: { into: ids.b1 } });
+      assert.equal(joined.status, 'committed', 'the brushes stack is joined into the east door branch');
+      const p = await open(topic, device, topic, ids.top1);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`), false, 'the first message is outside the loaded page');
+      await becomes(async () => (await stacks(p, ids)).slice(0, 2), ['top', 'a1'], `${device}: the boathouse dossier is one stack under a1`);
+      await dossierOpen(p, device, ids.a1);
+      const split = `#messages .reply-stack[data-stack="${ids.a1}"] .stack-join-line[data-join="${ids.x}"] .stack-split`;
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+        // The join line names who joined it as the page names people; its words are checked by the join cases above.
+        await becomes(async () => (await look(p, ids, 'a1'))?.rows.map(row => row.startsWith('join: Joined from its own stack by ') ? 'join' : row), ['b1', 'join', 'x', 'x1', 'a2'],
+          `${device} ${width}px: the brushes stack shows under its join line inside the one stack, oldest first`);
+        const box = await p.evaluate(`(r=>({left:r.left,right:r.right,shown:r.width>0}))(document.querySelector(${JSON.stringify(split)}).getBoundingClientRect())`);
+        assert.ok(box.shown && box.left >= 0 && box.right <= width, `${device} ${width}px: Split back out shows within the screen: ${JSON.stringify(box)}`);
+        assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${device} ${width}px: nothing scrolls sideways`);
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-joined-branch-${device}-${width}-${theme}`); }
+        await dossierTheme(p, 'light');
+      }
+      // The negative: the branch gathered into the stack (b1) has no join line.
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .stack-join-line[data-join="${ids.b1}"]'))`), false, `${device}: the gathered branch is no join`);
+      await centre(p, split); await press(p, device, split);
+      await until(async () => ((await actsOf(topic, ids.x))?.joined?.into ?? null) === null, `${device}: Split back out reaches Core`);
+      await becomes(async () => (await stacks(p, ids)).includes('x'), true, `${device}: the brushes stack shows apart again`);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
@@ -1709,7 +3517,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       };
       await assertState('folded', ['two','five','six'], false);
       assert.match((await look(p,ids,'root')).meta,/^6 replies .*2 new$/,'counts remain in the header');
-      assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#messages .stack-fresh')).color`),await alertColour(p),'new count remains red');
+      // The count is the alert red; on a folder an agent began it is a deeper red of the folder's own, kept at 4.5:1 on
+      // that colour (item 477, tests/ui_folder_colour.test.mjs).
+      const fresh = await p.evaluate(`(()=>{const f=document.querySelector('#messages .stack-fresh'),s=f.closest('.reply-stack'),probe=document.createElement('span');probe.style.color='var(--stack-new)';s.append(probe);const own=getComputedStyle(probe).color;probe.remove();return {color:getComputedStyle(f).color,own,coloured:s.dataset.color==='agent'}})()`);
+      const [fr, fg, fb] = fresh.color.match(/\d+/g).map(Number);
+      assert.ok(fr > fg + 60 && fr > fb + 60, `new count remains red: ${fresh.color}`);
+      assert.equal(fresh.color, fresh.coloured ? fresh.own : await alertColour(p), 'new count remains red: the alert red, or on a coloured folder its own deeper red');
       assert.equal(await p.evaluate(`document.querySelectorAll('#messages .stack-fold-line').length`),0,'no repeated fold bars');
       assert.equal(await p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toggle)}).getBoundingClientRect(),n=document.querySelector(${JSON.stringify(card(ids.root)+' .stack-name')}).getBoundingClientRect();return t.right<=n.left+1&&t.top<n.bottom&&t.bottom>n.top})()`),true,'chevron beside the title');
       await shot(p,'stack-chat-'+device);
@@ -2138,7 +3951,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     // ⌘↑ ⌘↓ ⌘Z at once, Core's answers held and let go one at a time, with the page drawn again between them.
-    // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands.
+    // Each act reaches Core as it is sent; only its answer is held, and the next is sent once it lands. The page
+    // first has the answer to every move it sent before: Core holding a move says nothing of its answer reaching
+    // the page, and one reaching it later would be held here as the first of these.
+    const sentMoves = () => p.network.filter(e => e.method === 'Network.requestWillBeSent' && places((() => { try { return JSON.parse(e.params.request.postData); } catch { return null; } })()));
+    await until(() => sentMoves().length === 2 && sentMoves().every(sent => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === sent.params.requestId)),
+      'the page has the answers to the two moves sent before');
     p.intercept(payload => places(payload));
     await p.key('ArrowUp', 4); await p.key('ArrowDown', 4); await p.key('z', 4);
     await becomes(() => stacks(p, ids), ['c', 'a', 'b'], '⌘↑ ⌘↓ ⌘Z: A above B, as ⌘Z left it');
@@ -2206,26 +4024,6 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // Item 547: Core's answers to the page's requests, held at the network for a check to drop, let through or
   // answer itself, in Chrome with the harness's interception and in Safari's engine with Playwright's routing.
   // before: what the check picks is held before Core sees it; else once Core has answered it.
-  const network = async (p, before = false) => {
-    const take = (list, entry) => list.splice(list.indexOf(entry), 1);
-    if (engine === 'chrome') {
-      if (before) await p.send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/command', requestStage: 'Request' }, { urlPattern: facts.origin + '/api/view', requestStage: 'Response' }] });
-      return { hold: test => p.intercept(test && (payload => test(payload))), held: () => p.held,
-        drop: entry => { take(p.held, entry); return p.fail(entry); },
-        pass: entry => { take(p.held, entry); return entry.event.responseStatusCode === undefined ? p.send('Fetch.continueRequest', { requestId: entry.event.requestId }) : p.release(entry); },
-        answer: (entry, status, body) => { take(p.held, entry); return p.send('Fetch.fulfillRequest', { requestId: entry.event.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') }); } };
-    }
-    const held = []; let test = null;
-    await p.pw.route(facts.origin + '/api/*', async route => {
-      let payload = null; try { payload = route.request().postDataJSON(); } catch { /* not JSON */ }
-      if (!test?.(payload)) return route.continue();
-      held.push({ payload, route, response: before ? null : await route.fetch() });
-    });
-    return { hold: given => { test = given; }, held: () => held,
-      drop: entry => { take(held, entry); return entry.route.abort('connectionreset'); },
-      pass: entry => { take(held, entry); return entry.response ? entry.route.fulfill({ response: entry.response }) : entry.route.continue(); },
-      answer: (entry, status, body) => { take(held, entry); return entry.route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }); } };
-  };
   // The page's status line, as shown.
   const statusLine = p => p.evaluate(`(()=>{const n=document.getElementById('app-status');return {shown:!n.hidden&&n.getClientRects().length>0,text:n.textContent}})()`);
   const foldedCard = (p, id) => p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).dataset.folded === 'true'`);
@@ -4044,8 +5842,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.three, operation_id: topic + '-fold-three', args: { folded: true } });
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
     await centre(p, card(ids.three));
-    await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) === null, 'the pointer lights the folded row, with no bar in a dossier (item 471)');
+    await p.point(card(ids.three) + ' > .message-folded > .folded-words', 'move');
+    // A folded row keeps its bar in a dossier, which offers Unfold (item 473 over 471's barless fold).
+    await until(async () => (await lit(p)).includes(ids.three) && await bar(p) !== null, 'the pointer lights the folded row, with its bar');
+    await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'its bar offers Unfold');
     await rightClick(p, card(ids.three));
     await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'a right click opens the folded message\'s menu');
     const offered = await p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
@@ -4109,13 +5909,22 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await readerOn(p), null, 'phone: the tap opened no Reader');
     // A starred message is not folded: a swipe right on it writes nothing and leaves it whole. Acts go to Core in
     // order, so once a later swipe's fold is in Core, any fold the starred one had sent would be there before it.
-    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.one, operation_id: topic + '-star-one', args: { starred: true } });
-    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.one))})?.dataset.starred === 'true'`), 'phone: three shows starred');
-    await drag(card(ids.one), 20, 160);
+    // The starred message is the dossier's last reply, three, as this case first had it (item 368, built by 635): a
+    // star keeps its dossier above More, so its title bar swiped right moves nothing below More either, and says why.
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.three, operation_id: topic + '-star-three', args: { starred: true } });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.three))})?.dataset.starred === 'true'`), 'phone: three shows starred');
+    await drag(card(ids.three), 20, 160);
     await drag(card(ids.two), 20, 160);
     await until(async () => await foldOf(topic, ids.two), 'phone: the later swipe on two lands in Core');
-    assert.equal(await foldOf(topic, ids.one), false, 'phone: the starred message swiped right is not folded in Core');
-    assert.deepEqual(await folded(p, ids.one), { row: false, words: null, whole: true }, 'phone: and its card is whole');
+    assert.equal(await foldOf(topic, ids.three), false, 'phone: the starred message swiped right is not folded in Core');
+    assert.deepEqual(await folded(p, ids.three), { row: false, words: null, whole: true }, 'phone: and its card is whole');
+    const titleBar = `#messages .reply-stack[data-stack="${ids.root}"] .message-card[data-id="${ids.root}"] > .stack-head`;
+    await drag(titleBar, 20, 160);
+    await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent === ${JSON.stringify(HELD)}`), 'phone: the title bar swiped right says why it stays above More');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'phone: nothing is out');
+    assert.equal((await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, false, 'phone: Core holds the dossier with the starred reply above More');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.three))})?.getClientRects().length) && !document.querySelector('#messages .stack-more')`), true,
+      'phone: the starred reply stays on the page, above More');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -4293,9 +6102,17 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate('window.fetchesOut === 0'), 'every act sent is answered');
     assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'and the dossier stays above More');
     assert.deepEqual((await look(p, ids, 'root')).rows, ['one', 'wide', 'kept', 'last'], 'every reply in its place');
+    // The header swiped: a dossier holding the reader's star (kept) stays above More, and says why under its title bar
+    // (item 635); unstarred, the same swipe moves it.
     await reload();
     await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
-    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'a trackpad swipe on the header moves its dossier too');
+    await until(() => p.evaluate(`document.querySelector('.press-note')?.textContent === ${JSON.stringify(HELD)}`), 'a trackpad swipe on a starred dossier\'s header says why it stays above More');
+    await until(() => p.evaluate('window.fetchesOut === 0'), 'nothing is out');
+    assert.equal((await actsOf(topic, ids.root))?.aside ?? null, null, 'and Core holds no move');
+    await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.kept, operation_id: topic + '-unstar', args: { starred: false } });
+    await reload();
+    await fingers(`#messages .reply-stack[data-stack="${ids.root}"] .stack-head`,RIGHT);
+    await until(async () => (await actsOf(topic,ids.root))?.aside>0,'unstarred, a trackpad swipe on the header moves its dossier too');
     assert.equal(await p.evaluate('JSON.stringify([location.href, history.length])'), where, 'the page went nowhere through it all');
     assert.deepEqual(p.errors, []);
     await p.close();
@@ -4395,11 +6212,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.mine))})) && window.fetchesOut === 0`), 'the answer to the starred reply is drawn');
     assert.equal(await foldOf(topic, ids.kept), false, 'a starred message is not folded by a thumbs-up or a reply, in Core');
     assert.deepEqual(await folded(p, ids.kept), { row: false, words: null, whole: true }, 'and it reads whole');
-    // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with no bar and shows its own 👍
-    // once given (item 471): that 👍 takes it back.
+    // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with its bar, which offers Unfold
+    // (item 473 over 471's barless fold), and shows its own 👍 once given (item 471): that 👍 takes it back.
     await centre(p, card(ids.two));
-    await p.point(card(ids.two) + ' > .message-folded > .folded-author', 'move');
-    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) === null, 'the pointer lights reply two\'s row, with no bar');
+    await p.point(card(ids.two) + ' > .message-folded > .folded-words', 'move');
+    await until(async () => (await lit(p)).includes(ids.two) && await bar(p) !== null, 'the pointer lights reply two\'s row, with its bar');
+    await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'reply two\'s bar offers Unfold');
     await p.point(card(ids.two) + ' > .message-folded > .folded-thumb');
     await until(async () => !await thumbedBy(ids.two), 'the thumbs-up on reply two is taken back, in Core');
     assert.equal(await foldOf(topic, ids.two), true, 'and reply two stays folded');
@@ -4587,7 +6405,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await centre(p, thumb);
       if (device === 'laptop') {
         // The pointer on the row lights it, and its bar sits clear of the row's 👍, so the 👍 can still be pressed.
-        await p.point(card(ids.one) + ' > .message-folded > .folded-author', 'move');
+        await p.point(card(ids.one) + ' > .message-folded > .folded-words', 'move');
         await until(async () => (await lit(p)).includes(ids.one) && await bar(p) !== null, 'laptop: the row lights, with its bar');
         assert.equal(await p.evaluate(`(()=>{const b=document.querySelector('.message-bar').getBoundingClientRect(),t=document.querySelector(${JSON.stringify(thumb)}).getBoundingClientRect();
           return b.right>t.left&&b.left<t.right&&b.bottom>t.top&&b.top<t.bottom})()`), false, 'laptop: the bar does not cover the row\'s 👍');
@@ -4779,7 +6597,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
-  await check('reading stacks inside a dossier a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row has no bar, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header (item 471)', async () => {
+  await check('reading stacks inside a dossier a press on a shown message\'s header folds it for the reader alone, its words open the Reader, a folded row keeps its bar with Unfold on it, and the first message folds by its header and x, unfolds by its row and shows its bar as any message, the title row staying the dossier\'s; a message on its own opens from its header (item 471)', async () => {
     for (const device of Object.keys(DEVICES)) for (const width of widthsOf(device)) {
       const topic = `stack-inside-press-${device}-${width}`;
       const ids = await seed(topic, [['primer', { sender: 'aim-ux', join: true, addressees: [facts.actor], body: 'Here to reply.', read: true }],
@@ -4792,7 +6610,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await atWidth(p, device, width);
       await fullyOpen(p, device, ids);
       const at = `${device} ${width}px`;
-      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-author`;
+      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-words`;
       const nothingElse = async what => {
         assert.equal(await readerOn(p), null, `${at}: ${what} opens no Reader`);
         assert.equal(await p.evaluate(`Boolean(document.querySelector('.color-picker'))`), false, `${at}: nor the color picker`);
@@ -4805,9 +6623,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       assert.equal(await foldOf(topic, ids.one, other), false, `${at}: another reader's view is unchanged`);
       await nothingElse('the header press');
       if (device === 'laptop') {
-        // Folded, its row lights under the pointer with no bar.
+        // Folded, its row lights under the pointer and keeps its bar, whose Fold is now Unfold (item 473 over 471's
+        // barless fold, by default pending Tony #6363).
         await p.point(row(ids.one), 'move');
-        await until(async () => (await lit(p)).includes(ids.one) && await bar(p) === null, `${at}: the folded row lights, with no bar`);
+        await until(async () => (await lit(p)).includes(ids.one) && await bar(p) !== null, `${at}: the folded row lights, with its bar`);
+        await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`),
+          `${at}: its bar offers Unfold`);
       }
       // A press on its row unfolds it; a press on its words opens the Reader, folding nothing.
       await press(p, device, row(ids.one));
@@ -4948,6 +6769,9 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.close();
     for (const device of Object.keys(DEVICES)) {
       p = await open(`${topic}-${device}-reload`, device, topic, ids.r34);
+      // Item 550: Earlier messages keeps the displayed stack's head. Its
+      // first message joins the filled run; it does not become the head.
+      const retainedHead = await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`);
       const cards = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
       for (let page = 0; !await loaded(ids.root); page++) {
         assert.ok(page < 3, `${device}: Earlier messages reaches the first message`);
@@ -4955,13 +6779,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         await centre(p, '#more-messages'); await press(p, device, '#more-messages');
         await until(async () => (await cards()) > count, `${device}: Earlier messages reads an older page`);
       }
-      await fullyOpen(p, device, ids);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.r34))}).closest('.reply-stack').dataset.stack`), retainedHead, `${device}: loading the first message keeps the displayed head`);
+      await fullyOpen(p, device, { root: retainedHead });
       const rows = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)};return ${JSON.stringify(keys)}.filter(k=>document.querySelector('#messages .message-card[data-id="'+ids[k]+'"]')?.dataset.folded==='true')})()`);
       await becomes(rows, before, `${device}: after a reload, with the earlier messages loaded, each message before reply 10 but the starred one is its row, and none after it`);
       // The earlier messages wait behind their row (item 476): it is opened so the shots show the stored folds.
-      const earlier = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-replies > .stack-earlier`;
+      const earlier = `#messages .reply-stack[data-stack="${retainedHead}"] > .stack-replies > .stack-earlier`;
       await centre(p, earlier); await press(p, device, earlier);
-      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r2))})?.getClientRects().length)`), `${device}: the starred reply 2 shows once the earlier messages' row is opened`);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r10))})?.getClientRects().length)`), `${device}: folded reply 10 shows once the retained stack's earlier messages' row is opened`);
+      assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.r2))})?.getClientRects().length)`), `${device}: the starred reply 2 loaded by More stays visible too`);
       await centre(p, card(ids.r2));
       for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `stack-fold-through-long-${device}-${theme}`); }
       assert.deepEqual(p.errors, []); await p.close();
@@ -5562,8 +7388,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await dossierOpen(p, 'laptop', ids.root);
     await becomes(async () => (await earlierLook(p, ids)).button, '8 earlier messages', 'the row shows');
     await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle').focus()`);
-    await p.key('Tab');
-    assert.equal(await p.evaluate(`document.activeElement?.matches(${JSON.stringify(earlierButton(ids.root))}) ?? false`), true, 'Tab from the chevron reaches the row');
+    // The title bar's glyphs stand after the chevron (item 473): Tab goes through Reply, Move below More and ⋯, in that
+    // order, and the next Tab reaches the row.
+    const reached = [];
+    for (let n = 0; n < 4; n++) {
+      await p.key('Tab');
+      reached.push(await p.evaluate(`(e=>e?.matches(${JSON.stringify(earlierButton(ids.root))})?'row':e?.closest('#messages .reply-stack > .stack-tools')?e.dataset.tool:(e?.className??'none'))(document.activeElement)`));
+    }
+    assert.deepEqual(reached, ['reply', 'aside', 'menu', 'row'], 'Tab from the chevron goes through the title bar\'s glyphs and reaches the row');
     const sent = await p.evaluate('window.sent.length');
     await p.key('Enter');
     const unfolded = openedLook.map(m => (m === 'r5:folded' ? 'r5:row' : m));
@@ -6420,12 +8252,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(async () => (await actsOf(topic, ids.old))?.name?.text === 'Old renamed', 'Core holds the rename on Old');
     assert.equal((await actsOf(topic, ids.old)).joined, null, 'split for everyone');
     assert.equal((await actsOf(topic, ids.top)).name.text, 'Top name', 'and Top keeps its name');
-    // Joined again by ⇧⌘↓, its answer held: Old's messages, newer than Top's, still carry Old's position.
+    // Joined again by ⇧⌘↓, its answer held: Old's messages, newer than Top's, still carry Old's position. The page
+    // sends its acts one after another, so the join goes out once the rename's answer, and the positions it reads
+    // again, are handled; it is held from then on.
     await hold(p, ['stack.join', 'stack.name']);
     await keyTo(p, ids.old);
     await p.key('ArrowDown', 12);
     await becomes(() => stacks(p, ids), ['top', 'plain'], '⇧⌘↓ joins Old into Top at once');
-    assert.equal(await held(p), 1, 'the join waits for its answer');
+    await until(async () => (await held(p)) === 1, 'the join waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(p, ids.top), 'Top name', 'joined, before Core answers, the row names Top');
     await renameTo(p, ids.top, 'Top renamed', 'Top name');
     assert.equal(await nameIn(p, ids.top), 'Top renamed', 'the rename shows at once');
@@ -6482,7 +8316,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await hold(q, ['stack.join', 'stack.name']);
     await centre(q, split); await q.point(split);
     await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), 'Split back out draws Old as its own stack at once');
-    assert.equal(await held(q), 1, 'the split waits for its answer');
+    await until(async () => (await held(q)) === 1, 'the split waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(q, pids.old), 'Old name', 'split out, before Core answers, its row names Old, not the dossier it left');
     assert.equal(await nameIn(q, shown), 'Dossier renamed', 'and the dossier\'s names the dossier');
     await renameTo(q, pids.old, 'Old renamed', 'Old name');
@@ -6495,7 +8329,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(q, pids.old);
     await q.key('ArrowDown', 12);
     await until(async () => !await q.evaluate(`Boolean(document.querySelector(${JSON.stringify(section(pids.old))}))`), '⇧⌘↓ joins Old into the dossier at once');
-    assert.equal(await held(q), 1, 'the join waits for its answer');
+    await until(async () => (await held(q)) === 1, 'the join waits for its answer, sent once the acts before it are handled');
     assert.equal(await nameIn(q, shown), 'Dossier renamed', 'joined, before Core answers, the row names the dossier');
     await renameTo(q, shown, 'Dossier again', 'Dossier renamed');
     assert.equal(await nameIn(q, shown), 'Dossier again', 'the rename shows at once');
@@ -6904,12 +8738,12 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   // drawn where it sits for the link.
   // On a phone the link is tapped on its own first line: at 390 wide it wraps, and the middle of its box is the
   // paragraph between its lines.
-  const linkedAside = async (topic, device, { follow = true, mine = false } = {}) => {
+  const linkedAside = async (topic, device, { follow = true, mine = false, init = '' } = {}) => {
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
       ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }],
       ['c', { sender: other, addressees: [facts.actor], body: 'Stack C.', read: true }]]);
-    const p = await open(topic, device, topic, ids.a);
+    const p = await open(topic, device, topic, ids.a, init);
     const section = `#messages .reply-stack[data-stack="${ids.b}"]`;
     const drawn = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(section)})?.getClientRects().length)`);
     const newest = async () => (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
@@ -7110,7 +8944,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.asideReply))})?.getClientRects().length)`), 'More shows the dossier below it');
       has(await of(ids.asideReply, 'below-more', true), ['Bring back above More'], 'a dossier below More'); await away();
       // The pencil and the tray the menus borrow stay on their own buttons; the feed and the bar carry no menu glyph.
-      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]').length]`)]);
+      // The bars' own controls show glyphs of their own (item 473): a dossier's title bar's and the message bar's
+      // buttons; a glyph anywhere else in the feed or on the bar is counted.
+      kept.push([`${width} ${theme}`, await p.evaluate(`[document.querySelectorAll('#new-message svg').length,document.querySelectorAll('#reader-aside svg').length,
+        [...document.querySelectorAll('#messages [data-glyph], .message-bar [data-glyph]')].filter(g=>!g.parentElement.matches('#messages .reply-stack > .stack-tools > .stack-tool, .message-bar > button')).length]`)]);
       assert.deepEqual(p.errors, []); await p.close();
     }
     // Every width and theme is drawn and pictured before any is judged, so one run keeps each picture.
@@ -7118,6 +8955,1325 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved design\'s drawing and leaves ink; the pencil and the tray are the New message and Reader\'s archive buttons\' own drawings');
     assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
     assert.deepEqual(aligned.filter(([, spread]) => !(spread < 0.5)), [], 'in each menu every item\'s words start at one edge');
-    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar');
+    assert.deepEqual(kept.filter(([, counts]) => JSON.stringify(counts) !== '[1,1,0]'), [], 'New message keeps its pencil and the Reader\'s archive button its tray; no glyph in the feed or on the bar but on the bars\' own controls');
   });
+
+  // Item 473: a dossier's title bar shows, at its right, Reply to its first message, Move below More (Bring back
+  // once it is there) and ⋯, the menu a right-click on its first message gives (docs/reply-stacks.md, "The title bar
+  // and the message bar"). Each is a button beside the head's card, named, with that name as its tooltip.
+  const toolsOf = id => `#messages .reply-stack[data-stack="${id}"] > .stack-tools`;
+  const toolOf = (id, name) => `${toolsOf(id)} > .stack-tool[data-tool=${name}]`;
+  // Whether a dossier's title bar glyphs show: there to see, not only kept in their place.
+  const toolsShown = (p, id) => p.evaluate(`(t=>{if(!t)return null;const s=getComputedStyle(t);return s.visibility==='visible'&&Number(s.opacity)===1})(document.querySelector(${JSON.stringify(toolsOf(id))}))`);
+  // The title bar and its glyphs as drawn: the tab's box and its name's width, each glyph shown with its name,
+  // tooltip, box, whether it shows a glyph and whether a press at its centre lands on it.
+  const toolFacts = (p, id) => p.evaluate(`(()=>{const t=document.querySelector(${JSON.stringify(toolsOf(id))}),s=t.closest('.reply-stack'),tab=s.querySelector(':scope > [data-id] .stack-head'),tb=tab.getBoundingClientRect();
+    return {tab:{left:tb.left,right:tb.right,top:tb.top,bottom:tb.bottom},name:tab.querySelector('.stack-name').getBoundingClientRect().width,
+      corner:parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize),
+      tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();return {tool:b.dataset.tool,label:b.getAttribute('aria-label'),title:b.title,width:r.width,height:r.height,
+        left:r.left,right:r.right,top:r.top,bottom:r.bottom,glyph:Boolean(b.querySelector(':scope > svg.glyph'))||b.textContent==='⋯',hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}}),
+      overflow:document.documentElement.scrollWidth>innerWidth,width:innerWidth}})()`);
+  // A press at the centre of a dossier's ⋯ as it stands: its box, whether the glyphs show, what the press finds there,
+  // whether that is ⋯ or any title bar glyph, and whether it is the page holding the dossier (the point is in the
+  // window, on the paper beside the tab, above the folder's own box).
+  const restingPress = (p, id) => p.evaluate(`(t=>{const m=t.querySelector(':scope > .stack-tool[data-tool=menu]'),r=m.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,
+    h=x>=0&&x<innerWidth&&y>=0&&y<innerHeight?document.elementFromPoint(x,y):null,s=getComputedStyle(t);
+    return {width:r.width,height:r.height,shown:s.visibility==='visible'&&Number(s.opacity)===1,page:Boolean(h&&h!==t&&h.contains(t)),
+      under:h?h.tagName+'.'+String(h.className).slice(0,40):null,hit:Boolean(h&&t.contains(h))}})(document.querySelector(${JSON.stringify(toolsOf(id))}))`);
+  const barDossierSeed = (topic, extra = []) => seed(topic, [
+    ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier first words for the title bar.', read: true }],
+    ['r1', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'The first reply.', read: true }],
+    ['r2', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The second reply.', read: true }],
+    ['solo', { sender: other, addressees: [facts.actor], body: 'A message on its own has no title bar.', read: true }], ...extra]);
+  // Shows a dossier's title bar glyphs as a person does: the pointer onto its title bar, or a tap on it (a first tap
+  // selects it).
+  const showTools = async (p, device, id) => {
+    const who = `#messages .reply-stack[data-stack="${id}"] > [data-id] .stack-head > .stack-who`;
+    await centre(p, `#messages .reply-stack[data-stack="${id}"]`);
+    if (device === 'phone') { if (!await toolsShown(p, id)) await tap(p, who); } else await p.point(who, 'move');
+    await until(() => toolsShown(p, id), `${device}: the title bar shows its glyphs`);
+  };
+  const foldedRow = (p, id) => p.evaluate(`(c=>c?.dataset.folded==='true'&&Boolean(c.querySelector(':scope > .message-folded')?.getClientRects().length))(document.querySelector(${JSON.stringify(card(id))}))`);
+  const TOOL_NAMES = { reply: 'Reply to the first message', aside: 'Move below More', menu: 'More for this dossier' };
+
+  await check('reading stacks the title bar shows Reply, Move below More and ⋯ at its right under the pointer, or once selected by touch, each named with its tooltip and 44px by touch, beside the tab at 320, 375 and 390 pixels and on a laptop, in light and dark; a message on its own has none', async () => {
+    // Under the pointer at 1280 and 761 pixels the three glyphs; at 760, as on a phone, ⋯ alone.
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-${device}`, ids = await barDossierSeed(topic), resting = {};
+      const p = await open(topic, device, topic, ids.root);
+      await away(p);
+      assert.equal(await toolsShown(p, ids.root), false, `${device}: at rest the title bar shows no glyphs`);
+      if (device === 'phone') {
+        // By touch, hidden, they take no press: a tap at the hidden ⋯'s centre, at each phone width, finds the page
+        // beneath it, not ⋯, until the dossier is selected.
+        for (const width of [390, 375, 320]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          const at = await restingPress(p, ids.root);
+          assert.equal(at.shown, false, `phone ${width}: at rest the title bar shows no glyphs`);
+          assert.ok(at.width >= 44 && at.height >= 44, `phone ${width}: the hidden ⋯ keeps its 44px place: ${JSON.stringify(at)}`);
+          assert.equal(at.hit, false, `phone ${width}: a press at the hidden ⋯'s centre does not land on it: ${JSON.stringify(at)}`);
+          assert.ok(at.page, `phone ${width}: it lands on the page beneath, which holds the dossier: ${JSON.stringify(at)}`);
+          await dossierTheme(p, 'light');
+          resting[width] = await toolFacts(p, ids.root);
+          await shot(p, `title-bar-phone-${width}-rest-light`);
+        }
+      }
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(entry(ids.solo))}).closest('.reply-stack')?.querySelector('.stack-tools')??null`), null, `${device}: a message on its own has no title bar glyphs`);
+      if (device === 'laptop') {
+        // The pointer anywhere over the dossier shows them: over the folder itself, between its cards, where nothing
+        // lights; and they hide again once it leaves.
+        await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+        const [x, y, there] = await p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]'),r=s.getBoundingClientRect(),x=r.left+r.width/2,y=r.bottom-3,h=document.elementFromPoint(x,y);
+          return [x,y,h&&s.contains(h)&&!h.closest('[data-id], button')?h.className||h.tagName:null]})()`);
+        assert.ok(there, 'laptop: a point on the folder below its cards is the folder itself');
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await until(() => toolsShown(p, ids.root), 'laptop: the pointer over the folder shows its title bar\'s glyphs');
+        assert.deepEqual(await lit(p), [], 'laptop: with nothing lit');
+        await away(p);
+        await until(async () => !await toolsShown(p, ids.root), 'laptop: the pointer gone, they hide again');
+      }
+      // A laptop's window at 761 pixels keeps the three glyphs, and at 760 folds them into ⋯ as a phone does.
+      const widths = device === 'phone' ? [390, 375, 320] : [DEVICES.laptop.width, 761, 760];
+      for (const width of widths) {
+        await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES[device], width });
+        await showTools(p, device, ids.root);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const f = await toolFacts(p, ids.root);
+          await shot(p, `title-bar-${device}-${width}-${theme}`);
+          // In a window 760px or narrower (a phone's) the three fold into ⋯ alone, which offers Reply and Move below
+          // More first: there the tab may reach 85% of the folder, and the paper past its corner holds one glyph.
+          const folded = device === 'phone' || width <= 760, shownTools = folded ? { menu: TOOL_NAMES.menu } : TOOL_NAMES;
+          assert.deepEqual(f.tools.map(t => [t.tool, t.label, t.title]), Object.entries(shownTools).map(([tool, name]) => [tool, name, name]),
+            folded ? `${device} ${width}: ⋯ alone, named with its tooltip` : `${device} ${width}: Reply, Move below More and ⋯, each named with that name as its tooltip`);
+          for (const t of f.tools) {
+            assert.ok(t.glyph, `${device} ${width}: ${t.tool} is a glyph, not a word`);
+            assert.ok(t.hit, `${device} ${width}: a press at ${t.tool}'s centre lands on it`);
+            assert.ok(t.left >= f.tab.right + f.corner - .5, `${device} ${width} ${theme}: ${t.tool} sits at the title bar's right, clear of the tab and its curved corner: ${JSON.stringify(f)}`);
+            assert.ok(t.right <= f.width + .5 && t.top >= f.tab.top - .5 && t.bottom <= f.tab.bottom + .5, `${device} ${width}: ${t.tool} is inside the window, on the title bar's line: ${JSON.stringify(f)}`);
+            if (device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${width}: ${t.tool} is 44px to touch: ${JSON.stringify(t)}`);
+          }
+          assert.ok(f.name > 20, `${device} ${width}: the tab keeps room for its name beside the glyphs: ${JSON.stringify(f)}`);
+          // Hidden by touch the glyphs reserve nothing (warp #7317): at rest the tab reaches at least as far as once
+          // selected, where ⋯ takes its room on the folder, and its name is at least as wide; and on a phone that room
+          // is ⋯'s alone, not cut back for two glyphs folded into ⋯: once selected the tab gives back at most what ⋯
+          // needs, reaching either as far as at rest or to ⋯'s room, its curved corner from ⋯ (warp #7317, B3).
+          if (device === 'phone' && theme === 'light') {
+            const r = resting[width], menu = f.tools.find(t => t.tool === 'menu');
+            assert.ok(r.tab.right >= f.tab.right - .5 && r.name >= f.name - .5,
+              `phone ${width}: at rest the tab and its name are at least as wide as once selected: ${JSON.stringify({ rest: { tab: r.tab, name: r.name }, selected: { tab: f.tab, name: f.name } })}`);
+            assert.ok(f.tab.right >= Math.min(r.tab.right, menu.left - f.corner) - .5,
+              `phone ${width}: once selected the tab gives back at most the room ⋯ needs, reaching ${Math.min(r.tab.right, menu.left - f.corner)}: ${JSON.stringify({ rest: r.tab, selected: f.tab, corner: f.corner, menu })}`);
+            assert.ok(menu.left - r.tab.right <= menu.width, `phone ${width}: at rest the tab reaches to within one glyph of ⋯: ${JSON.stringify({ rest: r.tab, menu })}`);
+            observations.push({ name: 'title bar at rest', engine, device, width, tab: r.tab, name: r.name, selectedName: f.name, gapToMenu: menu.left - r.tab.right });
+          }
+          assert.equal(f.overflow, false, `${device} ${width}: nothing scrolls sideways`);
+          observations.push({ name: 'title bar glyphs', engine, device, width, theme, ...f });
+        }
+        await dossierTheme(p, 'light');
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 473, warp #7317 (D1): the title bar's ⋯ stands on the folder, never past it in the page's margin. On a phone,
+  // selected by touch at 390, 375 and 320, ⋯'s right edge is at or inside the folder's right edge, clear of the tab and
+  // its curved corner, 44px, and a press at its centre lands on it: once the glyphs show, the tab gives them the room
+  // they need, and no more (B3: it reaches as far as at rest, or to ⋯'s room, its curved corner from ⋯). Each way a
+  // touch shows them is its own state, each read at every width (B4, the release-70 states rule): a reply selected (the
+  // focus in the dossier, its first message not lit), the dossier selected (its first message lit, the focus there),
+  // the dossier selected with the focus gone from it (lit alone), and ⋯'s menu opened by the keys (open alone, the
+  // focus in the menu and nothing lit). On a laptop under the pointer, at
+  // 1280 (three glyphs) and 760 (⋯ alone), they are inside it as before.
+  const faceFacts = (p, id) => p.evaluate(`(s=>{const f=s.getBoundingClientRect(),tab=s.querySelector(':scope > [data-id] .stack-head').getBoundingClientRect(),t=s.querySelector(':scope > .stack-tools'),
+    corner=parseFloat(getComputedStyle(s).getPropertyValue('--stack-r-tab'))*parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return {folder:{left:f.left,right:f.right},tab:{left:tab.left,right:tab.right},corner,overflow:document.documentElement.scrollWidth>innerWidth,
+      shown:Number(getComputedStyle(t).opacity)===1,headLit:Boolean(s.querySelector('.stack-head-card.lit')),focusWithin:s.matches(':focus-within'),
+      menuOpen:Boolean(t.querySelector('[aria-expanded=true]')),
+      tools:[...t.children].filter(b=>!b.hidden&&b.getClientRects().length).map(b=>{const r=b.getBoundingClientRect();
+        return {tool:b.dataset.tool,left:r.left,right:r.right,width:r.width,height:r.height,hit:b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})}})(document.querySelector('#messages .reply-stack[data-stack="${id}"]'))`);
+  await check('reading stacks the title bar\'s ⋯ sits on the folder\'s face, inside its right edge, selected by touch at 390, 375 and 320 pixels and under the pointer on a laptop, in light and dark', async () => {
+    const seen = [], PHONE = [390, 375, 320];
+    const stack = id => `#messages .reply-stack[data-stack="${id}"]`;
+    const pictured = async (p, device, width, state, extra = {}) => {
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const f = await faceFacts(p, extra.id);
+        await shot(p, `title-bar-face-${device}-${width}-${state.replace(/\W+/g, '-')}-${theme}`);
+        seen.push({ device, width, theme, state, rest: extra.rest, ...f });
+        observations.push({ name: 'title bar on the folder', engine, device, width, theme, state, ...f });
+      }
+      await dossierTheme(p, 'light');
+    };
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-face-${device}`, ids = await barDossierSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await away(p);
+      if (device === 'laptop') {
+        for (const width of [DEVICES.laptop.width, 760]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.laptop, width });
+          await showTools(p, device, ids.root);
+          await pictured(p, device, width, 'under the pointer', { id: ids.root });
+        }
+      } else {
+        // At rest at each width first, nothing selected, as the tab stands with its glyphs hidden.
+        const rest = {};
+        for (const width of PHONE) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, stack(ids.root));
+          await until(async () => (await toolsShown(p, ids.root)) === false, `phone ${width}: at rest the glyphs are hidden`);
+          rest[width] = await faceFacts(p, ids.root);
+        }
+        const reply = await p.evaluate(`${JSON.stringify([ids.r2, ids.r1].map(id => [id, words(id)]))}.find(([,w])=>document.querySelector(w)?.getClientRects().length)?.[0]??null`);
+        assert.ok(reply, 'phone: a reply of the dossier shows its words, to be tapped');
+        for (const width of PHONE) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, stack(ids.root));
+          // A reply selected: the focus is in the dossier, its first message not lit.
+          await light(p, device, reply);
+          await until(() => toolsShown(p, ids.root), `phone ${width}: a reply selected shows the title bar's ⋯`);
+          await pictured(p, device, width, 'a reply selected', { id: ids.root, rest: rest[width] });
+          // The dossier selected: a tap on who began it lights its first message, and the focus goes there.
+          await tap(p, `${stack(ids.root)} > [data-id] .stack-head > .stack-who`);
+          await until(async () => (await faceFacts(p, ids.root)).headLit, `phone ${width}: the tap selects the dossier`);
+          await pictured(p, device, width, 'the dossier selected', { id: ids.root, rest: rest[width] });
+          // The dossier selected, the focus gone from it: its first message lit alone shows the glyphs.
+          await p.evaluate('document.activeElement?.blur()');
+          await until(async () => { const f = await faceFacts(p, ids.root); return f.headLit && !f.focusWithin; }, `phone ${width}: the dossier lit, the focus gone from it`);
+          await pictured(p, device, width, 'the dossier selected, the focus gone', { id: ids.root, rest: rest[width] });
+          // ⋯'s menu open by the keys, nothing lit: the keys on the chevron (which puts out the light), Tab to ⋯ (alone
+          // on a phone), Return opens its menu and the focus goes into the menu, out of the dossier.
+          await p.evaluate(`document.querySelector(${JSON.stringify(stack(ids.root) + ' > .stack-toggle')}).focus()`);
+          await until(async () => !(await faceFacts(p, ids.root)).headLit, `phone ${width}: the keys on the chevron, nothing lit`);
+          await p.key('Tab');
+          await until(() => p.evaluate(`document.activeElement?.matches(${JSON.stringify(toolOf(ids.root, 'menu'))}) ?? false`), `phone ${width}: Tab from the chevron reaches ⋯`);
+          await p.key('Enter');
+          await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list')?.contains(document.activeElement))`), `phone ${width}: Return opens ⋯'s menu, the focus in it`);
+          await pictured(p, device, width, 'its menu open', { id: ids.root, rest: rest[width] });
+          await p.key('Escape');
+          await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `phone ${width}: the menu is put away`);
+        }
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    // Every state, width and theme is pictured before any is judged.
+    for (const f of seen) {
+      const where = `${f.device} ${f.width} ${f.state} ${f.theme}`, all = JSON.stringify(f);
+      assert.ok(f.shown && f.tools.some(t => t.tool === 'menu'), `${where}: ⋯ shows: ${all}`);
+      for (const t of f.tools) {
+        assert.ok(t.right <= f.folder.right + .5, `${where}: ${t.tool}'s right edge (${t.right}) is at or inside the folder's right edge (${f.folder.right}): ${all}`);
+        assert.ok(t.left >= f.tab.right + f.corner - .5, `${where}: ${t.tool} is clear of the tab and its curved corner: ${all}`);
+        // With its menu open, the menu may stand over ⋯'s centre.
+        if (f.state !== 'its menu open') assert.ok(t.hit, `${where}: a press at ${t.tool}'s centre lands on it: ${all}`);
+        if (f.device === 'phone') assert.ok(t.width >= 44 && t.height >= 44, `${where}: ${t.tool} is 44px to touch: ${all}`);
+      }
+      if (f.device === 'phone') {
+        const menu = f.tools.find(t => t.tool === 'menu'), reach = Math.min(f.rest.tab.right, menu.left - f.corner);
+        assert.ok(f.tab.right >= reach - .5, `${where}: the tab gives back at most the room ⋯ needs, reaching ${reach}: ${all}`);
+      }
+      assert.equal(f.overflow, false, `${where}: nothing scrolls sideways`);
+    }
+    // Each touch state is the one it names, so each way of showing is read alone: a reply selected holds the focus in the
+    // dossier with its first message unlit; the dossier selected with the focus gone lights its first message with no
+    // focus in the dossier; and ⋯'s menu open holds neither.
+    for (const f of seen.filter(s => s.device === 'phone')) {
+      const where = `phone ${f.width} ${f.state} ${f.theme}`;
+      if (f.state === 'a reply selected') assert.ok(f.focusWithin && !f.headLit && !f.menuOpen, `${where}: the focus in the dossier alone: ${JSON.stringify(f)}`);
+      if (f.state === 'the dossier selected, the focus gone') assert.ok(f.headLit && !f.focusWithin && !f.menuOpen, `${where}: its first message lit alone: ${JSON.stringify(f)}`);
+      if (f.state === 'its menu open') assert.ok(f.menuOpen && !f.headLit && !f.focusWithin, `${where}: ⋯'s menu open alone: ${JSON.stringify(f)}`);
+    }
+  });
+
+  // Item 473, warp #7317 (D2): hidden glyphs reserve nothing. At 320 by touch, with the glyphs hidden, a dossier's tab
+  // whose name is too long for it reaches its whole cap (85% of the folder, or the folder less its corners), and an
+  // agent-only dossier's one quiet row runs its meta on to the row's own end padding: neither keeps the glyphs' width
+  // while they are hidden. Each name still ends cut off, by the row, as a name too long for it does. Once a dossier is
+  // selected its ⋯ takes the room it needs: in the quiet row inside the row with nothing of the meta under it, and on
+  // the tab with the name no wider than at rest.
+  await check('reading stacks hidden title bar glyphs reserve nothing: at 320 by touch a dossier\'s tab and an agent-only dossier\'s quiet row give their names the room, a name too long still cut, and selected, ⋯ takes its room beside them', async () => {
+    const topic = 'title-bar-reserve', ids = await barDossierSeed(topic, [
+      ['quiet', { sender: 'aim-core', join: true, addressees: ['aim-ux'], body: 'Agents alone go over a dossier name long enough to run past any phone row.' }],
+      ['quietReply', { sender: 'aim-ux', join: true, addressees: ['aim-core'], reply_to: 'quiet', body: 'Agreed between the two of us.' }]]);
+    const stack = id => `#messages .reply-stack[data-stack="${id}"]`;
+    const measure = p => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},stack=id=>document.querySelector('#messages .reply-stack[data-stack="'+id+'"]'),num=v=>parseFloat(v),
+      rem=num(getComputedStyle(document.documentElement).fontSize),box=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}},
+      shown=s=>{const t=getComputedStyle(s.querySelector(':scope > .stack-tools'));return t.visibility==='visible'&&Number(t.opacity)===1},
+      menu=s=>{const m=s.querySelector(':scope > .stack-tools > [data-tool=menu]'),r=m.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height,hit:m.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}},
+      name=h=>{const n=h.querySelector(':scope > .stack-name');return {...box(n),cut:n.scrollWidth>n.clientWidth}};
+      const d=stack(ids.root),q=stack(ids.quiet),dh=d.querySelector(':scope > [data-id] .stack-head'),qh=q.querySelector(':scope > [data-id] .stack-head'),s=getComputedStyle(d),fw=d.getBoundingClientRect().width;
+      return {compact:q.dataset.compact,folder:box(d),cap:Math.min(num(s.getPropertyValue('--stack-tab-max'))/100*fw,fw-(num(s.getPropertyValue('--stack-r-tab'))+num(s.getPropertyValue('--stack-r')))*rem),
+        tab:{...box(dh),name:name(dh),shown:shown(d),menu:menu(d)},
+        quiet:{...box(qh),name:name(qh),meta:box(qh.querySelector(':scope > .stack-meta')),pad:num(getComputedStyle(qh).paddingRight),shown:shown(q),menu:menu(q)},
+        overflow:document.documentElement.scrollWidth>innerWidth}})()`);
+    const p = await open(topic, 'phone', topic, ids.root);
+    await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width: 320 });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(stack(ids.quiet))})?.dataset.compact === 'true'`), 'the agent-only dossier is its quiet row');
+    await centre(p, stack(ids.root)); await away(p);
+    const rest = {};
+    for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); rest[theme] = await measure(p); await shot(p, `title-bar-reserve-320-rest-${theme}`); }
+    await dossierTheme(p, 'light');
+    // A tap selects the quiet row, then the dossier's tab, as a person does: each shows its ⋯.
+    await centre(p, stack(ids.quiet)); await tap(p, `${stack(ids.quiet)} > [data-id] .stack-head > .stack-meta`);
+    await until(async () => (await measure(p)).quiet.shown, 'the tap selects the quiet row and its ⋯ shows');
+    const quiet = await measure(p); await shot(p, 'title-bar-reserve-320-quiet-selected-light');
+    await centre(p, stack(ids.root)); await tap(p, `${stack(ids.root)} > [data-id] .stack-head > .stack-who`);
+    await until(async () => (await measure(p)).tab.shown, 'the tap selects the dossier and its ⋯ shows');
+    const tab = await measure(p); await shot(p, 'title-bar-reserve-320-tab-selected-light');
+    observations.push({ name: 'hidden title bar glyphs reserve nothing', engine, rest, quiet, tab });
+    for (const theme of ['light', 'dark']) {
+      const r = rest[theme], where = `320 ${theme} at rest: ${JSON.stringify(r)}`;
+      assert.equal(r.compact, 'true', `${where}: the agent-only dossier is its quiet row`);
+      assert.ok(!r.tab.shown && !r.quiet.shown, `${where}: the glyphs are hidden`);
+      assert.ok(r.tab.width >= r.cap - .5, `${where}: the tab reaches its whole cap (${r.cap}), nothing kept for hidden glyphs`);
+      assert.ok(r.quiet.right - r.quiet.meta.right <= .75 * 16 + .5, `${where}: the quiet row's meta runs on to the row's end padding, ${r.quiet.right - r.quiet.meta.right}px from its end, nothing kept for hidden glyphs`);
+      assert.ok(r.tab.name.cut && r.quiet.name.cut, `${where}: a name too long for its row is still cut off`);
+      assert.equal(r.overflow, false, `${where}: nothing scrolls sideways`);
+    }
+    const q = quiet.quiet, wq = `320 the quiet row selected: ${JSON.stringify(q)}`;
+    assert.ok(q.menu.width >= 44 && q.menu.height >= 44 && q.menu.hit, `${wq}: ⋯ shows, 44px, and a press at its centre lands on it`);
+    assert.ok(q.menu.right <= q.right + .5 && q.meta.right <= q.menu.left + .5, `${wq}: ⋯ is inside the row and nothing of the meta is under it`);
+    const t = tab.tab, wt = `320 the tab selected: ${JSON.stringify({ rest: rest.light.tab, selected: t })}`;
+    assert.ok(t.menu.width >= 44 && t.menu.hit && t.name.width <= rest.light.tab.name.width + .5, `${wt}: ⋯ shows and takes its room; the name is no wider than at rest`);
+    assert.equal(tab.overflow, false, 'nothing scrolls sideways');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 473: the title bar's glyphs stand in a row with the dossier's chevron, as a message bar's buttons stand with
+  // each other, so ← and → go along that row to the nearest control that way (docs/interaction.md, "The arrows
+  // everywhere"): on a laptop from ⋯ to Move below More, Reply and the chevron, and back; past ⋯, → goes on to the
+  // right rail, as from the messages. On a phone, at 390, 375 and 320, ⋯ stands alone and ← from it reaches the
+  // chevron. ↑ and ↓ stay the messages' keys there: ↓ from ⋯ lights the dossier's message below it.
+  await check('reading stacks ← and → on a dossier\'s title bar glyphs go along the title bar to the nearest control that way, the chevron included, on a laptop and at 390, 375 and 320; ↓ from ⋯ goes on to the dossier\'s message below', async () => {
+    const where = p => p.evaluate(`(e=>!e||e===document.body?'page':e.closest('#things')?'right rail':e.closest('#rail')?'outline':e.matches('#messages .reply-stack > .stack-toggle')?'chevron':e.closest('#messages .reply-stack > .stack-tools')?e.dataset.tool:e.closest('#messages [data-id]')?'message:'+e.closest('[data-id]').dataset.id:(e.id||e.className||e.tagName))(document.activeElement)`);
+    const keyFrom = async (p, id, tool, key) => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(id, tool))}).focus()`);
+      await until(async () => (await where(p)) === tool, `the keys on the title bar's ${tool}`);
+      await p.key(key);
+      return where(p);
+    };
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-arrows-${device}`, ids = await barDossierSeed(topic);
+      const p = await open(topic, device, topic, ids.root);
+      await away(p);
+      if (device === 'laptop') {
+        // → past ⋯ lands on the right rail's place, as from the messages: once the rail has drawn its rows.
+        await until(() => p.evaluate("[...document.querySelectorAll('#things [role=treeitem]')].some(e=>e.checkVisibility())"), 'laptop: the right rail shows its rows');
+        const seen = [await keyFrom(p, ids.root, 'menu', 'ArrowLeft'), await keyFrom(p, ids.root, 'aside', 'ArrowLeft'), await keyFrom(p, ids.root, 'reply', 'ArrowLeft'),
+          await keyFrom(p, ids.root, 'reply', 'ArrowRight'), await keyFrom(p, ids.root, 'aside', 'ArrowRight'), await keyFrom(p, ids.root, 'menu', 'ArrowRight')];
+        assert.deepEqual(seen, ['aside', 'reply', 'chevron', 'aside', 'menu', 'right rail'],
+          'laptop: ← from ⋯ to Move below More, Reply and the chevron; → back along the row, and past ⋯ on to the right rail');
+      } else {
+        for (const width of [390, 375, 320]) {
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          assert.equal(await keyFrom(p, ids.root, 'menu', 'ArrowLeft'), 'chevron', `phone ${width}: ← from ⋯ reaches the chevron`);
+        }
+      }
+      // ↓ stays the messages' key: from ⋯ it lights the message below, in the dossier, never the page.
+      const down = await keyFrom(p, ids.root, 'menu', 'ArrowDown');
+      assert.ok([ids.r1, ids.r2].map(id => `message:${id}`).includes(down), `${device}: ↓ from ⋯ goes on to the dossier's message below: ${down}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Items 602 and 473: in a window 760px or narrower (a phone) the title bar's Reply and Move below More fold into its ⋯,
+  // whose menu offers them first; as every menu item, each shows a glyph before its words, the drawing of the button
+  // that does the same (602's rule): Reply to the first message the title bar's Reply, Move below More the Reader's
+  // archive tray (item 601) and Bring back above More the tray with an arrow out. A menu with an item that names no
+  // glyph opens nothing (openMessageMenu), so without them the phone's ⋯ opens no menu at all.
+  await check('reading menus a dossier\'s title bar ⋯ on a 390px phone offers Reply to the first message and Move below More first, then Bring back above More once below, each with its glyph before its words, light and dark', async () => {
+    const topic = 'title-bar-phone-menu', ids = await barDossierSeed(topic), seen = [], firstTwo = [];
+    const p = await open(topic, 'phone', topic, ids.root);
+    assert.equal(await p.evaluate('innerWidth'), 390, 'a phone 390px wide');
+    // The title bar's ⋯ pressed by touch, and its menu's rows read: the press refused for a missing glyph fails here, by its error.
+    const menuRows = async name => {
+      await showTools(p, 'phone', ids.root);
+      await press(p, 'phone', toolOf(ids.root, 'menu'));
+      await until(async () => p.errors.length > 0 || await p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${name}: the title bar's ⋯ opens its menu, or the page says why not`);
+      assert.deepEqual(p.errors.map(error => error.message ?? error.exception?.description ?? error.text ?? JSON.stringify(error)), [], `${name}: the title bar's ⋯ opens its menu, no item refused for want of a glyph`);
+      const rows = await p.evaluate(ROWS);
+      await shot(p, `title-bar-phone-menu-${name}`);
+      seen.push(...rows.map(row => ({ ...row, at: name })));
+      firstTwo.push([name, rows.slice(0, 2).map(row => [row.label, row.glyphs])]);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${name}: Escape puts the menu away`);
+    };
+    for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await menuRows(theme); }
+    await dossierTheme(p, 'light');
+    // Move below More chosen from ⋯ by touch; below More, the same item brings it back.
+    await showTools(p, 'phone', ids.root);
+    await press(p, 'phone', toolOf(ids.root, 'menu'));
+    await until(() => p.evaluate(`document.querySelector('.message-menu-list > button:nth-child(2)')?.textContent === 'Move below More'`), 'the phone\'s ⋯ offers Move below More second');
+    await press(p, 'phone', '.message-menu-list > button:nth-child(2)');
+    await until(async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below, 'Core holds the dossier below More');
+    await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length && Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), 'the dossier is below a closed More');
+    await centre(p, '#messages .stack-more'); await press(p, 'phone', '#messages .stack-more');
+    await until(() => p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length > 0`), 'More shows the dossier below it');
+    await menuRows('below-more');
+    assert.deepEqual(firstTwo, [
+      ['light', [['Reply to the first message', ['reply']], ['Move below More', ['archive']]]],
+      ['dark', [['Reply to the first message', ['reply']], ['Move below More', ['archive']]]],
+      ['below-more', [['Reply to the first message', ['reply']], ['Bring back above More', ['back']]]],
+    ], 'the phone\'s ⋯ offers Reply with the title bar\'s Reply and Move below More with the Reader\'s tray, then Bring back with the tray and its arrow out');
+    assert.deepEqual(misglyphed(seen), [], 'each item carries exactly the glyph of its meaning');
+    assert.deepEqual(misdrawn(seen), [], 'each glyph draws the approved drawing and leaves ink; the tray is the Reader\'s archive button\'s own drawing');
+    assert.deepEqual(misplaced(seen), [], 'each glyph is drawn before its words, 18px, on their middle, in the row\'s colour');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // A title bar act as a person takes it: its glyph on a laptop; on a phone, where the three fold into ⋯, the item of
+  // that name in ⋯'s menu, which offers Reply and Move below More (or Bring back) before the first message's own.
+  const menuWords = p => p.evaluate(`[...document.querySelector('.message-menu-list').querySelectorAll('button')].map(b=>b.textContent)`);
+  const titleAct = async (p, device, id, tool) => {
+    if (device !== 'phone') { await press(p, device, toolOf(id, tool)); return; }
+    const words = await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(id, tool))}).getAttribute('aria-label')`);
+    await press(p, device, toolOf(id, 'menu'));
+    await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `phone: ⋯ opens the menu for ${words}`);
+    const at = (await menuWords(p)).indexOf(words);
+    assert.ok(at >= 0 && at < 2, `phone: ⋯ offers ${words} first: ${JSON.stringify(await menuWords(p))}`);
+    await press(p, device, `.message-menu-list > button:nth-child(${at + 1})`);
+  };
+  await check('reading stacks the title bar\'s Reply opens the Reader on the dossier\'s first message, its ⋯ opens the menu that message\'s own ⋯ gives, and Move below More and Bring back move the dossier; a reload finds its order, name and folds as they were, every message in reach', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `title-bar-acts-${device}`, ids = await barDossierSeed(topic);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.name', message_id: ids.root, operation_id: topic + '-name', args: { name: 'Cabin week' } });
+      await dossierFold(topic, ids.r1);
+      const p = await open(topic, device, topic, ids.root);
+      const kept = async q => ({ order: await stacks(q, ids), name: await q.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"] .stack-name')?.textContent??null`),
+        acts: Object.fromEntries(await Promise.all(['root', 'r1', 'r2'].map(async key => [key, (({ name = '', folded = false, starred = false }) => ({ name, folded, starred }))(await actsOf(topic, ids[key]) ?? {})]))) });
+      await until(async () => (await kept(p)).name === 'Cabin week', `${device}: the dossier shows its name`);
+      const before = await kept(p);
+      // Reply: the Reader on the first message, the cursor in the reply.
+      await showTools(p, device, ids.root);
+      await titleAct(p, device, ids.root, 'reply');
+      await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), `${device}: Reply opens the Reader on the dossier's first message`);
+      await until(() => p.evaluate(`document.activeElement?.id === 'writing-body'`), `${device}: the cursor is in the reply`);
+      await closeReader(p, device);
+      // ⋯ gives what the first message's own ⋯ gives, the dossier open in both.
+      await dossierOpen(p, device, ids.root);
+      const own = await menuOf(p, device, ids.root);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${device}: Escape closes the menu`);
+      await showTools(p, device, ids.root);
+      await press(p, device, toolOf(ids.root, 'menu'));
+      await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), `${device}: the title bar's ⋯ opens the menu`);
+      assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(toolOf(ids.root, 'menu'))}).getAttribute('aria-expanded')`), 'true', `${device}: ⋯ says its menu is open`);
+      assert.deepEqual(await menuWords(p), device === 'phone' ? ['Reply to the first message', 'Move below More', ...own] : own,
+        device === 'phone' ? 'phone: the title bar\'s ⋯ offers Reply and Move below More, then what the first message\'s ⋯ offers' : `${device}: the title bar's ⋯ offers what the first message's ⋯ offers`);
+      await p.key('Escape');
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), `${device}: Escape closes it`);
+      // Move below More, then Bring back from below More.
+      const below = async () => (await view('stack_positions', { topic_id: topic, message_ids: [ids.root] })).items[0].stack_position.below;
+      await showTools(p, device, ids.root);
+      await titleAct(p, device, ids.root, 'aside');
+      await until(below, `${device}: Core holds the dossier below More`);
+      await until(() => p.evaluate(`!document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length && Boolean(document.querySelector('#messages .stack-more')?.getClientRects().length)`), `${device}: the dossier is below a closed More`);
+      await press(p, device, '#messages .stack-more');
+      await showTools(p, device, ids.root);
+      assert.deepEqual(await p.evaluate(`(b=>[b.getAttribute('aria-label'),b.title])(document.querySelector(${JSON.stringify(toolOf(ids.root, 'aside'))}))`), ['Bring back above More', 'Bring back above More'], `${device}: below More the glyph brings it back`);
+      await titleAct(p, device, ids.root, 'aside');
+      await until(async () => !await below(), `${device}: Core holds it above More again`);
+      if (device === 'laptop') {
+        // The keys: Tab from the dossier reaches each glyph in turn, Shift-Tab comes back, and Return on Reply replies.
+        await keyTo(p, ids.root);
+        const at = () => p.evaluate(`document.activeElement?.closest?.('.stack-tools')?document.activeElement.dataset.tool:null`);
+        for (let n = 0; n < 12 && await at() !== 'reply'; n++) await p.key('Tab');
+        assert.equal(await at(), 'reply', 'Tab from the dossier\'s first message, past its bar and chevron, reaches the title bar\'s Reply');
+        await until(() => toolsShown(p, ids.root), 'a glyph holding the focus shows the title bar\'s glyphs');
+        await p.key('Tab'); assert.equal(await at(), 'aside', 'then Move below More');
+        await p.key('Tab'); assert.equal(await at(), 'menu', 'then ⋯');
+        await p.key('Tab', 8); await p.key('Tab', 8); assert.equal(await at(), 'reply', 'Shift-Tab comes back');
+        await p.key('Enter');
+        await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), 'Return on Reply opens the Reader on the first message');
+        await closeReader(p, device);
+      } else {
+        // The keys on a phone: Tab from the dossier reaches ⋯ and no folded glyph; Return opens its menu on Reply, and
+        // Return replies; ↓ then Return moves the dossier below More.
+        const at = () => p.evaluate(`document.activeElement?.closest?.('.stack-tools')?document.activeElement.dataset.tool:null`);
+        const toMenu = async () => {
+          await keyTo(p, ids.root);
+          const met = [], trail = [];
+          const where = () => p.evaluate(`(e=>e?(e.dataset?.tool??e.dataset?.act??e.id??'')+':'+e.tagName+'.'+String(e.className).slice(0,30):null)(document.activeElement)`);
+          for (let n = 0; n < 40 && await at() !== 'menu'; n++) { await p.key('Tab'); const here = await at(); if (here) met.push(here); trail.push(await where()); }
+          assert.deepEqual(met, ['menu'], `phone: Tab from the dossier reaches ⋯, and no folded glyph: ${JSON.stringify(trail)}`);
+        };
+        await toMenu();
+        await p.key('Enter');
+        await until(() => p.evaluate(`document.activeElement?.closest?.('.message-menu-list')?document.activeElement.textContent:null`).then(w => w === 'Reply to the first message'), 'phone: Return on ⋯ opens its menu on Reply');
+        await p.key('Enter');
+        await until(async () => (await readerOn(p))?.startsWith('Dossier first words'), 'phone: Return on Reply opens the Reader on the first message');
+        await closeReader(p, device);
+        await toMenu();
+        await p.key('Enter');
+        await until(() => p.evaluate(`Boolean(document.querySelector('.message-menu-list'))`), 'phone: Return opens ⋯\'s menu again');
+        await p.key('ArrowDown');
+        assert.equal(await p.evaluate(`document.activeElement.textContent`), 'Move below More', 'phone: ↓ reaches Move below More');
+        await p.key('Enter');
+        await until(below, 'phone: Return on Move below More moves the dossier below More');
+        // Below More, which is open still from the Bring back before, or closed.
+        if (!await p.evaluate(`document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]').getClientRects().length > 0`)) await press(p, device, '#messages .stack-more');
+        await showTools(p, device, ids.root);
+        await titleAct(p, device, ids.root, 'aside');
+        await until(async () => !await below(), 'phone: Bring back from ⋯ puts it above More again');
+      }
+      // Tony's rule over the dossier: how it is shown stores nothing, and every message stays in reach in place.
+      // A new document, known by its timeOrigin as first read (WebKit's can move 1 ms with no load); a read while the
+      // old one goes is no answer.
+      const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+      await p.send('Page.reload');
+      await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.root))}))`).catch(() => false), `${device}: the page is drawn again, a new document`);
+      await until(async () => (await kept(p)).name === 'Cabin week', `${device}: reloaded, the name shows`);
+      assert.deepEqual(await kept(p), before, `${device}: a reload finds the order, the name and the folds as they were`);
+      await dossierOpen(p, device, ids.root);
+      for (const key of ['root', 'r1', 'r2']) assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[key]))}).getClientRects().length>0`), `${device}: ${key} is in reach, in place`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 473: the message bar's Reply is a glyph, and the bar gains Show full message, only on a message its card
+  // cuts off, and Fold (Unfold once folded; none on a starred message).
+  const barFacts = p => p.evaluate(`(()=>{const b=document.querySelector('.message-bar');if(!b||b.hidden)return null;return [...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>{const r=x.getBoundingClientRect();
+    return {act:x.dataset.act,label:x.getAttribute('aria-label'),title:x.title,glyph:Boolean(x.querySelector(':scope > svg.glyph')),words:x.textContent,width:r.width,height:r.height}})})()`);
+  await check('reading stacks the message bar\'s Reply is a glyph, Show full message shows only on a message its card cuts off and shows it whole, and Fold folds it for the reader and Unfold unfolds it, none on a starred message; each named with its tooltip, reached by Tab, 44px by touch', async () => {
+    const long = Array.from({ length: 70 }, (_, i) => `Paragraph ${i}. Words that need the full height of the message to be read.`).join('\n\n');
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `message-bar-${device}`;
+      const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'A dossier for the bar.', read: true }],
+        ['short', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'A short reply.', read: true }],
+        ['starred', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A starred reply.', read: true }],
+        ['long', { sender: other, reply_to: 'root', addressees: [facts.actor], body: long, read: true }]]);
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'message.star', message_id: ids.starred, operation_id: topic + '-star', args: { starred: true } });
+      const p = await open(topic, device, topic, ids.root, 'window.holdReads = true;');
+      await dossierOpen(p, device, ids.root);
+      await light(p, device, ids.short);
+      let f = await barFacts(p);
+      const named = act => f.find(b => b.act === act);
+      assert.deepEqual(f.map(b => b.act), ['thumb', 'reply', 'fold', 'more'], `${device}: a short message's bar: 👍, Reply, Fold and ⋯, no Show full message`);
+      assert.deepEqual([named('reply').glyph, named('reply').words, named('reply').label, named('reply').title], [true, '', 'Reply (Return)', 'Reply (Return)'], `${device}: Reply is a named glyph, not the word`);
+      assert.deepEqual([named('fold').glyph, named('fold').label, named('fold').title], [true, 'Fold', 'Fold'], `${device}: Fold is a named glyph`);
+      if (device === 'phone') for (const b of f) assert.ok(b.width >= 44 && b.height >= 44, `phone: ${b.act} is 44px to touch: ${JSON.stringify(b)}`);
+      await shot(p, `message-bar-${device}-short`);
+      if (device === 'phone') {
+        // At 375 and 320 pixels too: every glyph 44px, inside the window, nothing scrolling sideways.
+        for (const width of [375, 320]) {
+          // The message stays lit (a second tap would open it), and its bar is placed again for the narrower window.
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.getBoundingClientRect().right<=innerWidth))(document.querySelector('.message-bar'))`), `${width}: the lit message's bar is in the window`);
+          assert.ok((await lit(p)).includes(ids.short), `${width}: the short message is still lit`);
+          const at = await p.evaluate(`(()=>{const b=document.querySelector('.message-bar');return {buttons:[...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>{const r=x.getBoundingClientRect();return [x.dataset.act,r.width,r.height,r.left>=0&&r.right<=innerWidth]}),sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+          assert.deepEqual(at.buttons.map(([act]) => act), ['thumb', 'reply', 'fold', 'more'], `${width}: the same bar`);
+          for (const [act, w, h, inside] of at.buttons) assert.ok(w >= 44 && h >= 44 && inside, `${width}: ${act} is 44px and in the window (${w}×${h})`);
+          assert.equal(at.sideways, false, `${width}: nothing scrolls sideways`);
+          await shot(p, `message-bar-phone-${width}`);
+        }
+        await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+        await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden))(document.querySelector('.message-bar'))`), '390: the bar is back');
+      }
+      // Fold, then Unfold, in Core for the reader.
+      await press(p, device, '.message-bar [data-act=fold]');
+      await until(async () => (await actsOf(topic, ids.short))?.folded === true, `${device}: Fold folds the message in Core`);
+      await until(() => foldedRow(p, ids.short), `${device}: the message shows as its folded row`);
+      // The folded message stays lit, and its bar now offers Unfold (a second tap on a lit message would open it).
+      await until(async () => (await barFacts(p))?.some(b => b.act === 'fold' && b.label === 'Unfold'), `${device}: the bar now offers Unfold`);
+      f = await barFacts(p);
+      assert.deepEqual([named('fold').label, named('fold').title], ['Unfold', 'Unfold'], `${device}: on a folded message the glyph is Unfold`);
+      await press(p, device, '.message-bar [data-act=fold]');
+      await until(async () => (await actsOf(topic, ids.short))?.folded === false, `${device}: Unfold unfolds it in Core`);
+      await until(async () => !await foldedRow(p, ids.short), `${device}: the message reads whole again`);
+      assert.equal(await readerOn(p), null, `${device}: no Reader opened`);
+      assert.equal((await actsOf(topic, ids.short, other))?.folded ?? false, false, `${device}: nobody else's view changed`);
+      // A starred message offers no Fold. A phone taps the middle of its words, clear of the bar over the message above.
+      const lightMiddle = async id => {
+        if (device !== 'phone') return light(p, device, id);
+        await centre(p, card(id)); await tap(p, words(id), 'centre');
+        await until(async () => (await lit(p)).includes(id) && await bar(p) !== null, `phone: ${id} lights, with its bar`);
+      };
+      await lightMiddle(ids.starred);
+      assert.deepEqual((await barFacts(p)).map(b => b.act), ['thumb', 'reply', 'more'], `${device}: a starred message's bar has no Fold`);
+      // Show full message, on the long message its card cuts off, and gone once it shows whole.
+      await lightMiddle(ids.long);
+      await until(async () => (await barFacts(p))?.some(b => b.act === 'full'), `${device}: a cut-off message's bar offers Show full message`);
+      f = await barFacts(p);
+      assert.deepEqual([named('full').glyph, named('full').label, named('full').title], [true, 'Show full message', 'Show full message'], `${device}: Show full message is a named glyph`);
+      if (device === 'phone') assert.ok(named('full').width >= 44 && named('full').height >= 44, 'phone: Show full message is 44px to touch');
+      if (device === 'laptop') {
+        // The keys reach it: Tab from the lit message goes through the bar.
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).focus({preventScroll:true})`);
+        const reached = [];
+        // The card's own star comes first, then the bar, then out of it.
+        for (let n = 0; n < 10; n++) {
+          await p.key('Tab');
+          const act = await p.evaluate(`document.activeElement?.closest?.('.message-bar')?document.activeElement.dataset.act:document.activeElement?.matches?.('.card-star')?'star':null`);
+          if (!act) break;
+          reached.push(act);
+        }
+        for (const act of ['reply', 'full', 'fold', 'more']) assert.ok(reached.includes(act), `laptop: Tab reaches ${act} (${JSON.stringify(reached)})`);
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).focus({preventScroll:true})`);
+      }
+      await shot(p, `message-bar-${device}-long`);
+      const height = await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.long))}).getBoundingClientRect().height`);
+      await press(p, device, '.message-bar [data-act=full]');
+      await until(() => p.evaluate(`(c=>c.dataset.full==='shown'&&c.scrollHeight-c.clientHeight<=1&&c.getBoundingClientRect().height>${height}+100)(document.querySelector(${JSON.stringify(card(ids.long))}))`), `${device}: the card shows the whole message`);
+      await until(async () => !(await barFacts(p))?.some(b => b.act === 'full'), `${device}: shown whole, it offers Show full message no more`);
+      assert.equal(await readerOn(p), null, `${device}: no Reader opened`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 477: a dossier's title bar and folder wear the colour of the agent who posted its first message, across
+  // their whole face; a person's dossier keeps the neutral folder. No coloured edge or bar marks it.
+  await check('reading stacks a dossier an agent began wears its colour on its folder and title bar, in the colour the reader chose for it, a person\'s keeps the neutral folder, with no coloured edge, in light and dark', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = `folder-colour-${device}`;
+      const ids = await seed(topic, [['agent', { sender: other, join: true, addressees: [facts.actor], body: 'An agent began this dossier.', read: true }],
+        ['agent1', { sender: 'aim-ux', join: true, reply_to: 'agent', addressees: [facts.actor], body: 'A reply in the agent\'s dossier.', read: true }],
+        ['person', { sender: 'fixture-other-person', join: true, addressees: [facts.actor], body: 'A person began this dossier.', read: true }],
+        ['person1', { sender: other, reply_to: 'person', addressees: [facts.actor], body: 'A reply in the person\'s dossier.', read: true }],
+        ['solo', { sender: other, addressees: [facts.actor], body: 'aim-core again, on its own.', read: true }]]);
+      const p = await open(topic, device, topic, ids.agent);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages .reply-stack[data-stack="${ids.person}"]'))`), `${device}: both dossiers are drawn`);
+      // The agent's folder as item 477 has it: its tag colour a step toward its card in light, its card a step toward
+      // the page's dark in dark (docs/reply-stacks.md, "The look").
+      const folderOf = (palette, theme) => theme === 'dark' ? 'color-mix(in srgb,var(--agent-card) 70%,#0b1113)' : 'color-mix(in srgb,var(--agent-tag) 70%,var(--agent-card))';
+      const paint = (id, palette = null, theme = 'light') => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack="${id}"]'),tab=s.querySelector(':scope > [data-id] .stack-head'),cs=getComputedStyle(s),ts=getComputedStyle(tab);
+        const probe=document.createElement('span');${palette ? `probe.className='agent-${palette}';probe.style.background=${JSON.stringify(folderOf(palette, theme))};` : `probe.style.background='var(--stack-folder)';`}document.body.append(probe);const want=getComputedStyle(probe).backgroundColor;probe.remove();
+        const neutral=document.createElement('span');neutral.style.background='var(--stack-folder)';document.body.append(neutral);const plain=getComputedStyle(neutral).backgroundColor;neutral.remove();
+        return {folder:cs.backgroundColor,tab:ts.backgroundColor,want,plain,color:s.dataset.color,edges:[cs.borderLeftWidth,ts.borderLeftWidth,cs.boxShadow.includes('inset')]}})()`);
+      // aim-core's colour is the one its own cards wear (its own, or one the reader chose for it in an earlier case).
+      const paletteOf = () => p.evaluate(`(document.querySelector(${JSON.stringify(card(ids.solo))}).className.match(/\\bagent-(?!card\\b)([a-z]+)\\b/)||[])[1]??null`);
+      const own = await paletteOf();
+      assert.ok(own, `${device}: aim-core's card wears a palette colour`);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        const agent = await paint(ids.agent, own, theme), person = await paint(ids.person);
+        assert.equal(agent.color, 'agent', `${device} ${theme}: the agent's dossier is marked with its colour`);
+        assert.deepEqual([agent.folder, agent.tab], [agent.want, agent.want], `${device} ${theme}: aim-core's folder and title bar are its ${own} across their whole face: ${JSON.stringify(agent)}`);
+        assert.notEqual(agent.folder, agent.plain, `${device} ${theme}: and not the neutral folder`);
+        assert.deepEqual([person.color, person.folder, person.tab], ['', person.plain, person.plain], `${device} ${theme}: a person's dossier keeps the neutral folder: ${JSON.stringify(person)}`);
+        for (const each of [agent, person]) assert.deepEqual(each.edges, ['0px', '0px', false], `${device} ${theme}: no coloured edge or bar`);
+        observations.push({ name: 'folder colour', engine, device, theme, agent, person });
+        await shot(p, `folder-colour-${device}-${theme}`);
+        if (device === 'phone') for (const width of [375, 320]) {
+          // Narrower phones: the same faces, nothing scrolling sideways.
+          await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width });
+          const narrow = await paint(ids.agent, own, theme);
+          assert.deepEqual([narrow.folder, narrow.tab], [narrow.want, narrow.want], `${width} ${theme}: the agent's folder and title bar are still its colour`);
+          assert.equal(await p.evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${width}: nothing scrolls sideways`);
+          await shot(p, `folder-colour-phone-${width}-${theme}`);
+          await p.send('Emulation.setDeviceMetricsOverride', DEVICES.phone);
+        }
+      }
+      await dossierTheme(p, 'light');
+      if (device === 'laptop') {
+        // The reader's own choice of colour for the agent: the folder follows it, and Default gives it back.
+        await centre(p, `${card(ids.solo)} .author-name`);
+        await p.point(`${card(ids.solo)} .author-name`);
+        await until(() => p.evaluate(`Boolean(document.querySelector('.color-picker .swatch[aria-label="blue"]'))`), 'the colour picker opens for aim-core');
+        const chosen = own === 'blue' ? 'green' : 'blue';
+        await p.point(`.color-picker .swatch[aria-label="${chosen}"]`);
+        await until(async () => { const f = await paint(ids.agent, chosen); return f.folder === f.want; }, `aim-core's folder is ${chosen} once the reader chose ${chosen} for it`);
+        await centre(p, `${card(ids.solo)} .author-name`);
+        await p.point(`${card(ids.solo)} .author-name`);
+        await until(() => p.evaluate(`Boolean(document.querySelector('.color-picker .swatch-default'))`), 'the picker opens again');
+        await p.point('.color-picker .swatch-default');
+        // Default gives aim-core its own colour back, the one its cards wear again, and the folder follows.
+        await until(async () => { const back = await paletteOf(); return back && back !== chosen; }, 'Default gives aim-core\'s cards their own colour back');
+        const back = await paletteOf();
+        await until(async () => { const f = await paint(ids.agent, back); return f.folder === f.want; }, `and the folder aim-core's own ${back}`);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 426: while the Reader is open on the oldest message the page loaded, its ↓ is Core's neighbour beyond the
+  // page. Another device putting that neighbour's dossier below More, and bringing it back, changes what ↓ offers at
+  // once, with no change to the topic itself.
+  await check('reading stacks shown order: while the Reader is open at the bottom of a long topic, another device putting the unloaded dossier below it below More, or bringing it back, changes what ↓ offers at once', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'shown-order-unloaded-live-' + device;
+      const ids = await seed(topic, [['r', { sender: other, join: true, addressees: [facts.actor], body: 'Root R, older than the page.', read: true }],
+        ['r1', { sender: other, addressees: [facts.actor], reply_to: 'r', body: 'Reply R1, older than the page.', read: true }], ...fillers(30)]);
+      const p = await open(topic, device, topic, ids.f29);
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids.f0}"]'))`), device + ': F0 is the oldest loaded');
+      await openReader(p, device, ids.f0, 'Filler 0.');
+      await until(async () => (await stepsOffered(p)).below, device + ': ↓ from F0 is offered: R\'s dossier is beyond the page, above More');
+      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.r, operation_id: topic + '-aside', args: { through: newest } });
+      await becomes(async () => (await stepsOffered(p)).below, false, device + ': ↓ is no longer offered once another device put R\'s dossier below More');
+      assert.equal(await readerOn(p).then(text => text?.startsWith('Filler 0.')), true, device + ': the Reader is still on F0');
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.r, operation_id: topic + '-back', args: { through: null } });
+      await becomes(async () => (await stepsOffered(p)).below, true, device + ': ↓ is offered again once it was brought back');
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 426: More messages ends the run the New line waits at the bottom of. A New line saying more new messages
+  // lie below (its message older than the page) never sits below More, after a dossier put aside there.
+  await check('reading stacks shown order: a New line waiting at the bottom for an older message sits above More messages, never below it after a one-message dossier put aside there, More closed or open', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'new-line-below-more-' + device;
+      // Nothing is read: what a reader has read is a watermark, so a message read after U would read U too.
+      const ids = await seed(topic, [['u', { sender: other, join: true, addressees: [facts.actor], body: 'Unread, older than the page.' }],
+        ...fillers(30).map(([key, { read, ...said }]) => [key, said]), ['x', { sender: other, addressees: [facts.actor], body: 'Stack X, a message on its own put aside.' }]]);
+      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.x, operation_id: topic + '-aside', args: { through: newest } });
+      const p = await open(topic, device, topic, ids.f29, 'window.holdReads = true;');
+      const order = () => p.evaluate(`[...document.querySelector('#messages').children].filter(e=>e.getClientRects().length).map(e=>e.dataset.line?'line:'+e.dataset.line:e.classList.contains('stack-more')?'More':e.dataset.id===${JSON.stringify(ids.x)}?'x':null).filter(Boolean)`);
+      await until(async () => (await order()).includes('line:older'), device + ': the New line waits at the bottom, saying more new messages lie below');
+      assert.deepEqual(await order(), ['line:older', 'More'], device + ': with More closed, the line sits above More, not below it');
+      await centre(p, '#messages .stack-more');
+      await press(p, device, '#messages .stack-more');
+      await becomes(order, ['line:older', 'More', 'x'], device + ': with More open, the line is still above More, and X shows below it');
+      await shot(p, `new-line-below-more-${device}`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 426: a join of two dossiers, one of them below More, made by someone else. The joined dossier takes the
+  // choice of the dossier it went into, and Split back out gives each its own again.
+  await check('reading stacks below More: a dossier put below More joined by someone else into one above it reads in that one, above More, and Split back out puts it below More again; one joined into a dossier below More goes below with it; every message in reach and a reload agrees', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'join-below-more-' + device;
+      const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A, above More.', read: true }],
+        ['a1', { sender: other, reply_to: 'a', addressees: [facts.actor], body: 'A reply to A.', read: true }],
+        ['b', { sender: other, addressees: [facts.actor], body: 'Stack B, put aside.', read: true }],
+        ['b1', { sender: other, reply_to: 'b', addressees: [facts.actor], body: 'A reply to B.', read: true }]]);
+      const newest = (await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', limit: 1 })).items[0].seq;
+      await control({ method: 'stack_act', sender: facts.actor, kind: 'stack.aside', message_id: ids.b, operation_id: topic + '-aside', args: { through: newest } });
+      const p = await open(topic, device, topic, ids.a);
+      const names = Object.fromEntries(Object.entries(ids).map(([key, id]) => [id, key]));
+      // Each message by its name, as the page holds it: the dossier it is drawn in, and whether that shows.
+      const where = q => q.evaluate(`Object.fromEntries(Object.entries(${JSON.stringify(names)}).map(([id,key])=>{const e=document.querySelector('#messages [data-id="'+id+'"]'),s=e?.closest('.reply-stack');
+        return [key,{in:s?(${JSON.stringify(names)})[s.dataset.stack]:null,shown:Boolean(s?.getClientRects().length)}]}))`);
+      const positions = async () => Object.fromEntries((await view('stack_positions', { topic_id: topic, message_ids: Object.values(ids) })).items.map(item => [names[item.message_id], [names[item.stack_position.root_id], item.stack_position.below]]));
+      await becomes(async () => (await where(p)).b, { in: 'b', shown: false }, `${device}: B is below a closed More`);
+      await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.b, operation_id: topic + '-join', args: { into: ids.a } });
+      await becomes(async () => Object.values(await where(p)).map(each => JSON.stringify(each)), Array(4).fill(JSON.stringify({ in: 'a', shown: true })), `${device}: joined into A, B and its reply read in A, above More`);
+      assert.deepEqual(await positions(), { a: ['a', false], a1: ['a', false], b: ['a', false], b1: ['a', false] }, `${device}: Core holds them in A's dossier, above More`);
+      assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .stack-more'))`), false, `${device}: nothing is put aside now`);
+      await dossierOpen(p, device, ids.a);
+      for (const key of ['a', 'a1', 'b', 'b1']) assert.ok(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids[key]))}).getClientRects().length>0`), `${device}: ${key} is in reach, in place`);
+      // A new document, known by its timeOrigin as first read; a read while the old one goes is no answer.
+      const origin = await p.evaluate('(window.documentOrigin??=performance.timeOrigin)');
+      await p.send('Page.reload');
+      await until(() => p.evaluate(`(window.documentOrigin??=performance.timeOrigin) !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(entry(ids.a))}))`).catch(() => false), `${device}: the page is drawn again, a new document`);
+      await becomes(async () => Object.values(await where(p)).map(each => JSON.stringify(each)), Array(4).fill(JSON.stringify({ in: 'a', shown: true })), `${device}: reloaded, the same`);
+      // Split back out: B goes back to its own place, below More.
+      await dossierOpen(p, device, ids.a);
+      const split = `#messages .stack-join-line[data-join="${ids.b}"] .stack-split`;
+      await centre(p, split); await press(p, device, split);
+      await becomes(async () => (await where(p)).b, { in: 'b', shown: false }, `${device}: split back out, B is below a closed More again`);
+      await until(async () => (await positions()).b1[1] === true, `${device}: Core holds B below More again`);
+      // The other way: A joined into B, put aside, goes below More with it.
+      await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.a, operation_id: topic + '-join-a', args: { into: ids.b } });
+      await becomes(async () => Object.values(await where(p)).map(each => JSON.stringify(each)), Array(4).fill(JSON.stringify({ in: 'b', shown: false })), `${device}: A joined into B reads in B, below a closed More`);
+      await press(p, device, '#messages .stack-more');
+      await becomes(async () => Object.values(await where(p)).map(each => JSON.stringify(each)), Array(4).fill(JSON.stringify({ in: 'b', shown: true })), `${device}: More open, every message shows in B`);
+      await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.a, operation_id: topic + '-split-a', args: { into: null } });
+      await becomes(async () => (await where(p)).a, { in: 'a', shown: true }, `${device}: split again, A is back above More`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 426: the page may hold an older place for a dossier put below More than Core does, when another device moved
+  // it and the page has not yet read that. A link followed then draws the dossier where it sits at the place Core
+  // holds, so reading the move it missed does not take the dossier away; a later move still does.
+  await check('reading stacks below More: a link followed while the page holds an older place for the dossier than Core keeps it drawn where it sits once the page reads Core\'s place, and a later move on another device still takes it below More', async () => {
+    const topic = 'below-more-link-race';
+    // Before the page's own code: its reads of the views named in window.held wait unsent, as on a slow connection,
+    // until window.letHeld() sends them. Reading where a dossier sits (stack_positions) is never held. window.answered:
+    // how many answers to each view's reads the page has had, counted once each answer's words are read.
+    const init = `window.held=new Set();window.heldWaiting=[];window.answered={};window.letHeld=()=>{window.held.clear();for(const go of window.heldWaiting.splice(0))go()};
+      {const sent=window.fetch;window.fetch=function(input,init){let b=null;try{b=JSON.parse(init&&init.body)}catch{}
+        const count=answer=>{if(b&&b.name)answer.clone().text().then(()=>{window.answered[b.name]=(window.answered[b.name]||0)+1},()=>{});return answer};
+        if(b&&b.name&&window.held.has(b.name))return new Promise(go=>window.heldWaiting.push(go)).then(()=>sent.call(this,input,init)).then(count);return sent.call(this,input,init).then(count)}}`;
+    const { p, drawn, newest, below, elsewhere, more, ids } = await linkedAside(topic, 'laptop', { follow: false, init });
+    // The page reads neither the acts nor the topic: it does not hear of what another device does.
+    await p.evaluate(`['message_acts','topic_messages','topic','topic_unread','reactions'].forEach(name=>window.held.add(name))`);
+    await elsewhere('stack.aside', ids.b, { through: null });
+    await until(async () => !(await below()), 'Core holds B brought back');
+    await elsewhere('stack.aside', ids.b, { through: await newest() });
+    await until(below, 'Core holds B below More again, at a later place');
+    await until(() => p.evaluate('window.heldWaiting.length > 0'), 'the page\'s read of what changed waits');
+    assert.equal(await drawn(), false, 'the page still holds B below More, at the place it read before');
+    const link = `#messages .message-card a.words-link[href*="${ids.b1}"]`;
+    await centre(p, link); await p.point(link);
+    await until(async () => (await readerOn(p))?.startsWith('A reply to B'), 'the link opens B1 in the Reader');
+    await closeReader(p, 'laptop');
+    await becomes(drawn, true, 'the link draws B where it sits');
+    const [acts, before] = await p.evaluate('[window.answered.message_acts || 0, window.answered.stack_positions || 0]');
+    await p.evaluate('window.letHeld()');
+    // The page reads the acts it missed, then where each dossier sits, and draws what that read says.
+    await until(() => p.evaluate(`(window.answered.message_acts || 0) > ${acts} && (window.answered.stack_positions || 0) > ${before} && window.fetchesOut === 0 && window.heldWaiting.length === 0`), 'the page reads what it missed, and where the dossiers sit');
+    await twoFrames(p);
+    assert.equal(await drawn(), true, `having read the moves it missed, the page keeps B drawn where the link drew it (More: ${JSON.stringify(await more())})`);
+    // A move after the link was followed is a new place: B goes below the closed More.
+    await elsewhere('stack.aside', ids.b, { through: null });
+    await until(async () => !(await below()), 'Core holds B brought back');
+    await elsewhere('stack.aside', ids.b, { through: await newest() });
+    await until(below, 'and below More again');
+    await becomes(drawn, false, 'a move made after the link was followed takes B below the closed More');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Item 624, a dossier's cover (docs/dossier-covers.md): what an agent wrote on it, through Core, drawn as the folder's
+  // first sheet right under its tab, before the chevron and the replies, closed and open; a message on its own shows its
+  // cover as pills under who wrote it; a dossier with no cover shows none. The outcome is the person's, so what waits,
+  // waits on them. Each device and theme is pictured (cover-*.png).
+  const coverSeed = async topic => {
+    const ids = await seed(topic, [
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Which weekend suits the cabin trip?' }],
+      ['note', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'I checked the road report: it is clear both weekends.' }],
+      ['answer', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'The second weekend: the lake is open and the road is clear.' }],
+      ['bare', { sender: other, addressees: [facts.actor], body: 'A dossier nobody wrote a cover for.' }],
+      ['bareReply', { sender: 'aim-ux', reply_to: 'bare', addressees: [facts.actor], body: 'And its one reply.' }],
+      ['lone', { sender: other, addressees: [facts.actor], body: 'A message on its own, with its answer in it: the lake opens in May.' }],
+    ]);
+    const write = async (id, args, op) => {
+      const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: id, operation_id: `${topic}-${op}`, args });
+      assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      return answer.result;
+    };
+    await write(ids.root, { stands: 'Answered: the second weekend, with the lake open', waiting: [{ text: 'Book the cabin for that weekend?', default: 'booked on Friday if nothing is said' }],
+      payload: { text: 'The second weekend', message_id: ids.answer, kind: 'answer' } }, 'cover');
+    await write(ids.lone, { stands: 'Answered in the message itself', payload: { text: 'The lake opens in May', message_id: ids.lone } }, 'lone');
+    return ids;
+  };
+  // What the page draws of a dossier's cover, and where: its sheet's place among the folder's parts, its box against the
+  // tab and the first part after it, and its words; null when the folder has none.
+  const coverOn = (p, root) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(root)}]');if(!s)return 'no folder';
+    const c=s.querySelector(':scope > .dossier-cover');if(!c)return {covered:s.dataset.covered,sheet:null};
+    const tab=s.querySelector('.stack-head').getBoundingClientRect(),box=c.getBoundingClientRect(),folder=s.getBoundingClientRect(),
+      next=[...s.children].slice([...s.children].indexOf(c)+1).flatMap(e=>e.classList.contains('stack-replies')?[...e.children]:[e]).find(e=>e.getClientRects().length&&e.getBoundingClientRect().height>0&&!['absolute','fixed'].includes(getComputedStyle(e).position)),
+      prev=c.previousElementSibling,pill=c.querySelector('.row-pill'),label=c.querySelector('.cover-wait .topic-state');
+    return {covered:s.dataset.covered,after:prev?.dataset.id??prev?.className,before:c.nextElementSibling?.className.split(' ')[0],
+      underTab:box.top>=tab.bottom-0.5,aboveNext:!next||box.bottom<=next.getBoundingClientRect().top+0.5,inside:box.left>=folder.left-0.5&&box.right<=folder.right+0.5,
+      shown:box.height>0&&getComputedStyle(c).visibility!=='hidden',
+      stands:c.querySelector('.cover-stands')?.textContent,payload:c.querySelector('.cover-payload .cover-words')?.textContent,
+      pill:pill&&{state:pill.dataset.state,words:pill.querySelector('.pill-words').textContent,glyph:pill.querySelector('svg')?.dataset.glyph},
+      waits:[...c.querySelectorAll('.cover-wait')].map(w=>w.textContent),mine:Boolean(label?.classList.contains('mine')),
+      cite:c.querySelector('.cover-payload .cover-src')?.textContent,
+      ink:getComputedStyle(c).color!==getComputedStyle(c).backgroundColor,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const pillsOn = (p, id) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});const r=c?.querySelector(':scope > .row-pills');
+    return r?{after:r.previousElementSibling?.className.split(' ')[0],pills:[...r.querySelectorAll('.row-pill')].map(x=>[x.dataset.state,x.querySelector('.pill-words').textContent]),
+      shown:r.getBoundingClientRect().height>0,sheet:Boolean(c.closest('.reply-stack')?.querySelector(':scope > .dossier-cover'))}:null})()`);
+  await check('reading covers an agent\'s cover is the dossier\'s first sheet right under its tab, before its chevron and replies, closed and open, on a laptop and a phone, light and dark; a message on its own shows its cover as pills under who wrote it; a dossier with no cover shows none', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-look-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const answerSeq = (await view('topic_messages', { topic_id: topic, direction: 'before', limit: 50 })).items.find(item => item.id === ids.answer).seq;
+      for (const level of ['folded', 'open']) {
+        // Its chevron pressed until the dossier shows its latest and unread replies, then all of them: each press waits for the one before.
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`, state = () => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
+        if (await state() !== level) {
+          const was = await state();
+          await centre(p, toggle); await press(p, device, toggle);
+          await until(async () => await state() !== was, `${device}: the chevron is heard`);
+        }
+        await until(async () => await state() === level, `${device}: the dossier is ${level}`);
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
+          const at = await coverOn(p, ids.root);
+          assert.deepEqual([at.covered, at.after, at.before, at.underTab, at.aboveNext, at.inside, at.shown, at.ink, at.sideways], ['true', ids.root, 'stack-toggle', true, true, true, true, true, false],
+            `${device} ${level} ${theme}: the cover is the folder's first sheet, right after its first message's entry, under its tab and above the next part: ${JSON.stringify(at)}`);
+          assert.deepEqual([at.stands, at.pill, at.waits, at.mine, at.cite], ['Answered: the second weekend, with the lake open', { state: 'proposed', words: 'payload proposed', glyph: 'payload' },
+            ['Waits on you Book the cabin for that weekend?Default: booked on Friday if nothing is said.'], true, '#' + answerSeq], `${device} ${level} ${theme}: its words`);
+          assert.match(at.payload, /^Payload · answer The second weekend payload proposed$/);
+          const alongside = await p.evaluate(`(s=>[...s.children].map(e=>e.dataset.id??e.className.split(' ')[0]))(document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]'))`);
+          assert.deepEqual(alongside.slice(0, 5), [ids.root, 'dossier-cover', 'stack-toggle', 'stack-tools', 'stack-replies'],
+            `${device} ${level} ${theme}: the cover remains first, with the title tools beside the chevron and before the replies`);
+          await shot(p, `cover-${device}-${level}-${theme}`);
+        }
+        await dossierTheme(p, 'light');
+      }
+      // A message on its own: pills under who wrote it, and no sheet; a dossier with no cover: no sheet, nothing said.
+      assert.deepEqual(await pillsOn(p, ids.lone), { after: 'message-author', pills: [['proposed', 'payload proposed']], shown: true, sheet: false }, `${device}: a message on its own shows its cover's pill`);
+      assert.deepEqual(await coverOn(p, ids.bare), { covered: 'false', sheet: null }, `${device}: a dossier with no cover shows none`);
+      assert.equal(await pillsOn(p, ids.bare), null, `${device}: nor any pill on its first message`);
+      for (const id of [ids.note, ids.answer, ids.bareReply]) assert.equal(await pillsOn(p, id), null, `${device}: a reply carries no pill`);
+      assert.equal(await pillsOn(p, ids.root), null, `${device}: a dossier's first message carries its cover as the sheet, never as pills`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, card(ids.lone)); await shot(p, `cover-lone-${device}-${theme}`); }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624's Done: the outcome's owner gives it, by a 👍 on the payload's message; anyone else's 👍 gives nothing, an
+  // agent's write naming Done is refused, and the 👍 taken back proposes the payload again. Each is read back from Core
+  // as the person and as another reader holds it, so a pill that only repaints fails.
+  await check('reading covers the person\'s 👍 on the payload\'s message makes it done for everyone, said with how; an agent\'s 👍 or an agent\'s write naming Done changes nothing, and the 👍 taken back proposes it again', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-done-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const coverHeld = async reader => (await actsOf(topic, ids.root, reader))?.cover ?? null;
+      const shownPill = async () => (await coverOn(p, ids.root)).pill;
+      assert.equal((await coverHeld(facts.actor)).owner, facts.actor, 'the outcome is the person\'s');
+      const before = (await actsOf(topic, ids.root)).cover_revision;
+      // An agent's 👍 on the payload's message, and an agent's write that names Done: nothing changes.
+      await control({ method: 'agent_thumb', sender: 'aim-ux', message_id: ids.answer, operation_id: topic + '-agent-thumb' });
+      const refused = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, operation_id: topic + '-done',
+        args: { payload: { text: 'The second weekend', message_id: ids.answer, done: { how: 'thumb', by: facts.actor, at_ms: 1 } } } });
+      assert.equal(refused.error?.code, 'DONE_BY_OWNER', JSON.stringify(refused));
+      assert.deepEqual([(await actsOf(topic, ids.root)).cover_revision, (await coverHeld('aim-ux')).payload.done], [before, null], `${device}: Core holds the payload proposed still`);
+      assert.deepEqual(await shownPill(), { state: 'proposed', words: 'payload proposed', glyph: 'payload' }, `${device}: the page shows it proposed`);
+      // The person's 👍 on it, from its bar.
+      await centre(p, card(ids.answer)); await light(p, device, ids.answer);
+      await press(p, device, '.message-bar [data-act=thumb]');
+      await until(async () => (await coverHeld(facts.actor))?.payload.done?.how === 'thumb', `${device}: Core holds it done by the person's 👍`);
+      assert.deepEqual((await coverHeld('aim-ux')).payload.done.by, facts.actor, `${device}: another reader holds it done too`);
+      await until(async () => (await shownPill())?.state === 'done', `${device}: the pill says done`);
+      const done = await shownPill();
+      assert.equal(done.glyph, 'kept');
+      assert.match(done.words, /^done · your 👍 at \d{1,2}:\d\d [AP]M$/, `${device}: said with how and when`);
+      assert.equal((await coverOn(p, ids.root)).stands, 'Answered: the second weekend, with the lake open', 'the rest of the cover stands');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`); await shot(p, `cover-done-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Taken back: proposed again, in Core and on the page. The 👍 folded the message for the person, and its row's 👍
+      // takes it back, unfolding nothing.
+      const folded = `${card(ids.answer)} > .message-folded > .folded-thumb`;
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(folded)})?.getClientRects().length)`), `${device}: the 👍 folded the message to its row`);
+      await centre(p, folded); await press(p, device, folded);
+      await until(async () => (await coverHeld(facts.actor))?.payload.done === null, `${device}: taken back, Core holds it proposed`);
+      await until(async () => (await shownPill())?.state === 'proposed', `${device}: and the pill says proposed`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624 in the Reader: a message of a dossier with a cover shows it as one line above the message, where it stands
+  // and its payload's pill, opening to the whole sheet; a message on its own, or of a dossier with none, shows nothing;
+  // on a phone the line gives way while the reply is written.
+  await check('reading covers the Reader shows a dossier\'s cover as one line above the message, opening to the sheet, none for a message without one; on a phone it gives way while the reply is written', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-reader-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const readerCover = () => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover'),s=document.querySelector('#source-body');
+        const shown=!d.hidden&&d.getClientRects().length>0&&d.getBoundingClientRect().height>0;
+        return {shown,open:d.open,line:d.querySelector('summary').textContent,sheet:Boolean(d.querySelector('.dossier-cover')?.getClientRects().length),
+          above:!shown||d.getBoundingClientRect().bottom<=s.getBoundingClientRect().top+0.5,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(async () => { const c = await readerCover(); return [c.shown, c.open, c.line, c.sheet, c.above, c.sideways]; },
+        [true, false, 'Cover Answered: the second weekend, with the lake open payload proposed', false, true, false], `${device}: one line above the message`);
+      await press(p, device, '#reader-cover > summary');
+      await becomes(async () => { const c = await readerCover(); return [c.open, c.sheet, c.above]; }, [true, true, true], `${device}: pressed, it opens to the sheet`);
+      // A finger's tap on the line flashes no tap highlight over it (Chrome's default paints the line light blue for the
+      // frames after the tap), as the page's other tappable summaries flash none. Safari's engine here exposes no such colour.
+      if (device === 'phone' && engine === 'chrome') {
+        assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#reader-cover > summary')).webkitTapHighlightColor`), 'rgba(0, 0, 0, 0)', 'phone: a tap on the cover line flashes no highlight');
+      }
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-reader-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      if (device === 'phone') {
+        await press(p, device, '#reader-cover > summary');
+        await tap(p, '#writing-body');
+        await until(() => p.evaluate(`document.querySelector('#reader-composer').dataset.compose === 'writing'`), 'phone: the reply is being written');
+        assert.equal((await readerCover()).shown, false, 'phone: the cover gives way while the reply is written');
+        await p.evaluate('document.activeElement?.blur()');
+      }
+      await closeReader(p, device);
+      for (const [id, starts] of [[ids.lone, 'A message on its own'], [ids.bareReply, 'And its one reply']]) {
+        await openReader(p, device, id, starts);
+        assert.equal((await readerCover()).shown, false, `${device}: ${starts}: no cover`);
+        await closeReader(p, device);
+      }
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624: a cover is for whoever arrives late, when the dossier's first message is above the loaded page. The cover
+  // rides with the dossier's place, which every message of it carries, so the reply heading what is loaded shows it as
+  // its folder's first sheet, a dossier's one reply loaded on its own (a card with no folder) shows it as pills under
+  // who wrote it, the Reader shows it on either, and a rewrite reaches it. Earlier messages keeps the displayed
+  // head and its cover sheet, and the other dossier's standalone reply keeps its pills (item 550).
+  await check('reading covers a dossier whose first message is more than a page behind its newest reply shows its cover under the reply\'s tab and in the Reader, and once when Earlier messages loads it', async () => {
+    const geometryTolerance = 2; // CSS-pixel rounding; a sheet overlapping its tab by 16px still fails.
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-late-' + device;
+      const ids = await seed(topic, [['other', { sender: other, join: true, addressees: [facts.actor], body: 'Another dossier, its one reply far below.', read: true }],
+        ['root', { sender: other, addressees: [facts.actor], body: 'The first message, above the loaded page.', read: true }],
+        ...Array.from({ length: 35 }, (_, i) => ['r' + i, { sender: other, reply_to: i ? 'r' + (i - 1) : 'root', addressees: [facts.actor], body: `Reply ${i}.`, read: true }]),
+        ['otherReply', { sender: other, reply_to: 'other', addressees: [facts.actor], body: 'The other dossier\'s one reply.', read: true }]]);
+      const write = async (message, args, op, revision) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: message, operation_id: `${topic}-${op}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        assert.equal(answer.result.cover_revision, revision);
+      };
+      await write(ids.root, { stands: 'The long dossier stands answered', payload: { text: 'Reply 30 says it', message_id: ids.r30, kind: 'answer' } }, 'cover', 1);
+      await write(ids.other, { stands: 'The other dossier stands too', payload: { text: 'Its answer', message_id: ids.other } }, 'other', 1);
+      const p = await open(topic, device, topic, ids.r34);
+      const look = () => p.evaluate(`(()=>{const covers=[...document.querySelectorAll('#messages .dossier-cover')];
+        return {roots:${JSON.stringify([ids.other, ids.root])}.filter(id=>document.querySelector('#messages [data-id='+JSON.stringify(id)+']')).length,
+          covers:covers.map(c=>{const s=c.parentElement,head=s?.firstElementChild,tab=s?.querySelector('.stack-head')?.getBoundingClientRect(),box=c.getBoundingClientRect();
+            return {stack:s?.dataset.stack,head:s?.dataset.stack===head?.dataset.id,after:c.previousElementSibling?.dataset.id===s?.dataset.stack,before:c.nextElementSibling?.className.split(' ')[0],
+              underTab:Boolean(tab)&&box.top>=tab.bottom-${geometryTolerance},shown:box.height>0,stands:c.querySelector('.cover-stands')?.textContent}}).sort((a,b)=>a.stands<b.stands?-1:1),
+          tab:document.querySelector('#messages [data-id=${JSON.stringify(ids.r34)}]')?.closest('.reply-stack')?.dataset.stack??null,
+          lone:(c=>c&&{folder:Boolean(c.closest('.reply-stack')),pills:[...c.querySelectorAll(':scope > .row-pills .row-pill')].map(x=>[x.dataset.state,x.querySelector('.pill-words').textContent]),
+            after:c.querySelector(':scope > .row-pills')?.previousElementSibling?.className.split(' ')[0]??null})(document.querySelector('#messages .message-card[data-id=${JSON.stringify(ids.otherReply)}]')),
+          pills:document.querySelectorAll('#messages .row-pills').length,sideways:document.documentElement.scrollWidth>innerWidth+${geometryTolerance}}})()`);
+      const late = await look();
+      assert.equal(late.roots, 0, `${device}: both first messages are above the loaded page`);
+      const replyTab = late.tab;
+      assert.ok(replyTab && ![ids.root, ids.other].includes(replyTab) && Object.values(ids).includes(replyTab), `${device}: a reply heads what is loaded of the dossier: ${JSON.stringify(late)}`);
+      assert.deepEqual(late.covers, [{ stack: replyTab, head: true, after: true, before: 'stack-toggle', underTab: true, shown: true, stands: 'The long dossier stands answered' }],
+        `${device}: the cover is drawn once, as the first sheet under the reply that heads what is loaded of its dossier: ${JSON.stringify(late)}`);
+      assert.deepEqual(late.lone, { folder: false, pills: [['proposed', 'payload proposed']], after: 'message-author' },
+        `${device}: the other dossier's one reply, a card with no folder, shows its dossier's cover as pills under who wrote it: ${JSON.stringify(late)}`);
+      assert.deepEqual([late.pills, late.sideways], [1, false], `${device}: no other pill, nothing sideways`);
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        await centre(p, `#messages .reply-stack[data-stack="${replyTab}"]`); await shot(p, `cover-late-${device}-${theme}`);
+        await centre(p, card(ids.otherReply)); await shot(p, `cover-late-lone-${device}-${theme}`);
+      }
+      await dossierTheme(p, 'light');
+      // The Reader on the newest reply shows the cover line: the folder pressed open to its latest replies first.
+      const toggle = `#messages .reply-stack[data-stack="${replyTab}"] > .stack-toggle`, level = () => p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
+      if (await level() === 'head') {
+        await centre(p, toggle); await press(p, device, toggle);
+        await until(async () => await level() !== 'head', `${device}: the chevron is heard`);
+      }
+      assert.deepEqual((await look()).covers.map(at => [at.stack, at.after, at.before]), [[replyTab, true, 'stack-toggle']], `${device}: opened, the cover stays the first sheet`);
+      const readerLine = () => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover');return d.hidden||!d.getClientRects().length?null:d.querySelector('summary').textContent})()`);
+      await openReader(p, device, ids.r34, 'Reply 34.');
+      await becomes(readerLine, 'Cover The long dossier stands answered payload proposed', `${device}: the Reader shows the cover on a reply whose first message is not loaded`);
+      await shot(p, `cover-late-reader-${device}`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.otherReply, 'The other dossier');
+      await becomes(readerLine, 'Cover The other dossier stands too payload proposed', `${device}: and on a dossier's one reply loaded on its own`);
+      await closeReader(p, device);
+      // Rewritten by its agent, the cover under the reply's tab follows, its first message still not loaded.
+      await write(ids.root, { stands: 'The long dossier stands answered again' }, 'again', 2);
+      await becomes(async () => (await look()).covers.map(at => [at.stack, at.stands]), [[replyTab, 'The long dossier stands answered again']], `${device}: the rewrite reaches the reply's tab`);
+      // Earlier messages reads both first messages in place at the button;
+      // the long dossier keeps its displayed head and the other card stays apart.
+      const count = () => p.evaluate(`document.querySelectorAll('#messages .message-card[data-id]').length`);
+      for (let page = 0; (await look()).roots < 2; page++) {
+        assert.ok(page < 3, `${device}: Earlier messages reaches the first messages`);
+        const was = await count();
+        await centre(p, '#more-messages'); await press(p, device, '#more-messages');
+        await until(async () => (await count()) > was, `${device}: Earlier messages reads an older page`);
+      }
+      const loaded = await look();
+      assert.equal(loaded.tab, replyTab, `${device}: Earlier messages keeps the displayed head`);
+      assert.deepEqual(loaded.covers, [{ stack: replyTab, head: true, after: true, before: 'stack-toggle', underTab: true, shown: true, stands: 'The long dossier stands answered again' }],
+        `${device}: the cover stays once under the retained tab after both first messages load: ${JSON.stringify(loaded)}`);
+      assert.deepEqual([loaded.pills, loaded.lone?.folder, loaded.lone?.pills], [1, false, [['proposed', 'payload proposed']]], `${device}: the standalone reply keeps its one cover pill: ${JSON.stringify(loaded)}`);
+      assert.equal(loaded.sideways, false, `${device}: loading earlier messages keeps the page inside the viewport`);
+      await openReader(p, device, ids.r34, 'Reply 34.');
+      await becomes(readerLine, 'Cover The long dossier stands answered again payload proposed', `${device}: the Reader still shows it`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.root, 'The first message, above the loaded page.');
+      await becomes(readerLine, 'Cover The long dossier stands answered again payload proposed', `${device}: the newly loaded first message shows the same cover`);
+      await closeReader(p, device);
+      await openReader(p, device, ids.other, 'Another dossier, its one reply far below.');
+      await becomes(readerLine, 'Cover The other dossier stands too payload proposed', `${device}: the other first message keeps its own cover too`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624, the Reader's cover line (docs/reader.md): one quiet line above the message, and a press opens the whole
+  // sheet, for the message and the dossier it was pressed on. The Reader opened on another dossier's message, on the
+  // same message again, or stepped to the next one shows the line closed, the message right under it; so it does when
+  // the open sheet's cover goes and comes back, or its message joins another dossier. A cover rewritten while its sheet
+  // is open keeps it open, saying the new words. What the Reader shows of it: shown, open, the line's words, the sheet,
+  // where it stands on the sheet, the message's first line inside the window, and nothing sideways.
+  const readerCoverAt = p => p.evaluate(`(()=>{const d=document.querySelector('#reader-cover'),s=document.querySelector('#source-body'),m=d.querySelector('summary');
+    const shown=!d.hidden&&d.getClientRects().length>0&&d.getBoundingClientRect().height>0,pill=m.querySelector('.row-pill'),words=m.querySelector('.reader-cover-words');
+    return {shown,open:d.open,line:shown?m.textContent:null,sheet:Boolean(d.querySelector('.dossier-cover')?.getClientRects().length),
+      stands:d.querySelector('.dossier-cover .cover-stands')?.textContent??null,inView:s.getBoundingClientRect().top<innerHeight-24,
+      oneLine:!shown||(words?.getClientRects().length===1&&(!pill||!pill.getClientRects().length||pill.getBoundingClientRect().right<=m.getBoundingClientRect().right+0.5)),
+      sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  await check('reading covers the Reader\'s cover sheet opens only where it is pressed: another dossier\'s message, the same message opened again, the next message, a cover that goes and comes back and a message joined to another dossier each show the line closed, the message under it; a cover rewritten while open stays open; on a laptop and at 320, 375 and 390', async () => {
+    for (const device of Object.keys(DEVICES)) for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+      const at = `${device} ${width}`, topic = `cover-sheet-${device}-${width}`, ids = await coverSeed(topic);
+      const write = async (id, args, op) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: id, operation_id: `${topic}-${op}`, args });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await write(ids.bare, { stands: 'The other dossier waits on the road report', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b');
+      const p = await open(topic, device, topic, ids.lone);
+      if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+      const look = async () => { const c = await readerCoverAt(p); return { shown: c.shown, open: c.open, line: c.line, sheet: c.sheet, inView: c.inView, oneLine: c.oneLine, sideways: c.sideways }; };
+      const closed = line => ({ shown: true, open: false, line, sheet: false, inView: true, oneLine: true, sideways: false });
+      const opens = async message => {
+        await press(p, device, '#reader-cover > summary');
+        await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet]; }, [true, true], `${at}: ${message}: pressed, the line opens to the sheet`);
+      };
+      const A = 'Cover Answered again: the second weekend payload proposed';
+      // Dossier A's sheet, opened on its note and rewritten by its agent while open: it stays open, saying the new words.
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed('Cover Answered: the second weekend, with the lake open payload proposed'), `${at}: the line, closed`);
+      await opens('A');
+      await write(ids.root, { stands: 'Answered again: the second weekend' }, 'again');
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.open, c.sheet, c.stands, c.line]; }, [true, true, 'Answered again: the second weekend', A],
+        `${at}: a rewrite keeps the sheet open, saying the new words`);
+      // The same message opened again: the line, closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.note, 'I checked the road report');
+      await becomes(look, closed(A), `${at}: the same message opened again shows the line closed`);
+      // Another dossier's message, after A's sheet was open: B's own line, closed, the message right under it.
+      await opens('A again');
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await becomes(look, closed('Cover The other dossier waits on the road report payload proposed'), `${at}: another dossier's message shows its own line, closed, the message under it`);
+      if (width !== 375) for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `cover-sheet-next-${device}-${width}-${theme}`); }
+      await dossierTheme(p, 'light');
+      // Stepped to the next message above, with B's sheet open: that message's line, closed.
+      await opens('B');
+      const was = await readerOn(p), step = stepButton(device, 'above');
+      if (device === 'phone') await p.evaluate(`document.querySelector(${JSON.stringify(step)}).scrollIntoView({block:'center'})`);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(step)}).disabled`), `${at}: the step above can be pressed`);
+      await press(p, device, step);
+      await until(async () => ![null, was].includes(await readerOn(p)), `${at}: the Reader steps to another message`);
+      await becomes(async () => { const c = await readerCoverAt(p); return [c.shown, c.open, c.sheet]; }, [true, false, false], `${at}: the next message's line is closed`);
+      // Back on B's reply with its sheet open, its cover cleared and written again: the line comes back closed.
+      await closeReader(p, device);
+      await openReader(p, device, ids.bareReply, 'And its one reply');
+      await opens('B again');
+      await write(ids.bare, { stands: '', payload: null }, 'b-clear');
+      await becomes(async () => (await readerCoverAt(p)).shown, false, `${at}: a cleared cover takes the line away`);
+      await write(ids.bare, { stands: 'The other dossier stands again', payload: { text: 'Its one reply', message_id: ids.bareReply } }, 'b-again');
+      await becomes(look, closed('Cover The other dossier stands again payload proposed'), `${at}: written again, the line comes back closed`);
+      // B's sheet open, and B joined into A: the message reads A's line, closed.
+      await opens('B written again');
+      const joined = await control({ method: 'stack_act', sender: other, kind: 'stack.join', message_id: ids.bare, operation_id: `${topic}-join`, args: { into: ids.root } });
+      assert.equal(joined.status, 'committed', JSON.stringify(joined));
+      await becomes(look, closed(A), `${at}: joined into A, the message shows A's line, closed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 624: the open Reader's cover line follows the cover, as the page's stacks do (docs/reader.md). An agent's
+  // rewrite, and the person's 👍 on the payload's message given and taken back (from another of their devices), each
+  // reach the line with the Reader open on the payload's message; Core holds each first. On a laptop, and on a phone at
+  // 320, 375 and 390, light and dark.
+  await check('reading covers the open Reader\'s cover line follows the cover: an agent\'s rewrite, and the person\'s 👍 on the payload given and taken back, reach it with the Reader open', async () => {
+    for (const device of Object.keys(DEVICES)) {
+      const topic = 'cover-follows-' + device, ids = await coverSeed(topic);
+      const p = await open(topic, device, topic, ids.lone);
+      const line = async () => (await readerCoverAt(p)).line;
+      const thumb = async (thumbed, op) => {
+        const answer = await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.answer, thumbed, operation_id: `${topic}-${op}` });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+      };
+      await openReader(p, device, ids.answer, 'The second weekend');
+      await becomes(line, 'Cover Answered: the second weekend, with the lake open payload proposed', `${device}: the line`);
+      const rewrite = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root, operation_id: `${topic}-again`, args: { stands: 'Booked for the second weekend' } });
+      assert.equal(rewrite.status, 'committed', JSON.stringify(rewrite));
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: an agent's rewrite reaches the open Reader's line`);
+      await thumb(true, 'thumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done?.how === 'thumb', `${device}: Core holds it done by the person's 👍`);
+      await until(async () => /^Cover Booked for the second weekend done · your 👍 at \d{1,2}:\d\d [AP]M$/.test(await line() ?? ''), `${device}: the person's 👍 reaches the open Reader's line as done`);
+      for (const width of device === 'phone' ? [320, 375, 390] : [1280]) {
+        if (device === 'phone') await p.send('Emulation.setDeviceMetricsOverride', { ...DEVICES.phone, width, height: width === 320 ? 640 : DEVICES.phone.height });
+        for (const theme of ['light', 'dark']) {
+          await dossierTheme(p, theme);
+          const c = await readerCoverAt(p);
+          assert.deepEqual([c.shown, c.open, c.inView, c.oneLine, c.sideways], [true, false, true, true, false], `${device} ${width} ${theme}: the done line on one row, the message under it: ${JSON.stringify(c)}`);
+          if (width !== 375) await shot(p, `cover-follows-done-${device}-${width}-${theme}`);
+        }
+      }
+      await dossierTheme(p, 'light');
+      await thumb(false, 'unthumb');
+      await until(async () => (await actsOf(topic, ids.root))?.cover?.payload.done === null, `${device}: taken back, Core holds it proposed`);
+      await becomes(line, 'Cover Booked for the second weekend payload proposed', `${device}: taken back, the open Reader's line says proposed`);
+      await closeReader(p, device);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
+  // Item 613: a topic's unread count leads to the oldest message still unread for the reader (docs/attention.md,
+  // "In the browser"). The shape a person met: the one message waiting for them is 19 replies down a dossier
+  // whose first message is far up the topic, with 118 messages after it, so it is neither on the topic's first
+  // page nor among the dossier's newest seven, but behind its earlier-messages row. One press on the topic's
+  // count in the outline, from another topic, opens the topic there: the dossier whole from its first message and
+  // open, its earlier row expanded as far as the message (the others before it drawn as its rows), the message
+  // whole on screen, uncovered, with the keys on it, every message drawn once across the pages read in, and the
+  // phone's drawer closed. Read on screen, Core settles it
+  // and the count goes. A topic with nothing unread, its only message to someone else by name (another reader's
+  // pending delivery), shows no count. At a laptop's width and at 390, 375 and 320 on a phone, light and dark; on
+  // a phone the count answers a finger 44px each way. Pressed on the open topic's own row, it lands there in place
+  // too. Where a press does not land, the page it left is kept as reading-unread-landed-* (the red at the base),
+  // and the other devices still run, so each width has its picture.
+  await check('reading unread count one press lands on the oldest unread message deep in a dossier behind its earlier row, on screen, and the count goes once it is read', async () => {
+    const geometryTolerance = 2; // CSS-pixel rounding; an offscreen row at y954 still fails.
+    const countOf = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
+    const landed = (p, topic, target, root) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(target))});
+      const here=new URL(location.href).searchParams.get('topic'),drawer=document.getElementById('rail').classList.contains('open');if(!c)return {here,drawer,card:false};
+      const s=c.closest('.reply-stack'),w=c.querySelector(':scope > .message-preview'),b=c.getBoundingClientRect(),r=w&&w.getClientRects().length?w.getBoundingClientRect():null;
+      const plain=Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2)));
+      const ids=[...document.querySelectorAll('#messages .message-card[data-id]')].map(e=>e.dataset.id),twice=ids.filter((id,i)=>ids.indexOf(id)!==i).length;
+      return {here,drawer,card:true,dossier:s?.dataset.stack===${JSON.stringify(root)},fold:s?.dataset.fold??null,rows:Boolean(s?.querySelector('.message-card[data-earlier="true"]')),whole:c.dataset.earlier!=='true'&&Boolean(r),onScreen:b.top>=-${geometryTolerance}&&b.bottom<=innerHeight+${geometryTolerance},plain,focused:document.activeElement===c,twice,sideways:document.documentElement.scrollWidth>innerWidth+${geometryTolerance}}})()`);
+    const want = topic => ({ here: topic, drawer: false, card: true, dossier: true, fold: 'open', rows: true, whole: true, onScreen: true, plain: true, focused: true, twice: 0, sideways: false });
+    // Once the press has opened the topic: its message is read in (the pages before it, however many), then it is shown.
+    const lands = async (p, device, topic, { target, root }) => {
+      await until(() => p.evaluate(`new URL(location.href).searchParams.get('topic')===${JSON.stringify(topic)}&&document.body.dataset.ready==='true'`), `${device}: the press opens the topic`);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(target))}))`), `${device}: the waiting message is read in, however far up the topic it is`);
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(entry(root))}))`), `${device}: and its dossier's first message, further up still`);
+      await becomes(() => landed(p, topic, target, root), want(topic), `${device}: one press opens the topic on the waiting message, plainly on screen in its open dossier`);
+    };
+    const missed = [];
+    for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
+      const deep = `unread-deep-${device}`, calm = `unread-calm-${device}`, touch = device !== 'laptop';
+      const made = await control({ method: 'navigation_topics', topics: [{ id: calm, title: 'Greenhouse ' + device }, { id: deep, title: 'Spring beds ' + device }] });
+      // The calm topic: aim-ux's word to everyone, read by the person, then a message to aim-ux by name, waiting for aim-ux alone.
+      await control({ method: 'agent_message', operation_id: calm + '-ux', topic_id: calm, source: 'topic', sender: 'aim-ux', join: true, whole_topic: true, body: 'Hose parts ordered.', read: true });
+      await control({ method: 'agent_message', operation_id: calm + '-theirs', topic_id: calm, source: 'topic', sender: other, join: true, addressees: ['aim-ux'], body: 'For aim-ux: the hose is fixed.' });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The tomatoes go in the south bed, by the fence.' });
+      const p = await open(`${deep}-press`, device, calm, made[0].result.message_id);
+      if (touch) { await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens`); }
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(deep))})?.textContent==='1'`), `${device}: the deep topic counts its one waiting message`);
+      const badge = await p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(countOf(deep))});b.scrollIntoView({block:'center'});const r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,on=(x,y)=>b.contains(document.elementFromPoint(x,y));
+        return {calm:Boolean(document.querySelector(${JSON.stringify(countOf(calm))})),tip:b.title,lands:b.dataset.lands??null,reach:{up:on(x,y-21),down:on(x,y+21),left:on(r.right-43,y),right:on(r.right-1,y)}}})()`);
+      assert.equal(badge.calm, false, `${device}: a topic with nothing unread, its one message another reader's by name, shows no count`);
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-count-${device}-${theme}`); }
+      await dossierTheme(p, 'light');
+      if (touch) await tap(p, countOf(deep)); else await p.point(countOf(deep));
+      try { await lands(p, device, deep, ids); }
+      catch (error) {
+        // Kept as the press left it, in both themes, and the next device goes on.
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-landed-${device}-${theme}`); }
+        missed.push(`${device}: ${error.message}`); await p.close(); continue;
+      }
+      observations.push({ name: 'unread count lands', engine, device, look: await landed(p, deep, ids.target, ids.root) });
+      // Still there in both themes, with the keys on it: no card the finger was over takes them or a light
+      // (WebKit sends a mouse move after a tap, which only places the pointer).
+      for (const theme of ['light', 'dark']) {
+        await dossierTheme(p, theme);
+        assert.deepEqual(await landed(p, deep, ids.target, ids.root), want(deep), `${device} ${theme}: still there`);
+        assert.deepEqual(await p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id).filter(id=>id!==${JSON.stringify(ids.target)})`), [], `${device} ${theme}: no other card is lit`);
+        await shot(p, `unread-landed-${device}-${theme}`);
+      }
+      await dossierTheme(p, 'light');
+      assert.equal(badge.lands, 'unread', `${device}: the count leads to the oldest unread message`);
+      assert.equal(badge.tip, 'Show the oldest unread message', `${device}: the count says where it leads`);
+      if (touch) assert.deepEqual(badge.reach, { up: true, down: true, left: true, right: true }, `${device}: the count answers a finger 44px each way`);
+      // On screen, the page reports it read: Core settles the message, and the count goes.
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, `${device}: read on screen, Core settles it`);
+      // The page is scrolled down to the message, so the drawer's button is scrolled up with it: the person scrolls back to it.
+      if (touch) {
+        await p.evaluate(`document.getElementById('rail-open').scrollIntoView({block:'nearest'})`);
+        await tap(p, '#rail-open'); await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), `${device}: the drawer opens again`);
+      }
+      await until(() => p.evaluate(`Boolean(document.querySelector('#outline a.nav-item[data-topic-id="${deep}"]'))&&!document.querySelector(${JSON.stringify(countOf(deep))})`), `${device}: the count is gone`);
+      await shot(p, `unread-gone-${device}-light`);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+    assert.deepEqual(missed, [], 'on every device one press lands on the waiting message');
+    // Pressed on the open topic's own row, on a laptop: it lands in place.
+    const own = 'unread-deep-own', made = await control({ method: 'navigation_topics', topics: [{ id: own, title: 'Spring beds here' }] });
+    const ids = await control({ method: 'dossier_deep', topic_id: own, words: 'The beans go by the gate.' });
+    const p = await open(own, 'laptop', own, ids.newest);
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(countOf(own))})?.textContent==='1'`), 'the open topic counts its one waiting message');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.target))}))`), false, 'opened at its newest, the waiting message is not on the page');
+    // The earlier device cases added rows above this one. Reveal the actual
+    // badge, settle layout, then let point measure and hit-test it afresh.
+    await centre(p, countOf(own));
+    await p.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    await p.point(countOf(own));
+    await lands(p, 'in place', own, ids);
+    assert.ok(made.length === 1);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Review 613 B1/B2: each input/state has its own case at every supported width.
+  const unreadPrefix = 'reading unread count one press lands on the oldest unread message';
+  const unreadCount = topic => `#outline a.nav-item[data-topic-id="${topic}"] .unread-count`;
+  const unreadLook = (p, id) => p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(id))});if(!c)return null;
+    const w=c.querySelector(':scope > .message-preview'),r=w?.getClientRects().length?w.getBoundingClientRect():null,b=c.getBoundingClientRect();
+    return {whole:c.dataset.earlier!=='true'&&Boolean(r),plain:Boolean(r)&&c.contains(document.elementFromPoint(r.left+Math.min(24,r.width/2),r.top+Math.min(8,r.height/2))),
+      focused:document.activeElement===c,onScreen:b.top>=0&&b.bottom<=innerHeight,sideways:document.documentElement.scrollWidth>innerWidth}})()`);
+  const unreadOn = { whole: true, plain: true, focused: true, onScreen: true, sideways: false };
+  const unreadDrawer = async (p, device, waiting = null) => {
+    if (device === 'laptop') return;
+    await centre(p, '#rail-open');
+    if (waiting) assert.equal(await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(waiting))});
+      if(!c?.getClientRects().length)return false;const b=c.getBoundingClientRect();return b.bottom>0&&b.top<innerHeight})()`), false,
+      'the trip to the drawer leaves the waiting reply off screen, so it still needs its badge press');
+    await tap(p, '#rail-open');
+    await until(() => p.evaluate(`document.getElementById('rail').classList.contains('open')`), 'the outline drawer opens');
+  };
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) {
+    await check(`${unreadPrefix}: marked older message then pending delivery, ${device}`, async () => {
+      const deep = `unread-marked-${device}`, calm = `unread-markcalm-${device}`;
+      const made = await control({ method: 'navigation_topics', topics: [{ id: calm, title: 'Shed ' + device }, { id: deep, title: 'Vines ' + device }] });
+      const reminder = (await control({ method: 'agent_message', operation_id: deep + '-reminder', topic_id: deep, source: 'topic', sender: other, join: true,
+        addressees: [facts.actor], body: 'Check the frost cloth before Friday.', read: true })).result.message_id;
+      await control({ method: 'mark', operation_id: deep + '-mark', message_ids: [reminder], marked: true });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The vines need twine by Friday.' });
+      // On a phone the person returns to the header to open the drawer. The
+      // default dossier shows latest + unread, so putting it just below that
+      // header would read its waiting reply on the way back and legitimately
+      // remove the badge before the second press. Keep that trip among notes
+      // to someone else; the pending reply must still need its badge press.
+      // Do not use the fixture's read:true: that reads the whole topic.
+      for (let n = 0; n < 20; n++) await control({ method: 'agent_message', operation_id: deep + '-cover-' + n,
+        topic_id: deep, source: 'topic', sender: other, addressees: ['aim-ux'],
+        body: `Rota note ${n + 1}: the spare pots are in the shed.` });
+      const p = await open(deep, device, calm, made[0].result.message_id);
+      await unreadDrawer(p, device);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='2'`), 'the badge counts both the explicit mark and the delivery');
+      await centre(p, unreadCount(deep));
+      if (device === 'laptop') await p.point(unreadCount(deep)); else await tap(p, unreadCount(deep));
+      await becomes(() => unreadLook(p, reminder), unreadOn, 'the first press shows the older marked message whole and plain');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-marked-${device}-${theme}`); }
+      try {
+        await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread?.id === ids.target, 'B1: reading the marked message clears it and advances to the pending delivery');
+      } finally {
+        observations.push({ name: 'unread marked first result', engine, device, reminder, target: ids.target,
+          oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread,
+          count: (await view('workspace_topics', { workspace_id: 'w1' })).items.find(item => item.id === deep)?.unread });
+      }
+      const traceSecond = async phase => observations.push({ name: 'unread second press', engine, device, phase,
+        look: await p.evaluate(`(()=>{const r=document.getElementById('rail'),b=document.querySelector(${JSON.stringify(unreadCount(deep))}),c=document.querySelector(${JSON.stringify(card(ids.target))});
+          const box=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}};
+          const q=box(b),h=q&&document.elementFromPoint(q.x+Math.min(12,q.width/2),q.y+Math.min(12,q.height/2));
+          return {scrollY,drawer:r.className,railScroll:r.scrollTop,inert:document.getElementById('main').inert,badge:box(b),hit:h?.outerHTML.slice(0,500),
+            focus:document.activeElement?.outerHTML.slice(0,500),target:box(c),sent:window.sent}})()`),
+        oldest: (await view('topic_unread', { topic_id: deep })).oldest_unread });
+      await traceSecond('before opening');
+      try {
+        await unreadDrawer(p, device, ids.target);
+        await traceSecond('drawer opened');
+        assert.equal((await view('topic_unread', { topic_id: deep })).oldest_unread?.id, ids.target,
+          'returning to the drawer has not already read the pending reply');
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(unreadCount(deep))})?.textContent==='1'`), 'the explicit mark is no longer counted');
+        await centre(p, unreadCount(deep));
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-second-count-${device}-${theme}`); }
+        await traceSecond('badge centred');
+        if (device === 'laptop') await p.point(unreadCount(deep)); else await tap(p, unreadCount(deep));
+        await traceSecond('badge pressed');
+        await becomes(() => unreadLook(p, ids.target), unreadOn, 'the next press reaches the later pending delivery');
+        for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-second-landed-${device}-${theme}`); }
+      } catch (error) {
+        await traceSecond('failed');
+        await shot(p, `unread-second-failed-${device}`);
+        throw error;
+      }
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, 'both messages are now read');
+      await unreadDrawer(p, device);
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(unreadCount(deep))})`), 'the badge is gone after both messages are read');
+      observations.push({ name: 'unread marked advances', engine, device, reminder, target: ids.target });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    for (const input of ['row Return', 'More new below Return']) await check(`${unreadPrefix}: ${input}, ${device}`, async () => {
+      const deep = `unread-keys-${input.startsWith('row') ? 'row' : 'line'}-${device}`;
+      await control({ method: 'navigation_topics', topics: [{ id: deep, title: 'Fences ' + device }] });
+      const ids = await control({ method: 'dossier_deep', topic_id: deep, words: 'The fence wire is tightened.' });
+      const p = await open(deep, device, deep, ids.newest);
+      if (input === 'row Return') await unreadDrawer(p, device);
+      const selector = input === 'row Return' ? `#outline a.nav-item[data-topic-id="${deep}"]` : '#messages .new-line-older';
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), 'the keyboard control is drawn');
+      // Focus setup only; activation below is a native key, never a handler invocation.
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+      await p.key('Enter');
+      await becomes(() => unreadLook(p, ids.target), unreadOn, 'B2: Return shows the oldest unread message whole and plain');
+      for (const theme of ['light', 'dark']) { await dossierTheme(p, theme); await shot(p, `unread-keys-${input.startsWith('row') ? 'row' : 'line'}-${device}-${theme}`); }
+      await until(async () => (await view('topic_unread', { topic_id: deep })).oldest_unread === null, 'the reached message is read');
+      observations.push({ name: 'unread keyboard lands', engine, device, input, target: ids.target, look: await unreadLook(p, ids.target) });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 }

@@ -11,8 +11,9 @@ from . import whispers
 from .standing_conversation import open_items_clause
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
-from .stacks import act_fields, awaiting_fields, record_wait_start
-from .message_edit import current_words, edited, is_held, mark, plain, quoted_revision, reading, revision, words, withheld
+from .stacks import act_fields, awaiting_fields, record_wait_start, source_dossier
+from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
+                           struck, words, withheld)
 
 
 CONVERSATION_SCHEMA = [
@@ -135,10 +136,11 @@ class Conversation:
         return topic["version"] + 1
 
     def _command_participation_set(self, db, actor, envelope):
-        topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=True)
+        args = envelope.get("args", {})
+        # Adding someone needs reading, never an owner/coordinator role. Removal keeps its management rule.
+        topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=args.get("present") is not True)
         self._conversation_participation_refused(topic)
         _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
-        args = envelope.get("args", {})
         present = args.get("present")
         if not isinstance(present, bool):
             raise Refusal("INVALID_ARGUMENT", "Participation must be explicitly true or false")
@@ -414,6 +416,8 @@ class Conversation:
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
         record_wait_start(db, sequence)
+        # And where agents' messages begin to be recorded as handed to other agents, who are corrected when one is edited (item 614).
+        record_agent_exposure_start(db, sequence)
         # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
         if counts and not record_only:
             db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
@@ -509,14 +513,26 @@ class Conversation:
         # The latest words, their revision (1 when never edited) and when they were edited (message_edit.py).
         body, current, edited_ms = current_words(db, row["id"])
         quotes = [] if held else self._source_quotes(db, actor, json.loads(row["quotes"]))
+        # For a person who had read words its agent author has since changed, those words, struck through (item 614).
+        seen = None if held or current <= 1 else struck(db, actor, row["id"], current, current_words(db, row["id"], plain=True)[0])
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
                 "attachments": [] if held else json.loads(row["attachments"]), "withheld": held,
                 "quotes": quotes, "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"],
-                "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms,
-                "allowed_actions": ["quote", "note.save"], **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+                "version": current, "current_revision": current, "revision": current, "edited_ms": edited_ms, "struck": seen,
+                "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
+                **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+
+    def _source_dossier(self, db, actor, row):
+        """The dossier the message is in (stacks.source_dossier), for a reader of its topic; None for one who reads only
+        this message, sent to them by name, as that grants nothing more of the topic."""
+        try:
+            self._topic(db, actor, row["topic_id"])
+        except Refusal:
+            return None
+        return source_dossier(db, actor, row["id"])
 
     def _source_quotes(self, db, actor, stored):
         """A message's stored quotes as the actor reads them (whispers.redact_quotes). A quote of a
@@ -627,6 +643,9 @@ class Conversation:
             cut = _preview(whole)
             item["preview"] = len(cut.encode("utf-8")) < len(whole.encode("utf-8"))
             item["body"] = mark(item["id"], item["revision"], cut)
+            # For a person who had read words its agent author has since changed, those within what the card shows,
+            # struck through (item 614); measured with the item.
+            item["struck"] = None if item["withheld"] else struck(db, actor, item["id"], item["revision"], whole, cut if item["preview"] else None)
             encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 break
@@ -638,7 +657,7 @@ class Conversation:
         self._item_fields(db, actor, topic, items)
         self._reaction_fields(db, actor, items)
         self._block_fields(db, items)
-        reading_fields(db, actor, unread_groups(db, actor, topic["id"], self._addressed_group(db, actor)), items)
+        reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)
         # What the reader and the topic recorded about each message in its stack (stacks.py).

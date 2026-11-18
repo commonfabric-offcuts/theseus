@@ -552,6 +552,24 @@ def plan_steps(plan):
     return result
 
 
+def scoped_required(summary, run, base, root, commit, required):
+    """Rechoose a PR's scope from Git; a producer's scope never licenses omissions."""
+    scoped = summary.get('scoped')
+    if scoped is None:
+        return set(required)
+    require(run['event'] == 'pull_request', 'scoped summary requires a pull request')
+    require(isinstance(scoped, dict) and scoped.get('live') == base['sha'], 'scoped summary has another base')
+    try:
+        changed, chosen, _ = release_check.scope(root, base['sha'], commit)
+    except release_check.Refused as error:
+        raise Refused('cannot choose scoped steps: %s' % error)
+    require(not release_check.small_fix_problems(changed), 'scoped diff is not a small fix')
+    require(isinstance(scoped.get('steps'), list) and scoped['steps'] == chosen, 'scoped choice differs from event base')
+    omitted = set(NATIVE) - set(chosen)
+    require(set(scoped.get('not_run') or []) == omitted, 'scoped omitted steps differ')
+    return set(required) - omitted
+
+
 def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root, candidate_root, environ=None, producer=None):
     environ = os.environ if environ is None else environ
     binding = None
@@ -571,7 +589,7 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
     relative = str(baseline.relative_to(Path(base_root).resolve()))
     require(baseline.read_bytes() == source(base_root, base['sha'], relative), 'policy differs from event base')
     for path in ('tools/ci_known_reds.py', 'tools/known_reds.py', 'tools/release_check.py',
-                 'tools/ci_input_reads.py', 'tools/ci-input-reads.json'):
+                 'tools/ci_input_reads.py', 'tools/ci-input-reads.json', 'tools/steps_for.py'):
         require((ROOT / path).read_bytes() == source(base_root, base['sha'], path), 'validator differs from event base: ' + path)
     known = load_policy(read_json(baseline), base_root)
     policy, transition_review = select_plan(known, candidate_root, commit, base['sha'])
@@ -596,11 +614,15 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
     require(summary.get('tree_unchanged') is True and summary.get('tree_after') == {'head': commit, 'changes': ''}, 'dirty combined source')
     require('only' not in summary and not summary.get('skipped'), 'focused or skipped aggregate')
     require(unique(summary['required'], 'summary required steps') == set(policy['required']), 'incomplete summary plan')
+    expected = scoped_required(summary, run, base, candidate_root, commit, policy['required'])
     combined = summary['steps']
-    require(unique([s['name'] for s in combined], 'combined steps') == set(policy['required']), 'missing required step')
+    require(unique([s['name'] for s in combined], 'combined steps') == expected, 'missing required step')
+    if summary.get('scoped') is not None:
+        require(all(release_check.ran_whole(step) for step in combined if step['name'] in NATIVE),
+                'scoped native step did not run whole')
     by_name = {s['name']: s for s in combined}
     plan = plan_steps(provenance['plan'])
-    require(Counter(s for shard in plan for s in shard) == Counter(policy['required']), 'incomplete or duplicated shard plan')
+    require(Counter(s for shard in plan for s in shard) == Counter(expected), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
     artifacts = [s['artifact'] for s in entries]
@@ -657,11 +679,16 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
                 elif step['name'] == 'wake-replay':
                     replay_evidence(step, out, traffic)
         require(raw['required'] == summary['required'], 'shard required plan differs')
-    require(Counter(ran) == Counter(policy['required']), 'incomplete whole-run coverage')
+    require(Counter(ran) == Counter(expected), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
     require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')
-    result = classify(policy, observed, candidate_root, commit)
+    # An unrun admitted case is neither healed nor a disappeared chosen case.
+    selected_policy = dict(policy, reds=[r for r in policy['reds'] if r['step'] in expected])
+    result = classify(selected_policy, observed, candidate_root, commit)
+    if summary.get('scoped') is not None:
+        result['scoped'] = summary['scoped']
+        result['not_run'] = [r for r in policy['reds'] if r['step'] not in expected]
     if binding is not None:
         require(not summary['passed'] or binding['producer']['conclusion'] == 'success',
                 'producer failed outside its reported checks')

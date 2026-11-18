@@ -905,10 +905,15 @@ VIEW_PATHS = {
     "reactions": "visible() on the message before its reactions",
     "message_acts": "only acts on messages the reader may see: the whisper rule on each row's message in the query, and in its version",
     "stack_positions": "each message named through _acted_message, which applies visible(); its dossier's root, members, newest message and the "
-                       "topic's newest act under the whisper rule, so a whisper never moves a position anyone outside it reads",
+                       "topic's newest act under the whisper rule, so a whisper never moves a position anyone outside it reads; its name and cover "
+                       "(item 624) are the root's, which the reader can see, so a whispered first message's cover never reaches a reader "
+                       "outside it",
     "stack_namer": "the message named through _acted_message, which applies visible(); its root walked up through parents each "
                    "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
                    "so a whisper never names one",
+    "dossier_cover": "the message named through _acted_message, which applies visible(); its dossier's root walked up through parents "
+                     "each checked by visible(), and the root's cover as message_acts reads it, under the whisper rule; a word that made "
+                     "its payload Done shows its message only to a reader who may see it",
     "stars": "the reader's own stars on messages they may see: the whisper rule and READABLE in the query",
     "tools": "no message words: the records, what each check found and which outcomes said they use each",
     "tool": "no message words; a went-back line names its topic's title only when READABLE to the reader",
@@ -940,7 +945,9 @@ MESSAGE_READS = {
                                  "the caller reached through _message_access; the horizon the version 41 step sets, a number; the stored "
                                  "quotes of messages whose marked words an answer already carries, read only to record what was handed; "
                                  "the author kind and sequence of messages so marked, to record an exposure; and an edited message's "
-                                 "sequence against the horizon; none of them shown", 8),
+                                 "sequence and its author's kind against the horizon or the first post recording agents' messages; "
+                                 "and, for an agent's edit (item 614), the edited message's addressees and the author of the message it "
+                                 "answers, to leave a message between others as it was; none of them shown", 10),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
                                           "a pipeline item's message sources, which _source_rows read through _message_access, the message a person's "
                                           "whisper replies to, to see that it goes to that message's author, and an answer take's reply, "
@@ -978,8 +985,17 @@ MESSAGE_READS = {
                            "topic's summary, and messages naming the reader on the record only (private_to IS NULL); a dossier's namer (item 479), from "
                            "its root's outcome and the replies among its members on the record only, walked as no one, so a "
                            "whisper never makes its author a namer; and the members a fold through folds, under the same VISIBLE, "
-                           "so it never folds a whisper the reader is outside", 23),
+                           "so it never folds a whisper the reader is outside; the reader's own starred messages of a topic, under "
+                           "VISIBLE, which keep a dossier above More for them (item 635); and the root of the dossier their star brings "
+                           "back, found by the same walk, read only to record their Bring back, never shown; the reader's own places (item 550) under VISIBLE; and the source dossier first message", 27),
     "aim_next/whispers.py": ("the rule itself, and the message a topic names, read to apply visible()", 6),
+    "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
+                           "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "
+                           "VISIBLE as its writer reads it, refused as DONE_BY_OWNER otherwise, so no refusal names a whisper; and a "
+                           "cover's root, read under VISIBLE as the owner reads it before the owner's 👍 settles Done (item 624)", 3),
+    "aim_next/cover_values.py": ("the owner's own reply to a payload's message, by its author: one the owner wrote, which they always "
+                                 "read, its writer's reach checked by covers.py; its id is shown only to a reader the next read finds it "
+                                 "VISIBLE to (item 624)", 2),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
                              "number then read through _message_access; sources and gathering shown through _message_access; "

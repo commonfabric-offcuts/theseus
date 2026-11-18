@@ -22,12 +22,20 @@ before when the shell declines. It renames its own address through the shell.
 
 Each outcome has one row: its light, its name and the line that says where
 it stands, and the whole row is one thing to press, which opens the
-outcome's Conversation with its topics under it. When Core says the outcome
-has no Conversation, it opens the outcome's page instead. There is no fold
+outcome's Conversation with its topics under it. On a phone (item 654), a
+tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
+its scroll, the current page and every other outcome's fold stay as they were.
+A tap on an open outcome goes to its Conversation, with its topics still open.
+A topic tap goes straight to the topic. On a laptop a click still goes to the
+Conversation and toggles its topics; Return keeps its existing way. When Core
+says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
 triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
-while something in them is unread, and Done (N) and Archived (N) below.
+while something in them is unread, and Done (N) and Archived (N) below. A
+press on a topic's unread count opens it at its oldest unread message, here
+and on the right rail's Build rows alike (item 613; docs/attention.md, "In the
+browser").
 
 - **Pencils.** A pencil means "new", the same glyph as New message and a new
   Notebook page (item 305). A quiet pencil beside an outcome's name starts a
@@ -98,10 +106,11 @@ rail.
   kept on the browser. Whether an outcome is open is on its row for a screen
   reader (`aria-expanded`), and on screen in its topics under it.
 - **Order.** Outcomes keep the order the `workspaces` view gives them, and
-  topics the order their lists give, until the reader places them with ⌘↑
+  topics their stable default position, newest topics first, until the reader places them with ⌘↑
   and ⌘↓: then their own order, which Core keeps for them on every device
   (docs/outline-order.md). A new message changes counts and lights, never the
-  order. There is no "Not in an outcome" group.
+  order. A topic new to the reader appears at the top once and stays there
+  until the reader moves it. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
   its rows, Return opens one, → and ← take the tree's steps and then move to
   the messages: → on a folded outcome opens it and shows its topics, the next
@@ -109,8 +118,8 @@ rail.
   on the pencil opens the New topic line. ↑ from the first outcome lands on
   the Outcomes heading's pencil, where Return opens the New outcome line.
   ⌘Return starts a new message in the row's topic or the outcome's
-  Conversation. A click or a tap on a row opens it as Return does and leaves
-  the keys on it, wearing their ring (item 462). A "Keys" line under the
+  Conversation. A click or a tap on a row leaves the keys on it, wearing their ring (item 462), including a phone tap that
+  only expands a collapsed outcome (item 654). A "Keys" line under the
   outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys
   select (docs/interaction.md, "What the keys select comes into view"), in the
@@ -159,6 +168,37 @@ each other …", item 547). A reply whose send is not confirmed holds no move
 (`docs/replies-in-doubt.md`; "rail a reply whose send is not confirmed holds no
 move …").
 
+### The rail's foot
+
+The side rail ends with its foot (item 628): who you are on which instance,
+the guide's "? Pointer, keys and taps" under it, and Health, below the rail's
+last section (the outline on a topic and a Conversation, Skills and tools on a
+page whose rail lists the outcome's sections), with the looks they had at its
+top: one under the other on a laptop, and on a phone the name on its own line
+with the guide's ? and Health side by side under it; the name and the guide's ? in
+the quiet colour, Health in its own, lit in the alert colour while something
+needs attention, and opening Health. The logo block, the wordmark with its
+presence dot and Turn on notifications, stays at the top, and no section
+moves. In the phone's drawer the foot ends the drawer; on a page with no rail
+(the Outcomes home, an outcome's own page, Health) it ends the page. The keys
+reach it last in the rail: Tab after the outline's Keys, and ↓ below Keys
+(docs/interaction.md). `index.html` draws it last in the rail; the shell puts
+the outline above it (`in-place-navigation.mjs`), and `placeBrand`
+(`outcome-scope.mjs`) moves it to the end of the main column where the page
+has no rail. Checks: `outcome_rail_native.mjs` (`native-rail`,
+`native-webkit-rail`), "rail the rail's foot: who you are on which instance,
+the guide's ? and Health sit below the side rail's last section …", at 320,
+375, 390 and a laptop, light and dark, on a topic, a tool's page, an
+outcome's page, the Outcomes home and a Notebook page's cards, where ↓ below
+the last card goes on to the guide's ?; `health_native.mjs` (`native-health`,
+`native-webkit-health`), "health lit at the foot of the side rail …".
+Every page's run moves the foot to the end of the rail again, so a drawn page
+never shows where the shell put the outline; what that placement holds is the
+move in place itself, where the rail is put back in the order the shell first
+gave it and the foot stays last throughout. That is checked by "rail the
+outline keeps its scroll when it moves in place to a topic …", which watches
+every state of the rail in the move.
+
 ## The right rail
 
 The right rail has folding sections: Starred, Pipeline, Waiting for…,
@@ -171,8 +211,11 @@ yet.
 
 - **Starred** is the reader's own stars, shown to no one else: this topic's
   (on a Conversation, this outcome's) first, then the rest under Elsewhere.
-  A press lands on the message, opening its stack; Unstar beside each takes
-  the star off (docs/reply-stacks.md).
+  A press opens the message in the composer, titled with its dossier's name;
+  pressing that title returns to the dossier, as when the message is opened
+  from the dossier itself (item 655; docs/reader.md). Another topic on screen
+  does not change its name or its way back. Unstar beside each takes the star
+  off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view, and the outcome's Build topics, each once: under
   Now each topic a piece is being built in, one row for it however many
@@ -258,10 +301,11 @@ between two feed pages (topics and Conversations) goes like this:
 4. The body's parts go back to how `index.html` drew them. The outline, the
    right rail and the drawer's backdrop stay as the same elements. The rail
    that holds the outline is never taken out of the page, so it keeps its
-   scroll and its focus. The logo block above the outline is put back as it
-   reads, the guide's ? included until the new run puts its own in its place,
-   so the rail never grows shorter during the move: scrolled near its end, it
-   would otherwise be pulled up to that end and carried past where it was.
+   scroll and its focus. The logo block above the outline and the rail's foot
+   under it are put back as they read, the guide's ? included until the new
+   run puts its own in its place, so the rail never grows shorter during the
+   move: scrolled near its end, it would otherwise be pulled up to that end and
+   carried past where it was.
    The retired run keeps finding its own elements by id, so work it still had
    under way lands there and never on the new page.
 5. A fresh run of `app.mjs` (`app.mjs?place=N`) reads and draws the new place
@@ -482,8 +526,9 @@ loads once and reads no build.
   Conversation and Pipeline rows) are still read by the page, hidden, since
   other parts of the page follow them.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
-- ⌘→ opens another outcome's topics only from the keys; there is no
-  pointer's way to look without going there.
+- On a laptop, ⌘→ opens another outcome's topics only from the keys; there
+  is no pointer's way to look without going there. A phone's first tap can
+  look in the drawer (item 654).
 - A browser never unloads a module it has loaded, so each run's `app.mjs`,
   with what it held at the top level, stays in memory until the page loads
   again.

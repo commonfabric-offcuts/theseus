@@ -228,15 +228,15 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const results = [], observations = [], hashes = {};
-for (const filename of ['tests/webkit_native.mjs', 'tests/topic_title_native.mjs', 'tests/acts.json', 'web/topic-header.mjs', 'web/topic-state.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
+for (const filename of [...(mode==='--reading'?['tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/topic_title_native.mjs', 'tests/acts.json', 'web/topic-header.mjs', 'web/topic-state.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
-  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
-  'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
+  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
+  'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
   'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
   'tests/targets_native.mjs', 'web/targets.mjs', 'web/outcomes.mjs', 'web/outcome-end.mjs', 'web/outcome-light.mjs', 'web/outcome-light-words.mjs', 'aim_next/outcome_end.py',
-  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']) {
+  'tests/stack_native.mjs', 'tests/message_edit_native.mjs', 'web/message-edit.mjs', 'web/message-edit-writing.mjs', 'web/reply-stacks.mjs', 'web/stack-order.mjs', 'web/stack-feed.mjs', 'web/stack-look.css', 'web/things-rail.mjs', 'aim_next/stacks.py']]) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
@@ -489,7 +489,7 @@ try {
         // reads as an earlier message's row (item 476), and a press on that row shows it whole first, as unfold does.
         const card = `#messages .message-card[data-id="${facts.sources[index].id}"]`;
         if (await evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded === 'true'`)) {
-          await point(`${card} > .message-folded > .folded-author`);
+          await point(`${card} > .message-folded > .folded-words`);
           await until(() => evaluate(`document.querySelector(${JSON.stringify(card)})?.dataset.folded !== 'true'`), 'the folded message unfolds');
           await unfold(`#messages [data-id="${facts.sources[index].id}"]`);
         }
@@ -510,7 +510,29 @@ try {
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const started = Date.now();
     try { await action(); results.push({ name, passed: true, engine: 'webkit', ms: Date.now() - started }); }
-    catch (error) { results.push({ name, passed: false, engine: 'webkit', error: error.stack, ms: Date.now() - started }); }
+    catch (error) {
+      results.push({ name, passed: false, engine: 'webkit', error: error.stack, ms: Date.now() - started });
+      for (const [contextId, context] of Object.entries(contexts)) for (const opened of context.pages()) if (!opened.isClosed()) {
+        try { observations.push({ name: 'bounded failure page state', case: name, contextId, state: await opened.evaluate(`(()=>{
+          // bounded failure snapshot, authorized by8124; no message text or request headers.
+          const limits={stacks:16,cards:24,loadedIds:120,rows:32,controls:16,string:80},truncation={strings:false};
+          const word=value=>{const s=String(value??'');if(s.length>limits.string)truncation.strings=true;return s.slice(0,limits.string)};
+          const bounded=(name,nodes,limit)=>{const all=Array.from(nodes);truncation[name]={total:all.length,kept:Math.min(all.length,limit),truncated:all.length>limit};return all.slice(0,limit)};
+          const rect=e=>{const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}};
+          const identity=e=>e?{tagName:word(e.tagName),id:word(e.id),className:word(e.className),role:word(e.getAttribute('role')),messageId:word(e.closest('[data-id]')?.dataset.id),topicId:word(e.closest('[data-topic-id]')?.dataset.topicId),workspaceId:word(e.closest('[data-workspace-id]')?.dataset.workspaceId)}:null;
+          const active=document.activeElement,ancestry=[];let parent=active;for(let n=0;parent&&n<4;n++,parent=parent.parentElement)ancestry.push(identity(parent));truncation.ancestry={kept:ancestry.length,truncated:Boolean(parent)};
+          const cards=document.querySelectorAll('#messages .message-card[data-id]');
+          const stacks=bounded('stacks',document.querySelectorAll('#messages .reply-stack'),limits.stacks).map(e=>({head:word(e.dataset.stack),fold:word(e.dataset.fold),whole:word(e.dataset.headOpen),rect:rect(e)}));
+          const cardState=bounded('cards',cards,limits.cards).map(e=>({id:word(e.dataset.id),whole:word(e.dataset.whole),folded:word(e.dataset.folded),scrollInPlace:e.classList.contains('scroll-in-place'),clientHeight:e.clientHeight,scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,rect:rect(e)}));
+          const controls=bounded('controls',document.querySelectorAll('#more-messages, #new-line-older, #messages .stack-earlier'),limits.controls).map(e=>({id:word(e.id),className:word(e.className),shown:Boolean(e.getClientRects().length),disabled:Boolean(e.disabled)||e.getAttribute('aria-disabled')==='true',rect:rect(e)}));
+          const outline=document.querySelector('#outline'),rows=outline?outline.querySelectorAll('.nav-item, [role=treeitem]'):[];
+          const rowState=bounded('rows',rows,limits.rows).map(e=>({topicId:word(e.dataset.topicId),workspaceId:word(e.dataset.workspaceId),id:word(e.id),shown:Boolean(e.getClientRects().length),current:word(e.getAttribute('aria-current')),selected:word(e.getAttribute('aria-selected')),expanded:word(e.getAttribute('aria-expanded')),rect:rect(e)}));
+          const reader=document.querySelector('#reader'),source=document.querySelector('#source-body');
+          return {limits,truncation,activeElement:identity(active),ancestry,stackState:{stacks,cards:cardState,loadedIds:bounded('loadedIds',cards,limits.loadedIds).map(e=>word(e.dataset.id)),controls},outlineState:{exists:Boolean(outline),activeRowId:word(active?.closest('[data-topic-id]')?.dataset.topicId),scrollTop:outline?.scrollTop??null,clientHeight:outline?.clientHeight??null,scrollHeight:outline?.scrollHeight??null,rows:rowState},readerState:{exists:Boolean(reader),open:reader?.open??false,sourceId:word(reader?.dataset.sourceId??source?.dataset.id??window.observedRegistry?.current?.source?.source_ref?.id)}};
+        })()`) }); }
+        catch (diagnosticError) { observations.push({ name: 'bounded failure page state error', case: name, contextId, diagnosticError: diagnosticError.message }); }
+      }
+    }
     finally { for (const key of Object.keys(contexts)) { await contexts[key].close(); delete contexts[key]; } }
     process.stdout.write(JSON.stringify(results.at(-1)) + '\n');
   };

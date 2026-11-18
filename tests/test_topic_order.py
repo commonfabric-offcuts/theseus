@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""An outcome's topics are listed latest activity first, the done ones apart (docs/topic-list.md)."""
+"""An outcome's topics keep stable creation positions, the done ones apart (docs/topic-list.md)."""
 
 import unittest
 from unittest import mock
@@ -60,25 +60,44 @@ class TopicOrderCase(fixtures.ReaderCase):
                 return ids, cursors
             cursors.append(cursor)
 
-    def test_topics_are_listed_latest_activity_first_and_a_new_message_brings_one_to_the_top(self):
+    def test_item_641_activity_does_not_move_topics_including_across_a_page_boundary(self):
+        self.open_topic("t2", "Second")
+        self.open_topic("t3", "Third")
+        before = self.order()
+        first = self.page(limit=1)
+        self.post("t1", actor="agent-a")
+        self.assertEqual(self.order(), before, "another person's message never changes topic order")
+        self.assertEqual(self.walk(1)[0], before, "paging keeps every topic once")
+        rest = self.page(limit=100, cursor=first["next_cursor"])
+        self.assertEqual([item["id"] for item in rest["items"]], before[1:])
+        self.post("t2")
+        self.assertEqual(self.order(), before, "the reader's own message never changes topic order")
+        self.update("t1", {"state": "review", "note": "Look"}, actor="agent-a")
+        self.assertEqual(self.order(), before, "other activity also leaves topics where they were")
+        self.open_topic("t4", "New to the reader")
+        self.assertEqual(self.order(), ["t4"] + before, "a new topic enters at the top once")
+        self.post("t1")
+        self.assertEqual(self.order(), ["t4"] + before, "then stays there")
+
+    def test_topics_are_listed_newest_position_first_and_a_new_message_moves_nothing(self):
         self.open_topic("t2", "Second")
         self.open_topic("t3", "Third")
         self.assertEqual(self.order(), ["t3", "t2", "t1"])
         self.post("t1")
-        self.assertEqual(self.order(), ["t1", "t3", "t2"])
+        self.assertEqual(self.order(), ["t3", "t2", "t1"])
         items = self.page()["items"]
-        self.assertEqual([item["activity_ms"] for item in items], [self.now, self.now - 10, self.now - 20])
+        self.assertEqual([item["activity_ms"] for item in items], [self.now - 10, self.now - 20, self.now])
 
     def test_saying_where_a_topic_stands_is_activity_and_renaming_or_archiving_is_not(self):
         self.open_topic("t2", "Second")
         self.assertEqual(self.order(), ["t2", "t1"])
         self.update("t1", {"state": "review", "note": "Look"}, actor="agent-a")
-        self.assertEqual(self.order(), ["t1", "t2"])
-        self.assertEqual(self.page()["items"][0]["activity_ms"], self.now)
+        self.assertEqual(self.order(), ["t2", "t1"])
+        self.assertEqual(next(item for item in self.page()["items"] if item["id"] == "t1")["activity_ms"], self.now)
         self.update("t2", {"title": "Renamed"})
         self.update("t2", {"archived": True})
         self.update("t2", {"archived": False})
-        self.assertEqual(self.order(), ["t1", "t2"])
+        self.assertEqual(self.order(), ["t2", "t1"])
 
     def test_activity_never_goes_back_when_a_later_act_reads_an_earlier_clock(self):
         self.post("t1")
@@ -147,7 +166,7 @@ class TopicOrderCase(fixtures.ReaderCase):
         # An empty cursor is the start, as for the other lists.
         self.assertEqual(self.order(cursor=""), self.order())
 
-    def test_each_list_reads_its_page_and_counts_from_the_activity_index_without_sorting(self):
+    def test_each_list_reads_its_page_and_counts_from_the_position_index_without_sorting(self):
         statements = []
         real = store_module._connect
 
@@ -190,7 +209,7 @@ class ReopenCase(TopicOrderCase):
                          ("active", "agent-a", sent, "Reopened by a new message", result["message_id"]))
         # One act: the send's own topic version carries the state.
         self.assertEqual((result["topic"]["version"], topic["version"]), (before + 1, before + 1))
-        self.assertEqual(self.order(), ["t1", "t2"])
+        self.assertEqual(self.order(), ["t2", "t1"])
         self.assertEqual(self.order(done=True), [])
         self.assertEqual(self.page()["groups"]["done"], 0)
         # Saying where it stands again replaces the reason.

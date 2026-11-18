@@ -18,6 +18,7 @@ import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
+import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -342,6 +343,9 @@ export class Reader {
     this.opener = next;
     this.disarm();
     this.topics = topics;
+    // The cover's sheet is opened by a press, for the message it was pressed on: any other message, or this one
+    // opened again, starts at the cover's one line (paintCover).
+    if (!same) this.$('reader-cover').open = false;
     this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
@@ -452,10 +456,11 @@ export class Reader {
   }
 
   // The source as passages, its Markdown shown as written to be read (message-format.mjs). A Notebook page's image
-  // lines show their images, read through the page (page-image.mjs, docs/decks.md "Images in a card").
+  // lines show their images, read through the page (page-image.mjs, docs/decks.md "Images in a card"). A message's
+  // words its agent author changed after this person read them show struck through where they stood (item 614).
   drawSource(body) {
     const source = this.source, page = source?.source_ref?.kind === 'memory' && this.callbacks.pageImage;
-    drawPassages(this.sourceBody, body, document, { copyFences: true,
+    drawPassages(this.sourceBody, body, document, { copyFences: true, struck: source?.source_ref?.kind === 'message' ? source.struck?.cuts : null,
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
     this.placeEnd();
   }
@@ -630,6 +635,10 @@ export class Reader {
     const editor = this.sessions.reply;
     if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
+    // Quoting on a laptop opens room to reply; a phone has only its stacked layout.
+    if (!this.narrow.matches && this.layout.mode !== 'wide') {
+      this.layout.setMode('wide'); this.applyLayout();
+    }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     // The quote is writing like any other, so it goes through the editor's
@@ -639,7 +648,7 @@ export class Reader {
     // the field is focused the document's selection is its caret, and
     // clearing it then leaves no caret drawn until the window is refocused.
     window.getSelection()?.removeAllRanges();
-    this.field.focus();
+    this.field.focus({ preventScroll: true });
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);
     // The cursor sits after the quote and its blank line, ready to type, and
@@ -971,19 +980,51 @@ export class Reader {
 
   // A message's heading names the dossier a reply there goes into (item 561),
   // as its tab does (callbacks.dossierName), or else its topic; a press on it
-  // goes back to that topic, as the arrow beside it does. Painted again when
+  // goes back to that dossier, as the arrow beside it does. Painted again when
   // the name changes, it keeps its button, so a focus on it stays.
   paintTitle(source, topics = this.topics ?? []) {
+    this.paintCover(source);
     const title = this.$('reader-title');
     const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
     if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
-    const words = this.callbacks.dossierName?.(source) || topic.title;
+    const dossier = this.callbacks.dossierName?.(source), words = dossier || topic.title;
     let open = title.firstElementChild;
     if (!open?.matches('.reader-topic') || title.childNodes.length !== 1) {
       open = node('button', words, 'reader-topic'); open.type = 'button'; open.title = 'Open this topic';
       title.replaceChildren(open);
     } else if (open.textContent !== words) open.textContent = words;
+    open.title = dossier ? 'Open this dossier' : 'Open this topic';
     open.onclick = () => this.close('parent');
+  }
+
+  // The cover of the dossier the message is in (item 624, dossier-cover.mjs),
+  // as the page's stacks hold it (callbacks.dossierCover): one quiet line at the
+  // top of the message, where it stands and its payload's pill, that opens to
+  // the whole sheet. None for a message no dossier with a cover holds. On a
+  // phone it gives way while the reply is written (aim.css), so the message
+  // keeps its lines. Painted with the title, so it follows the cover while the
+  // Reader is open; a sheet opened stays open as its cover changes, and closes
+  // when the message's dossier is another or its cover goes (show() closes it
+  // for each message opened).
+  paintCover(source) {
+    const found = source?.source_ref?.kind === 'message' ? this.callbacks.dossierCover?.(source) ?? null : null;
+    const host = this.$('reader-cover'), line = this.$('reader-cover-line');
+    const dossier = found?.rootId ?? null;
+    if (dossier !== (this.coverDossier ?? null)) { host.open = false; this.coverDossier = dossier; }
+    const context = found ? { viewer: this.callbacks.actor?.() ?? null, nameOf: id => this.callbacks.actorName?.(id) ?? id, topicId: found.topicId } : null;
+    // Drawn again only when what it says changes; a Reader that never showed one has nothing to take away.
+    const key = found ? coverKey(found.cover, context) : '';
+    if ((this.coverShown ?? '') === key) return;
+    this.coverShown = key;
+    host.hidden = !found;
+    for (const node of [...host.children]) if (node !== line) node.remove();
+    if (!found) { line.replaceChildren(); return; }
+    const { cover } = found, shown = { ...context, owner: cover.owner };
+    const words = document.createElement('span'); words.className = 'reader-cover-words';
+    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
+    line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
+    host.append(coverSheet(document, cover, context));
   }
 
   paintOrigin(source) {

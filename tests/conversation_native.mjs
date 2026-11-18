@@ -173,7 +173,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(await waits(), [person], 'Core: the ask waits on the reader');
     // The 👍, pressed as a person presses it: the pointer rests on the ask's card, then clicks the bar's 👍. A 👍
     // given folds the ask for the reader (item 377, docs/reply-stacks.md); the ask answers the item, so the two are a
-    // dossier, where a folded row has no bar and shows its own 👍 once someone has given one (item 471): that 👍 is
+    // dossier, where a folded row shows its own 👍 once someone has given one (item 471): that 👍 is
     // pressed, and a row with none is pressed first, which unfolds it.
     const thumb = async on => {
       const card = `#messages .message-card[data-id="${ask}"]`, own = `${card} > .message-folded > .folded-thumb`;
@@ -185,7 +185,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
         await centre(own); await p.point(own); await done(); return;
       }
       if (await folded()) {
-        await centre(`${card} > .message-folded > .folded-author`); await p.point(`${card} > .message-folded > .folded-author`);
+        await centre(`${card} > .message-folded > .folded-words`); await p.point(`${card} > .message-folded > .folded-words`);
         await until(async () => !await folded(), 'a press on the row unfolds the ask');
       }
       const words = `${card} > .message-preview`;

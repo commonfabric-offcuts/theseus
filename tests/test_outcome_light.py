@@ -333,9 +333,10 @@ class LightReadsCase(fixtures.StoreCase):
         answer = self.stands()
         self.assertEqual(light(answer), ("built", {"kind": "seen", "ms": turned}))
         self.assertEqual(answer["facts"], [{"kind": "topic_work", "topic_id": "t-turn", "title": "Turn only", "by": "agent-a", "how": "turn", "ms": turned}])
-        # D20: the turn orders the topic list as a post would.
+        # Item 641: the turn changes the light, never the topic positions.
         listed = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})["items"]
-        self.assertEqual(listed[0]["id"], "t-turn")
+        self.assertEqual([row["id"] for row in listed], ["t-%02d" % n for n in range(29, -1, -1)] + ["t-turn"])
+        self.assertNotIn("t-turn", [row["id"] for row in self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "limit": 20})["items"]], "the old topic stays below the first page")
 
     def test_an_old_wait_is_work_whatever_its_age(self):
         self.topic("t1", "Needs aim-core")

@@ -36,8 +36,10 @@ from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
-from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
-from .stacks import ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED
+from .outline_order import (ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA, TOPIC_POSITION_DOWN,
+                            TOPIC_POSITION_OCCUPIED, TOPIC_POSITION_SCHEMA)
+from .stacks import (ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED,
+                     COVER_DOWN, COVER_OCCUPIED, COVER_UP)
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
@@ -193,6 +195,14 @@ STEPS = (
     # is open. Stepping back is refused once any outcome has been archived or completed, even one brought back since.
     # Built on 43 beside item 17's step, it landed second and follows it.
     ("44", "45", ENDS_SCHEMA, ENDS_DOWN, ENDS_OCCUPIED),
+    # Version 46 lets the acts about messages hold a dossier's cover (item 624, docs/dossier-covers.md): where it
+    # stands, what waits on the outcome's owner and its payload, on the dossier's first message, every revision kept.
+    # The table is built again with every act, its id and where the next id goes on from, and an index finds the
+    # covers a message delivered the payload of. Stepping back is refused once any cover was written, even one
+    # cleared since.
+    ("45", "46", COVER_UP, COVER_DOWN, COVER_OCCUPIED),
+    # Item 641: default topic positions never move with activity.
+    ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
 )
 
 

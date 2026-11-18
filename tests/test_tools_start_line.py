@@ -274,6 +274,7 @@ class OpenCase(StartLineCase):
         before = self.count()
         racer = self.writer.parent / "racer.py"
         racer.write_text(RACING_WRITER)
+        # Both opens share the fixture clock: the cut below uses fixed LATE, never the wall clock.
         inner = [sys.executable, "-I", "-B", str(TOOL), "open", "w1", str(number), "--cli", str(CLI), "--profile", str(self.profiles["agent-a"]),
                  "--python", sys.executable, "--topic", "t1", "--surface", str(self.surface), "--now", BEFORE, "--", sys.executable, "-I", "-c",
                  "import sys; sys.stdin.read(); sys.stdout.write('The racing line.')"]

@@ -10,10 +10,15 @@ each, and nobody noticed.
 
 ## Where it is
 
-`?health`, from one quiet "Health" link under the instance label, which heads
-the rail on every page (the logo block on pages without a rail). While
-anything is red the link says so: "Health · needs attention", in the alert
-colour, with no edge or box of its own. Agents read the same thing with
+`?health`, from one quiet "Health" link, the last line of the rail's foot on
+every page: under who you are on which instance and the guide's "? Pointer,
+keys and taps", below the side rail's last section, at the end of the drawer
+on a phone, and at the end of the page on a page with no rail (item 628;
+docs/rails.md, "The rail's foot"). While anything is red the link says so:
+"Health · needs attention", in the alert colour, with no edge or box of its
+own, and a press on it there opens Health (`health_native.mjs`, "health lit at
+the foot of the side rail …", at 320, 375 and 390 and a laptop, light and
+dark, in Chrome's engine and Safari's). Agents read the same thing with
 `aim-next health` (docs/agent-cli.md).
 
 ### What the link shows
