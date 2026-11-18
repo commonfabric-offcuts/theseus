@@ -178,7 +178,7 @@ export async function item715Checks({check, page, until, control, facts, shot, o
   const mutations = [
     {name:'indent',file:'rails.css',from:'.ol-dossiers{margin:0 0 .15rem .9rem;',to:'.ol-dossiers{margin:0 0 .15rem 0;',expected:/tucked/},
     {name:'touch',file:'rails.css',from:'.ol-dossier{display:block;min-height:44px;',to:'.ol-dossier{display:block;min-height:30px;height:30px;',expected:/44px/},
-    {name:'color',file:'rails.css',from:'padding:.55rem .5rem;color:var(--warn);font-size:.85rem',to:'padding:.55rem .5rem;color:var(--ink);font-size:.85rem',expected:/theme token/},
+    {name:'color',file:'rails.css',from:'padding:.55rem .5rem;color:var(--warn);font-size:.85rem',to:'padding:.55rem .5rem;color:var(--accent);font-size:.85rem',expected:/distinct/},
     {name:'route',file:'outline-dossiers.mjs',from:"this.outline.open({kind:'topic',id:state.id,message:id}, link.title);",to:"this.outline.open({kind:'topic',id:state.id}, link.title);",expected:/canonical root/},
   ];
   const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -200,8 +200,8 @@ export async function item715Checks({check, page, until, control, facts, shot, o
         if(mutation.name==='indent') assert.ok(g.indent>=12-GEOMETRY_TOLERANCE_PX,'children are tucked under the parent, tolerance 2px');
         if(mutation.name==='touch') assert.ok(g.height>=44-TOUCH_TARGET_TOLERANCE_PX,'44px touch target, tolerance 0.75px');
         if(mutation.name==='color') {
-          const token=await p.evaluate(`(()=>{const e=document.createElement('span');e.style.color='var(--warn)';document.body.append(e);const color=getComputedStyle(e).color;e.remove();return color})()`);
-          assert.equal(g.color,token,'the distinct existing theme token colors the title');
+          const parent=await p.evaluate(`getComputedStyle(document.querySelector('#outline a[data-topic-id=\"${seed.topic}\"]')).color`);
+          assert.notEqual(g.color,parent,'the dossier title has a distinct readable color from its parent');
         }
         if(mutation.name==='route') {
           await press(p,row(seed.roots[3]),390);

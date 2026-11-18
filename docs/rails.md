@@ -190,6 +190,16 @@ gave it and the foot stays last throughout. That is checked by "rail the
 outline keeps its scroll when it moves in place to a topic …", which watches
 every state of the rail in the move.
 
+### Starred dossiers under topics
+
+The outline tucks the reader's starred dossier titles under each loaded topic,
+with a star and the theme's distinct readable warning-text color. Equal names
+keep their real dossier identities. The empty name uses the feed's first-message
+preview. A title opens that dossier in its parent topic through the writing
+guard; arrow Down visits these children and Left returns to their topic. Folded
+or unloaded parents have no orphan titles. See [starred-outline.md](starred-outline.md)
+for scoped paging, updates, access failures and the native checks (item 715).
+
 ## The right rail
 
 The right rail has folding sections: Starred, Pipeline, Waiting for…,

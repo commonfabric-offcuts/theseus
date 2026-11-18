@@ -206,7 +206,8 @@ export class OutlineRail {
   // the one being read, and nothing the run before read is drawn.
   begin(feed) {
     this.host.hidden = !feed;
-    this.run += 1; this.handles = null; this.dossiers.begin();
+    this.run += 1; this.handles = null;
+    this.dossiers.begin();
     this.unlisten?.(); this.unlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own

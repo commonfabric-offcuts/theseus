@@ -28429,6 +28429,136 @@
    "check": {
     "node": "tests/ui_message_format.test.mjs"
    }
+  },
+  {
+   "item": 715,
+   "act": "Starred dossiers are read only within the readable topic for this actor",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "a.owner=:actor AND a.kind='star' AND a.id<:cursor",
+     "a.owner<>'' AND a.kind='star' AND a.id<:cursor"
+    ]
+   ],
+   "check": {
+    "python": "tests/test_outline_stars.py"
+   }
+  },
+  {
+   "item": 715,
+   "act": "A starred reply opens and names its canonical dossier root",
+   "break": [
+    [
+     "aim_next/stacks.py",
+     "root = roots.root(row[\"id\"])",
+     "root = row[\"id\"]"
+    ]
+   ],
+   "check": {
+    "python": "tests/test_outline_stars.py"
+   }
+  },
+  {
+   "item": 715,
+   "act": "Equal titles stay separate while multiple stars on the same dossier show it once",
+   "break": [
+    [
+     "web/outline-dossiers.mjs",
+     "if (seen.has(id)) return false;",
+     "if (false) return false;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_stars.test.mjs"
+   }
+  },
+  {
+   "item": 715,
+   "act": "An actor or page change discards a late private star read",
+   "break": [
+    [
+     "web/outline-dossiers.mjs",
+     "epoch === this.epoch && handles === this.outline.handles",
+     "true"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_stars.test.mjs"
+   }
+  },
+  {
+   "item": 715,
+   "act": "Forbidden star reads remove their titles and retain recovery",
+   "break": [
+    [
+     "web/outline-dossiers.mjs",
+     "if (state.error.kind === 'forbidden' || state.error.kind === 'reconnect') state.stars = [];",
+     "if (false) state.stars = [];"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_outline_stars.test.mjs"
+   }
+  },
+  {
+   "item": 715,
+   "act": "A native title press opens its canonical dossier through the existing guard",
+   "break": [
+    [
+     "web/outline-dossiers.mjs",
+     "this.outline.open({kind:'topic',id:state.id,message:id}, link.title);",
+     "this.outline.open({kind:'topic',id:state.id}, link.title);"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 715 available"
+   }
+  },
+  {
+   "item": 715,
+   "act": "Dossier child lines are visibly indented under the real parent topic",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-dossiers{margin:0 0 .15rem .9rem;",
+     ".ol-dossiers{margin:0 0 .15rem 0;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 715 available"
+   }
+  },
+  {
+   "item": 715,
+   "act": "Starred dossier titles have a distinct readable theme color",
+   "break": [
+    [
+     "web/rails.css",
+     "padding:.55rem .5rem;color:var(--warn);font-size:.85rem",
+     "padding:.55rem .5rem;color:var(--accent);font-size:.85rem"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 715 available"
+   }
+  },
+  {
+   "item": 715,
+   "act": "A phone can touch each dossier title in a 44px target",
+   "break": [
+    [
+     "web/rails.css",
+     ".ol-dossier{display:block;min-height:44px;",
+     ".ol-dossier{display:block;min-height:30px;height:30px;"
+    ]
+   ],
+   "check": {
+    "native": "rail",
+    "case": "rail item 715 available"
+   }
   }
  ]
 }

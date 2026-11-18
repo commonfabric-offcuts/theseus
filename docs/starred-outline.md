@@ -32,3 +32,24 @@ An empty list adds no heading, placeholder or decorative control. This is a
 read-only navigation surface: it introduces no saving operation. Read-only
 outcomes use the same reading path; guarded navigation keeps exact writing
 and its destination. No schema or migration changes are needed.
+
+## States and checks
+
+`tests/outline_stars_native.mjs` runs only under the `item 715` family of
+`native-rail` and `native-webkit-rail`. Each state is checked at 320, 375, 390
+and 1280, light and dark: available (long, equal and empty names), empty,
+live rename/star/unstar, reading/busy, transient error with Retry, refused
+read with Retry, keyboard, read-only outcome, folded parent, unloaded parent,
+unsaved writing that refuses navigation, and actor isolation with real denied
+membership. The distinct text must meet 4.5:1 contrast. Measured layout uses
+named 2px geometry and 0.75px touch tolerances; an absent 14.4px indent and a
+30px target still fail. Source mutants break indent, touch size, distinct color
+and canonical navigation and restore exact bytes before their native controls.
+
+There is no saving state: this element performs reads and guarded navigation,
+never a new write. Existing star/name writes remain on their existing surface.
+The busy state here is a read in flight, not a promised star/name save. Empty
+adds no visible row. Denied membership removes titles; a transient read error
+keeps confirmed titles, names the problem and offers Retry. Core checks also
+exercise whispers, private notes, removed membership, joined roots and paging;
+Node checks fence stale reads and preserve distinct real IDs across pages.

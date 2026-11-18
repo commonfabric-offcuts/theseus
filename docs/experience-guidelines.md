@@ -199,6 +199,13 @@ page shorter under what is being read.
   claimed only after a pass of reads has run to its end
   ([scoped-updates-followups.md](scoped-updates-followups.md)).
 
+The outline's starred dossier children keep their actual topic and dossier
+identity, follow live rename/star/unstar and stay readable in both themes.
+`tests/outline_stars_native.mjs` (`native-rail`, `native-webkit-rail`), the
+"rail item 715" cases, checks these at 320, 375, 390 and laptop in both themes,
+including keyboard, busy, refused/Retry, read-only, empty, hidden/unloaded
+parents, guarded writing and actor isolation ([starred-outline.md](starred-outline.md)).
+
 ## Actions are where you look for them
 
 An action sits on the surface where its work happens.
