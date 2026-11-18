@@ -69,6 +69,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { paintThumb } from './image-pick.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -693,8 +694,9 @@ function rechecked(session, ids, page) {
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
-// One attachment of a source: a button that fetches it, then shows an image
-// in place and offers the file to save. current() says the place it was
+// One attachment of a source: an existing thumbnail beside Open for a verified
+// inline image (653); Open still fetches it, shows it in place and offers the
+// file to save. The thumbnail keeps 651's new-tab act. current() says the place it was
 // offered from still shows that source; a refusal goes to notice, and an open
 // that succeeds sends notice('') to say an earlier refusal no longer holds.
 // Focus pressed onto Open moves to Download, or back to Open on a refusal,
@@ -711,7 +713,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
       if (!available()) return;
       const url = URL.createObjectURL(media.blob);
-      mediaURLs.add(url); host.replaceChildren();
+      mediaURLs.add(url); host.replaceChildren(); host.classList.remove('attachment-control');
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
@@ -719,6 +721,20 @@ function attachmentControl(attachment, sourceRef, current, notice) {
     } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
+  // Unknown/non-inline files keep Open alone. Never discover an image by
+  // speculatively reading a file; use the same verified descriptors as cards.
+  if (attachment.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.content_type)) {
+    host.classList.add('attachment-control'); show.classList.add('attachment-open');
+    const key = JSON.stringify(['attachment', sourceRef ?? 'own', attachment.id, attachment.sha256]);
+    paintThumb(host, key, async () => {
+      // A queued read belongs only to the control still offering this source.
+      // Open may already have replaced it, or its page may have moved on.
+      const currentImage = () => !retired && available() && show.isConnected;
+      if (!currentImage()) return null;
+      const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
+      return currentImage() && media.inline ? media.blob : null;
+    });
+  }
   return host;
 }
 // One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
