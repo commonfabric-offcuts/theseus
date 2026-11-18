@@ -67,3 +67,12 @@ shows through at rest, hover, press and keyboard focus. This also avoids a
 sticky hover patch after a phone tap. Keep the existing visible keyboard
 focus outline and current first-message toggle. Same copied preview only;
 zero tests before Tony's new word.
+
+## Preview alignment revision — Tony8611 / warp8612
+
+Restore the live dossier's title padding and alignment with its chevron. The
+second-line star keeps its natural text/glyph width, without the added square
+box or widened metadata line. This explicitly supersedes the8576 coarse-pointer
+44px star box: Tony's requested compact second-line appearance is the default.
+Do not add an invisible overlapping hit target. The keyboard ring, transparent
+background and first-message toggle remain. Same copy, no tests before Tony's word.
