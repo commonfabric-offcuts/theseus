@@ -72,7 +72,11 @@ images and the pictures in `#img`. In `#img`, the image opens; pressing the
 row's words or choosing with the writing's arrows and Return still adds it.
 In a composer's strip, the existing press also opens the image's choices in
 place, so Remove, confirmation and retry remain available on return to the
-writing. No other image button becomes a thumbnail here (item 653).
+writing. Item 653's source-only preview adds thumbnail presentation to the
+remaining verified-image Open controls and makes large clickable Notebook
+pictures thumbnails; its inventory, exact sizes and boundaries are in
+[image-buttons-653.md](image-buttons-653.md). Its source inventory is not
+runtime coverage.
 
 `tests/thumbnail_open_native.mjs`, called by `tests/reader_compose_native.mjs`
 (`native-compose`, cases containing “item 651”), presses these surfaces in

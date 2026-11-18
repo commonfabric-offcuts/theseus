@@ -1,6 +1,6 @@
 // A card's image where a Notebook page is read rather than written: the Reader, and a page opened in place on its
 // outcome's page (docs/decks.md "Images in a card"). The line ![name](attachment:ID) shows as the image, at the
-// size it reads at, read through the page by read(attachment), so only someone who may read the page gets its bytes.
+// thumbnail size (653, aim.css), read through the page by read(attachment), so only someone who may read the page gets its bytes.
 // An image the page does not carry shows its name alone, saying so, and nothing is read for it. Its name stays under
 // the picture, for every reader.
 import { lineImage } from './deck.mjs';

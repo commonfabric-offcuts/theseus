@@ -22,6 +22,7 @@
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
 import { whisperOutlineCompose, archive704 } from './whisper_outline_native.mjs';
+import { imageButtons653 } from './image_buttons_653.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { item721Compose } from './item_721_compose.mjs';
 import { composerWidthCases } from './composer_width_native.mjs';
@@ -299,6 +300,7 @@ const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySe
 
 async function run() {
   await whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close });
+  if (!filter || filter.includes('item 653')) await imageButtons653({ check, page, press, picture, close, control, facts, root, engine, evidence });
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
   await composerWidthCases({ check, page, open, press, until, picture, close, control, root, evidence, engine, second, HEIC });
