@@ -1720,3 +1720,30 @@ test('item 656 header refusal and errors keep the line and notice together witho
   assert.equal(panel.notice.parent, host);
   assert.equal(document.activeElement, titleSurface.pencil);
 });
+
+for (const busy of [false, true]) test(`item 656 correction permission rebuild retains title writing and ${busy ? 'pending operation' : 'cancellation'}`, async t => {
+  dom(t);
+  const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
+  let release; const sent = [];
+  const { panel } = live({ creator_id: 'other', reader_may_say: true }, [], 'tony', { titleSurface,
+    send: async (current, args, fence, id) => { sent.push({ args, fence, id }); return new Promise(resolve => { release = () => resolve(committed(current, args)); }); } });
+  panel.renameTitle(); const field = panel.fields.title, input = field.line;
+  type(input, 'Exact writing —  two spaces');
+  if (busy) { key(input, 'Enter'); type(input, 'Later exact writing'); }
+  const out = field.out, words = input.value;
+  panel.paint(topic({ version: 5, creator_id: 'other', owner_id: 'other', reader_may_say: false }), []);
+  assert.equal(panel.says, false, 'nonparticipant with no earlier authorship becomes read-only');
+  assert.equal(titleSurface.host.hidden, true, 'permission loss restores the saved header title before rebuilding');
+  assert.equal(titleSurface.title.hidden, false);
+  assert.equal(panel.fields.title, field, 'title field ownership survives panel replacement');
+  assert.equal(input.disabled, true, 'no rename input accepts acts without permission');
+  assert.equal(input.value, words); assert.equal(field.out, out);
+  panel.renameTitle(); assert.equal(titleSurface.host.hidden, true);
+  if (busy) { release(); await settled(); assert.equal(sent.length, 1); assert.equal(field.out, null); assert.equal(input.value, words); }
+  panel.paint(topic({ version: 20, creator_id: 'other', reader_may_say: true, title: busy ? 'Exact writing —  two spaces' : 'Naming' }), []);
+  panel.renameTitle(); assert.equal(panel.fields.title, field); assert.equal(input.disabled, false); assert.equal(input.value, words);
+  key(input, 'Escape');
+  assert.equal(titleSurface.title.hidden, false); assert.equal(titleSurface.host.hidden, true);
+  assert.equal(input.value, panel.topic.title, 'Escape cancels the retained title writing');
+  assert.equal(sent.length, busy ? 1 : 0, 'rebuild and cancellation send nothing');
+});

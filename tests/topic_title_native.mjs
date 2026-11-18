@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { withPageCleanup } from './native-page-cleanup.mjs';
 
 // Item 656 runs through the header step and both colour engines. Every act is
 // native input; waits name focus, a response, or the DOM state they consume.
@@ -195,6 +196,72 @@ export async function topicTitleChecks({ check, page, until, control, view, fact
       const q = await page(`item-656-conversation-${size}-${theme}`, null, true, { ...setup, url: `${facts.origin}/?workspace=${made.workspace_id}` });
       assert.equal(await q.evaluate('Boolean(document.querySelector("#topic-title-rename:not([hidden])"))'), false, 'Conversation cannot be renamed as a topic');
       assert.deepEqual(p.errors, []); assert.deepEqual(q.errors, []);
+    });
+    for (const busy of [false, true]) await check(`${mode} item 656 membership-${busy ? 'busy' : 'editing'}: nonparticipant owner loses reader_may_say during rename; heading returns, exact writing and operation recover, native Escape then rename at ${size} ${theme}`, async () => {
+      const prefix = `656-${phase}-membership-${busy}-${mode}-${size}-${theme}`;
+      const original = 'A topic written only by the agent';
+      const made = await control({ method: 'agent_topic', operation_id: prefix, title: original, body: 'Only the fixture agent wrote here.', team: true, watching: true });
+      const read = () => view('topic', { topic_id: made.topic_id });
+      const denied = await read();
+      assert.equal(denied.topic.reader_may_say, false, 'real Core precondition: neither participant nor previous author');
+      assert.equal(denied.topic.creator_id, facts.agent);
+      assert.equal(denied.participants.some(person => person.actor_id === facts.actor && person.active !== false && person.active !== 0), false, 'the reader does not participate');
+      const history = await view('topic_messages', { topic_id: made.topic_id, direction: 'before', limit: 20 });
+      assert.equal(history.items.length, 1, 'bounded complete history of this newly created topic');
+      assert.ok(history.items.every(message => message.author_id === facts.agent), 'the reader has never authored a message');
+      await control({ method: 'outcome_change', operation_id: prefix + '-gain', sender: facts.agent, workspace_id: made.workspace_id, owner: facts.actor });
+      const p = await start(`membership-${busy ? 'busy' : 'editing'}`, `${facts.origin}/?topic=${made.topic_id}`);
+      await withPageCleanup(p, async () => {
+        try {
+          await edit(p);
+          await p.evaluate('window.item656TitleField = document.querySelector("#topic-rename")');
+          const first = 'Exact title —  two spaces ' + phase;
+          const words = busy ? 'Later exact writing —  retained ' + phase : first;
+          await type(p, first);
+          if (busy) {
+            p.intercept(payload => payload?.kind === 'topic.update');
+            await p.key('Enter'); await until(() => p.held.length === 1, 'one title operation reached Core and its answer is held');
+            assert.equal((await read()).topic.title, first, 'Core committed the held operation');
+            await p.key('a', 4); await type(p, words);
+          }
+          const before = updates(p).map(call => ({ ...call }));
+          await snap(p, busy ? 'membership-busy' : 'membership-editing');
+          await control({ method: 'outcome_change', operation_id: prefix + '-lose', sender: facts.actor, workspace_id: made.workspace_id, owner: facts.agent });
+          await until(async () => (await read()).topic.reader_may_say === false, 'Core actually revokes reader_may_say');
+          await until(() => p.evaluate('document.querySelector("#topic-title-rename").hidden && !document.querySelector("#topic-state .state-chips button")'), 'live permission change rebuilt the panel read-only');
+          assert.equal(await p.evaluate('document.querySelector("#topic-title-edit").hidden'), true, 'permission rebuild restores the header title');
+          assert.equal(await p.evaluate('document.querySelector("#topic-title").hidden'), false, 'saved heading is visible');
+          assert.equal(await title(p), busy ? first : original);
+          assert.deepEqual(await p.evaluate(`(()=>{const e=window.item656TitleField;return [e===document.querySelector('#topic-settings #topic-rename'),e.value,e.disabled,document.querySelector('#topic-state .settings-actions').hidden]})()`), [true, words, true, true], 'same borrowed title field and exact writing are reclaimed, disabled and hidden');
+          assert.deepEqual(updates(p), before, 'permission rebuild starts no title operation');
+          await snap(p, 'membership-read-only-' + busy);
+          await p.key('Escape');
+          assert.equal(await p.evaluate('document.querySelector("#topic-title").hidden'), false, 'native Escape cannot leave an orphan header editor');
+          if (busy) {
+            p.intercept(null); await p.release(p.held.shift());
+            await until(() => p.evaluate('document.querySelector("#topic-state .notice").textContent === "Saved"'), 'the original answer settles while permission is absent');
+            assert.deepEqual(updates(p), before, 'the held operation is neither replaced nor resent');
+          }
+          await control({ method: 'outcome_change', operation_id: prefix + '-regain', sender: facts.agent, workspace_id: made.workspace_id, owner: facts.actor });
+          await until(() => p.evaluate('!document.querySelector("#topic-title-rename").hidden'), 'ownership regained live');
+          assert.equal((await read()).topic.reader_may_say, true);
+          await edit(p);
+          assert.deepEqual(await p.evaluate('(e=>[e===window.item656TitleField,e.value,e.disabled])(document.querySelector("#topic-rename"))'), [true, words, false], 'regaining permission resumes the same title writing');
+          await snap(p, 'membership-recovered-' + busy);
+          await p.key('Escape');
+          await until(async () => await active(p) === 'topic-title-rename', 'native Escape cancels recovered title and returns focus');
+          assert.equal(await p.evaluate('window.item656TitleField.value'), busy ? first : original, 'Escape cancels exact retained title writing');
+          const final = 'Recovered rename ' + phase;
+          await edit(p); await type(p, final); await p.key('Enter');
+          await until(async () => await title(p) === final && await active(p) === 'topic-title-rename', 'rename after the permission rebuild saves normally');
+          assert.equal((await read()).topic.title, final);
+          assert.equal(updates(p).length, busy ? 2 : 1, 'one operation per deliberate rename, none from revoke, regain or Escape');
+          await snap(p, 'membership-saved-' + busy);
+        } finally {
+          p.intercept(null);
+          for (const entry of p.held.splice(0)) await p.release(entry);
+        }
+      });
     });
   }
   if (!mutations) return;

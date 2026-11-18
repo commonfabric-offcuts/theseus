@@ -29,6 +29,15 @@ keeps the typed words and notice together in the header, with Return to
 retry and Escape to cancel. Opening Topic settings brings its field back
 there, keeping its words and any save in flight. Nothing else is renamed.
 
+If ownership is lost while editing, the header shows the saved heading and
+the pencil disappears, including when Core also revokes `reader_may_say`
+and the settings panel must rebuild. Before replacing that panel it reclaims
+the lent field. The same field retains exact unsaved words, fences and any
+operation already sent, disabled and hidden in settings while permission is
+absent. An answer still settles that operation. Regaining permission can
+resume those words; Escape cancels them and a subsequent rename works. No
+new title or archive command starts without the current permission.
+
 ## ✅ Done at the top of a topic
 
 A topic Ready for review shows ✅ Done right after its state at the top of the
