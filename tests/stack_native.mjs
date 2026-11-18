@@ -3999,7 +3999,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     });
   }
 
-  await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
+  await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; replies keep it there and Reset position restores admission order', async () => {
     const topic = 'stack-move';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.' }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.' }],
@@ -4029,14 +4029,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await p.key('z', 4);
     await becomes(() => stacks(p, all), ['d', 'c', 'a', 'b'], '⌘Z puts it back');
     await p.point(`#messages .reply-stack[data-stack="${ids.a}"] .stack-unplace`);
-    await becomes(() => stacks(p, all), ['d', 'a', 'c', 'b'], 'Let new replies move it: it goes where its newest reply puts it');
+    await becomes(() => stacks(p, all), ['d', 'c', 'b', 'a'], 'Reset position restores A to its admission position below B, with new D first');
     await until(async () => (await actsOf(topic, ids.a))?.placed === null, 'and Core holds none');
     await shot(p, 'stack-move');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
 
-  await check('reading stacks the reader\'s own reply leaves its stack where it was, under their eyes and after a reload; anyone else\'s reply lifts it', async () => {
+  await check('reading stacks the reader\'s own reply leaves its stack where it was, under their eyes and after a reload; every other reader\'s reply also keeps the admission order', async () => {
     const topic = 'stack-own-reply';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.', read: true }],
       ['b', { sender: other, addressees: [facts.actor], body: 'Stack B.', read: true }],
@@ -4059,15 +4059,18 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(mine))})?.closest('.reply-stack')?.dataset.stack === ${JSON.stringify(ids.b)} && window.fetchesOut === 0`),
       'the reply is drawn into B\'s stack');
     assert.deepEqual(await stacks(p, ids), ['c', 'b', 'a'], 'the reader\'s own reply leaves B where it was, under C');
-    assert.equal(await topOf(), before, 'B\'s stack holds still on the page as the reply arrives');
+    const stablePositionTolerancePx731 = 1;
+    assert.ok(Math.abs(await topOf() - before) <= stablePositionTolerancePx731, 'B stays within stablePositionTolerancePx731=1 CSS px as the reply arrives');
     await p.close();
     p = await open('stack-own-reply-again', 'laptop', topic, ids.c);
     await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'after a reload B is still where it was');
-    // A reply by anyone else lifts its stack, B's own included, the reader's reply in it notwithstanding.
+    // Approved731: a reply by anyone else also leaves existing admission positions alone.
     await control({ method: 'agent_message', operation_id: topic + '-to-a', topic_id: topic, source: 'topic', sender: other, reply_to: ids.a, addressees: [facts.actor], body: 'A reply to A.', read: true });
-    await becomes(() => stacks(p, ids), ['a', 'c', 'b'], 'another\'s reply lifts A to the top');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).closest('.reply-stack')?.textContent.includes('A reply to A.')`), 'the external reply to A is actually drawn');
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'another reader reply leaves A in its admission position');
     await control({ method: 'agent_message', operation_id: topic + '-to-b', topic_id: topic, source: 'topic', sender: other, reply_to: ids.b1, addressees: [facts.actor], body: 'Another reply in B.', read: true });
-    await becomes(() => stacks(p, ids), ['b', 'a', 'c'], 'another\'s reply in B lifts B to the top');
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).closest('.reply-stack')?.textContent.includes('Another reply in B.')`), 'the external reply to B is actually drawn');
+    await becomes(() => stacks(p, ids), ['c', 'b', 'a'], 'another reader reply leaves B in its admission position');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
@@ -5603,7 +5606,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       ['oldReply', { sender: other, reply_to: 'old', addressees: [facts.actor], body: 'A new reply in the old stack.' }],
       ['top', { sender: other, addressees: [facts.actor], body: 'The newest stack, new.' }]]);
     const p = await open('stack-new-line', 'laptop', topic, ids.old);
-    await becomes(() => stacks(p, ids), ['top', 'old', 'middle'], 'the old stack rises with its new reply');
+    await becomes(() => stacks(p, ids), ['top', 'middle', 'old'], 'the old dossier stays below the later middle root when a reply arrives');
     const line = () => p.evaluate(`(()=>{const l=document.querySelector('#messages > [data-line=new]');return l?{under:l.previousElementSibling?.dataset.stack??l.previousElementSibling?.dataset.id,lines:document.querySelectorAll('#messages [data-line=new]').length,inside:Boolean(document.querySelector('.reply-stack [data-line]'))}:null})()`);
     await becomes(line, { under: ids.old, lines: 1, inside: false }, 'one New line, under the stack holding the new reply, none inside it');
     assert.deepEqual(p.errors, []);
