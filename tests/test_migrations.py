@@ -169,6 +169,7 @@ def frozen(statements):
 
 
 SCHEMA_46 = (Path(__file__).parent / "fixtures" / "schema_46.sql").read_text().splitlines()
+SCHEMA_47 = (Path(__file__).parent / "fixtures" / "schema_47.sql").read_text().splitlines()
 
 
 def step_back_by_hand(path, version):
@@ -176,6 +177,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 48 keeps only a derived index of current cover waits.
+        db.execute("DROP TABLE cover_waiting")
+        if version == "47":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 47 keeps derived stable topic positions, independently checked below.
         db.execute("DROP TRIGGER topic_position_insert")
         db.execute("DROP TABLE topic_position_clock")
@@ -1987,7 +1993,7 @@ def everything(path):
         tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         rows = {}
         for table in tables:
-            if table in ("metadata", "topic_position_clock"):
+            if table in ("metadata", "topic_position_clock", "cover_waiting"):
                 continue
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
@@ -2037,7 +2043,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
                      (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_TOOLS, SCHEMA_BEFORE_TOOLS), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS),
-                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46))
+                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47))
 
 
 class Release19ChainCase(MigrationCase):

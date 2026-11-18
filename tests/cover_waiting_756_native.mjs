@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { withPageCleanup } from './native-page-cleanup.mjs';
 
 // Item 7715: 2 CSS px admits subpixel engine rounding, but cannot hide a
 // missing row, a stale count, or the pill crossing the rail by a whole glyph.
@@ -30,6 +31,7 @@ export async function item756Checks({check, page, until, control, facts, shot, o
         observations.push({name:'item 756 cover receipt',label,receipt});
       };
       const snapshot=()=>p.evaluate(`(()=>{const f=document.getElementById('inline-writing-body');return {value:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement===f,url:location.href,origin:(window.item756Origin??=performance.timeOrigin)}})()`);
+      await withPageCleanup(p, async () => {
       try {
         await until(()=>p.evaluate("document.body.dataset.ready==='true' && !document.documentElement.hasAttribute('data-rails-reading') && Boolean(document.querySelector('#outline-only-waiting .n'))"),'item 756 outline settled');
         const baseline=await count();
@@ -39,6 +41,7 @@ export async function item756Checks({check, page, until, control, facts, shot, o
         await p.send('Input.insertText',{text:'Cabin choice kept exactly'});
         await p.key('ArrowLeft',8); // native Shift-Left makes a real selection
         const writing=await snapshot();
+        assert.ok(writing.end > writing.start, 'native Shift-Left selected actual writing');
         await shot(p,label+'-before');
         const wait={text:'Choose a cabin',default:'Keep the current cabin'};
         await act(0,[wait,wait]); await act(1,[wait]);
@@ -57,6 +60,14 @@ export async function item756Checks({check, page, until, control, facts, shot, o
         const geometry=await p.evaluate(`(()=>{const c=document.getElementById('outline-only-waiting').getBoundingClientRect(),r=document.getElementById('rail').getBoundingClientRect();return {left:c.left-r.left,right:c.right-r.right,width:c.width}})()`);
         assert.ok(geometry.left>=-LAYOUT_TOLERANCE_PX && geometry.right<=LAYOUT_TOLERANCE_PX,'pill stays in rail, named 2px rounding tolerance');
         await writeFile(path.join(evidencePath,label+'-geometry.json'),JSON.stringify({geometry,LAYOUT_TOLERANCE_PX}));
+        const hand=async (sender,owner)=>{
+          const receipt=await control({method:'outcome_change',sender,owner,workspace_id:seed.workspace,operation_id:prefix+'-'+randomUUID()});
+          assert.equal(receipt.status,'committed','owner change actually committed');
+        };
+        await hand('fixture-person',seed.other);
+        await until(async()=>await count()===baseline,'old owner no longer counts covers naming someone else');
+        await hand(seed.other,'fixture-person');
+        await until(async()=>await count()===baseline+2,'restored owner sees just the two readable covers');
         await act(0,[]);
         await until(async()=>await count()===baseline+1,'one cleared cover updates without reload');
         await act(1,[]);
@@ -69,7 +80,8 @@ export async function item756Checks({check, page, until, control, facts, shot, o
         await shot(p,label+'-failure');
         await writeFile(path.join(evidencePath,label+'-failure.json'),JSON.stringify({error:error.stack,calls:p.calls.map(c=>c.payload),errors:p.errors},null,2));
         throw error;
-      } finally { await p.close(); }
+      }
+      });
     });
   }
 }

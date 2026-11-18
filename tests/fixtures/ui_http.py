@@ -746,7 +746,7 @@ def main():
                                          {"topic_id": topics[0]}, sender=other)["result"]["message_id"]
                         wait = {"waiting": [{"text": "Private choice", "default": "Keep it"}]}
                         command("stack.cover", prefix + "-hidden-cover", wait, {"message_id": hidden}, {"cover_revision": 0}, sender=other)
-                        answer = {"workspace": workspace, "topics": topics, "roots": roots, "hidden": hidden}
+                        answer = {"workspace": workspace, "topics": topics, "roots": roots, "hidden": hidden, "other": other}
                     elif request["method"] == "item756_act":
                         mid = request["message_id"]
                         revision = store().view(actor, "dossier_cover", {"message_id": mid})["cover_revision"]
