@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { withPageCleanup } from './native-page-cleanup.mjs';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
@@ -908,7 +909,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await outlineAtRest(p, tag + ': ' + why);
         assert.deepEqual(await ids(), wanted, why);
       };
-      try {
+      await withPageCleanup(p, async () => {
         await show();
         await until(async () => (await ids())?.length === 2, tag + ': both topic rows drawn');
         let wanted = placed ? [a, b] : [b, a];
@@ -958,7 +959,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         await expect(movedOrder, 'A stays above B after sending and reopening');
         await shot(p, tag + '-own-move');
         assert.deepEqual(p.errors, []);
-      } finally { await p.close(); }
+      });
     });
   }
 
