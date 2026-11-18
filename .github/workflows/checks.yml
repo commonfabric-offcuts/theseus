@@ -50,7 +50,7 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
+  # Item740: initial bins only; whole-step capacity may require more. Unmeasured/oversize refuses.
   # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
   BROWSER_SHARDS: 4
 
@@ -75,10 +75,9 @@ jobs:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # Browser limits use ceil(longest dealt minutes * 1.5); replay keeps 45. Unit limits are
-    # ceil((measured file/step minutes + measured setup) * 1.5), from
-    # .github/check-weights.json: file timings 44112970996, Node/setup
-    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
+    # Item740 browser capacity is 90m, including 5m setup/upload reserve and
+    # 1.5x maximum source-fitting measured wall time. It is not a platform cap.
+    # Python whole-file estimates remain historical; see docs/shard-budgeting.md.
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false

@@ -41,12 +41,28 @@ class Plan(unittest.TestCase):
         self.change({'tests/only.test.mjs': 'export const x = 2;\n'})
 
     def change(self, files):
+        subprocess.run(['git', '-C', str(self.root), 'restore', '.github/check-weights.json'], check=True, capture_output=True)
         subprocess.run(['git', '-C', str(self.root), 'checkout', '-q', '--detach', self.base], check=True, capture_output=True)
         self.head = fixtures.commit_files(self.root, files)
         self.event = {'pull_request': {'base': {'sha': self.base}, 'head': {'sha': self.head}}}
+        source = ci_input_reads.source_files(self.root, self.head)
+        self.weights = json.loads(source['.github/check-weights.json'])
+        try:
+            self.identities = check_plan.browser_identities(source)
+        except ci_input_reads.Refused:
+            # Scope tests with deliberately unreadable input graphs isolate
+            # selection from the separate measurement refusal tests.
+            self.identities = {'native-' + s.name: 'd' * 64 for s in release_check.NATIVE_STEPS}
+        self.weights['browser_observations'] = [
+            {'step': name, 'source': self.head, 'inputs_sha256': identity,
+             'seconds': 60, 'case_count': 1, 'cases_sha256': 'e' * 64,
+             'complete': True, 'cleanup': True,
+             'evidence': {'summary_sha256': 'b' * 64, 'report_sha256': 'c' * 64, 'run': 'fixture', 'artifact': 'fixture'}}
+            for name, identity in self.identities.items()]
 
     def plan(self, event_name='pull_request'):
-        return check_plan.plan(self.root, event_name, self.event, self.head, 2)
+        with mock.patch.object(check_plan, 'committed_browser_identities', return_value=self.identities):
+            return check_plan.plan(self.root, event_name, self.event, self.head, 2, weights=self.weights)
 
     def test_only_computed_readers_run_and_all_omissions_have_proof(self):
         result = self.plan()
@@ -88,6 +104,7 @@ class Plan(unittest.TestCase):
         self.assertTrue(release_check.small_fix_problems(['docs/%d.md' % n for n in range(6)]))
 
     def workflow(self, event_name='pull_request'):
+        (self.root / '.github/check-weights.json').write_text(json.dumps(self.weights))
         event = self.folder / 'event.json'; event.write_text(json.dumps(self.event))
         output = self.folder / 'output'; output.write_text('')
         section = WORKFLOW.read_text().split('      - id: plan\n', 1)[1].split('\n  check:', 1)[0]
@@ -112,6 +129,7 @@ class Plan(unittest.TestCase):
         self.assertIn('PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}', WORKFLOW.read_text())
 
     def test_command_flags_override_github_defaults(self):
+        (self.root / '.github/check-weights.json').write_text(json.dumps(self.weights))
         event = self.folder / 'event.json'; event.write_text(json.dumps(self.event))
         result = subprocess.run([sys.executable, '-I', '-B', 'tools/unit_shards.py', '--plan', '--event-name', 'pull_request',
                                  '--event', str(event), '--head', self.head, '--browser-shards', '2'],

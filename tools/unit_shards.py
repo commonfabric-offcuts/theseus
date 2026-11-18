@@ -5,6 +5,8 @@ import argparse
 import collections
 import json
 import math
+import datetime
+import re
 from pathlib import Path
 import sys
 import time
@@ -189,6 +191,144 @@ def scope_record(base, changed, chosen, notes):
             'notes': notes[:20], 'why': check.scoped_words(base, chosen)}
 
 
+def browser_identities(files):
+    """Conservative item734 inputs bind case generators, product and runtime.
+
+    Only timing metadata is excluded: it does not execute a native step. The
+    workflow, policies, commands, imports, fixtures and source readers remain.
+    """
+    required, reached = ci_input_reads.readers(files)
+    return {name: ci_input_reads.digest(ci_input_reads.canonical({
+        path: ci_input_reads.digest(data) for path, data in files.items()
+        if name in reached[path] and path != '.github/check-weights.json'}))
+        for name in required if name.startswith('native-')}
+
+
+def committed_browser_identities(root, head):
+    try:
+        return browser_identities(ci_input_reads.source_files(root, head))
+    except ci_input_reads.Refused as error:
+        raise check.Refused('browser measurement inventory unavailable: %s' % error)
+
+
+def positive_number(value):
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def sha256(value):
+    return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def browser_case_inventory(report):
+    # Reader expected-failure/restored phases intentionally repeat a name.
+    # Their existing (phase, name) identity must survive measurement intact.
+    cases = [(row.get('phase', ''), row.get('name')) for row in report.get('results', [])]
+    if (not cases or not all(isinstance(phase, str) and isinstance(name, str) and name
+                             for phase, name in cases) or len(cases) != len(set(cases))):
+        raise check.Refused('browser observation invalid named case inventory')
+    return sorted(cases)
+
+
+def browser_observation(summary, report, name, identity, evidence):
+    """Timing only; a finished failed result stays failed in original evidence.
+
+    Call with the final summary and report bytes from a retained, independently
+    authenticated artifact and identity computed from summary.commit's source.
+    This helper grants no acceptance or continuation authority.
+    """
+    selected = [s['name'] for s in summary.get('steps', [])]
+    if (summary.get('tree_unchanged') is not True or len(selected) != len(set(selected))
+            or summary.get('only', summary.get('required')) != selected or selected.count(name) != 1
+            or not check.COMMIT.fullmatch(summary.get('commit', ''))):
+        raise check.Refused('browser observation requires a complete clean summary: ' + name)
+    step = summary['steps'][selected.index(name)]
+    cases = browser_case_inventory(report)
+    counts = step.get('counts') or {}
+    if (counts.get('tests') != len(cases)
+            or counts.get('browser_closed') is not True
+            or not (report.get('closed') is True or report.get('browserClosed') is True)
+            or report.get('fixtureExitCode', 0) != 0 or report.get('fixtureErrors')
+            or report.get('teardown')):
+        raise check.Refused('browser observation incomplete inventory or cleanup: ' + name)
+    try:
+        seconds = (datetime.datetime.fromisoformat(step['finished_at'].replace('Z', '+00:00'))
+                   - datetime.datetime.fromisoformat(step['started_at'].replace('Z', '+00:00'))).total_seconds()
+    except (KeyError, ValueError, TypeError) as error:
+        raise check.Refused('browser observation missing wall time: %s: %s' % (name, error))
+    if not positive_number(seconds) or not sha256(identity):
+        raise check.Refused('browser observation invalid duration or source: ' + name)
+    return {'step': name, 'source': summary['commit'], 'inputs_sha256': identity,
+            'seconds': seconds, 'case_count': len(cases),
+            'cases_sha256': ci_input_reads.digest(ci_input_reads.canonical(sorted(cases))),
+            'complete': True, 'cleanup': True, 'evidence': evidence}
+
+
+def browser_jobs(native, observations, identities, budget, initial_shards):
+    """Maximum fitting whole-step observations, capacity constrained LPT.
+
+    Extra bins preserve full selection; oversize and unmeasured steps refuse
+    the entire plan. No partial plan or prefix is a completion certificate.
+    """
+    if len(native) != len(set(native)):
+        raise check.Refused('duplicate browser selection')
+    if not native:
+        return []
+    capacity = budget.get('capacity_minutes')
+    reserve = budget.get('setup_upload_minutes')
+    factor = budget.get('duration_factor')
+    if (budget.get('policy') != 'browser-90m-refuse-unmeasured-v1'
+            or type(capacity) is not int or capacity != 90
+            or not positive_number(reserve) or reserve < 5 or reserve >= capacity
+            or not positive_number(factor) or factor < 1.5 or initial_shards < 1):
+        raise check.Refused('invalid browser capacity policy')
+    durations, proofs, blocked = {}, {}, []
+    for name in sorted(native):
+        fitting = [row for row in observations if row.get('step') == name
+                   and row.get('inputs_sha256') == identities.get(name)]
+        if not fitting:
+            blocked.append(name + ': unmeasured or source/runtime inventory mismatch')
+            continue
+        for row in fitting:
+            evidence = row.get('evidence') or {}
+            if (row.get('complete') is not True or row.get('cleanup') is not True
+                    or not positive_number(row.get('seconds'))
+                    or type(row.get('case_count')) is not int or row['case_count'] < 1
+                    or not sha256(row.get('cases_sha256')) or not sha256(row.get('inputs_sha256'))
+                    or not check.COMMIT.fullmatch(row.get('source', ''))
+                    or not sha256(evidence.get('summary_sha256')) or not sha256(evidence.get('report_sha256'))
+                    or not evidence.get('run') or not evidence.get('artifact')):
+                raise check.Refused('invalid browser completed measurement: ' + name)
+        inventories = {(row['case_count'], row['cases_sha256']) for row in fitting}
+        if len(inventories) != 1:
+            raise check.Refused('browser same-source case inventory differs: ' + name)
+        seconds = max(row['seconds'] for row in fitting)
+        durations[name] = seconds / 60
+        proofs[name] = sorted(fitting, key=lambda r: ci_input_reads.canonical(r))
+        if durations[name] * factor + reserve > capacity:
+            blocked.append(name + ': oversize %.3f + %.3f reserve > %.3f minutes' % (
+                durations[name] * factor, reserve, capacity))
+    if blocked:
+        raise check.Refused('browser plan refused; ' + '; '.join(blocked))
+    bins = [{'minutes': 0.0, 'steps': []} for _ in range(min(initial_shards, len(native)))]
+    for name in sorted(native, key=lambda n: (-durations[n], n)):
+        bucket = min(bins, key=lambda b: b['minutes'])
+        if (bucket['minutes'] + durations[name]) * factor + reserve > capacity:
+            bucket = {'minutes': 0.0, 'steps': []}
+            bins.append(bucket)
+        bucket['steps'].append(name)
+        bucket['minutes'] += durations[name]
+    assigned = [n for b in bins for n in b['steps']]
+    if sorted(assigned) != sorted(native):
+        raise check.Refused('browser coverage differs from complete selection')
+    bins = [b for b in bins if b['steps']]
+    return [{'name': 'browser %d of %d (capacity %d min)' % (i, len(bins), capacity),
+             'steps': ','.join(b['steps']), 'minutes': b['minutes'],
+             'budget_minutes': math.ceil(b['minutes'] * factor + reserve),
+             'timeout_minutes': capacity, 'timeout_source': budget['policy'],
+             'measurements': {n: proofs[n] for n in b['steps']}}
+            for i, b in enumerate(bins, 1)]
+
+
 def plan(root, event_name, event, head, browser_shards=4, measured=None, weights=None):
     """{shards, scoped, why}: PR scope when provable; otherwise every required step."""
     if browser_shards < 1:
@@ -211,23 +351,13 @@ def plan(root, event_name, event, head, browser_shards=4, measured=None, weights
         except (check.Refused, ci_input_reads.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, SyntaxError) as error:
             why = 'full run: scope unavailable: %s' % error
     native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]
-    measured = measured or {}
-    known = sorted(measured.values())
-    median = known[len(known) // 2] if known else 1.0
-    loads = [[0.0, []] for _ in range(browser_shards)]
-    for name in sorted(native, key=lambda n: -measured.get(n, median)):
-        lightest = min(loads, key=lambda b: b[0])
-        lightest[0] += measured.get(name, median)
-        lightest[1].append(name)
-    # Item 666: derive the browser cap from the selected deal, including scoped PRs.
-    longest = max(load for load, names in loads)
-    timeout = math.ceil(longest * 1.5)
-    shards = [{'name': 'browser %d of %d (about %.0f min)' % (i + 1, browser_shards, load), 'steps': ','.join(names),
-               'minutes': round(load, 1), 'timeout_minutes': timeout,
-               'timeout_source': 'ceil(longest dealt %.1f minutes * 1.5); .github/check-weights.json sources' % longest}
-              for i, (load, names) in enumerate(loads) if names]
     if weights is None:
-        weights = json.loads((Path(__file__).resolve().parents[1] / '.github/check-weights.json').read_text())
+        weights = json.loads((root / '.github/check-weights.json').read_text())
+    # Legacy scalar `measured` is deliberately not a completion bound. Keep the
+    # argument for callers while refusing until source-bound observations fit.
+    identities = committed_browser_identities(root, head) if native else {}
+    shards = browser_jobs(native, weights.get('browser_observations', []), identities,
+                          weights.get('browser_budget', {}), browser_shards)
     for job in jobs(root, weights):
         job['timeout_minutes'] = job.pop('timeout')
         shards.append(job)
@@ -252,7 +382,11 @@ def plan_main(argv=None):
     except (OSError, ValueError):
         event = {}
     weights = json.loads((root / '.github/check-weights.json').read_text())
-    result = plan(root, args.event_name, event, args.head, args.browser_shards, weights['minutes'], weights)
+    try:
+        result = plan(root, args.event_name, event, args.head, args.browser_shards, weights['minutes'], weights)
+    except (check.Refused, ValueError) as error:
+        print('refused: %s' % error, file=sys.stderr)
+        return 2
     if args.github_output:
         print('shards=' + json.dumps(result['shards']))
         print('scoped=' + json.dumps(result['scoped']))

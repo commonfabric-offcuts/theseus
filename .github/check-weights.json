@@ -1,5 +1,5 @@
 {
- "about": "Item 666, 17 Nov 2026: maximum finished step minutes across Checks runs 44007172971, 44044963750 and 44099688612, supplied in the brief step-times.json (consecutive step-result timestamps). Each source sample is below. The cancelled run contributes only finished steps. Largest first onto the lightest of four shards; unmeasured modes use the upper median measured weight (1.1 minutes today), or 1 minute with no measurements, so new modes run. Refresh from full-run artifacts when modes change.",
+ "about": "Historical scalar browser timings only; not completion bounds. Item740 uses browser_observations with exact committed source/case/runtime fit. Missing or oversize steps refuse; no median fallback.",
  "minutes": {
   "native-asks": 0.2,
   "native-card-marks": 1.7,
@@ -859,5 +859,12 @@
    "setup_minutes": "pool Node job 15:19:27 to step start 15:20:10.477288 + step finish 15:22:15.364724 to job end 15:22:26 = 54.113s; rounded up to 0.902 minutes",
    "timeout": "ceil((sum of measured file minutes, or measured step minutes, + setup_minutes) * 1.5) for each unit job; browser/replay keep their existing limits"
   }
- }
+ },
+ "browser_budget": {
+  "policy": "browser-90m-refuse-unmeasured-v1",
+  "capacity_minutes": 90,
+  "setup_upload_minutes": 5,
+  "duration_factor": 1.5
+ },
+ "browser_observations": []
 }

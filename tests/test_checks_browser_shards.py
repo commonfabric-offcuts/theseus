@@ -37,69 +37,60 @@ class BrowserShards(unittest.TestCase):
         measured = json.loads((ROOT / '.github/check-weights.json').read_text())
         if weights is not None:
             measured['minutes'] = weights
-        with mock.patch.object(release_check, 'NATIVE_STEPS', release_check.NATIVE_STEPS if native is None else native):
+        native = release_check.NATIVE_STEPS if native is None else native
+        identities = {'native-' + step.name: hashlib.sha256(step.name.encode()).hexdigest() for step in native}
+        # Synthetic complete measurements for collector contracts. These are
+        # never written into the production config or claimed as hosted proof.
+        measured['browser_observations'] = [
+            {'step': name, 'source': 'a' * 40, 'inputs_sha256': identity,
+             'seconds': measured['minutes'][name] * 60, 'case_count': 1, 'cases_sha256': 'e' * 64,
+             'complete': True, 'cleanup': True,
+             'evidence': {'summary_sha256': 'b' * 64, 'report_sha256': 'c' * 64, 'run': 'fixture', 'artifact': 'fixture'}}
+            for name, identity in identities.items() if name in measured['minutes']]
+        with mock.patch.object(release_check, 'NATIVE_STEPS', native), \
+                mock.patch.object(check_plan, 'committed_browser_identities', return_value=identities):
             return check_plan.plan(ROOT, 'push', {}, 'a' * 40, int(count), measured['minutes'], measured)['shards']
 
-    def test_todays_required_steps_finish_within_five_minutes_of_four_way_split(self):
+    def test_complete_selection_is_preserved_once_within_capacity(self):
         plan = self.plan()
         ordinary = [n for shard in plan if not shard.get('python_shard') for n in shard['steps'].split(',')]
         self.assertEqual(sum(bool(shard.get('python_shard')) for shard in plan), 4)
         self.assertEqual(sorted(['python-units'] + ordinary), sorted(release_check.REQUIRED))
         browser = [shard for shard in plan if shard['name'].startswith('browser ')]
-        loads = [round(sum(self.measured[n] for n in shard['steps'].split(',')), 1) for shard in browser]
-        crowded = [shard['steps'] for shard in browser if len(LONG & set(shard['steps'].split(','))) > 1]
-        print('measured browser minutes: %s; even split: %.3f; crowded long steps: %s' %
-              (loads, sum(self.measured.values()) / 4, crowded))
-        self.assertFalse(crowded, 'two of the four long steps share a shard')
-        self.assertEqual(len(browser), 4)
-        self.assertTrue(all(abs(load - sum(self.measured.values()) / 4) <= 5 for load in loads), loads)
+        for shard in browser:
+            wall = sum(self.measured[n] for n in shard['steps'].split(','))
+            self.assertLessEqual(wall * 1.5 + 5, 90)
+            self.assertEqual(shard['budget_minutes'], math.ceil(wall * 1.5 + 5))
 
-    def test_timeout_is_longest_dealt_minutes_plus_half_and_used_by_runner(self):
-        browser = [s for s in self.plan() if s['name'].startswith('browser ')]
-        longest = max(sum(self.measured[n] for n in s['steps'].split(',')) for s in browser)
-        expected = math.ceil(longest * 1.5)
-        self.assertEqual([s.get('timeout_minutes') for s in browser], [expected] * len(browser))
+    def test_capacity_is_transported_by_workflow_and_unit_limits_remain_separate(self):
         self.assertIn('timeout-minutes: ${{ matrix.timeout_minutes }}', self.workflow)
-        self.assertTrue(all('longest' in s['timeout_source'] and '1.5' in s['timeout_source'] for s in browser))
         from tools import unit_shards
         jobs = unit_shards.jobs(ROOT, json.loads((ROOT / '.github/check-weights.json').read_text()))
         actual = {s['name']: s['timeout_minutes'] for s in self.plan()}
         self.assertTrue(all(actual[j['name']] == j['timeout'] for j in jobs))
+        self.assertTrue(all(j['timeout_minutes'] == 90 for j in self.plan() if j['name'].startswith('browser ')))
         self.assertEqual(actual['wake replay'], 45)
 
-    def test_weights_keep_each_measured_maximum_with_its_source(self):
+    def test_historical_weights_keep_each_maximum_with_its_original_source(self):
         weights = json.loads((ROOT / '.github/check-weights.json').read_text())
         self.assertEqual({n: weights['minutes'].get(n) for n in self.measured}, self.measured)
         for name, minutes in self.measured.items():
-            samples = weights['sources'][name]
-            self.assertEqual(max(row['minutes'] for row in samples), minutes)
-            self.assertTrue(all(row['run'] in ('44007172971', '44044963750', '44099688612') for row in samples))
+            self.assertEqual(max(row['minutes'] for row in weights['sources'][name]), minutes)
+        self.assertEqual(weights['browser_observations'], [])
 
-    def test_an_unmeasured_step_is_dealt_at_the_upper_median_and_never_dropped(self):
-        new = release_check.NativeStep('unmeasured', '', (), '')
-        native = tuple(release_check.NATIVE_STEPS) + (new,)
-        with mock.patch.object(release_check, 'REQUIRED', release_check.REQUIRED + ('native-unmeasured',)):
-            plan = self.plan(native=native)
-        dealt = [n for s in plan for n in s['steps'].split(',')]
-        self.assertEqual(dealt.count('native-unmeasured'), 1)
-        # A scoped selection goes through exactly the same deal; the upper median of [2, 8] is 8.
-        selected = (release_check.NativeStep('measured', '', (), ''), new)
-        required = release_check.UNIT_STEPS + (release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY,
-                                              'native-measured', 'native-unmeasured')
-        with mock.patch.object(release_check, 'REQUIRED', required):
-            scoped = self.plan(native=selected, weights={'native-measured': 2, 'native-other': 8})
-        browser = [s for s in scoped if s['name'].startswith('browser ')]
-        self.assertEqual(sum(s['minutes'] for s in browser), 10)
-        self.assertEqual(sum(s['steps'].split(',').count('native-unmeasured') for s in browser), 1)
+    def test_new_mode_refuses_instead_of_getting_the_old_median(self):
+        native = tuple(release_check.NATIVE_STEPS) + (release_check.NativeStep('unmeasured', '', (), ''),)
+        with self.assertRaisesRegex(release_check.Refused, 'native-unmeasured'):
+            self.plan(native=native)
 
-    def test_largest_first_uses_the_lightest_shard_even_for_a_fifth_long_step(self):
+    def test_fifth_long_step_opens_an_extra_bin_instead_of_overfilling(self):
         native = tuple(release_check.NativeStep(n, '', (), '') for n in ('a', 'b', 'c', 'd', 'e'))
-        weights = {'native-' + n: w for n, w in zip('abcde', (40, 35, 30, 25, 20))}
+        weights = {'native-' + n: w for n, w in zip('abcde', (55, 54, 53, 52, 51))}
         required = release_check.UNIT_STEPS + (release_check.DEPLOY_REFUSALS, release_check.WAKE_REPLAY) + tuple(weights)
         with mock.patch.object(release_check, 'REQUIRED', required):
             browser = [s for s in self.plan(native=native, weights=weights) if s['name'].startswith('browser ')]
-        self.assertIn('native-d,native-e', [s['steps'] for s in browser])
-        self.assertEqual(sorted(s['minutes'] for s in browser), [30, 35, 40, 45])
+        self.assertEqual(len(browser), 5)
+        self.assertEqual(sorted(s['minutes'] for s in browser), [51, 52, 53, 54, 55])
 
     def combine(self, absent=(), refused=(), narrow=False, cancelled=None, plan=None, partial=False, event='push', scoped=None):
         plan = self.plan() if plan is None else plan
