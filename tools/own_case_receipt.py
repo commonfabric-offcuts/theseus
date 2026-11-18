@@ -7,7 +7,7 @@ Refs; command and neutral identities are explicitly derived, never raw fields.
 """
 from collections import Counter
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 import tarfile
 import tempfile
@@ -204,11 +204,6 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
               'Pool job steps incomplete')
     meta = api_fact(binding, 'artifact', github, repository, 'actions/artifacts/%d' % binding['artifact']['id'])
     raw_zip = b.artifact(binding['artifact']['archive'])
-    upload = steps[5]
-    created = datetime.fromisoformat(meta['created_at'].replace('Z', '+00:00'))
-    started = datetime.fromisoformat(upload['started_at'].replace('Z', '+00:00'))
-    finished = datetime.fromisoformat(upload['completed_at'].replace('Z', '+00:00'))
-    b.require(started <= created <= finished, 'Pool artifact attempt/upload differs')
     b.require(meta.get('id') == binding['artifact']['id'] and meta.get('name') == 'pool'
               and meta.get('expired') is False and meta.get('digest') == 'sha256:' + b.digest(raw_zip)
               and meta.get('workflow_run', {}).get('id') == run_id
@@ -295,8 +290,31 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
     executions = b.loads(contents['cases.json'])
     b.require(isinstance(executions, list) and len(executions) == 1, 'Pool single execution missing')
     b.fields(executions[0], 'case exit')
-    b.require(executions[0]['case'] == case_filter and type(executions[0]['exit']) is int
-              and executions[0]['exit'] == 0, 'Pool execution filter/exit differs')
+    b.require(executions[0]['case'] == case_filter and type(executions[0]['exit']) is int,
+              'Pool execution filter/exit differs')
+    if family:
+        b.report_hashes([b.loads(contents['c1/evidence/native.json'])], git, assembly)
+    # Publication can trail the successful upload step by at most two seconds.
+    # All identity/source/archive/raw-byte bindings above apply first. These
+    # are derived timing facts; never alter the retained API timestamps.
+    upload = steps[5]
+    try:
+        raw_times = [meta['created_at'], upload['started_at'], upload['completed_at']]
+        b.require(all(isinstance(value, str) for value in raw_times),
+                  'Pool artifact attempt/upload timestamps invalid')
+        created, started, finished = [datetime.fromisoformat(value.replace('Z', '+00:00')) for value in raw_times]
+        b.require(all(value.utcoffset() is not None for value in (created, started, finished)),
+                  'Pool artifact attempt/upload timestamps invalid')
+        limit = finished + timedelta(seconds=2)
+    except (KeyError, ValueError, TypeError, OverflowError):
+        raise b.Refused('base move: Pool artifact attempt/upload timestamps invalid')
+    b.require(started <= finished and started <= created <= limit, 'Pool artifact attempt/upload differs')
+    publication = {'artifact_created_at': raw_times[0], 'upload_started_at': raw_times[1],
+                   'upload_completed_at': raw_times[2], 'max_late_seconds': 2,
+                   'not_before': raw_times[1], 'not_after': limit.isoformat(),
+                   'seconds_after_upload_completed': (created - finished).total_seconds(),
+                   'within_upload': created <= finished}
+    b.require(executions[0]['exit'] == 0, 'Pool execution filter/exit differs')
     stdout = contents['c1.log'].decode().splitlines()
     b.require(len(stdout) == 2 and stdout[1] == spec['step'] + ' exit 0 /Users/runner/work/_temp/pool/c1',
               'Pool native command/exit stdout differs')
@@ -305,8 +323,6 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
               and step['passed'] is True, 'Pool raw step/exit differs')
     if family:
         keys = family_results(contents, step, spec['step'], case_filter, expected)
-        report = b.loads(contents['c1/evidence/native.json'])
-        b.report_hashes([report], git, assembly)
         by_engine = {keys[0][3]: {k[1] for k in keys}}
         schema = 'pool-reading-rail-v1'
         harness = 'tests/webkit_native.mjs' if spec['step'].startswith('webkit-') else 'tests/reader_persistence_native.mjs'
@@ -319,7 +335,8 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
                   'artifact': binding['artifact'], 'api': binding['api'], 'record': binding['record'],
                   'originals': {k: receipt[k] for k in ('snapshot', 'step', 'report', 'log', 'pool')},
                   'raw': step,
-                  'derived': {'schema': schema, 'snapshot': {'head': assembly, 'tree': assembly_tree, 'inputs': inputs},
+                  'derived': {'schema': schema, 'publication': publication,
+                              'snapshot': {'head': assembly, 'tree': assembly_tree, 'inputs': inputs},
                               'source_sha256': authorized,
                               'command': {'driver': 'tools/native.py', 'step': spec['step'], 'filter': case_filter,
                                           'harness': harness, 'flags': flags,

@@ -192,6 +192,20 @@ independent body/resolution review remain required.
 
 ### Genuine Pool own receipts (source-bound adapter)
 
+Publication timing (warp8689): artifact creation must be no earlier than the
+successful `Keep the evidence` step's `started_at`, and no later than exactly
+two seconds after its `completed_at`. The original inclusive upload interval
+remains valid. The bounded late interval is considered only after all existing
+run/job/attempt/workflow/step, artifact name/repository/head/branch/digest,
+wrapper parent/tree, pinned source/filter, original record/snapshot, ZIP and
+raw receipt byte bindings have passed. Missing, malformed or timezone-free
+timestamps and reversed upload intervals refuse. There is no candidate-selected
+window, override, retry or source-pin refresh. Native exit 1 remains refused.
+Measured derived facts retain the three unmodified timestamp strings, the
+fixed two-second bound, computed interval and actual offset from completion;
+no original timestamp or raw result is rewritten. All existing 651, original
+and corrected 652, and narrow 717/715 profiles keep their exact source pins.
+
 An own receipt may instead have exactly `{snapshot, step, report, log, pool}`,
 all Refs. This is selected only by the explicit `pool` field; an invalid Pool
 receipt never falls back to the legacy shape. Legacy receipts retain their
