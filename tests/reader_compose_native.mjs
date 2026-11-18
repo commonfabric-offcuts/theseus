@@ -289,7 +289,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
-  await composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine });
+  await composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine, evidence });
   await composeSwipe648Protections({ check, page, open, press, until, picture, close, control, facts, engine, root, evidence });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {

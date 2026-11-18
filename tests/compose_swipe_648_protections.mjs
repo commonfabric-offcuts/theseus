@@ -4,10 +4,23 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { geometry648 } from './swipe_648_geometry.mjs';
 
 export async function observe648(p) {
   await p.addInitScript(() => {
     window.swipe648Inputs = [];
+    window.swipe648TargetTerminals = [];
+    const observedTargets = new WeakSet();
+    document.addEventListener('touchstart', e => {
+      const target = e.target;
+      if (observedTargets.has(target)) return;
+      observedTargets.add(target);
+      for (const type of ['touchend', 'touchcancel']) target.addEventListener(type, terminal => {
+        window.swipe648TargetTerminals.push({ type, trusted: terminal.isTrusted,
+          connected: target.isConnected, target: target.nodeName,
+          ids: [...terminal.changedTouches].map(t => t.identifier) });
+      }, { capture: true, passive: true });
+    }, { capture: true, passive: true });
     for (const type of ['touchstart', 'touchend', 'touchcancel', 'wheel']) document.addEventListener(type, e => {
       window.swipe648Inputs.push({ type, trusted: e.isTrusted, target: e.target.id, inSource: Boolean(e.target.closest('#source-body')), ctrl: e.ctrlKey });
     }, { capture: true, passive: true });
@@ -107,7 +120,13 @@ export async function composeSwipe648Protections(h) {
       // Browser scrolling can cancel the page's touch path before end.
       await until(p, n => window.swipe648Inputs.slice(n).some(e => ['touchend', 'touchcancel'].includes(e.type) && e.trusted), 'native touch completion or browser cancellation', n);
       await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    } finally { await cdp.detach(); }
+    } finally {
+      records.push({ shape: p.shape, theme: p.scheme, touch: await p.evaluate(() => ({
+        documentInputs: window.swipe648Inputs, targetTerminals: window.swipe648TargetTerminals
+      })) });
+      await saveRecords();
+      await cdp.detach();
+    }
   };
   const right = p => engine === 'chromium' && p.touch ? finger(p) : wheel(p, -100);
   const noFold = f => assert.equal(f.commands.filter(e => e.kind === 'message.fold').length, 0, 'protected gesture issues no fold command');
@@ -135,7 +154,8 @@ export async function composeSwipe648Protections(h) {
         .map(e => { const b = e.getBoundingClientRect(); return { id: e.id || e.textContent, w: b.width, h: b.height }; });
       return { left: dialog.left, right: dialog.right, width: innerWidth, overflow: document.documentElement.scrollWidth - innerWidth, targets };
     });
-    records.push({ shape: f.p.shape, theme: f.p.scheme, label, geometry, state: await snapshot(f.p) }); await saveRecords();
+    records.push({ shape: f.p.shape, theme: f.p.scheme, label, geometry,
+      layout: await f.p.evaluate(geometry648), state: await snapshot(f.p) }); await saveRecords();
     await picture(f.p, `item648-protection-${label}`);
     assert.ok(geometry.left >= -CONTAINMENT_TOLERANCE_PX && geometry.right <= geometry.width + CONTAINMENT_TOLERANCE_PX, `${label}: Reader contained within named ${CONTAINMENT_TOLERANCE_PX}px tolerance`);
     assert.ok(geometry.overflow <= CONTAINMENT_TOLERANCE_PX, `${label}: page overflow <= named ${CONTAINMENT_TOLERANCE_PX}px, got ${geometry.overflow}`);
@@ -176,6 +196,9 @@ export async function composeSwipe648Protections(h) {
       if (engine === 'chromium' && p.touch) await finger(p, 100, 0, { between: change });
       else { await wheel(p, 0, 20); await wheel(p, -40); await change(); await wheel(p, -50); }
       noFold(f);
+      assert.equal((await snapshot(p)).source.id, f.other, 'source changed to the exact other message during gesture');
+      await kept(f, 'source changed during gesture', { text: false });
+      await screen(f, 'source-changed-after');
       await focusSource(); await p.keyboard.press('Meta+ArrowDown'); await until(p, id => window.swipe648Reader.source.source_ref.id === id, 'native Cmd-Down restores source', f.id);
       await kept(f, 'source change and return'); await screen(f, 'negative-after'); await close(p);
     });

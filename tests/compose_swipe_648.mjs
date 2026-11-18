@@ -1,7 +1,10 @@
 // Item 648's cases run only through native-compose, in its two engines.
 import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { geometry648 } from './swipe_648_geometry.mjs';
 
-export async function composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine }) {
+export async function composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine, evidence }) {
   const states = ['reading', 'writing', 'private-note', 'busy', 'refused', 'starred', 'folded', 'horizontal-code', 'empty'];
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const theme of ['light', 'dark']) for (const state of states) {
     await check(`item 648 ${shape} ${theme} ${state}: a right swipe folds only the composer's message and keeps exact writing`, async () => {
@@ -53,8 +56,10 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       // Named tolerance: screenshots and containment allow 2 CSS pixels for engine rounding.
       const EDGE_TOLERANCE_PX = 2;
       const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      assert.ok(over <= EDGE_TOLERANCE_PX, `page overflow <= ${EDGE_TOLERANCE_PX}px, got ${over}`);
+      await mkdir(path.join(evidence, engine), { recursive: true });
+      await writeFile(path.join(evidence, engine, `${shape}-${theme}-item648-${state}-layout-before.json`), JSON.stringify(await p.evaluate(geometry648), null, 2));
       await picture(p, `item648-${state}-before`);
+      assert.ok(over <= EDGE_TOLERANCE_PX, `page overflow <= ${EDGE_TOLERANCE_PX}px, got ${over}`);
       const target = state === 'empty' ? field : state === 'horizontal-code' ? '#source-body .md-pre' : '#source-body';
       const box = await p.locator(target).boundingBox();
       const x = box.x + Math.min(box.width / 3, 70), y = box.y + Math.min(box.height / 2, 40);
