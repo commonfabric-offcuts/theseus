@@ -8342,8 +8342,10 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.deepEqual(q.errors, []); await q.close();
   });
 
-  // Item 385: Return on a dossier selected as a whole edits its title, as Rename in ⋯ does.
-  await check('reading stacks Return on a selected dossier edits its title: Return saves it, Escape cancels, Return in writing types, and Return on a message still replies', async () => {
+  // Item 784 supersedes only item385's Return-to-rename entry point.
+  // Evidence: Tony9689/9698/9705, source9707 SPEC N1/N2 and REPORT Exact limits.
+  // Click/name/pen/menu rename and all title-field checks remain.
+  await check('reading stacks Return on a selected dossier replies to its head: pen rename keeps Return save and Escape cancel, writing types and a message replies', async () => {
     const topic = 'stack-rename-key';
     const ids = await seed(topic, [['root', { sender: other, join: true, addressees: [facts.actor], body: 'Plan the cabin week.', read: true }],
       ['reply', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A reply to the plan.', read: true }],
@@ -8359,8 +8361,11 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await keyTo(p, ids.root);
     assert.equal((await look(p, ids, 'root')).headOpen, 'false', 'the keys are on the dossier\'s compact header');
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week.', 'Return on the selected dossier opens its title to edit, the cursor in it');
-    assert.equal(await readerOn(p), null, 'and opens no Reader');
+    await until(async () => (await readerOn(p))?.startsWith('Plan the cabin week.'), 'Return on the selected dossier replies to its head');
+    assert.equal(await editing(), null, 'and edits no title');
+    await closeReader(p, 'laptop');
+    await centre(p, section(ids.root) + ' .stack-pen'); await p.point(section(ids.root) + ' .stack-pen');
+    await becomes(keysOn, 'Plan the cabin week.', 'pen click still edits the title');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Escape');
     await until(async () => !await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(input)}))`), 'Escape cancels the edit');
@@ -8368,11 +8373,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await names(), 0, 'and nothing is sent');
     assert.equal((await actsOf(topic, ids.root))?.name ?? null, null, 'nor held by Core');
     // Its chevron selected stands for the dossier too.
-    await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).focus({preventScroll:true})`);
+    await centre(p, toggle); await p.point(toggle, 'move');
     const fold = (await look(p, ids, 'root')).fold;
     await p.key('Enter');
-    await becomes(keysOn, 'Plan the cabin week.', 'Return on the dossier\'s chevron opens its title to edit');
+    await until(async () => (await readerOn(p))?.startsWith('Plan the cabin week.'), 'Return on the dossier chevron replies to its head');
+    assert.equal(await editing(), null, 'chevron Return edits no title');
     assert.equal((await look(p, ids, 'root')).fold, fold, 'and does not press the chevron');
+    await closeReader(p, 'laptop');
+    await centre(p, section(ids.root) + ' .stack-pen'); await p.point(section(ids.root) + ' .stack-pen');
+    await becomes(keysOn, 'Plan the cabin week.', 'pen starts rename again');
     await p.send('Input.insertText', { text: 'Cabin week' });
     await p.key('Enter');
     await until(async () => (await name()) === 'Cabin week', 'Return in the title saves it');
@@ -8523,14 +8532,15 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     assert.equal(await foldOf(topic, ids.m6), false, 'and not the one the keys were on before');
     await typeX(p);
     await until(async () => !await foldOf(topic, ids.m3), 'x again unfolds it');
-    // A dossier's compact header: the pointer on it gives the dossier the keys, and Return edits its title.
+    // Item 784 (Tony9689/9698/9705, source9707 SPEC N2) supersedes this
+    // item387 Return-to-rename expectation; pointer focus behavior stays held.
     await centre(p, card(ids.root));
     await p.point(card(ids.root) + ' > .stack-head .stack-who', 'move');
     await becomes(at, ids.root, 'the pointer on the dossier\'s compact header puts the keys on the dossier');
     await p.key('Enter');
-    await until(() => p.evaluate(`document.activeElement?.matches?.('.stack-rename-input')`), 'Return edits the hovered dossier\'s title');
-    await p.key('Escape');
-    await until(() => p.evaluate(`!document.querySelector('.stack-rename-input')`), 'Escape cancels it');
+    await until(async () => (await readerOn(p))?.startsWith('Plan the cabin week.'), 'Return replies to the hovered dossier head');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector('.stack-rename-input'))`), false, 'Return does not rename');
+    await closeReader(p, 'laptop');
     // Keys in use under a still pointer: the page scrolls under it, and the keys keep their place.
     await keyTo(p, ids.m5);
     await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.m5))}).scrollIntoView({block:'start'})`);

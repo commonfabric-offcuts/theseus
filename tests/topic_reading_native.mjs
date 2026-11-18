@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import { stackChecks } from './stack_native.mjs';
 import { editChecks } from './message_edit_native.mjs';
 import { pngPixels } from './png-bands.mjs';
+import { visibleReturn784Checks } from './visible_return_784_native.mjs';
 
 const DEVICES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } };
 // A pointer at a phone's widths: a narrow laptop window, or a tablet with a trackpad. open() takes these too; they are
@@ -3188,6 +3189,8 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await visibleReturn784Checks({ check, page, until, control, shot, facts, observations, engine }, { seed });
 
   await stackChecks({ check, until, view, control, shot, facts, observations, engine },
     { seed, open, becomes, centre, tap, press, lit, bar, away, readerOn, closeReader, light, openReader, entry, card, words, DEVICES });
