@@ -28,8 +28,8 @@ export async function imageButtons653({ check, page, press, picture, close, cont
   ];
   const wait = (p, fn, arg, timeout=15000) => p.waitForFunction(fn,arg,{polling:'raf',timeout});
   const ready = async(p,s) => {
-    await p.locator(s).first().scrollIntoViewIfNeeded();
     await wait(p,s=>{const i=document.querySelector(s);return i&&!i.hidden&&i.complete&&i.naturalWidth>0;},s);
+    await p.locator(s).first().scrollIntoViewIfNeeded();
   };
   const geometry = async(p,s) => {
     const value=await p.locator(s).first().evaluate(i=>{const r=i.getBoundingClientRect(),c=getComputedStyle(i);return{width:r.width,height:r.height,fit:c.objectFit,root:parseFloat(getComputedStyle(document.documentElement).fontSize)};});
@@ -38,7 +38,8 @@ export async function imageButtons653({ check, page, press, picture, close, cont
     if(p.touch) assert.ok(value.width>=44-TOUCH_PX&&value.height>=44-TOUCH_PX,'item 653 thumbnail is reachable by touch');
     return value;
   };
-  const opened = async(p,s,key=false) => {
+  const opened = async(p,s,key=false,around=null) => {
+    let immediatelyBefore;
     const src=await p.locator(s).first().getAttribute('src'),route=p.url(),count=p.ctx.pages().length;
     const popup=p.ctx.waitForEvent('page',{timeout:5000});
     const received=popup.then(value=>({value}),error=>({error}));
@@ -49,8 +50,9 @@ export async function imageButtons653({ check, page, press, picture, close, cont
       for(let n=0;n<160&&!at;n++){await p.keyboard.press('Tab');at=await p.locator(s).first().evaluate(e=>document.activeElement===e);}
       assert.equal(at,true,'item 653 native Tab reaches the image');
       assert.equal(await p.locator(s).first().evaluate(e=>e.matches(':focus-visible')),true,'item 653 keyboard ring shows');
+      if(around)immediatelyBefore=await around(p);
       await p.keyboard.press('Enter');
-    }else await press(p,s);
+    }else {if(around)immediatelyBefore=await around(p);await press(p,s);}
     const answer=await received; assert.ok(answer.value,'item 653 thumbnail opens one tab: '+(answer.error?.message??''));
     const tab=answer.value;
     try{
@@ -60,6 +62,8 @@ export async function imageButtons653({ check, page, press, picture, close, cont
       assert.equal(await tab.evaluate(()=>opener===null),true,'no opener');
       assert.equal(p.url(),route,'destination stays exact');assert.equal(p.ctx.pages().length,count+1,'one native gesture opens one tab');
     }finally{await tab.close();}
+    if(around)assert.deepEqual(await around(p),immediatelyBefore,'item 653 activation preserves the immediate writing caret To and destination');
+    return immediatelyBefore;
   };
   const sourceState=p=>p.evaluate(()=>{const f=document.querySelector('#writing-body');return{words:f?.value,caret:f&&[f.selectionStart,f.selectionEnd],to:document.querySelector('#who-chip')?.textContent,url:location.href};});
   const write=async(p,s,text)=>{await press(p,s);await p.keyboard.press('ControlOrMeta+A');await p.keyboard.insertText(text);await p.keyboard.press('Home');await p.keyboard.press('ArrowRight');};
@@ -90,7 +94,7 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           assert.equal(error?.code,'ERR_ASSERTION','original fails a product assertion');assert.match(error.message,/item 653 (image is a 3rem square|verified source shows a thumbnail)/);
           reds.push({shape,scheme,surface:surface.name,error:{name:error.name,message:error.message,stack:error.stack},inputs:Object.fromEntries(Object.entries(before).map(([k,v])=>[k,sha(v)]))});
           console.log('RED item 653 '+shape+' '+scheme+' '+surface.name+': '+error.message);
-        }finally{await close(p);}
+        }finally{await p.unrouteAll({behavior:'wait'});await close(p);}
       }
     }finally{
       for(const [name,bytes]of Object.entries(original)){await writeFile(path.join(root,name),bytes);assert.equal(await readFile(path.join(root,name),'utf8'),bytes,'preview restored exactly');}
@@ -111,8 +115,8 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           const before=await sourceState(p);
           await ready(p,surface.image);await opened(p,surface.image);
           assert.deepEqual(await sourceState(p),before,'thumbnail keeps writing caret To and destination');
-          await opened(p,surface.image,true);
-          assert.deepEqual(await sourceState(p),before,'Return keeps writing caret To and destination');
+          const beforeEnter=await opened(p,surface.image,true,sourceState);
+          observations.push({shape,scheme,surface:surface.name,beforeTab:before,immediatelyBeforeEnter:beforeEnter,afterEnter:await sourceState(p)});
           const thumbnailURL=await p.locator(surface.image).first().getAttribute('src');
           await press(p,'#source-attachments .attachment-open');
           await wait(p,()=>Boolean(document.querySelector('#source-attachments a[download]')));
@@ -120,7 +124,7 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           assert.equal(await p.locator('#source-attachments .attachment-control').count(),0,'explicit Open keeps its passive image and Download');
           await wait(p,url=>item653URLs.revoked.includes(url),thumbnailURL);
           observations.push({shape,scheme,surface:surface.name,revoked:thumbnailURL});
-          assert.deepEqual(await sourceState(p),before,'named Open keeps writing and To');
+          assert.deepEqual(await sourceState(p),beforeEnter,'named Open keeps writing and To');
           await picture(p,'item-653-after-'+surface.name+'-explicit-open');
         }else{
           const words=await p.locator(surface.scope).first().textContent();
@@ -138,17 +142,19 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           }
         }
         observations.push({shape,scheme,surface:surface.name,measured,requests});
-      }finally{await close(p);}
+      }finally{await p.unrouteAll({behavior:'wait'});await close(p);}
     });
   }
-  for(const shape of shapes)for(const scheme of ['light','dark'])for(const state of ['busy','denied','unavailable','read-error','non-image','unknown','empty']){
+  for(const shape of shapes)for(const scheme of ['light','dark'])for(const state of ['busy','denied','unavailable','read-error','digest-error','identity-error','non-image','unknown','empty']){
     await check(`item 653 ${shape} ${scheme} source ${state}: named fallback remains and no stale bytes`,async()=>{
       let release,entered=0;
       const held=new Promise(resolve=>{release=resolve;});
       const surface=surfaces.find(s=>s.name==='source-message');
       const p=await page(shape,scheme,surface.route,facts,async q=>{
         if(state==='empty'||state==='unknown'||state==='non-image')await q.route('**/api/view',async route=>{
-          const req=route.request().postDataJSON();const answer=await route.fetch();
+          const req=route.request().postDataJSON();
+          if(req.name!=='source'||req.args.id!==message)return route.continue();
+          const answer=await route.fetch();
           if(req.name==='source'&&req.args.id===message){const data=await answer.json();
             if(state==='empty')data.attachments=[];
             else for(const a of data.attachments){if(state==='unknown'){delete a.inline;delete a.content_type;}else{a.inline=false;a.content_type='text/plain';}}
@@ -159,6 +165,13 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           const req=route.request().postDataJSON();
           if(req.source_ref?.id!==message)return route.continue();entered++;
           if(state==='busy'){await held;return route.continue();}
+          if(state==='digest-error'||state==='identity-error'){
+            const response=await route.fetch();
+            if(state==='digest-error'){const body=Buffer.from(await response.body());body[0]^=1;return route.fulfill({response,body});}
+            const headers={...response.headers()},descriptor=JSON.parse(headers['x-aim-media']);descriptor.media_id='other-653';
+            headers['x-aim-media']=JSON.stringify(descriptor);return route.fulfill({response,headers});
+          }
+
           if(['denied','unavailable','read-error'].includes(state))return route.fulfill({status:state==='denied'?403:state==='unavailable'?404:500,contentType:'application/json',body:JSON.stringify({error:{message:'Item 653 '+state}})});
           return route.continue();
         });
@@ -176,11 +189,11 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           assert.ok(entered>=1,'busy read actually started');
           observations.push({shape,scheme,state,before,entered});
         }else{
-          if(['denied','unavailable','read-error'].includes(state))await wait(p,()=>document.querySelectorAll('#source-attachments .image-thumb').length===0);
+          if(['denied','unavailable','read-error','digest-error','identity-error'].includes(state))await wait(p,()=>document.querySelectorAll('#source-attachments .image-thumb').length===0);
           assert.equal(await p.locator('#source-attachments .image-thumb').count(),0,'fallback has no image bytes');
           assert.equal(await p.locator('#source-attachments button').count(),state==='empty'?0:1,'named Open remains unless empty');
           await picture(p,'item-653-source-'+state);
-          if(['denied','unavailable','read-error'].includes(state)){
+          if(['denied','unavailable','read-error','digest-error','identity-error'].includes(state)){
             await write(p,'#writing-body','Item 653 fallback writing.');const before=await sourceState(p);
             await press(p,'#source-attachments button');await wait(p,()=>!document.querySelector('#reader-notice').hidden);
             assert.match(await p.locator('#reader-notice').textContent(),/screen.png/,'refusal names its image');
@@ -189,7 +202,7 @@ export async function imageButtons653({ check, page, press, picture, close, cont
           }
           observations.push({shape,scheme,state,entered});
         }
-      }finally{release();await close(p);}
+      }finally{release();await p.unrouteAll({behavior:'wait'});await close(p);}
     });
   }
   for(const shape of shapes)for(const scheme of ['light','dark']){
@@ -214,7 +227,7 @@ export async function imageButtons653({ check, page, press, picture, close, cont
         await press(p,card+' .attachment-open');await p.locator(card+' a[download]').waitFor({state:'visible'});
         await picture(p,'item-653-retained-explicit-open');
         await press(p,'#review-close');assert.equal(await p.locator('#inline-writing-body').inputValue(),'Item 653 newer writing.');
-      }finally{await close(p);}
+      }finally{await p.unrouteAll({behavior:'wait'});await close(p);}
     });
     await check(`item 653 ${shape} ${scheme} Read it here: exact permitted image without topic access`,async()=>{
       const id=`${topic}-lost-${shape}-${scheme}`;
@@ -231,7 +244,7 @@ export async function imageButtons653({ check, page, press, picture, close, cont
         assert.equal(await row.locator('a[href*="topic="]').count(),0,'lost topic never becomes a navigation permission');
         await press(p,'#sent-to-you .attachment-open');await p.locator('#sent-to-you a[download]').waitFor({state:'visible'});
         await picture(p,'item-653-permitted-explicit-open');
-      }finally{await close(p);}
+      }finally{await p.unrouteAll({behavior:'wait'});await close(p);}
     });
   }
   for(const [name,digest]of Object.entries(inputs))assert.equal(sha(await readFile(path.join(root,name))),digest,'frozen source restored: '+name);
