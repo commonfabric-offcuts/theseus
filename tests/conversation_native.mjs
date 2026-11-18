@@ -185,7 +185,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
         await centre(own); await p.point(own); await done(); return;
       }
       if (await folded()) {
-        await centre(`${card} > .message-folded > .folded-author`); await p.point(`${card} > .message-folded > .folded-author`);
+        await centre(`${card} > .message-folded > .folded-words`); await p.point(`${card} > .message-folded > .folded-words`);
         await until(async () => !await folded(), 'a press on the row unfolds the ask');
       }
       const words = `${card} > .message-preview`;

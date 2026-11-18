@@ -67,7 +67,7 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
@@ -823,6 +823,7 @@ function loadedAfter(list, before, last) {
 function placeLine() {
   placeNewLine($('messages'), lineSeq($('messages'), views.line?.seq ?? null), document,
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
+  paintFoldedNames($('messages'), views.messages);
   paintMoreMessages();
 }
 // While the New line says more new messages lie below, it is the one way to

@@ -302,7 +302,14 @@ their acts.
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
   and on its own, it is one row: who wrote it, its line (One line of a
-  message, below), a 👍, and "Folded". The row is all of the card that draws,
+  message, below), a 👍, and "Folded". Consecutive folded messages from one
+  sender show the name on the first alone (item 645); opening a message shows
+  its name again. A different sender, a whole message, a dossier boundary or
+  a separating line starts a new run. Only messages drawn by the current view
+  count: Only new skips settled messages and hidden separator rows, and counts
+  a new folded head even when its dossier is closed. Name grouping runs after
+  the New line is placed, and again whenever the line alone moves or goes.
+  Each folded message still names its sender to a screen reader. The row is all of the card that draws,
   on a phone by touch as on a laptop: nothing of its words, a cut-off message's
   excerpt and its cue included, shows past it (item 546). The 👍 is the message's thumbs-up,
   as its bar's: pressed once given, with the count once anyone has, and a press gives or takes it back
@@ -1133,3 +1140,17 @@ dossier drawn above it. It repeats neither that dossier's cover sheet nor its
 cover pills, even when a later press loads the dossier's first message there.
 The dossier already drawn keeps its cover. A genuinely lone loaded message,
 including a dossier's only loaded reply, keeps its cover pills (merge B3).
+
+Item 645 is held by `tests/stack_native.mjs`, the "reading item 645 folded"
+and "reading item 645 opened" cases in `native-reading` and
+`native-webkit-reading`, at 320, 375, 390 and laptop widths, light and dark.
+The "reading item 645 review Only new", "reading item 645 Only new visible
+folded head", "reading item 645 review New line" and "reading item 645 review
+standalone" cases hold filtering, separator and opening transitions at those
+same sizes and themes. `tests/ui_folded_names.test.mjs` holds the renderer
+boundaries below the browser, including line-only insertion, movement and removal.
+
+`paintFoldedNames(list, messages)` refreshes attribution from the arranged
+structure and its current visibility predicate, without measuring layout or
+changing records. `arrangeStacks` calls it after `on.arranged` has placed the
+page's separators; the page also calls it after a line-only `placeLine` refresh.

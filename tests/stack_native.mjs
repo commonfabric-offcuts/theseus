@@ -7,6 +7,7 @@
 // Chrome for Testing (reader_persistence_native.mjs --reading) and in Safari's
 // engine (webkit_native.mjs --reading). Screenshots are kept as stack-*.png.
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { messagePreview } from '../web/message-preview.mjs';
 import { pngPixels } from './png-bands.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -33,6 +34,216 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
   };
   const dossierTheme = (p, theme) => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
   const dossierFold = (topic, id, on = true) => control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: id, operation_id: `${topic}-${id}-${on}`, args: { folded: on } });
+
+  // Item 645: use the same messages in each state, with sender changes and a
+  // whole card between folded runs. Capture the base before asserting the new rule.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const state of ['folded', 'opened']) await check(`reading item 645 ${state} consecutive sender names at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `sender-645-${state}-${device}-${theme}`;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'The original stays whole.' }],
+        ['a', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First folded words.' }],
+        ['b', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second folded words.' }],
+        ['c', { sender: 'aim-ux', join: true, reply_to: 'root', addressees: [facts.actor], body: 'Another sender keeps its name.' }],
+        ['whole', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'A whole card breaks the folded run.' }],
+        ['d', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'First after the whole card.' }],
+        ['e', { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Second after the whole card.' }],
+      ]);
+      for (const name of ['a', 'b', 'c', 'd', 'e']) await dossierFold(topic, ids[name]);
+      const p = await open(topic, device, topic, ids.root);
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
+      const read = () => p.evaluate(`(()=>{const ids=${JSON.stringify(ids)},c=id=>document.querySelector('#messages .message-card[data-id="'+id+'"]'),
+        visible=e=>!!e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}&&getComputedStyle(e).visibility!=='hidden';
+        return Object.fromEntries(Object.entries(ids).map(([name,id])=>{const e=c(id),a=e.querySelector(':scope > .message-folded > .folded-author');
+          return [name,{folded:e.dataset.folded==='true',name:visible(a)?a.textContent:'',words:e.querySelector(':scope > .message-folded > .folded-words')?.textContent??null,
+            wholeName:visible(e.querySelector(':scope > .message-author'))?e.querySelector(':scope > .message-author').textContent:null}]}))})()`);
+      const before = await read();
+      await centre(p, card(ids.b)); await away(p);
+      await shot(p, `item-645-${state}-${device}-${theme}-folded`);
+      if (state === 'opened') {
+        // Press the words: a suppressed name must not remove the row's target.
+        const target = card(ids.b) + ' > .message-folded > .folded-words';
+        await centre(p, target); await press(p, input, target);
+        await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.folded==='false'`), 'opening the repeated sender shows the whole card');
+        await until(async () => (await view('message_acts', { topic_id: topic })).items.some(x => x.message_id === ids.b && x.acts.folded === false), 'the native unfold is kept in Core');
+        const after = await read();
+        await shot(p, `item-645-opened-${device}-${theme}-whole`);
+        assert.ok(after.b.wholeName?.includes(other), 'opening a message shows its sender name again');
+        assert.equal(after.a.name, other, 'opening its neighbour keeps the first folded sender');
+        assert.equal(after.e.name, '', 'opening elsewhere leaves the other folded run grouped');
+        assert.equal(await readerOn(p), null, 'unfolding opens no Reader');
+      }
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].name), [other,'','aim-ux',other,''], 'only the first of consecutive folded messages from one sender shows its name; a sender change or whole card starts a new run');
+      assert.deepEqual(['a','b','c','d','e'].map(k=>before[k].words), ['First folded words.','Second folded words.','Another sender keeps its name.','First after the whole card.','Second after the whole card.'], 'folded words stay exact and in order');
+      assert.ok(before.root.wholeName?.includes(other) && before.whole.wholeName?.includes(other), 'whole messages retain their names');
+      assert.equal(await p.evaluate(`document.documentElement.scrollWidth>innerWidth+${layoutTolerance.overflowPx}`), false, 'no horizontal overflow beyond the case tolerance of 1 CSS px');
+      observations.push({ name: `item 645 ${state}`, device, theme, before });
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
+
+  // Topic readiness precedes the background conversation read. Wait for its
+  // actual filter and item states before pressing either it or a dossier.
+  const item645ConversationReady = (p, ids) => until(() => p.evaluate(`(()=>{const button=document.querySelector('#conversation-show button');
+    return !!button && button.getClientRects().length>0 && window.fetchesOut===0 && ${JSON.stringify(ids)}.every(id=>{const card=document.querySelector('#messages .message-card[data-id="'+id+'"]');const entry=card?.parentElement?.classList.contains('message-fold')?card.parentElement:card;return !!entry?.dataset.item && entry.dataset.item!=='none'})})()`), 'item 645 conversation filter and item states are drawn after their background reads');
+  // Suppression changes only drawing. Both names stay available to accessibility;
+  // the fixture viewer's display label is You, not its record actor id.
+  const item645Attribution = async (p, ids) => assert.deepEqual(await p.evaluate(`${JSON.stringify(ids)}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return {text:e?.textContent,ariaHidden:e?.getAttribute('aria-hidden')}})`), ids.map(()=>({text:'You',ariaHidden:null})), 'exact viewer attribution remains in every folded row, including suppressed rows');
+
+  // Genuine original page bytes on the same isolated Core fixture, within the
+  // existing own case. No extra runner start or edited screenshot. Every page
+  // closes before exact candidate Build restoration, even on assertion failure.
+  const item645Runtime = async (phase, key, action) => {
+    const receipt = await control({ method: 'item_645_runtime', phase });
+    observations.push({ name: 'item 645 runtime', key, ...receipt });
+    try {
+      if (phase === 'original') {
+        const manifest = JSON.parse(await readFile(new URL('./fixtures/item_645_original_web.json', import.meta.url), 'utf8'));
+        assert.deepEqual(receipt.hashes, manifest.files, 'all original public source bytes match the original source manifest');
+      }
+      await action(receipt);
+    } finally {
+      const restored = await control({ method: 'item_645_runtime', phase: 'restored' });
+      observations.push({ name: 'item 645 runtime', key, ...restored });
+      assert.equal(restored.restored, true);
+      assert.deepEqual(restored.hashes, receipt.candidate_hashes, 'all final candidate public bytes are restored exactly');
+    }
+  };
+  const item645Names = (p, ids, layoutTolerance) => p.evaluate(`${JSON.stringify(ids)}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+  const item645Comparison = async ({ key, device, topic, ids, theme, head, layoutTolerance }) => {
+    const input = device === 'laptop' ? 'laptop' : 'phone';
+    for (const phase of ['original', ...(head && device === 'laptop' && theme === 'light' ? ['wrong-suppression', 'raw-attribution'] : [])]) {
+      await item645Runtime(phase, key, async receipt => {
+        let p;
+        try {
+          p = await open(key + '-' + phase, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+          assert.equal(await p.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true, 'the document runs the selected immutable source build');
+          await item645ConversationReady(p, head ? Object.values(ids) : [ids.root, ids.a, ids.b]);
+          if (!head) await dossierOpen(p, input, ids.root);
+          await dossierTheme(p, theme);
+          await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+          await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), phase + ': Only new is active');
+          const selected = head ? Object.values(ids) : [ids.b];
+          await until(() => p.evaluate(`${JSON.stringify(selected)}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), phase + ': comparison rows are drawn');
+          if (!head) await until(() => p.evaluate(`${JSON.stringify([ids.root,ids.a])}.every(id=>!document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length)`), 'original comparison hides both settled predecessors');
+          await centre(p, card(head ? ids.reply : ids.b)); await away(p);
+          if (phase === 'original') {
+            assert.deepEqual(await item645Names(p, selected, layoutTolerance), head ? ['You','You'] : ['You'], 'original runtime names each visible folded message');
+            await shot(p, key + '-before-on');
+            await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+            await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'original comparison filter is off');
+            await centre(p, card(head ? ids.reply : ids.b)); await away(p); await shot(p, key + '-before-off');
+          } else if (phase === 'wrong-suppression') {
+            assert.deepEqual(await item645Names(p, selected, layoutTolerance), ['You','You'], 'the real source mutation applied and wrongly names the repeated reply');
+            await assert.rejects(async () => assert.deepEqual(await item645Names(p, selected, layoutTolerance), ['You','']), { name: 'AssertionError' }, 'the actual native grouping assertion kills the applied source mutant');
+          } else {
+            await assert.rejects(() => item645Attribution(p, selected), { name: 'AssertionError' }, 'exact raw attribution kills the applied source mutant');
+          }
+          observations.push({ name: 'item 645 comparison control', key, phase, passed: true, stamp: receipt.stamp });
+          assert.deepEqual(p.errors, []);
+        } finally { if (p) await p.close(); }
+      });
+    }
+  };
+
+  // Independent review: Only new hides settled entries through CSS, rather
+  // than entry.hidden. The first row a person can see must name its sender.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    await check(`reading item 645 review Only new visible sender at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const key = `review-645-only-${device}-${theme}`;
+      const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
+      const topic = conversation.topic_id, ids = {};
+      for (const [name, sender, reply] of [['root', 'person', null], ['root-answer', facts.agent, 'root'], ['a', 'person', 'root'], ['b', 'person', 'root'], ['answer', facts.agent, 'a']]) {
+        ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name, topic_id: topic,
+          sender, body: key + ' ' + name, ...(reply ? { reply_to: ids[reply] } : { whole_topic: true }) })).result.message_id;
+      }
+      for (const name of ['a', 'b']) await dossierFold(key, ids[name]);
+      await item645Comparison({ key, device, topic, ids, theme, head: false, layoutTolerance });
+      const p = await open(key, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, [ids.root, ids.a, ids.b]);
+      await dossierOpen(p, input, ids.root); await dossierTheme(p, theme);
+      const visibleName = () => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(card(ids.b) + ' > .message-folded > .folded-author')});
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})()`);
+      await item645Attribution(p, [ids.a, ids.b]);
+      assert.equal(await visibleName(), '', 'before filtering, the repeated sender is suppressed');
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
+      await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(card(ids.root))}).getClientRects().length && !document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length && document.querySelector(${JSON.stringify(card(ids.b))}).getClientRects().length>0`), 'the answered root and first row are hidden and the new row is shown');
+      await centre(p, card(ids.b)); await away(p); await shot(p, key);
+      await item645Attribution(p, [ids.a, ids.b]);
+      assert.equal(await visibleName(), 'You', 'the first visible folded message names its sender after Only new hides its predecessor');
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again');
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a))}).getClientRects().length>0`), 'the first folded row is drawn again');
+      assert.equal(await visibleName(), '', 'restoring the first row suppresses its repeated sender again');
+      await item645Attribution(p, [ids.a, ids.b]);
+      await centre(p, card(ids.b)); await away(p); await shot(p, key + '-off');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 Only new visible folded head at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const key = `head-645-only-${device}-${theme}`;
+      const conversation = await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent });
+      const topic = conversation.topic_id, ids = {};
+      for (const name of ['root', 'reply']) ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name,
+        topic_id: topic, sender: 'person', body: key + ' ' + name,
+        ...(name === 'reply' ? { reply_to: ids.root } : { whole_topic: true }) })).result.message_id;
+      for (const id of Object.values(ids)) await dossierFold(key, id);
+      await item645Comparison({ key, device, topic, ids, theme, head: true, layoutTolerance });
+      const p = await open(key, device, topic, ids.root, 'window.holdReads=true', '/?conversation=w1');
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      await item645ConversationReady(p, Object.values(ids)); await dossierTheme(p, theme);
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='true'"), 'Only new is active');
+      await until(() => p.evaluate(`${JSON.stringify(Object.values(ids))}.every(id=>document.querySelector('#messages .message-card[data-id="'+id+'"]').getClientRects().length>0)`), 'Only new draws both the folded head and reply');
+      await centre(p, card(ids.reply)); await away(p); await shot(p, key);
+      const names = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(names, ['You', ''], 'the drawn folded head supplies the sender for its adjacent folded reply');
+      await item645Attribution(p, Object.values(ids));
+      await centre(p, '#conversation-show button'); await press(p, input, '#conversation-show button');
+      await until(() => p.evaluate("document.querySelector('#conversation-show button').getAttribute('aria-pressed')==='false'"), 'Only new is off again for the drawn head');
+      await item645Attribution(p, Object.values(ids));
+      const restored = await p.evaluate(`${JSON.stringify(Object.values(ids))}.map(id=>{const e=document.querySelector('#messages .message-card[data-id="'+id+'"] > .message-folded > .folded-author');return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(restored, ['', 'You'], 'turning the filter off hides the closed head and names the first visible folded reply');
+      await centre(p, card(ids.reply)); await away(p); await shot(p, key + '-off');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 review New line separates folded runs at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `review-645-line-${device}-${theme}`;
+      const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Words across the New line ' + name, read: name === 'a' }]));
+      for (const id of Object.values(ids)) await dossierFold(topic, id);
+      const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
+      await dossierTheme(p, theme);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).nextElementSibling?.dataset.line==='new'`), 'the New line separates unread b from read a');
+      await centre(p, card(ids.b)); await away(p); await shot(p, topic);
+      const names = await p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(names, [other, '', other], 'a separating New line starts a named folded run');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+    await check(`reading item 645 review standalone regroup after opening at ${device} ${theme}`, async () => {
+      const layoutTolerance = { paintedNamePx: 1, overflowPx: 1 };
+      const topic = `review-645-alone-${device}-${theme}`;
+      const ids = await seed(topic, ['a', 'b', 'c'].map(name => [name, { sender: other, join: true, addressees: [facts.actor], body: 'Standalone folded words ' + name }]));
+      for (const id of Object.values(ids)) await dossierFold(topic, id);
+      const p = await open(topic, device, topic, ids.c, 'window.holdReads=true');
+      const input = device === 'laptop' ? 'laptop' : 'phone'; await dossierTheme(p, theme);
+      const names = () => p.evaluate(`['c','b','a'].map(k=>{const e=document.querySelector('#messages .message-card[data-id="'+${JSON.stringify(ids)}[k]+'"] > .message-folded > .folded-author');
+        return e&&e.getBoundingClientRect().width>${layoutTolerance.paintedNamePx}&&e.getBoundingClientRect().height>${layoutTolerance.paintedNamePx}?e.textContent:''})`);
+      assert.deepEqual(await names(), [other, '', ''], 'standalone folded messages share a name in drawn order');
+      const target = card(ids.b) + ' > .message-folded > .folded-words';
+      await centre(p, target); await press(p, input, target);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card(ids.b))}).dataset.folded==='false'`), 'the middle row opens');
+      assert.deepEqual(await names(), [other, '', other], 'opening the middle message starts a new named folded run below');
+      await centre(p, card(ids.b)); await away(p); await shot(p, topic);
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 
   await check('reading dossier look overlaps visible cards by 12px without covering their words, including wrapped roots', async () => {
     for (const device of Object.keys(DEVICES)) for (const wrapped of [false, true]) {
@@ -268,7 +479,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
         // On its author, at the row's start: in a dossier "Folded" is said to a screen reader only (item 471).
         await centre(p, card(ids.folded));
         const before = await above();
-        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-author');
+        await press(p, device, card(ids.folded) + ' > .message-folded > .folded-words');
         await until(async () => !(await look()).folded.folded, `${at}: a press on the row unfolds it`);
         await until(() => foldedInCore(ids.folded, false), `${at}: Core keeps the unfold`);
         for (const theme of ['light', 'dark']) {
@@ -5292,7 +5503,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await control({ method: 'stack_act', sender: facts.actor, kind: 'message.fold', message_id: ids.three, operation_id: topic + '-fold-three', args: { folded: true } });
     await becomes(async () => (await folded(p, ids.three)).row, true, 'three is folded');
     await centre(p, card(ids.three));
-    await p.point(card(ids.three) + ' > .message-folded > .folded-author', 'move');
+    await p.point(card(ids.three) + ' > .message-folded > .folded-words', 'move');
     // A folded row keeps its bar in a dossier, which offers Unfold (item 473 over 471's barless fold).
     await until(async () => (await lit(p)).includes(ids.three) && await bar(p) !== null, 'the pointer lights the folded row, with its bar');
     await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'its bar offers Unfold');
@@ -5665,7 +5876,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     // Taking the thumbs-up back unfolds nothing. In a dossier the folded row lights with its bar, which offers Unfold
     // (item 473 over 471's barless fold), and shows its own 👍 once given (item 471): that 👍 takes it back.
     await centre(p, card(ids.two));
-    await p.point(card(ids.two) + ' > .message-folded > .folded-author', 'move');
+    await p.point(card(ids.two) + ' > .message-folded > .folded-words', 'move');
     await until(async () => (await lit(p)).includes(ids.two) && await bar(p) !== null, 'the pointer lights reply two\'s row, with its bar');
     await until(() => p.evaluate(`(b=>Boolean(b&&!b.hidden&&b.querySelector('[data-act=fold]:not([hidden])')?.getAttribute('aria-label')==='Unfold'))(document.querySelector('.message-bar'))`), 'reply two\'s bar offers Unfold');
     await p.point(card(ids.two) + ' > .message-folded > .folded-thumb');
@@ -5855,7 +6066,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await centre(p, thumb);
       if (device === 'laptop') {
         // The pointer on the row lights it, and its bar sits clear of the row's 👍, so the 👍 can still be pressed.
-        await p.point(card(ids.one) + ' > .message-folded > .folded-author', 'move');
+        await p.point(card(ids.one) + ' > .message-folded > .folded-words', 'move');
         await until(async () => (await lit(p)).includes(ids.one) && await bar(p) !== null, 'laptop: the row lights, with its bar');
         assert.equal(await p.evaluate(`(()=>{const b=document.querySelector('.message-bar').getBoundingClientRect(),t=document.querySelector(${JSON.stringify(thumb)}).getBoundingClientRect();
           return b.right>t.left&&b.left<t.right&&b.bottom>t.top&&b.top<t.bottom})()`), false, 'laptop: the bar does not cover the row\'s 👍');
@@ -6060,7 +6271,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
       await atWidth(p, device, width);
       await fullyOpen(p, device, ids);
       const at = `${device} ${width}px`;
-      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-author`;
+      const header = id => `${card(id)} > .message-author > .author-name`, row = id => `${card(id)} > .message-folded > .folded-words`;
       const nothingElse = async what => {
         assert.equal(await readerOn(p), null, `${at}: ${what} opens no Reader`);
         assert.equal(await p.evaluate(`Boolean(document.querySelector('.color-picker'))`), false, `${at}: nor the color picker`);
