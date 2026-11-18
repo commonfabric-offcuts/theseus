@@ -890,14 +890,24 @@ function paintViews(kind) {
       });
       card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
       // An agent's name on its card opens its color picker instead of the message.
+      // Decide a source drag from its pointer travel, before the browser has
+      // created any selection. A return to the starting point is still a drag.
+      let sourcePress = null;
+      card.addEventListener('pointerdown', event => {
+        const words = event.target.closest?.('.message-preview');
+        sourcePress = event.button === 0 && words?.parentElement === card ?
+          { id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false } : null;
+      });
+      const sourceTravel = event => {
+        if (sourcePress?.id === event.pointerId && Math.hypot(event.clientX - sourcePress.x, event.clientY - sourcePress.y) > 4) sourcePress.dragged = true;
+      };
+      card.addEventListener('pointermove', sourceTravel);
+      card.addEventListener('pointerup', sourceTravel);
+      card.addEventListener('pointercancel', () => { if (sourcePress) sourcePress.dragged = true; });
       const open = card.onclick;
       card.onclick = event => {
         if (event?.target?.closest?.('#reader')) return;
-        // Live94's native button did not offer a text-selection gesture.
-        // If a browser still leaves source words selected on this div, the
-        // release click must not turn that gesture into a Reader opening.
-        const selection = window.getSelection(), words = card.querySelector(':scope > .message-preview');
-        if (selection?.rangeCount && !selection.isCollapsed && words?.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+        if (event?.detail > 0 && sourcePress?.dragged) return;
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).

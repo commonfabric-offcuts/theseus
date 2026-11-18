@@ -33,13 +33,13 @@
   },
   {
     "item": 721,
-    "act": "Source drag selection is unavailable and never opens a composer",
+    "act": "Source drag selects text and never opens Reader",
     "key": "selection",
     "break": [
       [
-        "web/aim.css",
-        ".message-card>:not(#reader){-webkit-user-select:none;user-select:none}",
-        ".message-card>:not(#reader){-webkit-user-select:text;user-select:text}"
+        "web/app.mjs",
+        "if (event?.detail > 0 && sourcePress?.dragged) return;",
+        "if (false) return; // item 721 source drag mutant"
       ]
     ],
     "check": {

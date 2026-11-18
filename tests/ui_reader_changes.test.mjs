@@ -13,6 +13,9 @@ class Element {
   set textContent(value) { this.text = value; this.children = []; }
 }
 globalThis.document ??= { createElement: tag => new Element(tag), createTextNode: text => new Element('#text', text) };
+// Reader.show captures the page's position even when its full surface needs
+// no scroll restoration. Supply that browser interface in this Node fixture.
+globalThis.window = { scrollX: 0, scrollY: 0 };
 
 function reader() {
   const nodes = new Map();
@@ -21,7 +24,7 @@ function reader() {
   const r = Object.assign(Object.create(Reader.prototype), {
     // A Reader always has its callbacks; these offer no other destination.
     $, mode: 'reply', positions: new Map(), layoutInstance: 'i1', viewToken: 0, callbacks: {},
-    dialog: { open: true }, sourceBody: { scrollTop: 0, focus() {} },
+    card: null, dialog: { open: true }, sourceBody: { scrollTop: 0, focus() {} },
     notice() {}, disarm() {}, paintOrigin() {}, drawAttachments() {}, drawEditor() {}, paintPending() {}, applyLayout() {},
     drawSource: body => shown.push(body),
   });
@@ -66,4 +69,25 @@ test('the Reader tells its composer whose writing each show is', () => {
   assert.equal(told.length, 3, 'told on every show');
   assert.equal(told[1], told[0], 'the same page again is the same writing');
   assert.notEqual(told[2], told[0], 'another page is another writing');
+});
+
+test('item 721 the real visibility fallback moves the same writing only when its card hides or disconnects', () => {
+  for (const disconnected of [false, true]) {
+    const { r } = reader();
+    const sessions = r.sessions = { reply: { draft: { body: 'Exact retained writing' } } };
+    const field = r.field = { value: 'Exact retained writing', focus() { this.focused = true; } };
+    let shown = true, returned = 0;
+    const card = r.card = { isConnected: true, removeAttribute() {}, setAttribute(name, value) { this[name] = value; } };
+    r.presentation = { replyCard: card };
+    r.dialog = { open: true, getClientRects: () => shown ? [{}] : [], close() { this.open = false; }, removeAttribute() {}, showModal() { this.open = true; this.modal = true; } };
+    r.home = { parent: { insertBefore(dialog) { assert.equal(dialog, r.dialog); returned++; } }, next: null };
+    r.keepReplyVisible();
+    assert.equal(returned, 0, 'visible in-card writing stays where it is');
+    if (disconnected) card.isConnected = false; else shown = false;
+    r.keepReplyVisible();
+    assert.equal(returned, 1); assert.equal(r.card, null); assert.equal(r.presentation.replyCard, null);
+    assert.equal(r.dialog.modal, true); assert.equal(card.role, 'button');
+    assert.equal(r.sessions, sessions); assert.equal(r.field, field); assert.equal(field.value, 'Exact retained writing');
+    assert.equal(field.focused, true, 'the fallback keeps typing in that same field');
+  }
 });

@@ -10,12 +10,55 @@ const SHORT = 'Source words stay here. A second sentence can be quoted explicitl
 const WRITING = 'Exact reply writing. Select these words.';
 
 export async function item721Compose(h) {
-  const { page, press, until, picture, close, control, facts, engine, measured, contexts } = h;
+  const { page: createPage, press, until, picture, close, control, facts, engine, measured, contexts } = h;
+  const trails = new WeakMap();
+  const page = async (...args) => {
+    const p = await createPage(...args), trail = { engine, item: 721, kind: 'request-render-trail', shape: args[0], scheme: args[1], requests: [], responses: [], failed: [] };
+    const pending = new Set();
+    trails.set(p, { trail, pending });
+    p.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) trail.requests.push({ url: request.url(), method: request.method(), body: new URL(request.url()).pathname === '/api/command' ? request.postDataJSON() : undefined }); });
+    p.on('requestfailed', request => { trail.failed.push({ url: request.url(), error: request.failure() }); });
+    p.on('response', response => {
+      if (!new URL(response.url()).pathname.startsWith('/api/')) return;
+      const record = { url: response.url(), status: response.status() }; trail.responses.push(record);
+      // Successful streaming GETs do not finish until the page closes. Image
+      // publication and commands are finite boundaries, and errors carry bodies.
+      if (response.request().method() === 'GET' && response.status() < 400) return;
+      const finished = (async () => {
+        const error = await response.finished();
+        if (error) record.error = String(error);
+        else if (response.status() >= 400 || response.request().method() !== 'GET') record.body = await response.text();
+      })();
+      pending.add(finished.then(() => ({ ok: true }), error => ({ ok: false, error: String(error) })));
+    });
+    await p.evaluate(() => {
+      window.__item721Trail = [];
+      const record = kind => {
+        const reader = document.querySelector('#reader');
+        window.__item721Trail.push({ kind, open: reader.open, modal: reader.matches(':modal'), dock: reader.hasAttribute('data-card-reply'),
+          images: document.querySelector('#writing-attachments').textContent, notice: document.querySelector('#reader-notice').textContent });
+      };
+      new MutationObserver(() => record('render')).observe(document.querySelector('#reader'), { subtree: true, childList: true, characterData: true, attributes: true });
+      for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'click']) document.addEventListener(type, event => {
+        window.__item721Trail.push({ kind: type, trusted: event.isTrusted, pointerType: event.pointerType, x: event.clientX, y: event.clientY,
+          target: event.target.id || event.target.className, selected: getSelection().toString() });
+      }, true);
+      record('initial');
+    });
+    return p;
+  };
+  const receipt = async p => {
+    const { trail, pending } = trails.get(p);
+    const diagnostics = await Promise.all(pending);
+    measured.push({ ...trail, diagnostics, renders: await p.evaluate(() => window.__item721Trail) });
+    assert.ok(diagnostics.every(row => row.ok), 'all diagnostic response bodies retained');
+  };
   let failureSerial = 0;
   const preserveFailure = async (error, phase) => {
     const pages = [...contexts].flatMap(context => context.pages());
+    const receipts = await Promise.allSettled(pages.filter(p => trails.has(p)).map(receipt));
     const captures = await Promise.allSettled(pages.map(p => picture(p, `item-721-failure-${++failureSerial}-${phase}`)));
-    const failed = captures.filter(result => result.status === 'rejected').map(result => result.reason);
+    const failed = [...receipts, ...captures].filter(result => result.status === 'rejected').map(result => result.reason);
     if (failed.length) throw new AggregateError([error, ...failed], 'Original native failure and diagnostic capture failures');
     throw error;
   };
@@ -71,8 +114,11 @@ export async function item721Compose(h) {
     const b = await at.boundingBox();
     assert.ok(b && b.width && b.height, 'native Reply source target has a box');
     const x = b.x + Math.min(30, b.width / 2), y = b.y + Math.min(10, b.height / 2);
-    if (p.touch) await p.touchscreen.tap(x, y);
-    else { await p.mouse.move(x + 3, y + 2); await p.mouse.move(x, y); }
+    // Close returns focus to the source and can leave that SAME card lit.
+    // Its second tap opens Reader; only a first lighting tap belongs here.
+    const lit = await p.evaluate(s => document.querySelector(s).classList.contains('lit'), selector);
+    if (p.touch && !lit) await p.touchscreen.tap(x, y);
+    else if (!p.touch) { await p.mouse.move(x + 3, y + 2); await p.mouse.move(x, y); }
     await until(p, () => !!document.querySelector('.message-bar:not([hidden]) [data-act="reply"]')?.getClientRects().length, 'hover or tap offers actual Reply');
   }
   async function reply(p, id, keys = false) {
@@ -85,6 +131,11 @@ export async function item721Compose(h) {
     } else await press(p, '.message-bar [data-act="reply"]');
     await opened(p);
   }
+  async function coordinationOpen(p, id) {
+    const toggle = `#messages .reply-stack[data-stack="${id}"] > .stack-toggle`;
+    for (let n = 0; n < 3 && await p.locator(toggle).getAttribute('data-state') !== 'open'; n++) await press(p, toggle);
+    assert.equal(await p.locator(toggle).getAttribute('data-state'), 'open', 'actual coordination dossier opened for Reply');
+  }
   async function write(p, text = WRITING) {
     await p.locator('#writing-body').scrollIntoViewIfNeeded();
     await press(p, '#writing-body'); await p.keyboard.insertText(text);
@@ -96,6 +147,8 @@ export async function item721Compose(h) {
     const b = await target.boundingBox();
     await p.mouse.move(b.x + 3, b.y + 9); await p.mouse.down();
     await p.mouse.move(b.x + Math.min(180, b.width - 3), b.y + 9, { steps: 12 }); await p.mouse.up();
+    await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await receipt(p);
     return p.evaluate(() => getSelection().toString());
   }
   async function runtime(phase, action) {
@@ -118,7 +171,7 @@ export async function item721Compose(h) {
   const oracle = (key, observed) => {
     if (key === 'dock') assert.equal(observed.dock, true, 'item 721 dock oracle');
     if (key === 'whole') assert.equal(observed.whole, true, 'item 721 whole oracle');
-    if (key === 'selection') assert.ok(observed.select === 'none' && observed.selected === '' && !observed.open, 'item 721 selection oracle');
+    if (key === 'selection') assert.ok(observed.selected.length > 0 && !observed.open, 'item 721 selection oracle: a source drag selects words and never opens Reader');
     if (key === 'title') assert.ok(observed.title && observed.close, 'item 721 title oracle');
     if (key === 'addressing') assert.equal(observed.addressing, true, 'item 721 addressing oracle');
     if (key === 'writing') assert.ok(observed.dock && observed.body === WRITING, 'item 721 writing oracle');
@@ -131,6 +184,7 @@ export async function item721Compose(h) {
     await until(p, s => !!document.querySelector(s), 'isolated source', card(data.id));
     if (key === 'selection') {
       const selected = await dragSource(p, data.id);
+      if (suffix === '-mutant') await until(p, () => document.querySelector('#reader').matches(':modal'), 'applied drag-owner mutant actually opens Reader');
       const observed = { ...await snapshot(p, data.id), selected };
       await picture(p, `item-721-${key}${suffix}`); return observed;
     }
@@ -162,9 +216,16 @@ export async function item721Compose(h) {
     return observed;
   }
 
-  // Candidate bytes are observed first. The red controls below cannot replace
-  // or silently repair the approved product before its own first observation.
-  await check('item 721 approved source first: exact source and whole dock', async () => {
+  // Immutable approved bytes are the red before the corrected control. The
+  // photographed original failures and all per-file source hashes stay kept.
+  await check('item 721 approved938 drag red then corrected source control', async () => {
+    await runtime('approved', async () => {
+      const observed = await observe('selection', 'stacked', 'light', '-approved-red');
+      assert.throws(() => oracle('selection', observed), /item 721 selection oracle/, 'approved938 fails the actual source drag contract');
+    });
+    await runtime('restored', async () => oracle('selection', await observe('selection', 'stacked', 'light', '-corrected')));
+  });
+  await check('item 721 corrected source: exact source and whole dock', async () => {
     await runtime('restored', async () => {
       const observed = await observe('whole', 'stacked', 'light', '-approved-first');
       oracle('dock', observed); oracle('whole', observed);
@@ -218,6 +279,13 @@ export async function item721Compose(h) {
       await p.keyboard.press('ArrowRight'); await p.keyboard.press('Enter'); await p.keyboard.insertText('New line.');
       const exact = WRITING + '\nNew line.';
       assert.equal(await p.locator('#writing-body').inputValue(), exact, 'Return remains a writing newline');
+      const chosenInCard = await dragSource(p, data.id);
+      assert.ok(chosenInCard.length > 0, 'source words can be selected while writing in the card');
+      const afterDrag = await snapshot(p, data.id);
+      assert.equal(afterDrag.dock, true, 'a source drag never expands the in-card Reader');
+      assert.equal(afterDrag.body, exact, 'a source drag preserves the same writing');
+      await picture(p, 'item-721-source-selected-with-reply');
+      await p.locator('#reader-close').scrollIntoViewIfNeeded();
       await press(p, '#reader-close'); await shut(p);
       assert.equal(await p.evaluate(() => document.querySelector('#reader').parentElement.id), '', 'closed Reader returns to original body home');
       await reply(p, data.id, shape === 'stacked');
@@ -245,15 +313,47 @@ export async function item721Compose(h) {
       assert.equal(await p.locator('#writing-body').inputValue(), exact);
       measured.push({ engine, shape, scheme, item: 721, state: 'normal', before, after: await snapshot(p, data.id), tolerance: ITEM721_TOLERANCE });
       await picture(p, 'item-721-retained-after-arrival');
+      const changedBody = LONG + '\n\nChanged source words.';
+      const changed = await control({ method: 'agent_edit', operation_id: data.topic + '-edit', message_id: data.id, sender: facts.agent, body: changedBody });
+      assert.equal(changed.status, 'committed', 'real Core source revision changed');
+      await until(p, s => document.querySelector(s).textContent.includes('Changed source words.'), 'changed source rendered on its card', card(data.id) + ' > .message-preview');
+      assert.equal((await snapshot(p, data.id)).dock, true, 'source revision keeps the existing bar in its card');
+      assert.equal(await p.locator('#writing-body').inputValue(), exact, 'source revision retains exact writing');
+      await picture(p, 'item-721-source-changed');
       await press(p, '#reader-close'); await shut(p);
       await light(p, data.id); await p.keyboard.press('Enter'); await opened(p);
       assert.equal(await p.evaluate(() => document.querySelector('#reader').matches(':modal')), true, 'explicit Return keeps the full Reader route');
       await picture(p, 'item-721-explicit-reader');
+      const chooseReader = async () => {
+        const words = p.locator('#source-body > .md-block').first();
+        await words.scrollIntoViewIfNeeded();
+        const b = await words.boundingBox();
+        await p.mouse.move(b.x + 3, b.y + 9); await p.mouse.down();
+        await p.mouse.move(b.x + Math.min(180, b.width - 3), b.y + 9, { steps: 12 }); await p.mouse.up();
+        const selected = await p.evaluate(() => getSelection().toString());
+        assert.ok(selected.length > 0, 'ordinary Reader still permits native source selection');
+        return selected;
+      };
+      const copiedWords = await chooseReader();
+      await p.keyboard.press(modifier + '+c');
+      const beforeCopy = await p.locator('#writing-body').inputValue();
+      await press(p, '#writing-body'); await p.keyboard.press(modifier + '+ArrowDown');
+      assert.equal(await p.evaluate(() => document.querySelector('#writing-body').selectionStart), beforeCopy.length, 'native keys reach the end of the retained writing');
+      await p.keyboard.insertText('\nCopy: '); await p.keyboard.press(modifier + '+v');
+      const copied = beforeCopy + '\nCopy: ' + copiedWords;
+      await until(p, text => document.querySelector('#writing-body').value === text, 'ordinary native Copy and Paste preserve exact source words', copied);
+      await picture(p, 'item-721-explicit-copy');
+      const quotedWords = await chooseReader();
+      await until(p, () => !document.querySelector('#quote-selection').hidden, 'ordinary Quote selection remains offered');
+      await press(p, '#quote-selection');
+      await until(p, text => document.querySelector('#writing-body').value === text, 'ordinary explicit Quote preserves exact writing and source words', copied + '\n\n> ' + quotedWords + '\n\n');
+      await picture(p, 'item-721-explicit-quote');
+      await receipt(p);
       await close(p);
     });
     for (const state of ['empty', 'image-choice', 'send-image', 'busy', 'error', 'refused', 'read-only', 'recovery']) {
       await check(`item 721 ${state} ${shape} ${scheme}: actual control and HTTP boundary`, async () => {
-        const data = await seed('state-' + state, SHORT);
+        const data = await seed('state-' + state, SHORT, state === 'send-image');
         const p = await page(shape, scheme, '/?topic=' + data.topic), commands = [], responses = [];
         p.on('request', request => { if (request.url().endsWith('/api/command')) commands.push(request.postDataJSON()); });
         p.on('response', async response => { if (response.url().endsWith('/api/command')) responses.push({ request: response.request().postDataJSON(), status: response.status() }); });
@@ -281,6 +381,7 @@ export async function item721Compose(h) {
           }, [facts.instance_id, facts.actor, data.id, data.topic]);
           assert.equal(installed, true, 'scoped unsupported saved image copy was actually written and read back');
         }
+        if (state === 'send-image') await coordinationOpen(p, data.id);
         await reply(p, data.id);
         oracle('dock', await snapshot(p, data.id));
         if (state === 'read-only' || state === 'recovery') {
@@ -323,7 +424,14 @@ export async function item721Compose(h) {
           } else {
             await until(p, () => document.querySelector('#writing-attachments .image-choice .image-open span')?.textContent === 'item721.png · Ready', 'real image publication is ready', undefined, 20000);
             await picture(p, 'item-721-image-ready');
+            await press(p, '#agent-coordination-show button');
+            await until(p, () => document.querySelector('#reader').matches(':modal'), 'hidden source moves the SAME ready image and writing to full Reader');
+            assert.equal(await p.locator('#writing-body').inputValue(), WRITING);
+            assert.equal(await p.locator('#writing-attachments .image-choice .image-open span').textContent(), 'item721.png · Ready');
+            await picture(p, 'item-721-image-hidden-fallback');
             await press(p, '#reader-close'); await shut(p);
+            await press(p, '#agent-coordination-show button');
+            await coordinationOpen(p, data.id);
             await reply(p, data.id);
             await until(p, () => document.querySelector('#writing-attachments .image-choice .image-open span')?.textContent === 'item721.png · Ready', 'same image owner retained on reopening');
             assert.equal(await p.locator('#writing-body').inputValue(), WRITING);
@@ -382,6 +490,7 @@ export async function item721Compose(h) {
           } finally { release(); }
         }
         await picture(p, 'item-721-state-' + state);
+        await receipt(p);
         measured.push({ engine, shape, scheme, item: 721, state, commands, responses, observed: await snapshot(p, data.id) });
         await close(p);
       });

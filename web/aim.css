@@ -1206,9 +1206,10 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 /* Item 721 preview: the Reader's own phone reply bar, in its source card.
    The source stays whole in the page above the shared reply bar;
    the full Reader's layout and the phone composer keep their existing rules. */
-/* Live94 used native buttons. Keep their source-text selection behavior on
-   the preview's div, without applying it to the Reader or actual writing. */
+/* Source drags select words; the card's pointer owner prevents their release
+   from opening Reader. The embedded Reader and writing keep their own rules. */
 .message-card>:not(#reader){-webkit-user-select:none;user-select:none}
+.message-card>.message-preview{-webkit-user-select:text;user-select:text}
 .message-card[data-card-reply]{max-height:none!important;overflow:visible;cursor:default}
 #messages .message-card[data-card-reply]{display:block;height:auto;min-height:0}
 #messages .message-card[data-card-reply]>#reader{display:block!important}

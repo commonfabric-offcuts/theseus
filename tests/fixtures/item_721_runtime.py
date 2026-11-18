@@ -22,7 +22,7 @@ class Item721Runtime:
         destination = self.root / ("item721-" + phase)
         if phase == "restored":
             build = self.candidate
-        elif phase in ("baseline", "held"):
+        elif phase in ("baseline", "held", "approved"):
             manifest = json.loads((folder / "item_721_sources.json").read_text())[phase]
             archive = folder / manifest["archive"]
             assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
