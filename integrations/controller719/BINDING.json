@@ -1,0 +1,15 @@
+{
+  "base": "0fb4b9f634db92a990be40c50f799a855f071004",
+  "producer": {
+    "forward_plan.py": "1d63c691ae83285cc112df8d1352e2f7599acdc9c10bff7e622fb5e129c80931",
+    "compose_forward.py": "d02724fe65e60bf084b82fd532c14139fcec5323fa8f0a01f8f44aad4a3b4de3",
+    "compose_groups.py": "8de720f633adc74d55e60117ae67f596762167768ed8dd9fa8196c39716b504b",
+    "compose_inventory.cjs": "1906308eeb001a66d44655760c4136873ad462a26f2efe12d670eb0287319d95",
+    "compose_instrument.cjs": "bc9e6a5c42fd124db65edd887e919293e7bca2a8ba40bb38df61c02b40970a2d",
+    "compose_deadline_775.mjs": "3a2ac81d7002b89ab22de1fbbd3017716ec951bda0e9f3984227cbfddb42ca45",
+    "compose_worker_775.mjs": "8f618de667df4f4a0be502cb4c4b39cd25b689ffcb8eaa3c1989dfb4eb40871f",
+    "run_compose_group.py": "9ee606169207bed5ddc121949d2d483719701f9779d603984781e5b6fd8301bb"
+  },
+  "status": "prepared, not installed",
+  "stdlib_only_embedded": true
+}

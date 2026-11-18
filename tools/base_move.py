@@ -402,7 +402,14 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
     if grouped:
         from tools import grouped_admission
         anchor = {k: source[k] for k in ('run', 'attempt', 'tested_merge', 'base_at_run', 'controller')}
-        compose_proof = grouped_admission.validate(source['compose'], judgment, git, github, repository, tested, anchor, mode='fullChecks')
+        if document(source['compose']).get('version') == 2:
+            from tools import forward_admission
+            try:
+                compose_proof = forward_admission.validate(source['compose'], judgment, git, github, repository, tested, anchor, source['files'])
+            except forward_admission.f.ForwardRefused as error:
+                raise Refused(str(error))
+        else:
+            compose_proof = grouped_admission.validate(source['compose'], judgment, git, github, repository, tested, anchor, mode='fullChecks')
     inventory = document(source['inventory'])
     require(isinstance(inventory, dict) and set(inventory) == set(release_check.REQUIRED), 'incomplete source inventory')
     for name, rows in inventory.items():
@@ -637,6 +644,11 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                              'compose_union': union775, 'shards': union775['receipts']}
             require(canonical(by_name['native-compose']) == canonical(expected_step), 'source genuine 775 collector aggregate differs')
             ran = [n for n in ran if n != 'native-compose'] + ['native-compose']
+            if compose_proof.get('mode') == 'fresh-one-run':
+                for row in union775['raw_false']:
+                    if not (row.get('expectedFailure') is True and row.get('mutationCaught') is True):
+                        words(row.get('error'))
+                        reds.append({'step':'native-compose','case':ci.identity(row),'observed':row})
             if not compose_proof['passed']:
                 raw_steps.append({k: expected_step[k] for k in ('name', 'passed', 'exit', 'counts')})
         if partitioned:

@@ -12,7 +12,7 @@ new Function('exports', 'module', process.binding('natives')['internal/deps/acor
 const ref = process.argv[2], output = process.argv[3];
 assert.match(ref, /^(input-train49|input-train50|input-train51|HEAD|[0-9a-f]{40})$/);
 const root='/enumeration';
-const hashes={}, transforms=[], setup=[], rows=[];
+const hashes={}, transforms=[], setup=[], rows=[], phases=[];
 const git=(rev,p)=>cp.execFileSync('git',['show',rev+':'+p]);
 const read = (p,encoding) => {
   p=p instanceof URL ? url.fileURLToPath(p) : p;
@@ -23,7 +23,7 @@ const read = (p,encoding) => {
 };
 const context=vm.createContext({ Buffer, URL, console: {log(){}}, __record: (phase,engine,name)=>{
   assert.equal(typeof name,'string'); rows.push({phase,engine,name:`${engine} ${name}`});
-}, __setup: x=>setup.push(x), process: {argv:['node','harness','/never-chrome','/evidence',''],env:{AIM_PLAYWRIGHT_CORE:'/never-playwright'}} });
+}, __phase: (phase,engine)=>phases.push(phase+':'+engine), __setup: x=>setup.push(x), process: {argv:['node','harness','/never-chrome','/evidence',''],env:{AIM_PLAYWRIGHT_CORE:'/never-playwright'}} });
 const modules=new Map();
 const fakeControl=async x=>{setup.push(x);return {status:'committed',agent:'fake-agent',actor:'fake-actor',origin:'http://enumeration.invalid',instance_id:'enumeration',result:{message_id:'fake-message'}}};
 function synthetic(id, values){return new vm.SyntheticModule(Object.keys(values), function(){for(const [k,v]of Object.entries(values))this.setExport(k,v)}, {context,identifier:id})}
@@ -31,10 +31,19 @@ const builtins={
  'node:assert/strict':{default:assert}, 'node:path':{default:path},
  'node:url':{fileURLToPath:url.fileURLToPath}, 'node:crypto':{createHash:crypto.createHash},
  'node:fs/promises':{readFile:async(p,e)=>read(p,e),mkdir:async()=>{},writeFile:async()=>{},appendFile:async()=>{}},
- 'node:child_process':{spawn:()=>{throw Error('enumeration forbids spawn')}, execFileSync:(cmd,args)=>{
-   assert.equal(cmd,'git'); assert.equal(args.length,2); if(args[0]==='rev-parse' && args[1]==='HEAD')return cp.execFileSync('git',['rev-parse',ref]).toString(); assert.equal(args[0],'show');
-   const m=args[1].match(/^([0-9a-f^]+):([a-zA-Z0-9_./-]+)$/); assert.ok(m); return git(m[1],m[2]);
+ 'node:child_process':{spawn:()=>{throw Error('enumeration forbids spawn')}, execFileSync:(cmd,args,options)=>{
+   assert.equal(cmd,'git');
+   const hash=/^[0-9a-f]{40}$/;
+   const object=/^[0-9a-f]{40}(?:\^\{tree\}|:web)$/;
+   if(args[0]==='rev-parse' && args.length===2 && args[1]==='HEAD')return cp.execFileSync('git',['rev-parse',ref],options?.encoding?{encoding:options.encoding}:{});
+   const allowed=(args[0]==='show' && args.length===2 && /^[0-9a-f^]+:[a-zA-Z0-9_./-]+$/.test(args[1])) ||
+     (args[0]==='ls-tree' && args.length===5 && args[1]==='-rz' && hash.test(args[2]) && args[3]==='--' && args[4]==='web/') ||
+     (args[0]==='rev-parse' && args.length===2 && object.test(args[1])) ||
+     (args[0]==='show' && args.length===4 && args[1]==='-s' && args[2]==='--format=%P' && hash.test(args[3]));
+   assert.ok(allowed,'enumeration refuses unreviewed Git read');
+   return cp.execFileSync('git',args,options?.encoding?{encoding:options.encoding}:{});
  }},
+ 'node:vm':{default:{runInNewContext:()=>{throw Error('enumeration forbids nested VM execution')}}},
  'node:module':{createRequire:()=>()=>{throw Error('enumeration forbids playwright load')}}
 };
 function edits(src,changes){for(const c of changes.sort((a,b)=>b.start-a.start)){transforms.push({start:c.start,end:c.end,reason:c.reason});src=src.slice(0,c.start)+c.text+src.slice(c.end)}return src}
@@ -59,7 +68,7 @@ await seed();
 for (const [phase, before] of PHASES) {
  activePhase=phase.name;
  if (before) await before();
- for (engine of ENGINES) await phase();
+ for (engine of ENGINES) { __phase(phase.name,engine); await phase(); }
 }`,reason:'enumerate loops only; no launch, close or pass assertion'});
    }
    assert.equal(changes.length,4); src=edits(src,changes);
@@ -71,5 +80,5 @@ for (const [phase, before] of PHASES) {
 }
 (async()=>{const m=await load(root+'/tests/reader_compose_native.mjs'); await m.evaluate({timeout:30000});
  const keys=rows.map(x=>JSON.stringify([x.phase,x.engine,x.name]));assert.equal(new Set(keys).size,keys.length,'duplicate identity');
- fs.writeFileSync(output,JSON.stringify({parser:{node:process.version,acorn:acorn.version},kind:'enumeration-only-no-native-execution',ref,rows,hashes,transforms,setup},null,2)+'\n');console.log(JSON.stringify({ref,cases:rows.length,phases:Object.fromEntries([...new Set(rows.map(x=>x.phase+':'+x.engine))].map(p=>[p,rows.filter(x=>x.phase+':'+x.engine===p).length]))}));
+ fs.writeFileSync(output,JSON.stringify({parser:{node:process.version,acorn:acorn.version},kind:'enumeration-only-no-native-execution',ref,rows,phases,hashes,transforms,setup},null,2)+'\n');console.log(JSON.stringify({ref,cases:rows.length,phases:Object.fromEntries([...new Set(rows.map(x=>x.phase+':'+x.engine))].map(p=>[p,rows.filter(x=>x.phase+':'+x.engine===p).length]))}));
 })().catch(e=>{console.error(e);process.exitCode=1});

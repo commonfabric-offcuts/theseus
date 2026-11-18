@@ -1,0 +1,23 @@
+--- a/.github/workflows/verdict.yml
++++ b/.github/workflows/verdict.yml
+@@ -518,6 +518,20 @@
+             refuse "the controller's own commit $GITHUB_WORKFLOW_SHA is not a commit on the default branch $DEFAULT_BRANCH"
+           fi
+           echo "ready=true" >> "$GITHUB_OUTPUT"
++      - uses: actions/setup-node@v4
++        if: steps.controller.outputs.ready == 'true'
++        with:
++          node-version: '26'
++      - name: Authenticate every original producer archive
++        if: steps.merge.outputs.ready == 'true' && steps.controller.outputs.ready == 'true'
++        shell: bash
++        run: |
++          set -euo pipefail
++          if ! python3 -I -S controller/tools/authenticate_forward.py --producer "$OUT/producer.json" \
++            --shards "$OUT/shards" --aggregate "$OUT/release-check" --originals "$OUT/originals" \
++            --out "$OUT/archive-authentication.json"; then
++            echo "original producer archive authentication failed" >> "$OUT/refusals"
++          fi
+       - name: The base's last three runs, by GitHub's record
+         id: known
+         if: steps.merge.outputs.ready == 'true' && steps.controller.outputs.ready == 'true'

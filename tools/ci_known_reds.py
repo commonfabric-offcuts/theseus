@@ -629,8 +629,20 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
         require(all(release_check.ran_whole(step) for step in combined if step['name'] in NATIVE),
                 'scoped native step did not run whole')
     by_name = {s['name']: s for s in combined}
+    fresh = any(j.get('compose_group') for j in provenance['plan'])
+    forward_receipts = {}
+    if fresh:
+        require(summary.get('scoped') is None and expected==set(policy['required']), 'fresh compose requires full obligation')
+        from tools import compose_forward as forward
+        from tools.forward_admission import PRODUCER
+        producer={name:hashlib.sha256((ROOT/'tools'/name).read_bytes()).hexdigest() for name in PRODUCER}
+        try:
+            forward_receipts, forward_step = forward.f779_validate(candidate_root,commit,provenance,shards,run,expected,producer)
+        except forward.ForwardRefused as error:
+            raise Refused(str(error))
+        require(by_name.get('native-compose')==forward_step, 'fresh compose aggregate differs')
     plan = plan_steps(provenance['plan'])
-    require(Counter(s for shard in plan for s in shard) == Counter(expected), 'incomplete or duplicated shard plan')
+    require(Counter(s for shard in plan for s in shard if not (fresh and s=='native-compose')) == Counter(s for s in expected if not (fresh and s=='native-compose')), 'incomplete or duplicated shard plan')
     entries = provenance['shards']
     require(len(entries) == len(plan), 'missing shard provenance')
     artifacts = [s['artifact'] for s in entries]
@@ -673,6 +685,13 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
                     'producer profile differs from measured runtime: ' + runtime)
         require(raw.get('passed') is all(s.get('passed') is True for s in steps), 'inconsistent raw shard verdict')
         for step in steps:
+            if fresh and step['name']=='native-compose':
+                verified=forward_receipts[artifact]
+                require(step.get('compose_receipt')==verified and step.get('passed') is verified['passed']
+                        and step.get('exit')==verified['exit'] and step.get('counts')=={'tests':len(verified['results']),'failed':sum(r['passed'] is False for r in verified['results'])}, 'fresh compose shard differs')
+                observed.append(('native-compose',verified['results'],profile,raw['checkout']))
+                ran.append('native-compose')
+                continue
             require(step == by_name[step['name']], 'aggregate step differs from original shard')
             ran.append(step['name'])
             if step['name'] in NATIVE:
@@ -687,7 +706,7 @@ def _validate_attempt(summary_path, provenance_path, shards, baseline, base_root
                 elif step['name'] == 'wake-replay':
                     replay_evidence(step, out, traffic)
         require(raw['required'] == summary['required'], 'shard required plan differs')
-    require(Counter(ran) == Counter(expected), 'incomplete whole-run coverage')
+    require(Counter(s for s in ran if not (fresh and s=='native-compose')) == Counter(s for s in expected if not (fresh and s=='native-compose')) and (not fresh or ran.count('native-compose')==len(forward_receipts)), 'incomplete whole-run coverage')
     require(unique(summary.get('failed'), 'combined failures') ==
             {s['name'] for s in combined if s['passed'] is not True}, 'combined failure union differs')
     require(summary.get('passed') is all(s.get('passed') is True for s in combined), 'inconsistent raw aggregate verdict')

@@ -43,7 +43,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # differs from event base"), the controller (.github/: the workflows and the policy they read) and the service's data
 # migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
-DEPLOY_TOOL = ("tools/grouped_admission.py", "tools/compose_collector_775.py", "tools/compose_inventory_779.cjs", "tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
+DEPLOY_TOOL = ('integrations/controller719/ci_known_reds.py', 'integrations/controller719/verdict.yml', 'integrations/controller719/BINDING.json', 'integrations/controller719/ci_known_reds.py.patch', 'integrations/controller719/verdict.yml.patch', 'tools/forward_plan.py', 'tools/compose_forward.py', 'tools/forward_admission.py', 'tools/authenticate_forward.py', 'tools/compose_groups.py', 'tools/compose_inventory.cjs', 'tools/compose_instrument.cjs', 'tools/compose_deadline_775.mjs', 'tools/compose_worker_775.mjs', 'tools/run_compose_group.py', "tools/grouped_admission.py", "tools/compose_collector_775.py", "tools/compose_inventory_779.cjs", "tools/deploy.py", "tools/release_check.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
                "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py")
 CONTROLLER = ".github/"
@@ -874,6 +874,27 @@ def combine_scoped_units(docs, plan, receipts):
                           'passed': counts['tests'] > 0 and all(
                               p.get('passed') is True and p['counts'].get('tests', -1) >= 0 for p in parts),
                           'shards': parts})
+    compose_jobs = [j for j in plan if j.get('compose_group')]
+    if compose_jobs:
+        from tools import compose_forward as forward
+        offered, groups = [], []
+        for job in compose_jobs:
+            matches = [(d,r) for d,r in zip(docs,receipts) if r.get('shard',{}).get('name')==job['name']]
+            if len(matches)!=1:
+                raise ScopedRefused('fresh compose missing/duplicate job')
+            doc, _ = matches[0]
+            require(doc.get('compose_group')==job['compose_group'] and len(doc['steps'])==1, 'fresh compose job differs')
+            receipt = doc['steps'][0]['compose_receipt']
+            group = receipt['planned_group']
+            require(job['compose_group']=={'id':group['id'],'source':group['source']}, 'fresh group descriptor differs')
+            require(forward.f779_digest(group['cases'])==group['cases_sha256'], 'fresh compose planned digest differs')
+            groups.append(group); offered.append(receipt)
+        require(sum(s['name']=='native-compose' for s in steps)==len(offered), 'fresh compose extra execution')
+        try:
+            union=forward.f779_fold(groups,offered)
+        except forward.ForwardRefused as error:
+            raise ScopedRefused(str(error))
+        steps=[s for s in steps if s['name']!='native-compose']+[forward.f779_step(union)]
     names = [step['name'] for step in steps]
     if len(names) != len(set(names)):
         raise ScopedRefused('a step ran in two shards: %s' % sorted(n for n in set(names) if names.count(n) > 1))
