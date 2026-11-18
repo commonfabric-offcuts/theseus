@@ -297,6 +297,13 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
     headNew, fresh: headNew ? 0 : stack.replies.filter(unread).length };
 }
 
+// The header's explicit New act takes one message, newest sequence first.
+// The page's retained unread predicate owns the candidates; never sort source order.
+export function newestNew(stack, unread) {
+  return [stack.head, ...stack.replies].reduce((latest, item) =>
+    unread(item) && (!latest || item.seq > latest.seq) ? item : latest, null);
+}
+
 // A dossier's cover (item 624), on its name's terms: its first message's,
 // which Core sends with the position of every message in it, so a stack of
 // replies whose first message is above the loaded page shows it under its

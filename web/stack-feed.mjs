@@ -159,9 +159,9 @@ export class StackFeed {
   // reply(id, card): the Reader on a message, the cursor in the reply (a title bar's Reply). menu(item, anchor):
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
-    refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
+    newest = () => {}, refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
     colorOf = () => null, clock = () => Date.now(), doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -260,7 +260,7 @@ export class StackFeed {
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
-      arranged: () => this.arranged(),
+      arranged: () => this.arranged(), newest: (stack, mark) => this.newest(stack, mark),
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
