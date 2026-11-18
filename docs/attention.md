@@ -181,7 +181,13 @@ from the same index, and `waiting_on_me` counts each topic once. An ask does
 not change the topic's state. Topic reads keep `waiting_on` as the said list
 (the one `topic.update` edits, so the state form never turns an ask into a
 said wait) and add `asks`: `[{actor_id, message_id, by, since_ms}]`, one per
-person asked, in actor order. `workspace_topics` items carry both. A change of
+person asked, in actor order. For question navigation (372), `topic` and
+`workspace_topics` expand the actual reader's `asks` to every eligible message
+ask in the topic; other people's asks remain oldest-ask summaries. The
+outcome light counts those same eligible identities, including all open
+Conversation asks, rather than counting `topic_waiting` rows. See
+[waiting-questions-372.md](waiting-questions-372.md) for all scopes and defaults.
+`workspace_topics` items carry both. A change of
 kind `waiting` reaches each person a topic starts or stops waiting on.
 
 In the web app a reply to someone tells them unless the writer ticks Ask,

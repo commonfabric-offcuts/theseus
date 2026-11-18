@@ -22,7 +22,7 @@
 // the page when there is room; it reads only while it shows. What it shows
 // is drawn for one place and one scope: when either changes, what was shown
 // goes at once, and a read for a place or scope left behind draws nothing.
-import { paintChanged, paintMarks, questionOf, landsOnUnread } from './topic-navigation.mjs';
+import { paintChanged, paintMarks, questionOf, nextQuestionOf, landsOnUnread } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
@@ -537,6 +537,15 @@ export class ThingsRail {
     const topicRow = (row, sub = null) => {
       if (!row.topic) return element(doc, 'span', { className: 'row' }, row.title, sub);
       const link = this.placeLink({ kind: 'topic', id: row.topic, ...(row.item && questionOf(row.item, reader) ? { message: questionOf(row.item, reader) } : {}) }, row.title);
+      link.onclick = event => {
+        if (!plainClick(event) || !this.handles) return;
+        event.preventDefault();
+        const unread = landsOnUnread(event.target, event);
+        const message = !unread && row.item ? nextQuestionOf(row.item, reader) : null;
+        const target = { kind: 'topic', id: row.topic, ...(unread ? { at: 'unread' } : message ? { message } : {}) };
+        if (!this.wide?.matches) this.close(false);
+        this.handles.open(target, row.title, link);
+      };
       if (row.item) paintMarks(link, row.item, reader);
       if (sub) link.append(sub);
       if (row.topic === here) link.setAttribute('aria-current', 'page');

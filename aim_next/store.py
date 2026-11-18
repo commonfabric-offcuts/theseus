@@ -864,7 +864,7 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         # A topic names the message that reopened or started it only to a reader who may see it (whispers.py).
         items = [redact_topic(db, actor, row) for row in rows]
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
-        waits = self._waits_by_topic(db, [item["id"] for item in items])
+        waits = self._waits_by_topic(db, [item["id"] for item in items], reader=actor)
         work = work_by_topic(db, waits, actor)
         for item in items:
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]

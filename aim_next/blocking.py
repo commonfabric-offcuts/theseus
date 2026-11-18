@@ -106,7 +106,7 @@ class Blocking:
                    (message["id"], workspace_id, message["topic_id"], message["seq"], kind, str(ref)))
         return {"kind": kind, "ref": ref}
 
-    def _ask_waits(self, db, topic, message, member):
+    def _ask_waits(self, db, topic, message, member, include_archived=False):
         """Whether message, an ask in topic, still waits on member: the one rule that clears an ask, read where it is kept.
 
         The topic waits on member from an ask (its topic_waiting row) only while some ask there does, so none
@@ -116,9 +116,11 @@ class Blocking:
         conversation each ask's own wait is kept (conversation_waits). In a topic an ask an open record still
         needs waits (outcome_asks.held_ask), one a settled record answered does not, and otherwise it waits
         until member writes there on the record, replies to it by whisper to whoever asked (item 307), or gives
-        it a 👍 that answered it (their thumb row)."""
+        it a 👍 that answered it (their thumb row). Explicit archived-place metadata may
+        include_archived; blocking and outcome counts keep the default exclusion."""
         if (message["intent"] != "ask" or member == message["author_id"] or member not in json.loads(message["addressees"])
-                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND " + WAITS_FROM_AN_ASK,
+                or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND "
+                              + ("ask_message_id IS NOT NULL" if include_archived else WAITS_FROM_AN_ASK),
                               (topic["id"], member)).fetchone() is None):
             return False
         if is_conversation(topic):
