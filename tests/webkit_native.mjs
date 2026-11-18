@@ -230,8 +230,7 @@ const control = data => new Promise((resolve, reject) => {
 const results = [], observations = [], hashes = {};
 for (const filename of [...(mode==='--reading'?['tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
-  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
-  'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs',
+  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py', 'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs', 'tests/outline_stars_native.mjs', 'tests/outline_stars_oracle.mjs', 'web/outline-dossiers.mjs', 'web/outline-rail.mjs', 'web/rails.css', 'aim_next/stacks.py', 'aim_next/validation.py',
   'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
   'tests/team_invite_native.mjs', 'web/agent-invite.mjs', 'aim_next/invite.py',
   'tests/health_native.mjs', 'web/health.mjs', 'web/health-light.mjs', 'aim_next/health.py',
@@ -261,7 +260,8 @@ try {
     assert.equal(connected, true, 'WebKit runs connected pages only');
     let touch = ['--device', '--invite'].includes(mode), scheme = null;
     const initScripts = [];
-    const errors = [], calls = [], events = [];
+    const errors = [], calls = [], events = [], responses = [];
+    let recordResponses = false;
     const attach = opened => {
       // WebKit reports each read a page had out when it navigates away as a page
       // error ("... due to access control checks"), though the page handles
@@ -283,6 +283,12 @@ try {
         if (leaving && /^Fetch API cannot load \S+ due to access control checks\.$/.test(error.stack?.split('\n')[0] ?? '')) events.push({ method: 'leaving page read cancelled', message: error.message });
         else errors.push({ message: error.message, stack: error.stack });
       });
+      opened.on('response', async response => {
+        if (!recordResponses || !response.url().startsWith(facts.origin+'/api/')) return;
+        let payload; try {payload=JSON.parse(response.request().postData()??'null');} catch {return;}
+        if (!payload?.name) return;
+        try {responses.push({payload,url:response.url(),status:response.status(),body:await response.json(),at:Date.now()});} catch { /* a navigation can give up its response */ }
+      });
       opened.on('request', request => {
         if (!request.url().startsWith(facts.origin + '/api/')) return;
         let payload; try { payload = JSON.parse(request.postData() ?? 'null'); } catch { payload = null; }
@@ -291,16 +297,17 @@ try {
       return opened;
     };
     let pw = attach(await (await contextWith(touch)).newPage());
-    // The Chrome harness's intercept, release and fail, for the invite mode: a request the handler picks reaches the
+    // The Chrome harness's intercept, release and fail, for invite and rail modes: a request the handler picks reaches the
     // server, and its answer is held from the page (a response-stage hold), then given to it or lost as a reset connection.
     let intercept = null;
     const held = [];
-    if (mode === '--invite') await pw.route(facts.origin + '/api/**', async route => {
+    const interceptPage = async opened => {if (['--invite','--rail'].includes(mode)) await opened.route(facts.origin + '/api/**', async route => {
       let payload; try { payload = JSON.parse(route.request().postData() ?? 'null'); } catch { payload = null; }
       if (!(intercept && await intercept(payload))) return route.continue();
       const response = await route.fetch();
       held.push({ payload, route, response });
-    });
+    });};
+    await interceptPage(pw);
     const evaluate = expression => read(pw, `(async()=>(${expression}))()`);
     let touchAt = null;
     // The CDP calls the listed checks make, each done with WebKit's own input.
@@ -356,6 +363,7 @@ try {
         if (touch) return {};
         const at = pw.url(), size = pw.viewportSize();
         const moved = attach(await (await contextWith(true)).newPage());
+        await interceptPage(moved);
         await moved.setViewportSize(size); await moved.emulateMedia({ colorScheme: scheme });
         for (const script of initScripts) await moved.addInitScript(script);
         // Before its first navigation the page is blank and simply opens in the touch context.
@@ -468,8 +476,9 @@ try {
         await until(() => evaluate(`!document.querySelector(${JSON.stringify(earlierRow)})`), `${selector} shows whole from its earlier message's row`);
       }
     };
-    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
-      intercept: handler => { assert.equal(mode, '--invite', 'intercept is offered in the invite mode'); intercept = handler; },
+    const p = { send, evaluate, close, box, point, key, unfold, calls, errors, events, held, network: [], responses, pw, selectionPaint, selectionWithinHover: true,
+      intercept: handler => { assert.ok(['--invite','--rail'].includes(mode), 'intercept is offered in invite and rail modes'); intercept = handler; },
+      recordResponses: () => {recordResponses=true;},
       release: entry => entry.route.fulfill({ response: entry.response }),
       fail: entry => entry.route.abort('connectionreset'),
       open: async index => {
@@ -555,7 +564,7 @@ try {
   } else if (mode === '--pipeline') {
     await pipelineChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--rail') {
-    await railChecks({ check, page, until, control, view, facts, shot });
+    await railChecks({ check, page, until, control, view, facts, shot, observations, evidencePath });
     await setAsideChecks({ check, page, until, control, view, facts, shot });
   } else if (mode === '--new-line') {
     // A page at the size and address the check names, in light. With lose, the

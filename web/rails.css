@@ -177,3 +177,12 @@ a.things-name[href]{color:var(--accent)}
 
 .ol-waiting{align-self:stretch;text-align:left;margin:0 .55rem .35rem;padding:.15rem .4rem;min-height:2rem;background:var(--soft);border:1px solid var(--line);border-radius:.45rem;color:var(--ink)}
 .ol-waiting:hover{border-color:var(--accent)}
+
+/* Starred dossiers (715): a quiet child line under its actual topic. The
+   warning-text token is readable on both theme papers; the star is a mark, not a button. */
+.ol-dossiers{margin:0 0 .15rem .9rem;min-width:0}
+.ol-dossier{display:block;min-height:44px;padding:.55rem .5rem;color:var(--warn);font-size:.85rem;text-decoration:none;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border-radius:.4rem}
+.ol-dossier:hover{background:var(--soft)}
+.ol-dossiers>button{display:block;min-height:44px;padding:.35rem .5rem;color:var(--accent);background:transparent;border:0;text-align:left;font-size:.8rem;max-width:100%}
+.ol-dossiers>[role=status]{display:block;font-size:.8rem;overflow-wrap:anywhere}
+.ol-dossiers:empty{margin-bottom:0}

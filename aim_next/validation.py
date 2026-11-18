@@ -151,7 +151,7 @@ VIEWS = {
     "outcome_checks": {"workspace_id"},
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
-    "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"cursor", "limit"},
+    "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
 

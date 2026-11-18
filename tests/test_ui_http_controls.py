@@ -265,6 +265,33 @@ class SourceFixtureControls(ImagesFixtureControls):
     test_reset_waits_for_a_save_the_server_is_still_handling = None
     test_a_save_that_comes_in_during_a_reset_waits_and_meets_its_revision = None
 
+    def test_item715_save_fault_refuses_only_saves_then_restores_exact_destination(self):
+        source = self.ready["sources"][1]
+        authority = self.authority()
+        envelope = {
+            "v": 1, "instance_id": self.ready["instance_id"], "kind": "draft.save",
+            "operation_id": "item715-controls-save", "target": {"draft_id": "item715-controls-draft"},
+            "expected": {"draft_revision": 0, "authority": {
+                key: authority[key] for key in ("authority_id", "authority_epoch")}},
+            "args": {"source_ref": source, "topic_id": "t1", "generation": "item715-controls-generation",
+                     "body": "Exact original writing — retained"}}
+        before = self.control("item715_save_fault", enabled=True)
+        self.assertTrue(before["enabled"])
+        status, refused = self.http("/api/command", envelope)
+        self.assertEqual(status, 503, "the installed fault must refuse an actual draft-save request")
+        self.assertEqual(refused["error"]["code"], "DATABASE_BUSY")
+        state = self.view("editor_state", {"source_ref": source, "topic_id": "t1"})
+        self.assertIsNone(state["draft"], "the refused save records no draft; reads still work")
+        restored = self.control("item715_save_fault", enabled=False)
+        self.assertEqual(restored["refused"], before["refused"] + 1)
+        self.assertFalse(restored["enabled"])
+        status, receipt = self.http("/api/command", envelope)
+        self.assertEqual((status, receipt["status"]), (200, "committed"))
+        state = self.view("editor_state", {"source_ref": source, "topic_id": "t1"})
+        self.assertEqual(state["draft"]["body"], envelope["args"]["body"])
+        self.assertEqual(state["source_ref"], source)
+        self.assertEqual(state["destination"], {"topic_id": "t1"})
+
     def test_the_agent_starts_from_a_message_naming_what_it_has_seen(self):
         message = self.control("agent_message", operation_id="controls-question", body="Which name?")["result"]["message_id"]
         first = self.control("source_start", operation_id="controls-a", message_id=message, title="Naming", body="First")
