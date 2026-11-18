@@ -67,12 +67,14 @@ import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
-import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries } from './reply-stacks.mjs';
+import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
 import { StackFeed } from './stack-feed.mjs';
+import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
 import { readerSteps } from './stack-order.mjs';
 import { headerClick } from './reply-stacks.mjs';
+import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { formatWords } from './message-format.mjs';
 import { shell } from './rails.mjs';
@@ -508,6 +510,8 @@ function changed(editor) {
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
 function noteRead() {
+  if (unreadLandingBusy) return;
+  if ($('main').inert) return;
   if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
   const source = registry.current?.source;
@@ -551,10 +555,15 @@ async function present(presentation) {
   else {
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
+    let dossierError = null;
+    try { await readReaderDossier(presentation, (name, args) => api.view(name, args, { readClass: 'foreground' })); }
+    catch (error) { dossierError = error; }
+    if (!registry.isCurrent(presentation)) return;
     revokeMedia(); reader.presentation = presentation;
     delete $('reader').dataset.discovered;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
+    else if (dossierError) reader.notice(['Dossier name could not be read. The message and your writing are kept.', dossierError]);
     const shown = presentation.source.source_ref;
     if (presentation.mark && !presentation.sourceUnavailable && shown.kind === 'message') {
       marks.learn(shown.id, presentation.mark.mark_revision, { topicId: presentation.source.topic_id, seq: presentation.source.seq });
@@ -819,6 +828,7 @@ function loadedAfter(list, before, last) {
 function placeLine() {
   placeNewLine($('messages'), lineSeq($('messages'), views.line?.seq ?? null), document,
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
+  paintFoldedNames($('messages'), views.messages);
   paintMoreMessages();
 }
 // While the New line says more new messages lie below, it is the one way to
@@ -975,12 +985,19 @@ function stackMessages() { feedOf().arrange(); }
 // The page's reply stacks and what the person does to them, made with the first messages.
 function feedOf() {
   stackFeed ??= new StackFeed({ list: $('messages'), messages: () => views.messages, viewer: bootstrap.actor, instanceId: bootstrap.instance_id,
-    authority: () => registry.runtime.current, send: envelope => api.command(envelope),
+    authority: () => registry.runtime.current,
+    // The page's own act, once Core answers it, tells the Reader's neighbours whether it could have moved them (item 426).
+    send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet') });
+    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
+    // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
+    // On a phone its menu offers the title bar's Reply and Move below More first, as the glyphs fold into it (first).
+    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: [...first, ...messageMenuItems(item, null, anchor)], label: 'This message', sheet: true }),
+    // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
+    colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
 }
 // The topic's feed, its Notebook and its Team, drawn or not, with any other
@@ -1045,6 +1062,8 @@ function paintAgentColors() {
     const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) paintCardColor(card, item, bootstrap.actor, agentShown);
   }
+  // A dossier's folder wears its first poster's colour (item 477).
+  paintFolderColors($('messages'));
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
   participantsPanel?.paint();
 }
@@ -1255,8 +1274,10 @@ function paintReaderStar() {
   const button = $('reader-star'), item = readerFeedItem();
   button.hidden = !item;
   if (!item) return;
-  const starred = Boolean(stackFeed.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me';
-  button.textContent = starred ? '★' : '☆';
+  const starred = Boolean(stackFeed.actsOf(item.id, item).starred), words = starred ? 'Unstar' : 'Star for me', glyph = starred ? '★' : '☆';
+  // Its text is replaced only when it changes: Safari sends no click for a press whose text left the page before the
+  // release, and a repaint held for a press runs at that release (press-hold.mjs).
+  if (button.textContent !== glyph) button.textContent = glyph;
   button.setAttribute('aria-pressed', String(starred));
   button.setAttribute('aria-label', words); button.title = words;
 }
@@ -1278,17 +1299,60 @@ function paintReaderAside() {
   button.hidden = !offer;
   if (!offer) return;
   const words = `${offer.below ? 'Bring back above More' : 'Move below More'}: ${offer.count} ${offer.count === 1 ? 'message' : 'messages'}`;
-  button.querySelector('.aside-count').textContent = String(offer.count);
+  // The number kept where it has not changed, as the star's glyph is (paintReaderStar).
+  const count = button.querySelector('.aside-count'), shown = String(offer.count);
+  if (count.textContent !== shown) count.textContent = shown;
   button.setAttribute('aria-pressed', String(offer.below));
   button.setAttribute('aria-label', words); button.title = words;
 }
-// The Reader's title names the dossier its message is in (item 561), as the
-// dossier's tab does (StackFeed.dossierName): only for a message of this topic
-// the page's stacks hold; another topic's message, a Notebook page and a message
-// opened alone keep their own titles. Painted again when the stacks are.
+// The loaded feed owns its titles. An unloaded Reader source has one scoped
+// lookup, refreshed with acts and neighbors, never a second feed/history cache.
+// Fence every await on both the source and the newest lookup so a late answer
+// cannot rename a newer Reader or undo a later name/join.
+let dossierRead = 0;
+async function readReaderDossier(presentation, read, current = () => true) {
+  const lookup = ++dossierRead, accessEpoch = listAccessEpoch;
+  const source = presentation?.source, id = source?.source_ref?.id;
+  if (!presentation || presentation.sourceUnavailable || source.source_ref.kind !== 'message' ||
+      source.topic_id !== topic?.id || views.messages.has(id) && stackFeed?.dossierName(id)) return true;
+  const admitted = () => lookup === dossierRead && current() && accessEpoch === listAccessEpoch &&
+    !topicUnavailable && registry.isSourceCurrent(presentation);
+  const answer = checkedView(await read('stack_positions', { topic_id: source.topic_id, message_ids: [id] }), bootstrap.instance_id);
+  if (!admitted()) return false;
+  const position = answer.items.find(item => item.message_id === id)?.stack_position;
+  if (answer.topic_id !== source.topic_id || !position?.root_id) throw Error('The dossier identity could not be confirmed.');
+  let name = position.name?.text || null;
+  if (!name && (position.root_id !== id || position.has_other_messages)) {
+    let root = source;
+    if (position.root_id !== id) {
+      const page = checkedView(await read('topic_messages', { topic_id: source.topic_id, message_ids: [position.root_id] }), bootstrap.instance_id);
+      if (!admitted()) return false;
+      root = page.items.find(item => item.id === position.root_id);
+      if (!root) throw Error('The dossier first message could not be confirmed.');
+    }
+    name = messagePreview(root);
+  }
+  registry.current.dossierName = name;
+  registry.current.dossierPosition = position;
+  return true;
+}
+// Item 550 retains the source dossier while the feed cannot name it. A scoped
+// item 655 answer, including a cleared name, takes precedence while current.
 function readerDossierName(source) {
   const ref = source?.source_ref;
-  return stackFeed && !topicUnavailable && ref?.kind === 'message' && source.topic_id === topic?.id ? stackFeed.dossierName(ref.id) : null;
+  if (ref?.kind !== 'message' || source.topic_id !== topic?.id) return null;
+  const drawnName = stackFeed && !topicUnavailable ? stackFeed.dossierName(ref.id) : null;
+  if (drawnName) return drawnName;
+  const p = registry.current, loaded = views.messages.get(ref.id), position = loaded?.stack_position;
+  // A later loaded position must not revive metadata from its former dossier.
+  if (!topicUnavailable && p?.source === source && p.dossierPosition) {
+    return !loaded || position && position.root_id === p.dossierPosition.root_id &&
+      position.name_revision === p.dossierPosition.name_revision &&
+      position.at?.acts <= p.dossierPosition.at?.acts ? p.dossierName : null;
+  }
+  const dossier = source.dossier;
+  if (!dossier) return null;
+  return dossier.name?.text || (dossier.alone ? '' : messagePreview(dossier.first)) || null;
 }
 // The cover of that dossier (item 624), on the same terms: the Reader shows it as one line above the message.
 function readerDossierCover(source) {
@@ -1299,9 +1363,11 @@ function paintReaderTitle() {
   const p = registry?.current;
   if (reader?.dialog?.open && p?.source && !p.sourceUnavailable) reader.paintTitle(p.source);
 }
+// A dossier holding a message the reader starred stays above More (item 635): the button shows as ever, and a
+// press says why under it, moving nothing.
 function asideFromReader() {
   const offer = readerAside();
-  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false });
+  if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false, at: $('reader-aside') });
 }
 // The Reader's 👍 beside Send: the loaded card's item when there is one, which
 // the page keeps current, else what the message's source said.
@@ -1674,19 +1740,63 @@ function listPage(kind, more = false) {
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
 }
-// The New line's "More new below": older pages, one after another, until the
-// line's message's card is loaded or no older page is left; then that
-// message takes the focus, with the line in its place below it. A read that
-// moves nothing on (a refusal, or a review pending) ends it.
-async function loadToUnread() {
-  const loaded = () => entries($('messages')).find(child => Number(child.dataset.seq) === views.line?.seq);
-  while (views.line && !loaded() && views.olderCursor !== null) {
+// Older pages, one after another, until the message wanted() names ({id},
+// or none) is loaded or no older page is left; its entry, or null. A read
+// that moves nothing on (a refusal, or a review pending) ends it.
+async function loadUntil(wanted) {
+  const loaded = () => entries($('messages')).find(child => wanted() && child.dataset.id === wanted().id) ?? null;
+  while (wanted() && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
-  const entry = loaded();
-  if (entry) opened(reveal(entry)).focus();
+  return loaded();
+}
+// The New line's "More new below": the line's message read in; then it takes
+// the focus, with the line in its place below it.
+async function loadToUnread() {
+  return landUnreadMessage(views.line);
+}
+// What a topic's unread count leads to (item 613, docs/attention.md): the
+// oldest message still unread for the reader, as Core finds it by the rule
+// the count keeps, read in however far back it is, and on to its dossier's
+// first message (its stack_position's root), so the dossier is drawn whole
+// rather than from the message; its dossier open, its earlier-messages row
+// expanded as far as it, the message whole, brought into view and given the
+// focus, so it is plainly on the screen. Reading it there settles it, as any
+// card read on screen, and the count goes with it.
+async function landOnUnread() {
+  // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
+  if (shell.drawer?.isOpen()) shell.drawer.close();
+  return landUnreadMessage(views.oldestUnread);
+}
+let unreadLanding = 0, unreadLandingBusy = false;
+// Both explicit ways to read the oldest unread message earn the same view
+// and the same revision-fenced mark clear. Capture before any page loads:
+// another device renewing the mark while they run must keep its newer mark.
+async function landUnreadMessage(wanted) {
+  const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
+  const current = () => request === unreadLanding && !registry.disposed;
+  // Pagination can briefly put another unread card on screen on the way to
+  // this one. Those transient positions are not a person's reading place.
+  unreadLandingBusy = true;
+  try {
+    const found = await loadUntil(() => wanted);
+    if (!current()) return;
+    if (!found) return;
+    const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
+    if (root) await loadUntil(() => ({ id: root }));
+    if (!current()) return;
+    const entry = entries($('messages')).find(child => child.dataset.id === id);
+    if (!entry) return;
+    reveal(entry, { full: true, open: true });
+    const card = opened(entry);
+    revealSelection(card);
+    card.focus({ preventScroll: true });
+    marks.read(act, () => current() && card.isConnected && document.activeElement === card && onScreen(card));
+  } finally {
+    if (request === unreadLanding) { unreadLandingBusy = false; if (!registry.disposed) noteRead(); }
+  }
 }
 // Where the oldest unread message is, read again after each commit: reading,
 // marks and replies move it without changing the topic. During a visit the
@@ -1905,9 +2015,19 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('edit:')) return messageEdited(key, version, read, current);
       // The edit session of one of the person's messages moved (docs/message-edit.md): another device may have taken it.
       if (key.startsWith('edit_session:')) { if (messageEdit?.id === key.slice(13)) messageEdit.writing.sessionChanged(version); return true; }
-      if (key !== 'neighbors') return views.refresh(key, version, read, current);
+      if (key !== 'neighbors') {
+        const done = await views.refresh(key, version, read, current);
+        if (key === 'acts' && done !== false && current()) {
+          await readReaderDossier(registry.current, read, current);
+          if (current()) paintReaderTitle();
+        }
+        return done;
+      }
       const p = registry.current;
       if (!p || p.source.source_ref.kind !== 'message') return true;
+      await readReaderDossier(p, read, current);
+      if (!current() || !registry.isSourceCurrent(p)) return true;
+      paintReaderTitle();
       p.neighbors = null; p.core = null;
       const result = await registry.neighbors(p, { read });
       if (!current() || !registry.isSourceCurrent(p) || !result) return true;
@@ -2036,7 +2156,9 @@ async function initialize() {
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
-  if (anchored || pageAnchor) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
+  // A topic's unread count opens it at its oldest unread message (item 613).
+  const atUnread = route.kind === 'topic' && route.at === 'unread';
+  if (anchored || pageAnchor || atUnread) { route = { kind: 'topic', id: topicId }; shell.rename(route, location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -2053,7 +2175,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   // The conversation's own items hold messages' words too (followEdits): an edit of one of them, or of one a reply among them answers, is read.
   const holds = id => Boolean(here?.items.has(id) || [...(here?.items.values() ?? [])].some(item => item.reply_to === id));
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version), holds, reading });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
@@ -2095,7 +2217,7 @@ async function initialize() {
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   // Those who can be added: the outcome's team, or everyone when the team cannot be read.
-  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic',
+  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic', dismissible: true,
     candidates: () => outcomeMembers ? outcomeMembers.filter(person => person.enabled !== false).map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })) : directoryPeople,
     opened: () => { refreshMembers(); refreshDirectory(); },
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
@@ -2173,7 +2295,27 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
+    close: async (_sessions, reason) => {
+      const p = reader.presentation;
+      try {
+        if (!await registry.close(p, { explicit: true })) return false;
+        if (reason === 'parent' && !p.sourceUnavailable && p.source.source_ref.kind === 'message' && p.source.topic_id === topic.id) {
+          const source = p.source, id = source.source_ref.id, accessEpoch = listAccessEpoch;
+          if (!views.messages.has(id)) {
+            const foreground = registry.cleanup.foreground();
+            try {
+              const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor: source.seq + 1, limit: 30 }, options)), bootstrap.instance_id);
+              if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
+              views.messagesPage(page, { anchored: true, cursor: source.seq + 1 });
+            } finally { foreground.release(); }
+          }
+          if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
+          if (here?.page && here.onlyNew) { here.onlyNew = false; paintConversationPage(); }
+          landOn(id, { full: true })?.focus({ preventScroll: true });
+        }
+        return true;
+      } catch (error) { if (reader.dialog.open) reader.notice(error); else status(error); return false; }
+    },
     step: async direction => {
       const presentation = registry.current, neighbors = onPage(presentation, presentation.core ?? await registry.neighbors(presentation));
       if (!registry.isCurrent(presentation)) return;
@@ -2203,7 +2345,7 @@ async function initialize() {
   // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
-  registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
+  registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
   registry.cleanup.resumeListeners.add(rechecked);
@@ -2255,7 +2397,11 @@ async function initialize() {
     thumb: (item, on) => act(thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
     answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
-    expand: (card, item) => cardScroll.expand(card, item) });
+    expand: (card, item) => cardScroll.expand(card, item),
+    // The bar's Show full message and Fold (item 473), as ⋯ offers them.
+    clipped: (card, item) => Boolean(cardScroll?.clipped(card, item)), showFull: (card, item) => run(() => cardScroll.showFull(card, item)),
+    foldState: item => (stackFeed && !topicUnavailable ? stackFeed.foldState(item) : null),
+    fold: item => { stackFeed?.toggleFold(item); if (menu?.lit) menu.paintBar(); } });
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
   // line or being written: once Core holds it the Reader closes, as after
   // Send, keeping what the reply holds. Refused, or taken back, it stays.
@@ -2318,7 +2464,7 @@ async function initialize() {
       if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
       return answer;
     },
-    open: (id, title, message) => openDestination(topicTarget(id, message), title),
+    open: (id, title, message, at) => openDestination(topicTarget(id, message, at), title),
     // Read once: the outline takes this list in from then on (outline-rail.mjs).
     updated: () => { $('topic-navigation').dataset.listed = ''; },
   });
@@ -2357,7 +2503,7 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   wakeOnPress($('messages'));
-  $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
+  $('more-messages').onclick = () => run(() => { fillFrom($('messages')); return listPage('messages', true); }); $('more-memory').onclick = () => run(() => listPage('memory', true));
   window.addEventListener('beforeunload', () => marks.leave());
   shell.guard(() => registry.hasUnprotectedWriting);
   // An edit open in the Reader sends nothing at unload (its hold lapses), and lets its Web Lock go.
@@ -2370,7 +2516,7 @@ async function initialize() {
   // drawer behind "☰ Topics" (rail-drawer.mjs). Cards count as seen once each
   // has had its first answer, read or refused (noteRead), so neither moves a
   // card the page has already counted.
-  Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
+  const firstReading = Promise.allSettled([run(loadMarks), here.page ? conversationShown : null]).then(() => { laidOut = true; noteRead(); });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
   shell.ready({ api, bootstrap, live, workspaceId: topic.workspace_id, workspaceTitle: $('workspace-name').textContent, topic, pageMax: pageMax(),
@@ -2380,6 +2526,9 @@ async function initialize() {
     unstar: star => stackFeed?.unstar(star), notebookCreate: notebookCreator });
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
+  // This run's first marks read establishes what its reading act may clear.
+  // The older pages begin only after that baseline, as on a card already shown.
+  if (atUnread) run(() => firstReading.then(landOnUnread));
   if (anchored) {
     const card = landOn(anchored);
     run(async () => { await openSource({ kind: 'message', id: anchored }, card ?? $('main')); if (notebookReturning()) notebookSheetOf().resume(); });
@@ -2822,7 +2971,7 @@ async function initializeOutcomePage(route) {
       const serial=++standingSerial,retry=()=>run(reload);
       try {
         const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
-        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,place:'outcome:'+route.id,open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),
           bringBack:workspace.owner_id===bootstrap.actor?()=>targets.bringBack():null});
         return true;
       } catch {
@@ -2860,7 +3009,7 @@ async function initializeOutcomePage(route) {
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-        open:(id,title,message)=>openDestination(topicTarget(id,message),title),
+        open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
       return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeTools.load(),outcomeReferences.load(),loadConversation(),
@@ -2918,7 +3067,7 @@ async function initializePipelinePage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.id,()=>{});
   // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
   here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
@@ -2982,7 +3131,7 @@ async function initializeMeasurementsPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.id,()=>{});
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
     sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},skillsSection(route.id)]});
@@ -3006,7 +3155,7 @@ async function initializeToolPage(route) {
     topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
       retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
       read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-      open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+      open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
     pagesInPlace(route.id,()=>{});
     // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
     here={workspaceId:route.id,title:page.answer.tool.home.title,view:null,page:false,has:false,onlyNew:false,items:new Map()};
@@ -3137,7 +3286,7 @@ async function initializeOpeningPage(route) {
   topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.workspace,null),host:$('topics'),more:$('more-topics'),
     retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-    open:(id,title,message)=>openDestination(topicTarget(id,message),title)});
+    open:(id,title,message,at)=>openDestination(topicTarget(id,message,at),title)});
   pagesInPlace(route.workspace,()=>{});
   here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,

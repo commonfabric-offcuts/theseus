@@ -123,7 +123,7 @@ class WhoIsInItCase(ConversationCase):
                                expected={"workspace_revision": workspace})
         self.rejected(refused, "INVALID_RECIPIENT")
         self.rejected(self.command("workspace.coordinator_set", {"actor_id": "agent-a"}, target={"workspace_id": "w1"},
-                                   expected={"workspace_revision": workspace}, actor="agent-a"), "FORBIDDEN")
+                                   expected={"workspace_revision": workspace - 1}, actor="agent-a"), "REVISION_CONFLICT")
         self.committed(self.command("workspace.coordinator_set", {"actor_id": None}, target={"workspace_id": "w1"},
                                     expected={"workspace_revision": workspace}))
         self.assertEqual(self.participants(), ["owner"])
@@ -152,18 +152,18 @@ class WhoIsInItCase(ConversationCase):
         return self.sql("SELECT g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id WHERE d.message_id=? AND d.recipient_id=?",
                         (message_id, actor))
 
-    def test_the_coordinator_choice_is_the_owners_alone_fenced_by_revision_and_ends_the_old_ones_deliveries(self):
+    def test_any_member_chooses_the_coordinator_fenced_by_revision_and_ends_the_old_ones_deliveries(self):
         pending = self.posted("Before the change")
         self.assertEqual(self.pending_for("agent-a", pending), [(1,)])
         workspace = self.versions()[0]
         self.rejected(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, target={"workspace_id": "w1"},
                                    expected={"workspace_revision": workspace - 1}), "REVISION_CONFLICT")
-        # The coordinator organises the outcome, yet only the owner chooses who answers.
+        # Reading the outcome is required; an outside agent cannot choose who answers.
         self.rejected(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, target={"workspace_id": "w1"},
-                                   expected={"workspace_revision": workspace}, actor="agent-a"), "FORBIDDEN")
+                                   expected={"workspace_revision": workspace}, actor="outsider"), "FORBIDDEN")
         self.assertEqual(self.participants(), ["agent-a", "owner"])
         self.committed(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, target={"workspace_id": "w1"},
-                                    expected={"workspace_revision": workspace}))
+                                    expected={"workspace_revision": workspace}, actor="agent-b"))
         self.assertEqual(self.pending_for("agent-a", pending), [(0,)], "the old coordinator's waiting delivery there is cancelled")
         later = self.posted("After the change")
         self.assertEqual(self.deliveries(later), ["agent-b"])
@@ -622,13 +622,13 @@ class CliCase(ConversationCase):
         self.assertEqual((code, err), (0, ""))
         self.assertIn("  [answered] by %s (owner, " % answer, out, "the agent it went to reads which message answered")
 
-    def test_the_owner_chooses_the_coordinator_and_an_answerer_posts_part_of_an_answer(self):
+    def test_an_agent_chooses_the_coordinator_and_an_answerer_posts_part_of_an_answer(self):
         asked = self.posted("Copy and date?")
         code, out, err = self.run_cli("post", self.conversation, "--reply-to", asked, "--part", "Copy is final.")
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(self.item(asked)["state"], "new")
         code, out, err = self.run_cli("coordinator", "w1", "agent-b")
-        self.assertEqual(code, 2, "only the owner chooses")
+        self.assertEqual((code, err), (0, ""), "any outcome reader chooses under its own identity")
         code, out, err = self.run_cli("coordinator", "w1", "agent-b", "--none")
         self.assertEqual((code, out), (2, ""))
         self.assertIn("Name the coordinator, or --none for nobody", err)

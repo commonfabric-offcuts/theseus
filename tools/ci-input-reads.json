@@ -145,6 +145,12 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/notebook_sheet_native.mjs": {
+    "3faa4c1ea47d9ea796920590eb11f2e94682f285023c4ab9eb240ffdbdc69156": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/reader_images_native.mjs": {
     "b18fe37654baa75ab83f386a6567cb7d21cd67b421aca1f4e2d2b931382c370b": {
       "inputs": [],
@@ -1080,6 +1086,52 @@
     "7dfbc77b94f2474fc41324dfd0f794427ce1aee9e5e88cd811a31e8f81d8acf6:2": {
       "inputs": [],
       "scope": "generated/system/product"
+    }
+  },
+  "tests/test_checks_browser_shards.py": {
+    "001d469f7a64fbf544cc15be714b759cb4296f026186c008e33e5d478363ca9d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "236161e26098f2c579f332220baae3ec661ece9e254a660b02518a320e749e54": {
+      "inputs": [
+        "tests/fixtures/browser-step-minutes.json"
+      ],
+      "scope": "repository"
+    },
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "61bd97de00ed1694f75989d68906ac1a62f166c943137c11160ec5120ab0964b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
+    },
+    "8d98b30c29c966c43e5afe54a9ad6b6e283d0d6738a852fb921b8fe7e8406a52": {
+      "inputs": [
+        "tests/fixtures/cancelled-browser-44099688612.json"
+      ],
+      "scope": "repository"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6:1": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6:2": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_codex_broker.py": {
@@ -2364,6 +2416,26 @@
     "fbaa4716569d5fa9868b339cf1da93465ef6c330cb4ad06b36bfa2b817a1920e": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "1393445e601bbe4b55ad14b521ad6f7b579496605ae1f6fc51ae81cdd1a11a1d": {
+      "inputs": [
+        "tests/fixtures/schema_45.sql"
+      ],
+      "scope": "repository"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0f9d16fe90b6e08a278ea8f11a27de833507dbee0b4436ab446aa25645fa48be": {
+      "inputs": [
+        "tests/fixtures/schema_46.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -2372,6 +2444,10 @@
       "scope": "generated/system/product"
     },
     "810ad209a7991a644a0d84cd010881e499e593123ce5c99f4bf58061ae1d6be4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8bc3d40ea648187d1660b88a7e14ec89c82534fd4299b29ebd91bb5c8cc0c50d": {
       "inputs": [],
       "scope": "generated/system/product"
     },
@@ -3822,6 +3898,28 @@
       "scope": "repository"
     }
   },
+  "tests/test_tools_unit_shards.py": {
+    "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7": {
+      "inputs": [
+        ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    },
+    "61bd97de00ed1694f75989d68906ac1a62f166c943137c11160ec5120ab0964b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
+    },
+    "8835cba22c6509353b92cb2d6c41bedc71dbdc4f5822056845498ee0b5618454": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_tools_wake_replay.py": {
     "3352a2d4b6bd3de3aaf8ec3d248e99582fa1db53b1edbc5cb144bf8d2cd9784c": {
       "inputs": [],
@@ -4050,6 +4148,16 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_folder_colour.test.mjs": {
+    "5d7beca93ce0f663587fb96a295dcd456e08942be8ad5c98854256d52629cfd9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "86b4b501522477e28a3af88cf8731f5d5ca400d2f2e7afced022a266085b957a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_inline_wiring.test.mjs": {
     "efe949599c388362215021285147d03542ac3e05d69fa8fb9690f57c9a828b25": {
       "inputs": [],
@@ -4118,6 +4226,12 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_reader_quote_mutation.test.mjs": {
+    "93796a461718f7bdc80d84d565fb06b680c56661fc53218124f1ecf716ba013d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_recovery_recheck.test.mjs": {
     "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870": {
       "inputs": [],
@@ -4180,6 +4294,12 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/ui_unread_landing.test.mjs": {
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/ui_uploads.test.mjs": {
     "d218fa12b05bb494feaae02591bcb024b6190413a4c6ac744fb0066656963870": {
       "inputs": [],
@@ -4207,6 +4327,7 @@
       "inputs": [
         "tools/check_plan.py",
         "tools/release_check.py",
+        "tools/unit_shards.py",
         "tools/steps_for.py",
         ".github/check-weights.json"
       ],

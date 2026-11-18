@@ -240,6 +240,7 @@ function reader(t, source = { source_ref: { kind: 'message', id: 'm1' }, body: '
     'next-message': doc.createElement('button'), 'previous-message': doc.createElement('button'), 'message-edit': doc.createElement('div') };
   const acts = [];
   const r = Object.assign(Object.create(Reader.prototype), {
+    narrow: {matches: true}, // Data-only Reader fixture uses the phone's fixed layout.
     sessions: { reply, note }, mode: 'reply', presentation: {}, source, dialog: { open: true },
     field: doc.createElement('textarea'), sourceBody: Object.assign(doc.createElement('article'), { root: true }), $: id => elements[id],
     selectedPassage: () => 'Quoted passage', insertText: () => {}, disarm() {}, stepTo: where => acts.push(['step', where]),

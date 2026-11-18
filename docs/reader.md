@@ -15,12 +15,31 @@ not have sent", read whole by a screen reader).
 
 The Reader's title names the dossier a reply there goes into (item 561):
 its name, typed or minted, as the dossier's tab shows it, and for a dossier
-nobody has named yet its first line, as its tab shows that. A message of its
+nobody has named yet its first message's first line, never the oldest reply
+the page has loaded (item 550). Where the page cannot say (that first message
+is not loaded, or the topic's updates are paused), the dossier Core sends with
+the message read as a source says: its first message's id, its name, that
+message as it begins and whether the dossier is that message alone
+(`dossier` in the `source` view, `stacks.source_dossier`; none for a reader
+who reads only that message, sent to them by name). A message of its
 own, which nobody answered or named, has the topic's name. A name given while
 the Reader is open shows at once. However long, the title keeps one line, cut
 off with an ellipsis, so the star, the archive button and ✕ keep their place;
-a press on it goes back to the topic, as ← does (`StackFeed.dossierName`,
-`Reader.paintTitle`).
+a press on it goes back to that dossier, as ← does (`StackFeed.dossierName`,
+`readerDossierName` in `app.mjs`, `Reader.paintTitle`). Opening a reply from Starred has the same title and way
+back, including when another topic was on screen and the dossier is older
+than the loaded messages (item 655). Its name is read by message ID; pressing
+the title loads one page around the reply and reveals it in its dossier.
+An unnamed old root with replies uses its own first line; a singleton keeps
+the topic title. Names, cleared names and joins from another device follow
+freshness even while the source stays outside the feed. If the scoped name
+lookup fails, the Reader still opens the exact source and explains that its
+dossier name could not be read. A title return from a Conversation clears
+Only new so a settled source can be revealed; merely opening it keeps the
+filter. A loaded root whose replies are outside the page also uses the
+scoped name, only while its position is at least as current as the feed.
+The ordinary More messages frontier stays where it was, so the messages
+between that page and the newest ones are still reachable.
 
 A message of a dossier with a cover (item 624, [dossier-covers.md](dossier-covers.md))
 shows the cover as one quiet line above the message: "Cover", where the dossier
@@ -44,12 +63,21 @@ message too: the page reads its acts with the loaded messages', and again
 whenever they change (`TopicViews.showAlone`), so a star made on another
 device shows there as well.
 
+Painted again, the star's glyph and the archive button's number below keep
+their text where it has not changed (`paintReaderStar`, `paintReaderAside`):
+Safari sends no click for a press whose text left the page before the
+release, and a repaint held for a press (`press-hold.mjs`) runs at that
+release, so a press on either while the page read something was lost there
+(item 635).
+
 Beside the star, an archive glyph with a number is Move below More for the
 message's whole dossier (item 378): the same act as the card's ⋯ Move below
 More (`StackFeed.setAside`), and the number is how many messages move below
-More with it, the message itself included. The act moves the whole dossier, and
-a dossier whose first message the page has not loaded is drawn as one stack for
-each reply to it there, so every stack drawn from the dossier is counted ("Move below More: 3
+More with it, the message itself included. The act moves the whole dossier,
+which the page draws as one stack whether or not it has loaded its first
+message (item 550), with any older message of it More messages showed where
+its button was as a card of its own, so the count is of every stack the page
+draws of the dossier ("Move below More: 3
 messages" by name and as its tooltip). Once the dossier is below More it shows
 pressed and brings it back ("Bring back above More: 3 messages"), as ⋯ does.
 The Reader stays open on the message and the focus stays on the button; the
@@ -60,7 +88,15 @@ an older message, or of another topic, from an About link) or a message Core
 sent no place for, which ⋯ offers no move either: moving on to one of these
 from a message it showed for, the button goes; a 44 pixel target under a finger (`paintReaderAside` in
 `web/app.mjs`, `StackFeed.asideOffer`). Pressed, it shows the move at once,
-while Core has it; a refusal puts it back unpressed and the page says why. A
+while Core has it; a refusal puts it back unpressed and the page says why.
+A dossier holding a message the reader starred (its title bar shows their
+star, item 635) is not moved: the button shows as ever, and a press says
+"This dossier has a message you starred: unstar it to move it below More"
+just under it, over the message, moving nothing and keeping the focus on the
+button; the next press or key takes the words away. Unstarring (the star
+beside it) frees it. A star given in the Reader to a message of a dossier
+below More brings the dossier back above More, and the button offers the move
+again. A
 phone's header has no room for ←, the title with its star and this button,
 ↑ ↓, ⋯ and ✕ in one row of 44 pixel targets, so there (480 pixels wide or
 less) the title, its star and the archive button take a second row, and who
@@ -246,7 +282,10 @@ sheet's), not measured in script.
   does not. There is no divider; the reply is as tall as its writing. The
   who and + panels are popovers over the bottom of the message, so the
   message does not move under them.
-- **Wide**: the reply is a column beside the message, with its divider and
+- **Wide**: quoting text on a laptop opens the reply in this layout, including
+  from Stacked (item 668). An already wide reply stays wide; a phone remains
+  stacked. With nothing to quote, or a reply that cannot be edited, the layout
+  stays as it was. The reply is a column beside the message, with its divider and
   share. The who panel opens inline in the column, and the hint (Return for a
   new line · ⌘ Return to send) has a line of its own under the field.
 - **Phone**: the Reader follows the visible part of the window
@@ -419,7 +458,7 @@ press. Each time what showed of the words moves only as far as the reply or
 keyboard covers it, within two pixels. A line quoted from above what shows
 comes into sight at its top, and words taller than the screen quoted from
 above it come into sight with their end at its bottom.
-"quoting: one who has not scrolled keeps the quoted words in sight as the
+"stacked chosen again after quoting: one who has not scrolled keeps the quoted words in sight as the
 reply grows, and a scroll the person makes …" (1280×800 stacked, both
 engines) quotes words wholly inside the message's room, just above where the
 reply opens, and types a line: they stay above the reply (a line the room's

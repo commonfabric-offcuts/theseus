@@ -7,12 +7,23 @@ with ⌘↑ and ⌘↓ (docs/interaction.md, "Keys across the panes"). The order
 they make is theirs alone: Core keeps it, so it holds on every device they
 sign in on and survives a reload, and nobody else sees it. Nothing else
 moves a row: a new message changes counts and lights, never the order.
+A topic new to the reader appears at the top of its outcome once, and stays
+there until the reader moves it.
 
 The code: `aim_next/outline_order.py` (Core), `web/outline-order.mjs` (what
 the page shows, and how a move is sent), `web/outline-rail.mjs` and
 `web/topic-navigation.mjs` (the lists that draw it).
 
 ## What Core keeps
+
+Schema 46 adds `topics.list_position`, an immutable default position. The
+explicit migration derives it from each topic’s first recorded change; a new topic
+gets the next position from a transactional clock, independently of wall
+time, and lists newest positions first. The clock and positions survive
+reloads, restarts and VACUUM. Reads never create or change a position. A
+step back drops only this derived index and clock; the retained creation
+changes reconstruct it on upgrade. Existing saved orders and their revisions
+are untouched.
 
 One order for the reader's outcomes, and one for the topics of each outcome
 they can read. An order is a list of ids, at most 500 (`LIMITS.order_ids`)
@@ -65,7 +76,7 @@ Read, the order leaves out what the reader can no longer place (an outcome
 they left, a topic gone from the outcome), so what a client reads it may
 send back as it is. With nothing placed it is `{"ids": [], "revision": 0}`.
 The lists themselves keep their own order (outcomes by id, topics latest
-activity first); the page places them.
+position first); the page places them.
 
 A client reads `order` for its `ids` and `revision` and passes over any
 other field a later Core adds to it. An answer with no `order` (an older
@@ -78,10 +89,10 @@ rest of the list would be.
 From what Core lists and what the reader placed (`placeIn`):
 
 - What they placed keeps their order.
-- What they never placed (a new outcome, a new topic, or one on a page not
-  yet loaded when they moved) goes where it goes today relative to the
-  rest: right after whatever Core lists just before it, or first when
-  nothing is. A new one never moves the placed ones around.
+- What they never placed follows whatever Core lists just before it, or
+  goes first when nothing is. A newly created topic has the newest stable
+  position, so enters at the top once; activity cannot move it around saved
+  rows. Loading an older page keeps those topics in their existing places.
 - What Core no longer lists simply drops out; an id the page does not know
   is passed over.
 

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
+import { startCardScrollProbe, cardScrollHeld } from './card_scroll_probe.mjs';
 
 // Notebook pages in the real browser against the real server: an outcome's
 // pages are listed on the right rail of a topic (All of this outcome) and of
@@ -902,6 +903,96 @@ export async function notebookChecks({ check, page, until, control, view, facts,
   const writing = (p, want, words) => until(async () => JSON.stringify(await box(p)) === JSON.stringify(want), words)
     .catch(async error => { assert.deepEqual(await box(p), want, words); throw error; });
   const cursor = (p, at) => p.evaluate(`(()=>{document.querySelector('#deck-page .deck-writing textarea').setSelectionRange(${at},${at});return true})()`);
+
+  // Item 644: a click is not a request to reveal the whole card. In particular a long
+  // card may already extend above and below the viewport when its composer opens.
+  for (const width of [320, 375, 390, 1280]) for (const theme of ['light', 'dark']) for (const state of ['normal', 'saving', 'refused', 'read-only', 'empty', 'error']) for (const surface of ['page', 'sheet']) {
+    await check(`notebook item 644 ${width} ${theme} ${state} ${surface}: opening, using and closing a card composer holds the page`, async () => {
+      const id = `item-644-card-${width}-${theme}-${state}-${surface}`;
+      const body = state === 'empty' ? '## Empty\n' : '## Long card\n\n' + Array.from({length: 36}, (_, i) => `Line ${i + 1} stays where it was.`).join('\n\n') + '\n\n## Next\n\nUntouched.\n';
+      assert.equal((await control({method: 'outcome_reference', operation_id: id, item_id: id, title: 'Card composer', body})).status, 'committed');
+      const p = await page(id, null, true, {url: surface === 'page' ? `${facts.origin}/?cards=${id}` : `${facts.origin}/?topic=t1&page=${id}`, beforeNavigate: async q => {
+        await q.send('Page.addScriptToEvaluateOnNewDocument', {source: `
+          const state=${JSON.stringify(state)}, originalFetch=fetch.bind(globalThis);
+          globalThis.fetch=async(...args)=>{let e;try{e=JSON.parse(args[1]?.body)}catch{}
+            if(e?.kind==='memory.revise') {
+              if(state==='saving')await new Promise(done=>window.item644Release=done);
+              if(state==='error')throw Error('Item 644 isolated network refusal');
+              if(state==='refused')return new Response(JSON.stringify({instance_id:e.instance_id,operation_id:e.operation_id,kind:e.kind,status:'rejected',recorded:false,error:{code:'FORBIDDEN',message:'Item 644 isolated permission refusal'}}),{headers:{'content-type':'application/json'}});
+            }
+            const response=await originalFetch(...args);
+            if(state==='read-only'&&e?.name==='memory_current'){const value=await response.json();value.reader_may_write=false;return new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});}
+            return response;
+          };`});
+        await q.send('Emulation.setDeviceMetricsOverride', {width, height: 800, deviceScaleFactor: 1, mobile: width < 760});
+        await q.send('Emulation.setEmulatedMedia', {features: [{name: 'prefers-color-scheme', value: theme}]});
+        if (width < 760) await q.send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1});
+      }});
+      const host = surface === 'page' ? '#deck-page' : '#new-message-sheet .notebook-sheet-page:not([hidden])';
+      const evaluate = expression => p.evaluate(expression.replaceAll('#deck-page', host));
+      await until(() => evaluate("document.body.dataset.ready==='true' && Boolean(document.querySelector('#deck-page .deck-card'))"), 'the card shows');
+      if (surface === 'sheet') {
+        // B1: prove the instrument sees the actual overflow owner, including a
+        // transient jump. The spacer makes this control apply to empty cards too.
+        const control = await evaluate(`new Promise(resolve=>{
+          const owner=document.querySelector('#deck-page'), top=owner.scrollTop;
+          const spacer=document.createElement('div');spacer.style.cssText='flex:none;height:1200px';owner.append(spacer);
+          owner.scrollTop=0;
+          const trail=(${startCardScrollProbe.toString()})();
+          owner.scrollTop=350;
+          const applied=owner.scrollTop;
+          requestAnimationFrame(()=>{
+            owner.scrollTop=0;
+            requestAnimationFrame(()=>{trail.running=false;spacer.remove();owner.scrollTop=top;resolve({applied,trail});});
+          });
+        })`);
+        assert.equal(control.applied, 350, 'B1: the 350px mutation applied to the sheet scroll owner');
+        assert.equal(cardScrollHeld(control.trail), false, 'B1: the every-frame predicate must reject the transient sheet-page jump');
+      }
+      // Preparation only: put the card's title just outside the viewport, its words still under the pointer.
+      await evaluate(`(()=>{const c=document.querySelector('#deck-page .deck-card');scrollTo({top:scrollY+c.getBoundingClientRect().top+${state === 'empty' ? -60 : 40},behavior:'instant'});return true})()`);
+      await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-before`);
+      await evaluate(`(window.item644=(${startCardScrollProbe.toString()})(),true)`);
+      await evaluate("(document.addEventListener('click',()=>window.item644Pressed=true,{once:true}),true)");
+      const at = await evaluate("(()=>{const r=document.querySelector('#deck-page .deck-card').getBoundingClientRect();return {x:r.left+30,y:Math.max(60,r.top+Math.min(80,r.height/2))}})()");
+      if (width < 760) {
+        await p.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[at]});
+        await p.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+      } else for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await p.send('Input.dispatchMouseEvent', {type,...at,button:'left',clickCount:1});
+      await until(() => evaluate('window.item644Pressed===true'), 'the native press arrived');
+      if (state === 'read-only') {
+        assert.equal(await evaluate("Boolean(document.querySelector('#deck-page .deck-writing'))"), false, 'a read-only card opens no composer');
+        assert.equal((await view('memory_current', {item_id:id})).body, body, 'read-only makes no revision');
+        await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-after`);
+        const trail = await evaluate('(item644.running=false,item644)');
+        assert.ok(cardScrollHeld(trail), JSON.stringify(trail));
+        assert.deepEqual(p.errors, []); await p.close(); return;
+      }
+      await until(() => evaluate("document.activeElement.matches('#deck-page .deck-writing textarea')"), 'the card opens under the native press');
+      await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-writing`);
+      await p.send('Input.insertText', {text: 'Kept words'});
+      if (state === 'saving') {
+        await until(() => evaluate("typeof window.item644Release==='function' && document.querySelector('.deck-status').textContent.includes('Saving')"), 'saving is visibly busy');
+        await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-busy`);
+        await evaluate('(item644Release(),true)');
+      }
+      if (state === 'refused' || state === 'error') {
+        await until(() => evaluate("Boolean(document.querySelector('.deck-status .deck-again'))"), 'the refusal offers recovery');
+        assert.equal((await view('memory_current', {item_id:id})).body, body, 'refused writing never becomes a recorded revision');
+        assert.ok(await evaluate("document.querySelector('#deck-page .deck-writing textarea').value.includes('Kept words')"), 'refusal keeps the words');
+        if (state === 'refused') assert.equal(await evaluate("document.querySelectorAll('.deck-status button').length"), 2, 'both recovery controls show');
+      } else await until(async () => (await view('memory_current', {item_id:id})).body.includes('Kept words'), 'the words save without leaving the card');
+      await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-saved`);
+      // Escape folds this card, not the page, and keeps its exact writing.
+      await p.key('Escape');
+      await until(() => evaluate("!document.querySelector('#deck-page .deck-writing')"), 'the card composer closes');
+      await shot(p, `item-644-${width}-${theme}-${state}-${surface}-card-after`);
+      const trail = await evaluate('(item644.running=false,item644)');
+      assert.ok(cardScrollHeld(trail), `the page holds on every frame: ${JSON.stringify(trail)}`);
+      if (state !== 'empty') assert.ok((await view('memory_current', {item_id:id})).body.includes('Untouched.'), 'another card never changes');
+      assert.deepEqual(p.errors, []); await p.close();
+    });
+  }
 
   // Review probes for 302 (warp): two checks to put before the first "while a card is written" case in tests/notebook_pages_native.mjs.
   const panel = p => p.evaluate("Boolean(document.querySelector('.notebook-conflict') && !document.querySelector('.notebook-conflict').hidden)");
