@@ -28807,8 +28807,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "!event.target.closest?.('a, .fold-line, .image-thumb')",
-     "!event.target.closest?.('a, .fold-line')"
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner')",
+     "!event.target.closest?.('a, .fold-line, .note-corner')"
     ]
    ],
    "check": {
