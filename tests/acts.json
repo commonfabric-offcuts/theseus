@@ -28534,6 +28534,275 @@
     "native": "compose",
     "case": "item 650 Reader writing stacked light"
    }
+  },
+  {
+   "item": 650,
+   "act": "Returning either held composer edge to its starting position restores the starting width",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "const delta = event.clientX - drag.x;",
+     "const delta = event.clientX - drag.x; if (Math.abs(delta) < 1) return;"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_composer_width.test.mjs"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Native Tab reaches both composer edges before Left and Right adjust the width",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "edge.tabIndex = 0;",
+     "edge.tabIndex = -1;"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader writing stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during permission unavailable",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader permission unavailable stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during access unconfirmed",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader access unconfirmed stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during access checking",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader access checking stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during conflict review",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader conflict review stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during composition refused",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader composition refused stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during recovery discovery",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader recovery discovery stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during authority recovery blocked",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader authority recovery blocked stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "Reader keeps both width edges available during authority recovery ready",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 Reader authority recovery ready stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during permission unavailable",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message permission unavailable stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during access unconfirmed",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message access unconfirmed stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during access checking",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message access checking stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during conflict review",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message conflict review stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during composition refused",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message composition refused stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during recovery discovery",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message recovery discovery stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during authority recovery blocked",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message authority recovery blocked stacked light"
+   }
+  },
+  {
+   "item": 650,
+   "act": "New message keeps both width edges available during authority recovery ready",
+   "break": [
+    [
+     "web/composer-width.mjs",
+     "width + 2 * delta * (side === 'left' ? -1 : 1)",
+     "width + (side === 'left' ? 0 : 2 * delta)"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 650 New message authority recovery ready stacked light"
+   }
   }
  ]
 }

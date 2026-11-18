@@ -169,7 +169,8 @@ the pointer's way, the keys' and the phone's.
 
 - **Composer width.** Drag the left or right outer edge of the Reader or New
   message sheet: both sides grow or shrink equally, staying centred, with no
-  vertical resize or movement. Tab reaches either edge; Left/Right moves it.
+  vertical resize or movement. Returning to the starting position in the same
+  held drag restores its width. Tab reaches either edge; Left/Right moves it.
   Writing, destination and sending stay as they were. (item 650,
   [composer-width.md](composer-width.md))
 

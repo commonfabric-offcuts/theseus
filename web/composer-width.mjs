@@ -31,7 +31,8 @@ export function composerWidth(dialog) {
     edge.addEventListener('pointermove', event => {
       if (!active() || drag?.id !== event.pointerId || drag.edge !== edge) return;
       const delta = event.clientX - drag.x;
-      if (Math.abs(delta) < 1) return;
+      // Every held position is relative to pointerdown, including a return to
+      // its origin. A dead zone here would leave an earlier width in place.
       const { minimum, maximum } = bounds();
       dialog.style.setProperty('--composer-width', `${edgeWidth(drag.width, delta, drag.side, minimum, maximum)}px`);
     });

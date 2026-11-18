@@ -49,6 +49,9 @@ maximum, and on a phone never reach past the screen.
   hold resizing either composer edge symmetrically around the centre, only
   horizontally, at 320, 375, 390 and laptop in both themes and engines, in
   each affected state ([composer-width.md](composer-width.md)).
+  Review corrections add held-drag reversal, native Tab reach, topic access
+  and conflict/recovery branches. These revised native cases are UNRUN pending
+  runner budget; the prior run does not prove them.
 
 ## Keys mean one thing in each place
 
