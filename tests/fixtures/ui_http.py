@@ -508,6 +508,8 @@ def main():
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
         server = serve()
+        from item_721_runtime import Item721Runtime
+        item721_runtime = Item721Runtime(server, root, server_module.web_build.load)
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
@@ -684,6 +686,14 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                    elif request["method"] == "item_721_runtime":
+                        answer = item721_runtime.select(request["phase"])
+                    elif freshness and request["method"] == "item_721_participation":
+                        sender, topic_id = "fixture-notebook-agent", request["topic_id"]
+                        revision = store().view(sender, "topic", {"topic_id": topic_id})["topic"]["version"]
+                        answer = command("participation.set", request["operation_id"],
+                                         {"actor_id": actor, "present": request["present"]},
+                                         {"topic_id": topic_id}, {"topic_revision": revision}, sender=sender)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -1403,6 +1413,7 @@ def main():
                 assert not thread.is_alive(), "Owned HTTP fixture did not close"
             if controls is not None:
                 controls.assert_healthy()
+            item721_runtime.close()
             assert not item645_unrestored, "Item 645 comparison runtime was not restored"
 
 

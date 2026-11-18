@@ -1,0 +1,151 @@
+[
+  {
+    "item": 721,
+    "act": "Reply docks the existing Reader inside the chosen source card",
+    "key": "dock",
+    "break": [
+      [
+        "web/message-menu.mjs",
+        "if (name === 'reply') return this.inlineReply(item.id, card);",
+        "if (name === 'reply') return this.reply(item.id, card);"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 dock"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The whole source precedes the bar without clipping or source scrolling",
+    "key": "whole",
+    "break": [
+      [
+        "web/aim.css",
+        ".message-card[data-card-reply]>.message-preview{max-height:none;overflow:visible}",
+        ".message-card[data-card-reply]>.message-preview{display:block;max-height:120px;overflow:auto}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 whole"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Source drag selection is unavailable and never opens a composer",
+    "key": "selection",
+    "break": [
+      [
+        "web/aim.css",
+        ".message-card>:not(#reader){-webkit-user-select:none;user-select:none}",
+        ".message-card>:not(#reader){-webkit-user-select:text;user-select:text}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 selection"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The compact title and close control remain visible",
+    "key": "title",
+    "break": [
+      [
+        "web/aim.css",
+        "#reader[data-card-reply] #reader-title{font-size:.8rem;color:var(--muted)}",
+        "#reader[data-card-reply] #reader-title{display:none}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 title"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The reused addressing row remains the named default",
+    "key": "addressing",
+    "break": [
+      [
+        "web/aim.css",
+        "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent}",
+        "#reader[data-card-reply] .writing-pane{height:auto;max-height:none;overflow:visible;padding-left:0;padding-right:0;background:transparent} #reader[data-card-reply] #who-chip{display:none}"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 addressing"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Clicking and selecting the real writing stays in the card",
+    "key": "writing",
+    "break": [
+      [
+        "web/app.mjs",
+        "if (event?.target?.closest?.('#reader')) return;",
+        "if (false) return; // item 721 writing click mutant"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 writing"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Escape closes the nonmodal reply through its preserving owner",
+    "key": "escape",
+    "break": [
+      [
+        "web/reader.mjs",
+        "if (!event.defaultPrevented) { event.preventDefault(); this.escape(); }",
+        "if (!event.defaultPrevented) { event.preventDefault(); }"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 escape"
+    }
+  },
+  {
+    "item": 721,
+    "act": "Unavailable source moves the same writing to the full Reader",
+    "key": "unavailable",
+    "break": [
+      [
+        "web/reader.mjs",
+        "  hideUnavailableSource() {\n    this.expandReply();",
+        "  hideUnavailableSource() {\n    // item 721 mutant: leave unavailable writing in its card"
+      ],
+      [
+        "web/reader.mjs",
+        "    this.expandReply();\n  }\n\n  expandReply()",
+        "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 unavailable"
+    }
+  },
+  {
+    "item": 721,
+    "act": "A hidden source moves the same writing to the full Reader",
+    "key": "hidden",
+    "break": [
+      [
+        "web/reader.mjs",
+        "    this.expandReply();\n  }\n\n  expandReply()",
+        "    return; // item 721 mutant: leave hidden writing in its card\n  }\n\n  expandReply()"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 hidden"
+    }
+  }
+]

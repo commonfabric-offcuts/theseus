@@ -21,6 +21,7 @@
 // AIM_PLAYWRIGHT_CORE names a playwright-core directory. The release check runs
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
+import { item721Compose } from './item_721_compose.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
@@ -2519,7 +2520,10 @@ async function runSending() {
 // and signal, held from its launch, with the short dossier's fixture's beside them (shortFixture). Cleanup runs after an
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = ['chromium', 'webkit'];
-const PHASES = [[run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+async function runItem721() {
+  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts });
+}
+const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
 let browserClosed = true, harnessCompleted = false;
 try {
