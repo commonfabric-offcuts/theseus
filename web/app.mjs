@@ -893,6 +893,11 @@ function paintViews(kind) {
       const open = card.onclick;
       card.onclick = event => {
         if (event?.target?.closest?.('#reader')) return;
+        // Live94's native button did not offer a text-selection gesture.
+        // If a browser still leaves source words selected on this div, the
+        // release click must not turn that gesture into a Reader opening.
+        const selection = window.getSelection(), words = card.querySelector(':scope > .message-preview');
+        if (selection?.rangeCount && !selection.isCollapsed && words?.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
         // A stack's head row shows or hides its full message, or renames it (reply-stacks.mjs).
         if (headClick($('messages'), messageEntries.get(item.id), event)) return;
         // A message the reader folded is one row: a press on it unfolds it (stack-feed.mjs).
@@ -1402,6 +1407,13 @@ async function replyMessage(id, card, chosen = null) {
 // Only the hover/touch bar's Reply docks the existing reply in its source
 // card. Quote, Return and explicit Reader-opening controls keep their paths.
 async function replyInCard(id, card) {
+  const request = ++opening, generation = registry.generation;
+  // Reuse the feed's visit-only reveal and Show full message owners. Reply
+  // must leave the whole source above its bar, including a former excerpt
+  // or folded row, without recording a new fold or dossier position.
+  const entry = stackFeed?.land(id) ?? messageEntries.get(id);
+  if (entry) card = opened(entry);
+  if (!await cardScroll.showFull(card, views.messages.get(id)) || request !== opening || generation !== registry.generation) return;
   await openSource({ kind: 'message', id }, card, marks.capture(id), card);
   if (reader.dialog.open && registry.current?.source?.source_ref?.id === id) reader.reply({ kind: 'message', id });
 }

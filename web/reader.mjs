@@ -398,27 +398,15 @@ export class Reader {
     if (this.naming?.sheet.open) this.naming.sheet.close();
     if (this.dialog.open) this.dialog.close();
     if (this.card) {
-      const reading = this.cardReading, scrolled = reading?.preview.scrollTop ?? 0;
       this.card.removeAttribute('data-card-reply'); this.card.setAttribute('role', 'button');
-      if (reading) {
-        reading.preview.scrollTop = reading.previewTop;
-        this.card.scrollTop = reading.cardTop + scrolled - reading.inlineTop;
-      }
       this.dialog.removeAttribute('data-card-reply'); this.dialog.removeAttribute('role');
       this.home.parent.insertBefore(this.dialog, this.home.next);
     }
     this.card = card;
-    this.cardReading = null;
     if (card) {
-      const preview = card.querySelector(':scope > .message-preview');
-      const reading = preview && { preview, previewTop: preview.scrollTop, cardTop: card.scrollTop };
       card.dataset.cardReply = ''; card.setAttribute('role', 'group');
       this.dialog.dataset.cardReply = ''; this.dialog.setAttribute('role', 'region');
       card.append(this.dialog);
-      if (reading) {
-        preview.scrollTop = reading.previewTop + reading.cardTop;
-        reading.inlineTop = preview.scrollTop; this.cardReading = reading;
-      }
     }
   }
 

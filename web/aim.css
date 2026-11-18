@@ -1204,12 +1204,15 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
 
 /* Item 721 preview: the Reader's own phone reply bar, in its source card.
-   Only its placement changes. Source text and writing scroll separately;
+   The source stays whole in the page above the shared reply bar;
    the full Reader's layout and the phone composer keep their existing rules. */
+/* Live94 used native buttons. Keep their source-text selection behavior on
+   the preview's div, without applying it to the Reader or actual writing. */
+.message-card>:not(#reader){-webkit-user-select:none;user-select:none}
 .message-card[data-card-reply]{max-height:none!important;overflow:visible;cursor:default}
 #messages .message-card[data-card-reply]{display:block;height:auto;min-height:0}
 #messages .message-card[data-card-reply]>#reader{display:block!important}
-.message-card[data-card-reply]>.message-preview{display:block;max-height:min(45dvh,24rem);overflow:auto;white-space:pre-wrap;scrollbar-gutter:stable}
+.message-card[data-card-reply]>.message-preview{max-height:none;overflow:visible}
 #reader[data-card-reply]{position:relative;inset:auto;width:100%;max-width:none;height:auto;max-height:none;margin:.65rem 0 0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible;animation:none;cursor:default}
 #reader[data-card-reply] .reader-main{display:grid;height:auto;grid-template-areas:"header" "reading" "writing";grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto}
 #reader[data-card-reply] .reader-header{display:flex;flex-wrap:nowrap;min-height:0;padding:0 0 .25rem;border:0}
