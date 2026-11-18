@@ -183,6 +183,102 @@ export async function cardEditor652({ check, page, until, press, picture, contro
     } finally { release?.(); await p.ctx.close(); }
   };
 
+  // B1 measures the unchanged opening transition, before any writing replaces it.
+  // These bounds admit subpixel/font rounding in both engines; 44px body padding
+  // is far outside them. Line membership is derived with LINE_PX, never exact y.
+  const POSITION_PX = 2, LINE_PX = 2, SIZE_PX = 2;
+  const entryWords = 'Amber birds carry small seeds beside the river while quiet boats cross under the old stone bridge.';
+  const entryBody = `## Plan\n\n${entryWords}\n\n### Child\n\nKeep these child words.\n\n## Notes\n\nKeep these notes.\n`;
+  const entry = async (shape, scheme, surface, suffix = '') => {
+    const id = `card-652-b1-${engine}-${++serial}`;
+    assert.equal((await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Unchanged parent', body: entryBody })).status, 'committed');
+    const host = surface === 'sheet' ? '#new-message-sheet .notebook-sheet-page:not([hidden])' : '.deck-page';
+    const p = await page(shape, scheme, surface === 'sheet' ? `/?topic=t1&page=${id}` : `/?cards=${id}`, facts);
+    const attempts = [];
+    await p.route('**/api/command', async route => {
+      const q = route.request().postDataJSON();
+      if (q.kind === 'memory.revise' && q.target?.item_id === id) attempts.push(q);
+      await route.continue();
+    });
+    const measure = () => p.evaluate(h => {
+      const root = document.querySelector(h), rows = [...root.querySelectorAll('.deck-card:not([hidden])')];
+      const rect = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+      const row = rows[0], origin = rect(row), field = row.querySelector('.deck-editor');
+      let text, offset = 0, mirror;
+      if (field) {
+        // Textareas expose no character ranges. A measurement-only mirror uses
+        // their actual computed layout, including any applied source padding.
+        const style = getComputedStyle(field), box = rect(field);
+        mirror = document.createElement('div');
+        for (const key of style) mirror.style.setProperty(key, style.getPropertyValue(key));
+        Object.assign(mirror.style, { position: 'fixed', left: `${box.x}px`, top: `${box.y}px`,
+          width: `${box.width}px`, height: 'auto', minHeight: '0', margin: '0', visibility: 'hidden', pointerEvents: 'none' });
+        mirror.textContent = field.value;
+        document.body.append(mirror);
+        text = mirror; offset = field.value.indexOf('\n') + 1;
+      } else text = row.querySelector('.deck-words');
+      const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT), characters = [];
+      let node, index = 0;
+      while ((node = walker.nextNode())) for (let i = 0; i < node.length; i++, index++) {
+        if (index < offset || /\s/.test(node.data[i])) continue;
+        const range = document.createRange(); range.setStart(node, i); range.setEnd(node, i + 1);
+        const r = range.getBoundingClientRect();
+        characters.push({ letter: node.data[i], x: r.x - origin.x, y: r.y - origin.y, width: r.width });
+      }
+      mirror?.remove();
+      return { rows: rows.map(rect), characters, chevron: rect(row.querySelector('.deck-fold')),
+        value: field?.value, editor: field && { ...rect(field), paddingLeft: getComputedStyle(field).paddingLeft,
+          paddingTop: getComputedStyle(field).paddingTop, textIndent: getComputedStyle(field).textIndent },
+        sideways: document.documentElement.scrollWidth - innerWidth };
+    }, host);
+    const errors = [], require = (ok, message) => { if (!ok) errors.push(message); };
+    const close = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
+    let before, editing, done;
+    try {
+      await until(p, h => document.querySelector(h)?.querySelectorAll('.deck-card').length === 3, 'B1 parent, child and following card loaded', host);
+      await until(p, () => document.fonts.status === 'loaded' && document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'B1 fonts and opening settled');
+      before = await measure();
+      assert.equal(before.characters.map(c => c.letter).join(''), entryWords.replace(/\s/g, ''), 'the measured read body is the exact unchanged fixture');
+      await picture(p, `item-652-B1-${surface}-read${suffix}`);
+      await press(p, `${host} .deck-bar button:first-of-type`);
+      await until(p, h => document.activeElement === document.querySelector(h)?.querySelector('.deck-editor'), 'B1 native Edit focuses the unchanged parent', host);
+      editing = await measure();
+      await picture(p, `item-652-B1-${surface}-edit${suffix}`);
+      assert.equal(editing.value, `Plan\n${entryWords}`, 'Edit keeps the exact title and words without replacement');
+      assert.equal(editing.characters.map(c => c.letter).join(''), before.characters.map(c => c.letter).join(''), 'the editor mirror measures the same body characters');
+      const lines = chars => {
+        const starts = [];
+        chars.forEach((c, i) => { if (!starts.length || Math.abs(c.y - chars[starts.at(-1)].y) > LINE_PX) starts.push(i); });
+        return starts;
+      };
+      require(JSON.stringify(lines(editing.characters)) === JSON.stringify(lines(before.characters)), `B1 unchanged body wraps on the same characters (LINE_PX=${LINE_PX})`);
+      for (const [i, c] of editing.characters.entries()) {
+        require(close(c.x, before.characters[i].x, POSITION_PX) && close(c.y, before.characters[i].y, POSITION_PX), `B1 unchanged body character ${i} stays in place (POSITION_PX=${POSITION_PX})`);
+        require(close(c.width, before.characters[i].width, SIZE_PX), `B1 body character ${i} keeps its width (SIZE_PX=${SIZE_PX})`);
+      }
+      for (const [i, row] of editing.rows.entries()) for (const key of ['x', 'y', 'width', 'height'])
+        require(close(row[key], before.rows[i][key], key === 'x' || key === 'y' ? POSITION_PX : SIZE_PX), `B1 card ${i} ${key} stays in place (POSITION_PX=${POSITION_PX}, SIZE_PX=${SIZE_PX})`);
+      for (const key of ['x', 'y', 'width', 'height']) require(close(editing.chevron[key], before.chevron[key], POSITION_PX), `B1 chevron ${key} stays in place (POSITION_PX=${POSITION_PX})`);
+      require(editing.sideways <= SIZE_PX, `B1 no horizontal overflow (SIZE_PX=${SIZE_PX})`);
+      const servedCss = sha(await (await p.request.get(facts.origin + '/aim.css')).body());
+      assert.equal(servedCss, sha(await readFile(cssPath)), 'B1 serves the actual source CSS, including any applied mutant');
+      await press(p, `${host} .deck-bar button:first-of-type`);
+      await until(p, h => !document.querySelector(h)?.querySelector('.deck-editor'), 'B1 native Done leaves unchanged writing', host);
+      done = await measure();
+      assert.equal(attempts.length, 0, 'opening and closing unchanged writing never submits a revision');
+      const saved = await held(p, id);
+      assert.equal(saved.body, entryBody, 'Core keeps exact parent, child and following card words');
+      assert.equal(saved.source_ref.revision, 1, 'unchanged Edit and Done create no revision');
+      assert.deepEqual(p.errors, [], 'B1 no page errors');
+      await writeFile(path.join(evidence, engine, `${shape}-${scheme}-item-652-B1-${surface}${suffix}.json`), JSON.stringify({
+        id, before, editing, done, errors, attempts, saved, servedCss, tolerances: { POSITION_PX, LINE_PX, SIZE_PX },
+      }, null, 2));
+      assert.deepEqual(errors, [], 'B1 unchanged body and adjacent cards retain their geometry');
+    } finally { await p.ctx.close(); }
+  };
+  for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) for (const surface of ['full', 'sheet'])
+    await check(`item 652 B1 unchanged parent Edit ${surface} ${shape} ${scheme}`, () => entry(shape, scheme, surface));
+
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) for (const surface of ['full', 'sheet']) for (const state of STATES) {
     await check(`item 652 ${surface} ${shape} ${scheme} ${state}`, () => scenario(shape, scheme, surface, state));
   }

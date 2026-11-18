@@ -121,7 +121,14 @@ start and the word before the cursor.
 At every width a card being written stays where it showed: its box takes the
 card's own place and height, its words stay on the lines they showed on, a
 card with children keeps its chevron where it stood, and the cards around it
-do not move. The box grows only when what is written needs more room. The
+do not move. The box grows only when what is written needs more room. On a touch parent card,
+chevron clearance belongs to the title line alone; opening Edit without
+changing the body keeps its horizontal origin and wrapping. The `item 652 B1`
+cases compare unchanged body character positions, line membership, chevron
+and adjacent-card bounds before and after native Edit, then check Done writes
+no revision, in both surfaces, themes and engines at 320/375/390 and laptop.
+Each measured comparison names its tolerance (2 CSS px); the whole-body
+padding source mutant must be caught and the restored control pass. The
 title takes the words' face while it is written, so it moves by the
 difference between the two faces' lines, and a title that wrapped beside the
 speech bubble may take a line fewer. Words that show as a list, a quote or
