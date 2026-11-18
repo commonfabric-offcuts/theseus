@@ -143,7 +143,7 @@ export async function promiseChecks(api, helpers) {
       () => scenario(branch, false, false, branch));
   }
 
-  await check('reading item 717 a single message shows a promise pill and opens its complete Reader history at 320 375 390 laptop light dark', async () => {
+  await check('reading item 717 a single message shows a promise pill and no Reader cover at 320 375 390 laptop light dark', async () => {
     for (const [width, shape] of sizes) for (const theme of ['light', 'dark']) {
       const topic = `promise-717-lone-${++serial}`;
       const ids = await seed(topic, [['root', { sender: 'aim-core', join: true, body: text, addressees: [facts.actor] }]]);
@@ -156,11 +156,8 @@ export async function promiseChecks(api, helpers) {
         await until(() => p.evaluate(`document.querySelector(${JSON.stringify(pill)})?.textContent.includes('No time given')`), 'the lone promise pill is drawn');
         await centre(p, pill); await shot(p, `717-lone-${width}-${theme}`);
         await openReader(p, device, ids.root, text);
-        await until(() => p.evaluate(`document.querySelector('#reader-cover-line').textContent.includes(${JSON.stringify(text)})`), 'a promise-only cover names its words on the quiet line');
-        await press(p, device, '#reader-cover > summary');
-        await until(() => p.evaluate('document.querySelector("#reader-cover").open'), 'the promise-only sheet opens natively');
-        const at = await measure(p, '#reader-cover .dossier-cover');
-        assert.equal(at.rows.length, 1); assert.ok(at.rows[0].text.includes('No time given')); assert.equal(at.done, 'false');
+        assert.equal(await p.evaluate('document.querySelector("#reader-cover").hidden'), true,
+          'a single message keeps the existing pill-only form, with no dossier cover in the Reader');
         await shot(p, `717-lone-reader-${width}-${theme}`);
         assert.deepEqual(p.errors, []);
       } finally { await p.close(); }
@@ -177,10 +174,14 @@ export async function promiseChecks(api, helpers) {
   const activate = async (p, device, selector) => {
     await centre(p, selector);
     if (device === 'phone') return press(p, device, selector);
+    const focusTrace = [];
     let reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
     for (let n = 0; n < 120 && !reached; n++) {
       await p.key('Tab'); reached = await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`);
+      focusTrace.push(await p.evaluate('({id:document.activeElement?.id,tag:document.activeElement?.tagName})'));
     }
+    if (!reached) observations.push({ name: 'item 717 acceptance focus failure', selector, focusTrace,
+      target: await p.evaluate(`(e=>e?{hidden:e.hidden,disabled:e.disabled,display:getComputedStyle(e).display,visibility:getComputedStyle(e).visibility}:null)(document.querySelector(${JSON.stringify(selector)}))`) });
     assert.ok(reached, 'native Tab reaches acceptance'); await p.key('Enter');
   };
   // Hold a real native thumb request before transport in both engines; no handler is called.
@@ -298,14 +299,14 @@ export async function promiseChecks(api, helpers) {
       assert.equal(next.origin, facts.origin, 'owned server returns on its isolated origin');
       facts.token = next.token;
     };
-    const definitions = [
+    const promiseMutations = [
       { name: 'promise omitted', from: 'for (const promise of cover.promises ?? []) sheet.append', to: 'for (const promise of []) sheet.append' },
       { name: 'prior time not struck', from: "element(doc, 's', 'promise-prior')", to: "element(doc, 'span', 'promise-prior')" },
       { name: 'missed credited kept', from: "row.dataset.state = promise.state;", to: "row.dataset.state = promise.state === 'missed' ? 'kept' : promise.state;" },
       { name: 'source target too small', from: '  return node;\n}\n\nfunction promiseRow', to: "  node.style.minWidth = '24px'; node.style.minHeight = '24px'; return node;\n}\n\nfunction promiseRow" },
       { name: 'cover too wide', from: "sheet.setAttribute('role', 'note');", to: "sheet.style.width = 'calc(100% + 160px)'; sheet.setAttribute('role', 'note');" },
     ];
-    for (const mutant of definitions) {
+    for (const mutant of promiseMutations) {
       assert.equal(original.split(mutant.from).length, 2, mutant.name + ' has one real target');
       const changed = original.replace(mutant.from, mutant.to);
       await writeFile(url, changed); assert.equal(await readFile(url, 'utf8'), changed, 'mutation applied');
@@ -320,9 +321,13 @@ export async function promiseChecks(api, helpers) {
         assert.equal(await (await fetch(facts.origin + '/dossier-cover.mjs')).text(), original, 'restored bytes are served too'); }
       assert.ok(failure, mutant.name + ' must fail');
       const intended = { 'promise omitted': /recorded promised/, 'prior time not struck': /prior time is visibly struck/, 'missed credited kept': /recorded missed/, 'cover too wide': /cover fits within/, 'source target too small': /44px touch target/ };
+      const evidence = { name: 'item 717 mutant attempt', mutant: mutant.name, error: String(failure), stack: failure?.stack,
+        intendedFailure: intended[mutant.name].test(String(failure)), restoredControlPassed: false,
+        original_sha256: createHash('sha256').update(original).digest('hex'), mutated_sha256: createHash('sha256').update(changed).digest('hex'), restored_sha256: createHash('sha256').update(await readFile(url)).digest('hex') };
+      observations.push(evidence); // Preserve the actual error even when the diagnostic guard refuses it.
       assert.match(String(failure), intended[mutant.name], 'the mutation fails the intended product assertion');
-      observations.push({ name: 'item 717 killed mutant', mutant: mutant.name, error: String(failure), original_sha256: createHash('sha256').update(original).digest('hex'), mutated_sha256: createHash('sha256').update(changed).digest('hex'), restored_sha256: createHash('sha256').update(await readFile(url)).digest('hex') });
       await scenario('restored-' + serial, false, false);
+      evidence.restoredControlPassed = true;
     }
   });
 }

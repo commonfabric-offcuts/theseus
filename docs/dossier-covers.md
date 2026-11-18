@@ -212,7 +212,8 @@ The cover sheet shows the exact promise and source citation, explicit status,
 current time with timezone, and each historical version's words, status and
 attribution. A changed historical time is struck through. A record without a
 time says so. A single-message dossier shows a compact promise pill with its
-time and status; the Reader disclosure shows the complete sheet and history.
+time and status. As before, a single message has no dossier cover in the
+Reader; a message of a dossier uses its disclosure for the full sheet and history.
 These are reading surfaces: agents edit through the existing CLI/Core cover
 act, not a new browser form. Thus the cover itself has no saving, retry or
 refusal controls. Pending/refused/retried writes retain the last committed
