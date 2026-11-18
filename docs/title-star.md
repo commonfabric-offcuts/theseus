@@ -76,3 +76,25 @@ box or widened metadata line. This explicitly supersedes the8576 coarse-pointer
 44px star box: Tony's requested compact second-line appearance is the default.
 Do not add an invisible overlapping hit target. The keyboard ring, transparent
 background and first-message toggle remain. Same copy, no tests before Tony's word.
+
+## 646 qualification under Tony8635 / warp8636
+
+Approved source: `33bee3c4bec37613ee1022d8e642a40a88d59f91`, tree
+`ccf7855cf0099f7e546420bcdf71ef4d61ded986`. Tony's “Perfect approved” is
+under8617's padding revision. The compact natural glyph box is the default;
+the superseded 44px minimum is not an acceptance condition.
+
+`tests/item_646_native.mjs`, called from `stack_native.mjs` in native-reading
+and native-webkit-reading, owns the cases matching `item 646`. It starts with
+all exact approved public bytes, records the original live94 appearance,
+then pairs applied source mutants and exact restoration on isolated Core.
+The cases cover native pointer/touch first press, Tab/Return/Space, true-root
+paging, root-only personal state, writing/image/To preservation and confirmed
+command boundaries. `tests/test_item_646.py` holds Core identity, privacy,
+access races, response, durable operations and retry/persistence below the
+browser. Source read declarations include both immutable web archives and
+all source-switch inputs. Execution status and limits belong in the current
+REPORT and ACCEPTANCE; test presence is not evidence of passing behavior.
+
+735 remains parked with its historical 12/20 per engine and 320px bar fault.
+Neighbouring coverage belongs to Later8139; it does not silently expand 646.

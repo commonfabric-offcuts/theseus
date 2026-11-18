@@ -1,0 +1,10 @@
+test_access_removed_after_read_refuses_without_leaking_or_mutating (test_item_646.Item646Case) ... ok
+test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case) ... ok
+test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case) ... ok
+test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case) ... ok
+test_real_source_controls_apply_and_restore_every_public_byte (test_item_646.Item646Case) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.911s
+
+OK

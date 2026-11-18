@@ -1,0 +1,25 @@
+test_access_removed_after_read_refuses_without_leaking_or_mutating (test_item_646.Item646Case) ... ok
+test_busy_is_unrecorded_then_same_operation_commits_once (test_item_646.Item646Case) ... ok
+test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case) ... FAIL
+test_partial_page_carries_actual_root_and_only_own_accessible_stars (test_item_646.Item646Case) ... ok
+test_real_source_controls_apply_and_restore_every_public_byte (test_item_646.Item646Case) ... ok
+
+======================================================================
+FAIL: test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar (test_item_646.Item646Case)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/codex-646-tests-8636/tests/test_item_646.py", line 53, in test_exact_response_operation_and_persistence_survive_retry_and_stale_unstar
+    self.assertEqual((result['message_id'], result['starred'], result['star_revision'], result['changed']), (root, True, 1, True))
+AssertionError: Tuples differ: ('wrong-root-646', True, 1, True) != ('m-57208bff034247efa428dee326648dec', True, 1, True)
+
+First differing element 0:
+'wrong-root-646'
+'m-57208bff034247efa428dee326648dec'
+
+- ('wrong-root-646', True, 1, True)
++ ('m-57208bff034247efa428dee326648dec', True, 1, True)
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.918s
+
+FAILED (failures=1)
