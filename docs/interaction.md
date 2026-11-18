@@ -236,7 +236,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
 
 - **The outline.** ↑ and ↓ move between the rows shown: the Outcomes
   heading's pencil (New outcome), outcomes, and under an open one its pencil
-  (New topic), its topics, Done (N) and Archived (N) and the topics of one
+  (New topic), its topics with the reader's starred dossiers tucked under each, Done (N) and Archived (N) and the topics of one
   open, and More; past an open outcome's last row comes the next outcome,
   since the outline lists no Notebook (its pages are the right rail's). Home
   and End go to the first and last; ↑ from the first outcome lands on the

@@ -37,6 +37,8 @@ class FreshnessControls:
         self.http_media_publications = 0
         self.legacy_number = 0
         self.fatal = []
+        self.item715_refuse_saves = False
+        self.item715_refused_saves = 0
 
     def record(self, value):
         with self.lock:
@@ -121,6 +123,11 @@ class FreshnessControls:
                 with controls.lock:
                     controls.http_commands += 1
                     controls.http_delivery_acks += int(envelope.get("kind") == "delivery.ack")
+                    refuse = controls.item715_refuse_saves and envelope.get("kind") == "draft.save"
+                    if refuse:
+                        controls.item715_refused_saves += 1
+                if refuse:
+                    raise RequestError(503, "DATABASE_BUSY", "Item 715 isolated draft-save refusal")
                 return self.base.command(actor, envelope)
 
             def publish_media(self, *args, **kwargs):
@@ -488,11 +495,11 @@ def main():
                     result="passed", passed=12, total=12, fate="live")}, {"workspace_id": "kites"}, sender=agent)
             return {"seeded": True}
 
-        def serve(port=0, web=None):
+        def serve(port=0, web=None, as_actor=None):
             """The real server, with a session of its own: a restart (server_stop,
             then server_start) brings it back at the same address with a new one.
             web: the page's files to serve, as a deploy brings another build; the checkout's own by default."""
-            server = create_server(store, instance, actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
+            server = create_server(store, instance, as_actor or actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
                                    max_reads=max_reads, port=port, sign_in_folder=sign_in,
                                    live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
             if "--live" in sys.argv:
@@ -714,6 +721,54 @@ def main():
                             answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
                                                   {"marked": request["marked"]}, {"message_id": message_id},
                                                   {"mark_revision": row[0] if row else 0})["result"])
+                    elif request["method"] == "item715_save_fault":
+                        with controls.lock:
+                            controls.item715_refuse_saves = request["enabled"]
+                            answer = {"enabled": controls.item715_refuse_saves, "refused": controls.item715_refused_saves}
+                    elif request["method"] == "item715_seed":
+                        prefix = request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT OR IGNORE INTO actors(id,kind,name) VALUES ('fixture-715-other','human','Other isolated reader')")
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Starred dossier fixture", "team": ["fixture-715-other"]})
+                        command("opening.save", prefix + "-opening-save", {"workspace_id": workspace, "topic_id": topic_id,
+                                "title": "Parent topic", "participants": [], "body": "Fixture opening", "attachments": []},
+                                {"opening_id": prefix + "-opening"}, {"opening_revision": 0})
+                        command("opening.publish", prefix + "-opening-publish", {}, {"opening_id": prefix + "-opening"}, {"opening_revision": 1})
+                        roots = []
+                        for n, title in enumerate(["A long dossier title " * 8, "Equal title", "Equal title", ""]):
+                            mid = command("message.post", prefix + "-post-%d" % n, {"body": "Fallback words %d" % n}, {"topic_id": topic_id})["result"]["message_id"]
+                            roots.append(mid)
+                            if title:
+                                command("stack.name", prefix + "-name-%d" % n, {"name": title}, {"message_id": mid}, {"name_revision": 0})
+                            if not request.get("empty"):
+                                command("message.star", prefix + "-star-%d" % n, {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                        unloaded = None
+                        if request.get("unloaded") or request.get("cross_topic"):
+                            for n in range(22 if request.get("unloaded") else 1):
+                                tid, opening = prefix + "-extra-%d" % n, prefix + "-extra-opening-%d" % n
+                                command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
+                                        "title": "Unloaded parent" if n == 0 else "Later topic %d" % n, "participants": [],
+                                        "body": "An isolated topic", "attachments": []}, {"opening_id": opening}, {"opening_revision": 0})
+                                command("opening.publish", opening + "-publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+                                if n == 0:
+                                    mid = command("message.post", opening + "-post", {"body": "Unloaded dossier"}, {"topic_id": tid})["result"]["message_id"]
+                                    command("message.star", opening + "-star", {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                                    unloaded = {"topic": tid, "root": mid}
+                        if request.get("read_only"):
+                            revision = store().view(actor, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                            command("outcome.end_set", prefix + "-complete", {"state": "completed"}, {"workspace_id": workspace}, {"workspace_revision": revision})
+                        answer = {"topic": topic_id, "workspace": workspace, "roots": roots, "unloaded": unloaded}
+                    elif request["method"] == "item715_access":
+                        revision = store().view(actor, "workspace", {"workspace_id": request["workspace"]})["workspace"]["version"]
+                        answer = command("workspace.member_set", request["operation_id"], {"actor_id": "fixture-715-other", "present": False},
+                                         {"workspace_id": request["workspace"]}, {"workspace_revision": revision})
+                    elif request["method"] == "item715_act":
+                        field = STACK_KINDS[request["kind"]][1]
+                        with sqlite3.connect(str(path)) as db:
+                            db.row_factory = sqlite3.Row
+                            revision = current_acts(db, actor, [request["message_id"]]).get(request["message_id"], {}).get(field, 0)
+                        answer = command(request["kind"], request["operation_id"], request["args"], {"message_id": request["message_id"]}, {field: revision})
                     elif request["method"] == "server_stop":
                         # As a deploy stops the server: its live streams end and
                         # the address refuses connections until server_start.
@@ -727,7 +782,7 @@ def main():
                         answer = {"stopped": True}
                     elif request["method"] == "server_start":
                         assert server is None, "Stop the server before starting it again"
-                        server = serve(port, request.get("web"))
+                        server = serve(port, request.get("web"), request.get("as_actor"))
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}

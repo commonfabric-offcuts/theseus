@@ -4467,5 +4467,27 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/outline_stars_native.mjs": {
+    "53d4894c2c759988f6053e56887aafc0b92b870e0e6d16a6a4bf4b5c6c9bdbaf": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "53d4894c2c759988f6053e56887aafc0b92b870e0e6d16a6a4bf4b5c6c9bdbaf:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "53d4894c2c759988f6053e56887aafc0b92b870e0e6d16a6a4bf4b5c6c9bdbaf:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "53d4894c2c759988f6053e56887aafc0b92b870e0e6d16a6a4bf4b5c6c9bdbaf:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "53d4894c2c759988f6053e56887aafc0b92b870e0e6d16a6a4bf4b5c6c9bdbaf:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }
