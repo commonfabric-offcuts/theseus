@@ -130,6 +130,11 @@ the pointer's way, the keys' and the phone's.
   a cut-off message is read whole on the server's foreground lane, as ⌘C reads
   it: a slow read ahead on the background lane never refuses it.
   (`web/card-scroll.mjs`, item 401)
+- **Rename topic.** A pencil named “Rename topic” beside the topic title
+  edits that title in place: Return or leaving saves, Escape cancels. It
+  follows the same permission as Rename in Topic settings, which still works.
+  The header and outline keep the saved name through reload. (item 656,
+  docs/topic-settings.md)
 - **New message.** A quiet ✎ beside the topic's title opens the topic's
   composer on its own, with no message above it and the cursor in the field;
   Escape, ✕ or a press outside puts it back in its place with the writing
@@ -184,6 +189,12 @@ the pointer's way, the keys' and the phone's.
   taken back, it leaves the Reader and the reply open. **✅ and 🚫**
   answer an agent's go-ahead ask in one tap or click, on the message or its
   bar, and the agent hears it as a reply (docs/thumbs.md).
+
+- **Your note corner.** A message with your private note shows a small note
+  corner. A click, Return or Space on it, or a phone's first tap, opens the
+  composer directly to that note, keeping the reply and its destination.
+  An empty note and another reader's note show no corner. (item 649,
+  docs/topic-reading.md; the `reading item 649` native cases in both engines.)
 
 ## Writing
 
@@ -279,7 +290,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   the question it opened is closed, and a message the keys opened once and the
   mouse opens next wears no ring when the mouse closes it.
 - **The buttons at the top of the feed.** These are rows: the
-  header's buttons (Topic settings, New message, the Team's pills and "+ Add",
+  header's buttons (Rename topic where permitted, Topic settings, New message, the Team's pills and "+ Add",
   and the others drawn there, such as "Pipeline & pages" below 1181px), on a phone the line under the
   header saying what is new in the other outcomes, and under them the view filters
   in the row just over the messages ("Read it", Only new, Show agent

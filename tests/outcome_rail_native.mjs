@@ -2381,7 +2381,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const buttons = await p.evaluate("[...document.querySelectorAll('#main > .topic-header button')].filter(b=>b.checkVisibility()).map(b=>b.id||(b.closest('#topic-people')?'team':b.tagName))");
     const team = buttons.filter(b => b === 'team').length;
     assert.ok(team >= 1, 'the Team shows at least "+ Add": ' + JSON.stringify(buttons));
-    assert.deepEqual(buttons, ['settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
+    assert.deepEqual(buttons, ['topic-title-rename', 'settings-open', 'new-message', ...Array(team).fill('team')], 'Topic settings and New message are the header\'s buttons at 1280, then the Team\'s');
     const onTeam = () => p.evaluate("Boolean(document.activeElement?.closest('#topic-people'))");
     const onAdd = () => p.evaluate("Boolean(document.activeElement?.matches('#participants .add-chip'))");
     const firstId = await p.evaluate("[...document.querySelectorAll('#messages [data-id]')].find(e=>e.checkVisibility()).dataset.id");
@@ -2396,7 +2396,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowUp');
     assert.equal(await keyedAt(p), 'message:' + firstId, '↑ from the second message goes to the first, not to the header');
     await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'settings-open', '↑ from the top message goes to the header\'s first button');
+    assert.equal(await keyedAt(p), 'topic-title-rename', '↑ from the top message goes to Rename topic, the first header button (item 656)');
+    await p.key('ArrowRight');
+    assert.equal(await keyedAt(p), 'settings-open', '→ goes to Topic settings');
     assert.equal(await ringed(p), 'solid', 'which wears the keys\' ring');
     await p.key('ArrowRight');
     assert.equal(await keyedAt(p), 'new-message', '→ goes to the next button');
@@ -2415,14 +2417,17 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'settings-open', '← goes to the button before');
     await p.key('ArrowLeft');
+    assert.equal(await keyedAt(p), 'topic-title-rename', '← reaches the rename pencil (item 656)');
+    await p.key('ArrowLeft');
     assert.equal(await keyedAt(p), 'topic:t1', '← past the first button goes to the outline, on the topic being read');
     await p.key('ArrowRight');
     await p.key('ArrowUp');
-    assert.equal(await keyedAt(p), 'settings-open');
+    assert.equal(await keyedAt(p), 'topic-title-rename');
     await p.key('ArrowDown');
     assert.equal(await keyedAt(p), 'message:' + firstId, '↓ from the header goes back to the message the keys left');
     assert.notEqual(second, 'message:' + firstId);
     await p.key('ArrowUp');
+    await p.key('ArrowRight');
     await p.key('Enter');
     await until(() => p.evaluate("document.getElementById('topic-settings').open"), 'Return on the gear opens Topic settings');
     await p.key('Escape');
