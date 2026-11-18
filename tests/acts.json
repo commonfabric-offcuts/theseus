@@ -22777,8 +22777,8 @@
    "break": [
     [
      "tools/train.py",
-     "\"tools/ci-input-reads.json\",\n               \"tools/quarantine.py\", \"tools/steps_for.py\")",
-     "\"tools/ci-input-reads.json\",\n               \"tools/steps_for.py\")"
+     "\"tools/ci-input-reads.json\",\n               \"tools/quarantine.py\", \"tools/steps_for.py\",",
+     "\"tools/ci-input-reads.json\",\n               \"tools/steps_for.py\","
     ]
    ],
    "check": {
@@ -26132,8 +26132,8 @@
    "break": [
     [
      "tools/train.py",
-     "\"tools/quarantine.py\", \"tools/steps_for.py\")",
-     "\"tools/quarantine.py\")"
+     "\"tools/quarantine.py\", \"tools/steps_for.py\",",
+     "\"tools/quarantine.py\","
     ]
    ],
    "check": {
@@ -27297,7 +27297,7 @@
    "act": "A small-fix PR deals only its chosen native steps beside the mandatory shards",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]",
      "native = ['native-' + step.name for step in check.NATIVE_STEPS]"
     ]
@@ -27311,7 +27311,7 @@
    "act": "Pushes always receive the full run",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "if event_name == 'pull_request':",
      "if event_name in ('pull_request', 'push'):"
     ]
@@ -27339,7 +27339,7 @@
    "act": "An unreadable scope falls closed to all native steps",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]",
      "native = scoped['steps'] if scoped is not None else []"
     ]
@@ -27353,7 +27353,7 @@
    "act": "No chosen browser mode creates no browser shard",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "for i, (load, names) in enumerate(loads) if names]",
      "for i, (load, names) in enumerate(loads)]"
     ]
@@ -27423,7 +27423,7 @@
    "act": "The workflow command reads GitHub's event file to scope a docs-only PR",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "event = json.loads(Path(args.event).read_text()) if args.event else {}",
      "event = {}"
     ]
@@ -27437,7 +27437,7 @@
    "act": "The workflow command emits the shard matrix GitHub schedules",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "print('shards=' + json.dumps(result['shards']))",
      "pass # dropped matrix"
     ]
@@ -27451,7 +27451,7 @@
    "act": "The workflow command emits the scope claim combine needs",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "print('scoped=' + json.dumps(result['scoped']))",
      "pass # dropped scope"
     ]
@@ -30193,7 +30193,7 @@
    "act": "Browser steps are dealt largest first onto the lightest shard, including a fifth long step",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "key=lambda n: -measured.get(n, median)",
      "key=lambda n: measured.get(n, median)"
     ]
@@ -30207,7 +30207,7 @@
    "act": "Browser shard limits come from the longest measured dealt total plus half",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "timeout = math.ceil(longest * 1.5)",
      "timeout = math.ceil(longest)"
     ]
@@ -30221,7 +30221,7 @@
    "act": "A new browser step is dealt using the measured median instead of being dropped or given zero minutes",
    "break": [
     [
-     "tools/check_plan.py",
+     "tools/unit_shards.py",
      "median = known[len(known) // 2] if known else 1.0",
      "median = 0.0"
     ]

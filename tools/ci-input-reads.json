@@ -4391,11 +4391,11 @@
   "tests/test_tools_check_plan.py": {
     "250766ef9167859fcd395067930d0e9b9c0d41d7a2728d4a777b91499fdc9388": {
       "inputs": [
-        "tools/check_plan.py",
+        ".github/check-weights.json",
+        "tools/ci_input_reads.py",
         "tools/release_check.py",
-        "tools/unit_shards.py",
         "tools/steps_for.py",
-        ".github/check-weights.json"
+        "tools/unit_shards.py"
       ],
       "scope": "repository"
     },
@@ -4436,6 +4436,20 @@
         ".github/workflows/checks.yml"
       ],
       "scope": "repository"
+    },
+    "0a77164d8414220455858a9d5bb6f545af16bf7f7bf859727898d348a563934b:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "10fdba30cfda5085acad39d7f7286fc3ae6dea4e45c8ba49b962d039e759a897": {
+      "inputs": [
+        ".github/workflows/nightly-live.yml"
+      ],
+      "scope": "repository"
+    },
+    "c50a51b1fade7f17fcefb77f3e5e56bd711073c15548c0d020dc969e40493a39": {
+      "inputs": [],
+      "scope": "generated/system/product"
     }
   },
   "tests/thumbnail_open_native.mjs": {
@@ -4617,6 +4631,296 @@
         "tests/stack_native.mjs"
       ],
       "scope": "repository"
+    }
+  },
+  "tests/test_tools_base_move.py": {
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e6dfbe66d5bdc007f3e4685a07db55eefae6797202d8357c37c9b59f1b2d2d1d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "89a6a0308a93fbefdcec56b8940357ec6d06ae3512c403fae3762ddeeec68651": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "0a7b745006494c7634dda3b7808fa5b1160f5fc06f29a7e45c004e687e636c8b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "874702e1d1f7f9af838165f7424773d889713aa0eb72e2ab2c057e29044d0274": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b344d7ed8838a141df008aec69f138181fc241c6f0f578d5dddf004b6d93929d": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "874866ee1dd5e2f3fdcf25dc1ede33c85d09750111c430120a70ceb932ead74e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "735e495036db951cf5efe9c73acb65856c11d7f81715c0893a3261cc9f474144:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5dfd0303205fcec48818fad3c9a5c5b56ac40c249bb094e41785cffb0114258e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "af9f11a828d5bd159079720b8dfd1b3b0e184c0d53b28ce0fdb21be5d01222b0": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "dc2ef741a6032a8e234f17319e83ba6016a47170856d6c71b133cc3ddacced78": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_scoped_guard.py": {
+    "2ca1793e9836537fadada5c83b3b278f7829ed60adfef91f5fc7cf45e8e9c153": {
+      "inputs": [
+        "tools/release_check.py"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/test_tools_continuation_envelope.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt.py": {
+    "31d13b11611c907f8b2fdb7df2ffbb31e480eb274c65d50abcc11b55f8ca49cf": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e06b38aa481435494cd1f940c02dcd893e20301f34b3fa816fdd572a1a05d9e9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "66eae333beaa68c5492374794a58215caccae37680ded942be2de96375b24c64": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "1f7986a586637ec27aeee29229b1f6156d4d9f7b8b4938c53f94211539f7b2a8": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "66eae333beaa68c5492374794a58215caccae37680ded942be2de96375b24c64:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ba7dd190128c0bc0553abd76731b054d8cbc9ff1d331cadbf3101a498d674827": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_families.py": {
+    "8f89e13184a573b59555dcdfbb1c92f86ced8305d5c49d836f0850c39e83dbbe": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_publication.py": {
+    "bd3a6f2e591ea6b7b0f95cac08fe13a490d431ccfe416dcd330ddb7c358287de": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ff17f1fb92d0e6e9346846ce82c4c0819e481b8b5a97560a054c3c7aab99c45b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_postmerge.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_releases.py": {
+    "b952d48fa80270162e170ab0ce54e58ee61be3331f5dbbe4407e3fa7cf2777ab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "06d78bf70e51d260bf9b9a7946acfe6f03f123f06e2d223c48841fe245dbae65": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "06d78bf70e51d260bf9b9a7946acfe6f03f123f06e2d223c48841fe245dbae65:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_resolution_adaptations.py": {
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "7e9bc683c8329456abf2181713accfbbb2a67e75f7adfb39b653ecdff229baf2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_source_readers_8715.py": {
+    "cbd8196a439e926db9f3eb13f868e6397028e5aed85f6da8504eaebf4a51a9d7": {
+      "inputs": [
+        "tools/continuation_envelope.py"
+      ],
+      "scope": "repository"
+    },
+    "790e13d3e4d9e3bcc6a8aa839e7366a14dfba426f39f1df22bcab6fdf7f60eab": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "e88836ccedc3bcccce0ca7d244ac3d79ea97642cfaef91d613c42f34c43e745e": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "c8c765a14e0dbf99ce7f7dcba7fae3e19e5c447bcb2fcc591fc7eda9bc9cc6aa": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_own_receipt_717_assembly.py": {
+    "317ce79014ae552c75f65841335534ae5340e14fb2c0bf19c335588183ab2e95": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "317ce79014ae552c75f65841335534ae5340e14fb2c0bf19c335588183ab2e95:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_tools_profiles_8821.py": {
+    "ff4cac0f708e95f55027d3f2dd399ae4420a7ea5699bcc91b311594126d8cf70": {
+      "scope": "repository",
+      "inputs": [
+        "tests/fixtures/own_profiles_8821.json"
+      ]
+    },
+    "35bb61fddae774204fd822ff5097c96a35c0b7a57ddbd2151bfac923449408f0": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "44d8d5d00c45b2aa9b5b812944ae5b15833dc07441050294e7d268a606cf89f6": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "1f7986a586637ec27aeee29229b1f6156d4d9f7b8b4938c53f94211539f7b2a8": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "2aebedff790f29ae5dc9f16b5bc9b0c328dbd517785c7ed69babcd0e07e2f98a": {
+      "scope": "generated/system/product",
+      "inputs": []
     }
   }
 }
