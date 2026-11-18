@@ -35,8 +35,8 @@ const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile
   w320: { width: 320, height: 640, deviceScaleFactor: 2, mobile: true }, w375: { width: 375, height: 812, deviceScaleFactor: 2, mobile: true } };
 const COMBOS = [['laptop', 'light'], ['laptop', 'dark'], ['phone', 'light'], ['phone', 'dark']];
 
-export async function railChecks({ check, page, until, control, view, facts, shot }) {
-  await item715Checks({check, page, until, control, view, facts, shot});
+export async function railChecks({ check, page, until, control, view, facts, shot, observations, evidencePath }) {
+  await item715Checks({check, page, until, control, view, facts, shot, observations, evidencePath});
   const open = (name, url, size = 'laptop', theme = 'light') => page(name, null, true, { url: facts.origin + url, beforeNavigate: async q => {
     await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
     await q.send('Emulation.setDeviceMetricsOverride', SIZES[size]);

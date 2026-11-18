@@ -4,7 +4,7 @@ Under each loaded topic row in the left outline, show the reader's starred
 dossiers, newest star first. Stars on several messages of one dossier produce
 one title, identified by Core's canonical dossier root, never by its name.
 Use the shared short name, or the same first-message preview as the feed when
-that name is empty. A star and the theme's accent distinguish the child row.
+that name is empty. A star and the theme's warning-text color (`--warn`) distinguish the child row.
 The existing right rail's starred messages retain their existing meaning;
 there is no second dossier group.
 

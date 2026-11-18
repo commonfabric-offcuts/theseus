@@ -645,20 +645,33 @@ class Stacks:
 
     def _view_stars(self, db, actor, args):
         """The reader's starred messages, wherever they can still read them, the newest star first, paged by star."""
+        topic = self._topic(db, actor, args["topic_id"]) if "topic_id" in args else None
         limit = _page_size(args)
         cursor = args.get("cursor", 9223372036854775807)
         if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
             raise Refusal("INVALID_ARGUMENT", "Invalid cursor")
         rows = db.execute(
             "SELECT a.id AS star,a.at_ms AS starred_ms,a.revision,m.id,m.topic_id,m.seq,m.author_id,m.sent_ms," + words("m", chars=160) + " AS excerpt,"
-            "t.title AS topic_title,t.kind AS topic_kind,t.workspace_id FROM message_acts a INDEXED BY reader_stars "
+            "t.title AS topic_title,t.kind AS topic_kind,t.workspace_id FROM message_acts a INDEXED BY " + ("topic_acts " if topic else "reader_stars ") +
             "JOIN messages m ON m.id=a.message_id JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-            "WHERE a.owner=:actor AND a.kind='star' AND a.id<:cursor AND json_extract(a.value,'$.starred')=1 "
+            "WHERE " + ("a.topic_id=:topic AND " if topic else "") + "a.owner=:actor AND a.kind='star' AND a.id<:cursor AND json_extract(a.value,'$.starred')=1 "
             "AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='star' AND b.owner=a.owner) "
             "AND (m.private_to IS NULL OR m.author_id=:actor OR m.private_to=:actor) AND " + READABLE +
-            " ORDER BY a.id DESC LIMIT :limit", {"actor": actor, "cursor": cursor, "limit": limit + 1}).fetchall()
-        return _bounded_page({"instance_id": self.instance_id}, rows, limit, lambda row: {
+            " ORDER BY a.id DESC LIMIT :limit", {"actor": actor, "topic": topic["id"] if topic else None, "cursor": cursor, "limit": limit + 1}).fetchall()
+        dossiers = {}
+        if topic:
+            roots = StackRoots(db, actor)
+            for row in rows[:limit]:
+                root = roots.root(row["id"])
+                if root not in dossiers:
+                    first = db.execute("SELECT m.id,m.attachments," + words("m", chars=1024) + " AS preview FROM messages m WHERE m.id=?", (root,)).fetchone()
+                    name = current_acts(db, actor, [root]).get(root, {}).get("name")
+                    dossiers[root] = {"id": root, "name": name["text"] if name else "", "body": first["preview"],
+                                      "attachments": [{"name": a.get("name", "a file")} for a in json.loads(first["attachments"])]}
+                dossiers[row["id"]] = dossiers[root]
+        return _bounded_page({"instance_id": self.instance_id}, rows, limit, lambda row: dict({
             "message_id": row["id"], "topic_id": row["topic_id"], "seq": row["seq"], "author_id": row["author_id"],
             "sent_ms": row["sent_ms"], "excerpt": row["excerpt"], "withheld": withheld(row["id"]), "topic_title": row["topic_title"],
             "conversation": row["topic_kind"] == "conversation", "workspace_id": row["workspace_id"],
-            "starred_ms": row["starred_ms"], "star_revision": row["revision"], "star": row["star"]}, "star")
+            "starred_ms": row["starred_ms"], "star_revision": row["revision"], "star": row["star"]},
+            **({"dossier": dossiers[row["id"]]} if topic else {})), "star")

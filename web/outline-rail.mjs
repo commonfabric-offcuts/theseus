@@ -49,6 +49,7 @@ import { KEY_WORDS, MESSAGE_KEY_WORDS, keyAction } from './pane-keys.mjs';
 import { book, scopeOf, arrangeItems, moved, movedWords, orderOf } from './outline-order.mjs';
 import { panes } from './panes.mjs';
 import { presses, questionTarget } from './waiting-questions.mjs';
+import { OutlineDossiers } from './outline-dossiers.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -148,6 +149,7 @@ export class OutlineRail {
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     this.reload = reloader(() => this.load());
     this.build();
+    this.dossiers = new OutlineDossiers(this);
     // ↑ above its first row (New outcome, the heading's pencil) and ↓ below its last go on in the side rail: up to the
     // chips and the logo block, down to Keys (arrow-reach.mjs).
     this.tree = new KeyTree({ root: this.list, doc: this.doc, column: this.host.closest('.rail') ?? this.host, rows: () => this.treeRows(), act: (action, row, rows) => this.act(action, row, rows), selectOnPress: true, also: [this.newOutcome] });
@@ -204,7 +206,7 @@ export class OutlineRail {
   // the one being read, and nothing the run before read is drawn.
   begin(feed) {
     this.host.hidden = !feed;
-    this.run += 1; this.handles = null;
+    this.run += 1; this.handles = null; this.dossiers.begin();
     this.unlisten?.(); this.unlisten = null;
     this.watch?.disconnect(); this.watch = null; this.watched = null;
     // The list the run that went drew stays in view until the next run's own
@@ -285,7 +287,8 @@ export class OutlineRail {
     const settled = await Promise.all(reads.map(read => Promise.resolve(read).catch(() => false)));
     if (!mine()) return true;
     this.paint();
-    return settled.every(read => read !== false);
+    const stars = await this.dossiers.refresh();
+    return settled.every(read => read !== false) && stars.every(Boolean);
   }
   async loadMore() {
     const handles = this.handles, run = this.run;
@@ -433,7 +436,9 @@ export class OutlineRail {
         if (group && el !== summary && !group.open) continue;
         const deep = Boolean(group) && el !== summary;
         const said = el.dataset.topicId ? 'topic:' + el.dataset.topicId : el.getAttribute('href') ?? el.textContent.replace(/\(\d+\)/g, '').trim();
-        rows.push({ el, level: deep ? 3 : 2, set: deep ? group : li, key: `${id}|${said}`, parent: deep ? summary : outcome.name,
+        const dossiers = el.closest('.ol-dossiers');
+        const parent = dossiers ? [...outcome.topics.querySelectorAll('a[data-topic-id]')].find(a => a.dataset.topicId === dossiers.dataset.parentTopicId) : null;
+        rows.push({ el, level: dossiers ? (deep ? 4 : 3) : deep ? 3 : 2, set: dossiers ?? (deep ? group : li), key: `${id}|${dossiers ? 'dossier:' + (el.dataset.dossierId ?? el.textContent) : said}`, parent: parent ?? (deep ? summary : outcome.name),
           expanded: el === summary ? group.open : undefined, outcome });
       }
     }
@@ -685,6 +690,7 @@ export class OutlineRail {
     this.more.hidden = !this.pages || this.pages.next === null;
     this.paintHeader();
     this.place();
+    this.dossiers.sync();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the

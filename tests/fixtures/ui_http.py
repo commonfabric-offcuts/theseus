@@ -487,11 +487,11 @@ def main():
                     result="passed", passed=12, total=12, fate="live")}, {"workspace_id": "kites"}, sender=agent)
             return {"seeded": True}
 
-        def serve(port=0, web=None):
+        def serve(port=0, web=None, as_actor=None):
             """The real server, with a session of its own: a restart (server_stop,
             then server_start) brings it back at the same address with a new one.
             web: the page's files to serve, as a deploy brings another build; the checkout's own by default."""
-            server = create_server(store, instance, actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
+            server = create_server(store, instance, as_actor or actor, Path(web) if web else Path(__file__).resolve().parents[2] / "web",
                                    max_reads=max_reads, port=port, sign_in_folder=sign_in,
                                    live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
             if "--live" in sys.argv:
@@ -657,7 +657,9 @@ def main():
                     elif request["method"] == "item715_seed":
                         prefix = request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
-                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Starred dossier fixture", "team": []})
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT OR IGNORE INTO actors(id,kind,name) VALUES ('fixture-715-other','human','Other isolated reader')")
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Starred dossier fixture", "team": ["fixture-715-other"]})
                         command("opening.save", prefix + "-opening-save", {"workspace_id": workspace, "topic_id": topic_id,
                                 "title": "Parent topic", "participants": [], "body": "Fixture opening", "attachments": []},
                                 {"opening_id": prefix + "-opening"}, {"opening_revision": 0})
@@ -670,7 +672,26 @@ def main():
                                 command("stack.name", prefix + "-name-%d" % n, {"name": title}, {"message_id": mid}, {"name_revision": 0})
                             if not request.get("empty"):
                                 command("message.star", prefix + "-star-%d" % n, {"starred": True}, {"message_id": mid}, {"star_revision": 0})
-                        answer = {"topic": topic_id, "workspace": workspace, "roots": roots}
+                        unloaded = None
+                        if request.get("unloaded"):
+                            for n in range(22):
+                                tid, opening = prefix + "-extra-%d" % n, prefix + "-extra-opening-%d" % n
+                                command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
+                                        "title": "Unloaded parent" if n == 0 else "Later topic %d" % n, "participants": [],
+                                        "body": "An isolated topic", "attachments": []}, {"opening_id": opening}, {"opening_revision": 0})
+                                command("opening.publish", opening + "-publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+                                if n == 0:
+                                    mid = command("message.post", opening + "-post", {"body": "Unloaded dossier"}, {"topic_id": tid})["result"]["message_id"]
+                                    command("message.star", opening + "-star", {"starred": True}, {"message_id": mid}, {"star_revision": 0})
+                                    unloaded = {"topic": tid, "root": mid}
+                        if request.get("read_only"):
+                            revision = store().view(actor, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                            command("outcome.end_set", prefix + "-complete", {"state": "completed"}, {"workspace_id": workspace}, {"workspace_revision": revision})
+                        answer = {"topic": topic_id, "workspace": workspace, "roots": roots, "unloaded": unloaded}
+                    elif request["method"] == "item715_access":
+                        revision = store().view(actor, "workspace", {"workspace_id": request["workspace"]})["workspace"]["version"]
+                        answer = command("workspace.member_set", request["operation_id"], {"actor_id": "fixture-715-other", "present": False},
+                                         {"workspace_id": request["workspace"]}, {"workspace_revision": revision})
                     elif request["method"] == "item715_act":
                         field = STACK_KINDS[request["kind"]][1]
                         with sqlite3.connect(str(path)) as db:
@@ -690,7 +711,7 @@ def main():
                         answer = {"stopped": True}
                     elif request["method"] == "server_start":
                         assert server is None, "Stop the server before starting it again"
-                        server = serve(port, request.get("web"))
+                        server = serve(port, request.get("web"), request.get("as_actor"))
                         thread = threading.Thread(target=server.serve_forever, daemon=True)
                         thread.start()
                         answer = {"origin": server.origin, "token": server.session_token}
