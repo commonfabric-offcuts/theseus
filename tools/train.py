@@ -925,7 +925,11 @@ CARRY_752_HISTORY = {
     '134804897024.log': '0954f7d29e9b677a1ec109a71a6d837c0c33aab4d2d065b1fc5c5c3299307d20',
     '134804897592.log': 'b9257946f6dc9246a326aef7305f2bf2e01bdaac01b966fa7cd9f9968f0a61b4',
 }
+CARRY_752_UNION = 'c26ca3ce38cb0e15f2b0c4f8e8b0f96eda6a7149005fc5eba141aa74cb09daac'
 CARRY_752_RETURNED = {
+    'node-units': (14433099037, '863d6d3c4bf9b9af8fd9e32d2a3574c8a64b84fd91eb2d1a07e0919f7468b31b'),
+    'python-1': (14435960075, '73720b1a356cb1d24b539207b8a0dc8b8f499c29c21aa58444496f42f5730f7b'),
+    'native-compose': (14433354869, '76ba64406cb00d75c0c5813605c4e8b622b143c78a608cf1e5ce89b335c34854'),
     'python-2': (14428831875, 'aca022ad9df5c207574ed89d7709263e31ba589fa164ea3fd2fbf265353d7f22'),
     'python-3': (14428254693, '65cd421328adbc41c51533dda4d4f019d36f87115d105d5f6ba7c98be7e91412'),
     'python-4': (14428620240, 'df2bc1cec8f2805ba84aeff5d9a858be40529c686fba78404d7d29757e1b5f64'),
@@ -1022,6 +1026,8 @@ def carry_run(binding, github, repository, git):
     base_move.sha(binding['workflow_head']); base_move.sha(binding['source_head'])
     carry_require(binding['attempt'] == 1, 'wrong run attempt')
     expected = CARRY_752_RUNS.get(binding['run'])
+    if binding['run'] == 44319235676:
+        expected = ('390bcd42d934ea0b8b0e54ef314440dd0d33a7fe', CARRY_752_HEAD)
     if expected is not None:
         carry_require((binding['workflow_head'], binding['source_head']) == expected, 'wrong source/workflow')
     else:
@@ -1091,6 +1097,22 @@ def carry_archive(row, run, jobs, github, repository):
     return members, index
 
 
+def carry_controller_inventory(controller):
+    """Bind every controller/publication ZIP member as well as source archives."""
+    result = {}
+    for key in ('verdict_artifact', 'published_artifact'):
+        raw = base_move.artifact(controller[key]['archive'])
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            names = archive.namelist()
+            carry_require(len(names) == len(set(names)), 'duplicate controller ZIP member')
+            result[key] = {}
+            for name in names:
+                base_move.safe_path(name[:-1] if name.endswith('/') else name)
+                if not name.endswith('/'):
+                    result[key][name] = digest(archive.read(name))
+    return result
+
+
 def carry_dispatch(contents, binding, run, git, repository):
     from tools import continuation_envelope as continuation
     dispatch = base_move.loads(contents['dispatch-source.json'])
@@ -1113,6 +1135,7 @@ def carry_dispatch(contents, binding, run, git, repository):
 
 
 def carry_review(data, judgment):
+    carry_require(data['review'] is not None, 'independent final source/body review pending')
     review = base_move.fields(base_move.document(data['review']),
         'version reviewer record judgment_audit body_sha256 inventory_sha256 workflow_sha256 obligations')
     carry_require(type(review['version']) is int and review['version'] == 1 and review['reviewer'] == 'auditor'
@@ -1145,12 +1168,82 @@ def carry_cases(rows, expected, what):
                   and Counter(actual) == Counter(planned), what + ': duplicate/missing/extra case inventory')
 
 
-def carry_compose_authority(rows):
-    # Auditor9042 places old outcomes only. New intersecting-step reds cannot
-    # inherit that authority or be cleared by a generic final-body review.
+def carry_complete_union(ref):
+    """Warp9074 accepts only the independently fixed auditor9067 bytes."""
+    raw = base_move.artifact(ref)
+    carry_require(digest(raw) == CARRY_752_UNION, 'independent complete union differs')
+    union = base_move.loads(raw)
+    carry_require(union['reviewer'] == 'auditor' and union['target_head'] == CARRY_752_HEAD
+                  and union['target_tree'] == CARRY_752_TREE
+                  and Counter(union['required_steps']) == Counter(release_check.REQUIRED)
+                  and Counter(r['step'] for r in union['steps']) == Counter(release_check.REQUIRED),
+                  'independent union seat/source/step inventory differs')
+    records = {key: base_move.document(value) for key, value in union['references'].items()}
+    for step in union['steps']:
+        refs = step.get('records', [step['record']] if 'record' in step else [])
+        for reference in refs:
+            carry_require(reference in union['references'].values(), 'unbound union step reference')
+        if step['kind'] == 'carry-exact-recorded-scope':
+            original = records['old_scopes']['steps'][int(step['pointer'].split('/')[-1])]
+            carry_require(original['step'] == step['step']
+                          and original['decision'] == 'carry-exact-recorded-scope', 'union carry pointer differs')
+    verification = records['live97_comparison']; measure = records['live97_raw_measurement']
+    carry_require(verification['source'] == measure['source'] == CARRY_752_BASE
+                  and verification['tree'] == '28acdaa0460ab1ec990e0cea136049cf37715757'
+                  and verification['measure_sha256'] == union['references']['live97_raw_measurement']['sha256']
+                  and verification['disposition_authority'] == measure['authority'] == 9061
+                  and verification['exact_match'] is True
+                  and verification['base_cue_right'] == verification['candidate_cue_right'] == 322.921875
+                  and measure['measurement']['cue']['right'] == 322.921875
+                  and measure['measurement']['overflow'] == 3, 'independent placement base/geometry differs')
+    return union, records
+
+
+def carry_compose_authority(rows, placing=None):
+    # Old reds and generic final review cannot place any new compose red.
     reds = [r['name'] for r in rows if r.get('passed') is not True
             and not (r.get('expectedFailure') is True and r.get('mutationCaught') is True)]
-    carry_require(not reds, 'new-head compose raw reds need separate independent placement: ' + '; '.join(reds))
+    if placing is None:
+        carry_require(not reds, 'new-head compose raw reds need separate independent placement: ' + '; '.join(reds))
+        return None
+    union, records = carry_complete_union(placing)
+    compose = records['compose']
+    placement = next(s for s in union['steps'] if s['step'] == 'native-compose')
+    carry_require(carry_canonical(rows) == carry_canonical(compose['results'])
+                  and carry_canonical([r for r in rows if r.get('passed') is not True]) == carry_canonical(compose['failed'])
+                  and len(reds) == 2, 'exact independently placed compose cases/failure bodies differ')
+    carry_require(compose['source'] == CARRY_752_HEAD and compose['tree'] == CARRY_752_TREE
+                  and compose['run'] == 44306987525 and compose['attempt'] == 1
+                  and (compose['artifact']['id'], compose['artifact']['sha256']) == CARRY_752_RETURNED['native-compose']
+                  and placement['placement_authority'] == 9061 and placement['finding_owner_item'] == 750
+                  and placement['release_line_item'] == 648, 'independent compose source/run/placement differs')
+    return {'record': placing, 'raw_reds': compose['failed'], 'finding_owner_item': 750,
+            'unexecuted_branches': reds, 'release_line_item': 648,
+            'qualification': placement['release_line_qualification']}
+
+
+def carry_compose_own(receipt, executions, archives, expected):
+    """Own cases from the authenticated whole new-head return, without fake snapshots.
+
+    The whole report has already passed source/API/ZIP/log/cleanup/placement
+    checks. Only exact true raw rows may fulfill independently chosen obligations.
+    Engine prefixes are the literal compose harness's raw identity convention.
+    """
+    base_move.fields(receipt, 'compose_union')
+    row = base_move.fields(receipt['compose_union'], 'archive report_sha256 raw_case')
+    key = executions['native-compose']['archive']
+    carry_require(row['archive'] == key, 'own compose archive differs')
+    raw = archives[key]['native/compose/native.json']
+    report = base_move.loads(raw); case = row['raw_case']
+    carry_require(row['report_sha256'] == digest(raw)
+                  and any(carry_canonical(case) == carry_canonical(r) for r in report['results'])
+                  and case.get('passed') is True and not case.get('expectedFailure')
+                  and not case.get('mutationCaught'), 'own compose raw case differs or did not pass')
+    match = re.fullmatch(r'(chromium|webkit) (.+)', case['name'])
+    carry_require(match is not None, 'own compose engine absent')
+    identity = ('native-compose', match[2], case.get('phase'), match[1])
+    carry_require(identity in expected, 'wrong own compose obligation')
+    return [identity]
 
 
 def carry_unit(step, out, expected, scope):
@@ -1262,7 +1355,7 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
     from tools import continuation_envelope as continuation
     try:
         data = base_move.fields(base_move.document(ref),
-            'version carry runs archives executions inventory history controller receipts review')
+            'version carry complete_union runs archives executions inventory history controller receipts review')
         carry_require(type(data['version']) is int and data['version'] == 1, 'unknown version')
         carried, prior = carry_record(data['carry'])
         carry_require(repository == 'commonfabric-offcuts/theseus' and pr == 86 and live == CARRY_752_BASE
@@ -1284,15 +1377,15 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
         for item in items:
             carry_require(_contains(git, item['approved_head'], CARRY_752_HEAD, 'approved source ancestry'),
                           'approved head ancestry differs')
+        carry_complete_union(data['complete_union'])
         source_facts = carry_sources(carried, prior, git)
         executions = carry_scopes(data, carried)
         carry_require(isinstance(data['runs'], list) and len({r['run'] for r in data['runs']}) == len(data['runs'])
                       and set(CARRY_752_RUNS) <= {r['run'] for r in data['runs']}, 'missing or duplicate source runs')
         bindings = {r['run']: r for r in data['runs']}
         runs = {n: carry_run(r, github, repository, git) for n, r in bindings.items()}
-        carry_require(Counter(r['id'] for r in judgment['producer_runs']) == Counter(bindings)
+        carry_require(Counter(r['id'] for r in judgment['producer_runs']) == Counter(bindings.keys())
                       and [r['id'] for r in judgment['verdict_checks']] == [134773516808], 'judgment run/check inventory differs')
-        review = carry_review(data, judgment)
         carry_require(isinstance(data['history'], dict) and set(CARRY_752_HISTORY) <= set(data['history']),
                       'missing historical cut/startup logs')
         for name, reference in data['history'].items():
@@ -1302,8 +1395,9 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
                 carry_require(digest(raw_history) == CARRY_752_HISTORY[name], 'historical failure body differs')
         workflows = {r['workflow_head']: digest(continuation.git_bytes(git, r['workflow_head'], continuation.WORKFLOW))
                      for r in bindings.values() if r['run'] != 44284000276}
-        carry_require(review['workflow_sha256'] == workflows, 'independent workflow byte binding differs')
-        inventory = base_move.fields(base_move.document(data['inventory']), 'archives cases python4')
+        inventory = base_move.fields(base_move.document(data['inventory']), 'archives cases python4 controller')
+        carry_require(inventory['controller'] == carry_controller_inventory(data['controller']),
+                      'complete controller ZIP member index differs')
         carry_require(set(inventory['cases']) == set(executions), 'complete reviewed scope inventory differs')
         carry_require(isinstance(data['archives'], list) and bool(data['archives']), 'missing archives')
         archives, archive_rows = {}, {}
@@ -1416,7 +1510,7 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
                     carry_require(step['name'] == scope and release_check.ran_whole(step), 'compose not whole')
                     ci.cases(step, out, expected)
                     report = base_move.loads(content['native/compose/native.json'])
-                    carry_compose_authority(report['results'])
+                    placement = carry_compose_authority(report['results'], data['complete_union'])
                     base_move.teardown(report)
                     carry_require(not report.get('instrumentError') and not report.get('pageErrors')
                                   and not report.get('left'), 'compose cleanup/instrument failure')
@@ -1460,6 +1554,8 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
             return match[2] + '.' + match[1]
         other_py = [r for scope in ('python-1', 'python-2', 'python-3') for r in inventory['cases'][scope]]
         carry_require(not py4_ids.intersection(dotted_key(r) for r in other_py), 'Python4 case overlap')
+        review = carry_review(data, judgment)
+        carry_require(review['workflow_sha256'] == workflows, 'independent workflow byte binding differs')
         # Own acceptance stays separate and uses the existing exact-source reader.
         obligations = review['obligations']; expected_own = []
         carry_require(isinstance(obligations, list) and bool(obligations), 'missing independent own-case obligations')
@@ -1472,11 +1568,15 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
             (s, c, p, e) in expected_own for s, c, p, _ in expected_own for e in ('chromium', 'webkit')), 'incomplete own engines')
         got = Counter()
         for receipt in data['receipts']:
-            keys, _ = base_move.own_receipt(receipt, git, github, repository, CARRY_752_HEAD, CARRY_752_TREE, expected_own)
+            if isinstance(receipt, dict) and 'compose_union' in receipt:
+                keys = carry_compose_own(receipt, executions, archives, expected_own)
+            else:
+                keys, _ = base_move.own_receipt(receipt, git, github, repository, CARRY_752_HEAD, CARRY_752_TREE, expected_own)
             got.update(keys)
         carry_require(got == Counter({key: 1 for key in expected_own}), 'missing/duplicate own-case receipts')
         return {'version': 1, 'evidence': ref, 'carry': data['carry'], 'review': data['review'],
-                'inventory': data['inventory'], 'source_facts': source_facts, 'controller': controller,
+                'inventory': data['inventory'], 'complete_union': data['complete_union'],
+                'compose_placement': placement, 'source_facts': source_facts, 'controller': controller,
                 'context': 'merged' if merged else 'premerge-source-proof; NOT deploy admission',
                 'scopes': 55, 'required_steps': 52, 'qualified_unexecuted': 12,
                 'kind': 'exact-two-source-carry; original outcomes retained'}

@@ -207,7 +207,7 @@ class SourceCarry752(unittest.TestCase):
     def test_unmerged_context_refuses_before_any_candidate_evidence_can_admit(self):
         # Exercise the real entry point with a synthetic authenticated-body
         # stand-in ONLY to isolate the real merged-PR check. No accepting result.
-        data = {k: None for k in 'carry runs archives executions inventory history controller receipts review'.split()}
+        data = {k: None for k in 'carry complete_union runs archives executions inventory history controller receipts review'.split()}
         data['version'] = 1
         with mock.patch.object(train, 'carry_record', return_value=({}, {})):
             with self.assertRaisesRegex(train.Refused, 'actual PR'):

@@ -1,228 +1,164 @@
-# 752: explicit exact-source carry, frozen for independent review
+# 752 warp9074: complete actual union, pending one independent final review
 
-This is the builder's implementation report, not independent approval,
-installation permission, PR86 admission, a complete green judgment or release
-clearance. The executable correction starts at exact installed
-`63b13881bcabfca79cf6beb0ac371f060f101172`, which remains the sole parent and
-whole rollback. Only `tools/train.py` changes executable behavior. The existing
-base_move, continuation, own-receipt, deploy, release projection, source reader,
-Core and client modules remain byte-identical. No new guard module is installed.
+This candidate starts from exact frozen82824047862e50f89b3bef9c607c8d3bff3ce821
+on fable/752-union9074. It implements warp9074's bounded further delta. Installed
+63b13881bcabfca79cf6beb0ac371f060f101172 remains untouched and retained whole.
+This report is builder evidence, not independent approval, installation,
+PR86 admission, merge or release clearance.
 
-The previous9031 driver's whole REVIEW.md and BOUNDARY.json were read as
-historical diagnostics. Its documentation-only3b542adb was not resumed. The
-completed auditor9042 record and warp9037/9040/9043 supersede its incomplete
-carry premise. The whole current item752, COORDINATOR-RECORDS.json, vision,
-experience guidelines and existing source/evidence contracts were consumed.
+## Result and actual data
 
-## Exact authority and behavior
+The complete candidate envelope is
+/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-union9074/COMPLETE-ENVELOPE.json.
+Its COMPLETE-INVENTORY.json indexes23 source archives plus both original
+controller/publication archives:31,091 non-directory members,55 scopes and52
+required steps. Five actual source runs are present. It includes all genuine
+Python1/Node/Python2/3/Python4/deploy/compose returns, every original check0..10,
+the original aggregate, both continuation archives, both startup-abort ZIPs,
+mandatory cut/startup logs and original failed Verdict134773516808. Original
+archives are retained unmodified, never repackaged. There is no pending-receipt
+scaffold or empty archives/runs list.
 
-The opt-in is `source_carry: {path,sha256}` on a judged-first train, exclusive
-with base_move/scoped. Ordinary/no-record behavior keeps its original path.
-Every original train definition except `load` and `judge` remains byte-identical,
-including `before_merge`. All existing modules and ownership lists remain.
-The new contract is docs/source-carry-752.md. The record is pinned to BOTH file
-SHA66ebfa73840d6b29fa006fefb1eddc219939c34b4c919d4514cfb9118db11bd8
-and sorted compact UTF8/ensure_asciiFalse/no-newline canonical
-SHA5189efe95a3fb471d5e5590c4970d189cbaf1380bebf201951c108ea6061bf4a.
-Every decision, raw case, qualification, input and hash-bound prior review is
-inside that authority, not a candidate-selected reader list.
+The strict actual premerge path now validates all source/API/archive/case data
+and reaches precisely:
 
-There are48 carries and TWO REFUSALS. Original Python1/4 discovers/imports
-twelve changed modules before selection; Node directly reads changed
-reader_compose_native.mjs. Their old33/2289 green results cannot fulfill the
-new-head whole steps. The48 exact recorded scopes retain their raw outcomes,
-including191 unresolved original browser reds. The four Reader reports retain
-41raw=26true+15caught negative controls. Their16 declared hashes are incomplete
-runtime manifests: the separately bound55-file static closure and131-source
-conservative proof remain explicit. The missing green/restored wide-pointer
-row stays missing. The two legacy reports without runtime manifests retain
-their independently bound manual source basis. Wake replay carries with no
-new-head timing claim. Nothing infers a generic optional-hash exception.
+> source carry 752: independent final source/body review pending
 
-The validator verifies2631 recorded hash claims across430 paths against exact
-Git bytes at6e08, tested merge5896 andd097. It separately verifies original
-merge parents97/6e08, trees1537/490fa, the complete actual correction diff,
-workflow-only children, source-specific dispatch receipts, current API
-run/attempt/workflow/job/upload/artifact identities and SHA-bound ZIP bytes.
-Unsafe or duplicate members refuse. Every original ZIP member is independently
-indexed; cut/startup logs and the already reviewed Python2/3/4/deploy artifacts
-are pinned. No evidence script or candidate reader is imported or executed.
+WHOLE-DATA-PROOF.json and campaign-final-v2/restored-actual-run-id-counter.log
+retain that execution at the final source bytes. No review was mocked or
+self-signed to reach it. No merged:true was invented. The real API PR86 remains
+open with test merge911547f56ae6d16a359789bb09c5a30e2eef7832, parents97/d097 and
+tree490fa783d2131680ab9754ac27b95f2a92e29c35. This data proof is not a final
+positive judgment or deployment admission. PLANNED-TRAIN.json retains genuine
+combined-source clearance8913 for648/734 from the current PR body, rather than
+calling auditor9067 evidence binding a product-source approval.
 
-The final independent review binds the entire canonical envelope body,
-complete ZIP-member and case inventory, every manual workflow's exact Git
-bytes and own-case obligations. Reviewer names are durable attribution, not
-cryptographic signatures: the coordinator must authenticate the independent
-review, as with existing reviewed evidence forms. This job supplies no such
-final review and does not self-approve its source or evidence inventory.
+## Exact authority and bounded implementation
 
-Python partitions retain exact file assignments and complete source inventory;
-case/file overlap, missing/extra/duplicate identities, skipped controls and
-partial logs refuse. Python2's exact pinned return remains1208OK+12unexecuted
-FrozenReaders, owner755, rather than1220passes. Python3 remains1510OK and deploy
-118OK. Python4 uses only its independently bound1196 completed OK plus135 new
-selected identities, exact disjoint1331union. Its original cut ends with a
-named open test; that test must be selected anew and cannot count as completed.
-The exact original log and failure bodies remain. No whole-Python4 exemption
-or generated clean summary is introduced.
+The original9042 file pin66ebfa73 and canonical pin5189efe9 remain unchanged:
+48 exact recorded carries and2 old-source whole-step refusals. The new required
+complete_union Ref is exact auditor9067 SHA256
+c26ca3ce38cb0e15f2b0c4f8e8b0f96eda6a7149005fc5eba141aa74cb09daac.
+The code reads all52 decisions and11 hash-bound references. RECORD-CONSUMPTION
+records88,989 JSON nodes read, every original ZIP member, both failing geometry
+records/images, the comparison script/image hashes and743 independently
+recomputed live97 Git file hashes. Prior per-step input proof still verifies
+2,631 hash claims across430 paths, exact original/current Git sources and
+unchanged input intersections. No candidate source or evidence script executes.
 
-GitHub's nested PR associations now name currentd097, while immutable original
-run/check heads and publication still name6e08. The explicit controller reader
-retains the installed App/publication/attempt/refusal algorithm and authenticates
-this exact two-head association without rewriting API records. Failed Verdict
-134773516808 stays failed. All unrelated controller routes remain unchanged.
+The whole Node2289 and Python1 33 executions atd097 replace only the two refused
+old-source scopes. Run44319235676/1 is pinned to workflow390bcd42, sole parentd097
+and workflow-only delta. Original API metadata, jobs, actual uploads, run/attempt,
+source/tree/parents, argv, ZIP digests and complete identities are checked. The
+old whole-step refusals are not rewritten into carries.
 
-A read-only premerge call can validate a complete source union against the
-actual open PR86 test-merge and returns an explicit NOT-deploy-admission label.
-It GETs the PR again and compares the complete response. An invented merged
-flag refuses. The original empty-check-association rule still needs actual
-merged context. `train.judge` continues to require the actual GitHub PR merge,
-current release branch, base97, exact tree and approved ancestry BEFORE entering
-the source-carry route, and additionally refuses a premerge proof as admission.
-Existing live recheck, privacy, own-receipt and deploy-before-stop rules stand.
+carry_compose_authority now takes the fixed independent union as placing input.
+Every1510 raw case, including each full failure body, must canonically equal the
+independent compose record. No free-form reviewer label or caller list confers
+placement. The fixed9061/9067 comparison binds live97 source3187c1bc/tree28acdaa0,
+WebKit320 cue right322.921875, overflow3 and Reader0..320/scrollWidth320.
+The same light/dark folded cases fail before gesture atcompose_swipe_648.mjs:70
+through:75. Both remain raw false under750 containment; both after-states remain
+UNEXECUTED, together one648 release qualification. Changed/omitted/extra reds or
+a falsely executed after-state refuse. No other red inherits this exception.
 
-## Red, focused checks and actual source mutations
+Complete data validation now precedes the unchanged independent final body
+review requirement. This makes the one pending authority visible after actual
+receipt proof. Final review still binds the whole canonical body (including the
+placing Ref), inventory, exact workflow Git bytes and independent own obligations.
+The previously unexecuted complete-path run counter compared IDs to binding
+objects; it now compares IDs to binding keys. Controller/publication ZIP members
+also have a complete independently bound inventory, with safe/unique names.
 
-Evidence root:
-`/Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042`.
-All Python invocations used CPython3.9.6 and unique effective cache prefixes;
-local workloads ran sequentially. No whole suite or native/browser case ran.
+A bounded compose_union own-receipt form consumes exact true raw rows from that
+already authenticated whole d097 report, with its actual archive/report digest.
+It invents no snapshot or execution. Source/API/ZIP/full log/phases/cleanup and
+placement checks happen first. Literal engine prefixes supply neutral case and
+engine; expected-failure/mutation flags, false rows, altered rows and obligations
+outside the final independent list refuse. Coverage remains exact once per
+obligation and requires both engines. Legacy/Pool own readers remain unchanged.
+The candidate provides727 literal pairs/1454 genuine true raw rows. Another54
+true rows have engine-specific wording or no passing counterpart; they remain
+in the full inventory and UNPAIRED-OWN-RAW.json, explicitly unclaimed as pairs.
+The final auditor must assess required own-case scope and bind its obligations;
+this builder's proposed list is not that independent decision. In particular,
+neither qualified folded red can be an own-case pass.
 
-Before editing, reproduce-installed.py read all retained structural-preflight
-API responses and invoked the installed before_merge. It compared the ENTIRE
-refusal to STRUCTURAL-REFUSAL.json and asserted zero Git callbacks:
+Only tools/train.py changes executable guard behavior. INVARIANTS.json confirms
+all existing definitions except carry_run, carry_review, carry_compose_authority
+and validate_source_carry remain byte-identical to82824047; load, judge and
+before_merge are unchanged. All existing modules, ownership lists, ordinary
+routing, actual merge/branch/base/tree/ancestry, privacy, original App/controller,
+legacy own-receipt and deploy-before-stop protections remain. No product,
+fixture,2px tolerance,44px target or unrelated guard changes.
 
-> the judgment's runs and checks name 6e08d31e1c52caa670b09185ec01ffe052942397, 918a612e77f4a62d12a9dda21034e6e23bd88037, f24636938a018d1c22c62887058d67a86a6279c9 as their heads, not one commit
+## Evidence and meaningful focused validation
 
-installed-red.txt/json preserve that output and input digests. feature-red.log
-also retains the initial missing-route failures; it is not a positive admission
-fixture. The current actual opted-in entry, using the fresh OPEN PR response,
-actual test merge and complete pinned carry, now includes the genuine returned compose and refuses the two
-missing whole scopes: node-units, python-1. The historical launch-time refusal
-for all three scopes is also retained. No merged PR was invented.
-ACTUAL-INCOMPLETE-ENVELOPE.json is plainly incomplete and has no final review.
+All local Python used CPython3.9.6, sequential processes and unique effective
+cache prefixes. Zero hosted/native/browser/full-unit calls were started.
 
-Final checks:
+- GENUINE-RED.json reproduces the exact82824047 refusal on the genuine compose
+  ZIP/report before editing, with source/report hashes and both complete reds.
+- focused-final03.log:38 passed (16 new exact-union/own/controller checks,
+  20 retained changed-scope regressions and2 GuardedPaths checks). Negatives
+  include missing placing, wrong seat/hash/source/base reference, changed full
+  failure body, omitted/extra red, false after-state and expected-failure claims,
+  altered own receipt/hash/archive/obligation, false own rows and unsafe/duplicate
+  controller members. The duplicate ZIP warning is intentional negative data.
+- campaign-final-v2/MUTATIONS.json:7 actual applied source mutations, each hash
+  asserted, caught by its intended test, byte-exactly restored and followed by
+  a passing separate-cache control. Targets: whole independent-record pin,
+  exact failure body, unexecuted after-state, own true-row requirement, own
+  obligation, controller safe member and the actual complete run-ID counter.
+  The last restored control validates the whole real data to the pending-review
+  gate and checks all1,454 candidate own raw refs. Its source hash equals FREEZE.
+- RECORD-CONSUMPTION.json:all52 steps/11 refs,25 original ZIPs and743 base Git
+  claims authenticated. Full raw member/case inventory is retained, not reduced
+  to counts. WHOLE-DATA-PROOF names the exact canonical body/inventory/workflows.
+- The original33 focused/retained checks and12 mutations remain hash-bound in
+  the historical9042 FREEZE/source freeze; unrelated campaigns were not repeated.
+  git diff --check passes. No unexplained test failure is waived.
 
-- final-focused-v3.log:20 new focused tests plus the2 existing GuardedPaths
-  checks, all pass. Includes default single-source and ordinary behavior,
-  explicit opt-in/exclusivity, actual-merge-before-validator routing, canonical
-  bytes, source/workflow/APIhead/attempt/base, dispatch parent/tree/diff,
-  auditor/body/inventory binding, ZIP identity/digest/path/upload, raw unit
-  partial/skip, and missing/duplicate/extra/control case and scope refusals.
-- final-real-v3.log:11 retained-evidence checks pass. Whole complete record and
-  prior review digests, all recorded Git claims, actual API/workflow/ZIP
-  bindings, genuine returned unit logs, exact Python4 union and tampered
-  union controls, original red/control cases, candidate-selected Reader lists,
-  changed inputs, parent/tree/base substitutions and actual pending refusal.
-- The controller mechanical positive control combines authentic API/ZIP bytes
-  with an explicitly SYNTHETIC future merged context. It retains the original
-  failed Verdict and catches wrong association/App/head/conclusion/attempt.
-  It is not PR86 admission. Synthetic scope/case controls likewise prove logic
-  only; no synthetic record is represented as this judgment's approval.
-- campaign-v3/MUTATIONS.json:12 actual train.py source edits applied and hash
-  checked, each caught by its intended assertion, followed by byte-exact
-  restoration and a passing control under a separate cache prefix. Targets:
-  fresh PR context, carry file pin, scope union, case union, independent body,
-  run attempt, ZIP digest, target tree, dispatch binding, Python4 union and
-  controller association, plus refusal of the newly returned unplaced compose
-  reds. The final campaign uses the frozen executable bytes.
-- HISTORY-CONSUMPTION.json and history-control.log: all members of14 genuine
-  original/continuation ZIPs read and authenticated against fresh metadata,
-  including check4/7/8/9/10, old cuts, failures and startup evidence. Originals
-  were not repackaged or rewritten. This read is not complete-union admission.
-- INVARIANTS.json: unchanged existing definitions/modules/default guard,
-  exact restored source, full named contract hashes. git diff --check passes.
+Resolved intermediate findings remain in original logs: the isolated clone
+needed exact Git objects fetched read-only; initial assembly used the wrong
+continuation job and Python artifact names, corrected against real API/receipts;
+the first focused invocation lacked tests on PYTHONPATH; and the complete-path
+counter bug above was exposed by actual data. The first own inventory included
+54 non-paired names and failed the pair assertion; these are now explicit raw
+unclaimed rows, with no semantic aliases. A further meaningful red showed Python
+dict equality could equate raw false and numeric0; canonical equality now refuses
+that changed case, and final controls/mutations use the corrected source.
+Earlier mutation/assembly logs remain history, not the final proof.
 
-Intermediate failures remain in their original logs and were resolved:
-missing exact Git objects were fetched without changing HEAD; the terminal
-`OK (skipped=12)` was being read as a case name, now listings stop at the single
-actual unittest terminal only in this route; original Python4's open last test
-needed the independently bound cut-prefix rule; mutable API PR associations
-needed separate immutable-head binding. The first mutation driver stopped on
-an ambiguous edit target BEFORE applying that mutant; its completed pairs and
-output remain, and the narrowed campaigns and final source campaign retain all executions; the final
-  campaign ran all12. The expected duplicate
-ZIP construction warning is intentional negative-control data, not a waived
-failure. No unexplained test failure is waived.
+## Coordinator handoff: one pending independent review
 
-## Remaining proof and coordinator procedure
+READY-FOR-FINAL-REVIEW.json names the exact source commit/tree/parents, paths and
+hashes, actual complete envelope/inventory/placing, proposed own obligations,
+original history and all final checks. It is a review request, not approval.
+The reviewer must judge this source and actual whole body together, including
+own-case sufficiency and the54 explicitly unpaired raw rows. The builder has
+not created FINAL-INDEPENDENT-REVIEW.json or any equivalent approval.
 
-There is NO genuine final positive union proof. A late returned receipt changed
-launch-time facts: compose44306987525 completed with conclusion failure and the
-coordinator retained compose-whole.zip before this freeze. It was authenticated
-as artifact14433354869/check-1,281663578bytes, ZIP SHA
-76ba64406cb00d75c0c5813605c4e8b622b143c78a608cf1e5ce89b335c34854.
-All1510 raw cases reconcile to1508true+2false, normal exit1, full six phases,
-clean source and browser/fixture cleanup. COMPOSE-RETURN.json preserves every
-member digest and both exact original failure bodies. The final evidence check
-validates the API/ZIP/source/receipt/log/count/case bindings, not just a summary.
-
-**New concrete authority boundary:** both new reds are WebKit item648 phone-320,
-light and dark folded, named “a right swipe folds only the composer's message
-and keeps exact writing”. Both fail `page overflow <= 2px, got 3` in
-compose_swipe_648.mjs:70. Auditor9042's old-step carry does not classify these
-new-head results. This builder does not assign them to a different owner,
-waive them, or infer approval from the old191. The guard explicitly refuses
-these unplaced new-head reds; a generic final-body review cannot clear them.
-Their placement/ruling is a real new authority boundary. No admission extension
-was added for it. Independent auditor classification is required under8969;
-a648 product fault holds landing. Any different admission rule would need a
-separately explicit, hash-bound ruling and reviewed source correction.
-
-Python1 whole and Node whole replacements remain absent from this supplied
-judgment; their dispatch belongs to the coordinator under9043. No allocation
-was consumed here. Keep all executions. The52-step9041 inventory remains an
-INDEX; its obsolete pending-carry entries cannot override9042's refusals.
-This freeze refuses both the missing whole returns and the unplaced compose
-reds. It supplies no synthetic final positive, ready claim or self-approval.
-
-1. Preserve all original archives/logs and the complete carry bytes. Keep63b
-   installed and retained whole. Obtain ONE independent review of this exact
-   frozen source, tests, evidence and installation plan; this report is not it.
-2. Preserve the now-authenticated ORIGINAL compose return, and read the
-   coordinator-retained Python1 whole and Node whole returns when available. Authenticate their API run/attempt/workflow/job,
-   original ZIP digests, source d097/tree490fa, unfiltered commands and complete
-   cases. Do not dispatch, repeat, synthesize or relabel a return. Obtain the auditor
-   classification/ruling for both new compose reds before any admission claim. Preserve both
-   original compose cuts and the startup aborts. If a receipt differs from the
-   bounded source convention, refuse concretely and review that difference.
-3. Construct the exact envelope in docs/source-carry-752.md: all original and
-   continuation archives, mandatory historical logs, all returned archives,
-   55 scopes representing52 steps, complete ZIP-member indexes and case lists,
-   exact Python4 case partition, original controller artifacts and genuine
-   own-case receipts. The final review binds the canonical WHOLE body,
-   inventory and workflow bytes; it judges complete attribution/obligations.
-   Do not copy the builder's synthetic review controls as authority.
-4. Before merge, run the exact command below with the coordinator's absolute
-   planned train file, naming the actual CURRENT test-merge and source_carry Ref:
+INSTALL-PLAN.md in the same evidence directory supplies literal commit-named
+checkout, attach-review and strict proof commands after the coordinator has
+obtained and authenticated that ONE independent final source/body review.
+attach-independent-review.py only accepts the externally supplied review Ref
+and checks its body/inventory/workflow bindings; it never authors approval.
+It preserves the immutable candidate and writes separate REVIEWED-ENVELOPE.json
+and FINAL-REVIEWED-PR86-TRAIN.json. The strict proof command is:
 
 ```
-PYTHONPATH=/Users/commonfabric/aim-worktrees/codex-752-guard9042 PYTHONPYCACHEPREFIX=/private/tmp/752-final-union-premerge-01 /usr/bin/python3 /Users/commonfabric/.local/share/theseus/fable-tools/checks/752-guard9042/verify-complete-union.py --mode premerge --train /ABSOLUTE/FINAL-REVIEWED-PR86-TRAIN.json
+PYTHONPATH=/Users/commonfabric/aim-worktrees/codex-752-union9074 PYTHONPYCACHEPREFIX=/private/tmp/752-union9074-independent-premerge-01 /usr/bin/python3 /Users/commonfabric/.local/share/theseus/fable-tools/checks/752-union9074/verify-complete-union.py --mode premerge --train /Users/commonfabric/.local/share/theseus/fable-tools/checks/752-union9074/FINAL-REVIEWED-PR86-TRAIN.json
 ```
 
-   This performs read-only proof, no tests or deploy. The current unplaced compose reds concretely REFUSE even after the two whole
-   returns. Only an authorized disposition and independently reviewed correction,
-   if needed, plus a genuine complete union/final review may produce that proof.
-   A premerge result is explicitly not deployment admission or a passing check.
-5. After an actual GitHub PR merge exists, update the train's actual merge and
-   tree, retaining source/evidence identities. Run the same read-only command
-   with `--mode merged`, a NEW cache prefix and that actual merged train. It
-   invokes train.judge, including fresh branch/PR/base/tree/ancestry guards.
-   The current911547f5 test merge is never substituted for an actual merge.
-6. INSTALL-PLAN.md in the external source freeze supplies literal commit-named
-   checkout/preflight commands after the commit exists, preserving63b whole.
-   The coordinator alone may perform the eventual reviewed installation and
-   select that checkout for its existing guard invocations. No live tree,
-   profile, store, service, runtime or caller configuration was changed here.
+A premerge result never grants deployment admission. Only a subsequent ACTUAL
+GitHub merge may be recorded as merge_commit; merged mode invokes unchanged
+train.judge branch/PR/base/tree/ancestry/own/privacy protections before the
+existing deploy/live-before-stop process. The coordinator alone installs,
+changes board/stages/flight, merges or deploys. Keep63b whole and703/705 in flight.
 
-The full acceptance branch cannot be truthfully proved with this incomplete
-judgment. Independent review must inspect that branch and the genuine complete
-union, including own-case/engine/cleanup/attribution obligations; focused parser
-and synthetic mechanical controls do not replace that proof. No source freeze,
-passing focused test or retained independent carry means installation approval.
-
-No delegation, board/stage/flight write, live-store read/write, profile/key/
-session/auth/token read, foreign-worktree/live-tree/loom write, remote push,
-PR mutation, install, deploy, hosted/browser/full-unit execution, process
-inspection or process signal occurred. Exact source commit/tree/parents,
-changed paths and hashes are recorded after commit in SOURCE-FREEZE.json.
+No board/stage/flight write, live-store access, profile/key/session/auth/token
+read, foreign-worktree/live-tree/loom write, push/PR mutation, install/deploy,
+new delegation, process inspection or signal occurred. All changes and evidence
+are confined to this owned worktree and checks/752-union9074. Exact commit/tree/
+parents/changed paths/hashes and clean status are in external SOURCE-FREEZE.json.
