@@ -95,6 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # macOS Bash 3.2 treats an empty array as unset under set -u; these unsharded jobs use no optional array.
           /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" --quarantine-at event
       - name: Write this shard's receipt
         if: always()
