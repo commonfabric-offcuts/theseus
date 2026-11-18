@@ -21,6 +21,7 @@
 // AIM_PLAYWRIGHT_CORE names a playwright-core directory. The release check runs
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
+import { whisperOutlineCompose, archive704 } from './whisper_outline_native.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { item721Compose } from './item_721_compose.mjs';
 import { spawn } from 'node:child_process';
@@ -45,6 +46,8 @@ const until = async (p, expression, description, arg, timeout = 8000) => {
   try { return await p.waitForFunction(expression, arg, { polling: 'raf', timeout }); }
   catch (error) { throw Error(`Timed out: ${description}`); }
 };
+
+const hashes = await archive704(evidence);
 
 const world = () => spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', '--freshness', '--images', '--media', '--agent-colors'], { cwd: root });
 const fixture = world();
@@ -289,6 +292,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  await whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close });
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
@@ -2547,7 +2551,7 @@ try {
   fixture.stdin.end(); shortFixture.stdin.end();
   const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
   await mkdir(evidence, { recursive: true });
-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
+  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
     fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);

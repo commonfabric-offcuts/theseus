@@ -301,8 +301,24 @@ main>#outcomes-home{margin-bottom:.4rem}
 @media(prefers-color-scheme:dark){:root{--whisper-line:#eef3f1}}
 .message-card.own-message{--whisper-line:#eef3f1}
 .message-card.whisper,.message-card.whisper:hover{border:1px dashed var(--whisper-line);border-radius:.75rem}
-/* Your black card keeps a thin black rim outside its line, so the near-white dashes always sit on black, even on the light page. */
-.message-card.own-message.whisper{box-shadow:0 0 0 2px #000}
+/* Item 704: whisper frames */
+/* Match the existing dashed edge, including a sheet in a dossier. A spread
+   shadow would draw a second, solid rectangle; the selection uses an outline
+   instead, without changing the card's size or its place under the next sheet. */
+#messages .message-card.whisper{/*704-card*/border-style:dashed;border-color:var(--whisper-line);box-shadow:none}
+#messages .message-card.whisper.lit:not(.reply-stack[data-head-open=false] .stack-head-card){/*704-selection*/outline:2px dashed var(--focus);outline-offset:0}
+/* A closed head is drawn as the folder and its tab, not the zero-height card.
+   Keep both parts dashed and remove the old tab's solid shadow/fillet ring. */
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper),
+#messages .reply-stack:has(.stack-head-card.whisper) .stack-head{/*704-header*/outline:1px dashed var(--whisper-line);outline-offset:0;box-shadow:none;--stack-tab-shadow:none;--stack-tab-fillet:initial}
+#messages .reply-stack:has(.stack-head-card.whisper) .stack-head{--whisper-line:var(--ink)}
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper.lit),
+#messages .reply-stack[data-head-open=false]:has(.stack-head-card.whisper.lit) .stack-head,
+#messages:not(:has(.lit)) .reply-stack:has(.stack-head-card.whisper):has(:is(.stack-toggle,.stack-rename-input):focus),
+#messages:not(:has(.lit)) .reply-stack:has(.stack-head-card.whisper):has(:is(.stack-toggle,.stack-rename-input):focus) .stack-head{/*704-header-selection*/outline:2px dashed var(--focus);outline-offset:0;box-shadow:none;--stack-tab-shadow:none;--stack-tab-fillet:initial}
+/* A whispered source, its quoted writing and the who chip keep their normal
+   focus visibility, width, colour and offset; only the stroke changes. */
+:is(#source-body.whispering,textarea.whispering,.who-chip.whispering):focus-visible{/*704-focus*/outline-style:dashed}
 .whisper-label{font-weight:500}
 .message-card .whisper-label,.whisper-wait{color:var(--muted)}
 .whisper-wait{font-weight:400}
