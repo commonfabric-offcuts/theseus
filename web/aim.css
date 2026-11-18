@@ -914,6 +914,10 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 .quote-pill{pointer-events:auto;min-height:2.5rem;padding:.3rem 1.1rem;border:0;border-radius:1.25rem;background:var(--ink);color:var(--panel);font-weight:600;box-shadow:0 6px 20px rgb(0 0 0 / .25)}
 .quote-pill:hover{background:var(--ink);filter:brightness(1.15)}
 .quote-key{margin-left:.5rem;opacity:.65;font-weight:500}
+/* The same pill on a phone's dossier selection; native selection UI stays native. */
+.dossier-quote-pill{position:fixed;z-index:21;min-width:44px;min-height:44px;white-space:normal}
+.dossier-quote-pill .quote-key{display:none}
+@media(pointer:coarse){.reply-stack .message-preview{-webkit-user-select:text;user-select:text}}
 /* The header: ↑ ↓ ⋯ ✕ as quiet marks, not boxes. */
 #reader-stepping{display:flex}
 .reader-header>button,#reader-stepping>button{min-width:2.5rem;min-height:2.5rem;padding:0 .4rem;border-color:transparent;background:transparent;font-size:1.05rem;color:var(--ink)}
@@ -1025,7 +1029,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 /* A card's images (item 321), under its words: each as tall as it needs up to a line of cards, never wider than the card. Its name shows until it loads, or with what it waits on; once it shows, screen readers alone hear the name. */
 /* × stands beside its image, never over it; a small image still shows at a thumb's size. */
 .deck-images{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}.deck-image{display:flex;align-items:flex-start;gap:.3rem;margin:0;min-width:0;max-width:100%}
-.deck-image>.image-thumb{display:block;flex:0 1 auto;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:14rem;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.deck-image>.image-thumb{display:block;flex:none;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .deck-image-name{min-width:0;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.deck-image:not([data-state]):has(>.image-thumb:not([hidden]))>.deck-image-name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .deck-image:has(>.image-thumb[hidden])>.deck-image-name,.deck-image:not(:has(>.image-thumb))>.deck-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}.deck-image[data-state]:has(>.image-thumb:not([hidden]))>.deck-image-name{order:1;align-self:center;max-width:12rem}
 .deck-image-remove{order:2;flex:none;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:1.1rem;line-height:1;cursor:pointer}.deck-image-remove:hover{background:var(--soft)}
@@ -1035,7 +1039,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-writing.deck-dropping{outline:2px dashed var(--accent);outline-offset:2px}
 /* A card's image where its page is read (the Reader, a page in place): at the size it reads at, never wider than the words nor taller than most of the screen, its name under it; an image the page does not carry is its name alone. */
 .md-image{display:block}.page-image{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;margin:.35rem 0;min-width:0;max-width:100%;white-space:normal}
-.page-image>.image-thumb:not([hidden]){display:block;width:auto;height:auto;min-width:3rem;min-height:3rem;max-width:100%;max-height:min(28rem,60dvh);object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
+.page-image>.image-thumb:not([hidden]){display:block;width:3rem;height:3rem;min-width:3rem;min-height:3rem;max-width:100%;object-fit:contain;border-radius:.5rem;border:1px solid var(--line);background:var(--soft)}
 .page-image-name{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}.page-image[data-state=missing]>.page-image-name{padding:.4rem .6rem;border:1px dashed var(--line);border-radius:.5rem}
 .deck-asking{border-color:var(--accent)}.deck-ask-form{display:grid;gap:.45rem;margin-top:.7rem}.deck-ask-field{min-height:5rem;overflow:hidden}
 .deck-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.deck-ask-to{min-height:2.2rem}
@@ -1229,6 +1233,23 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 
 /* A displayed thumbnail opens its image (651), with visible keyboard focus. */
 .image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+/* 653: the Notebook list's contain thumbnail beside the existing named Open.
+   Its square is reserved while loading; no image leaves Open as the fallback.
+   Keep both acts at least 44px, with wrapping for long file names on phones. */
+.attachment-control{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.4rem;max-width:100%;vertical-align:middle}
+.attachment-control>.attachment-open{min-width:44px;min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.attachment-control>img.image-thumb{display:block;flex:none;align-self:center;width:3rem;height:3rem;min-width:44px;min-height:44px;object-fit:contain;margin:0;border-radius:.4rem}
+.attachment-control>img.image-thumb[hidden]{display:block!important}
+/* Override the Review list's larger passive-image result, only for thumbnails. */
+#review-content .pending-card .attachment-control>img.image-thumb{width:3rem;height:3rem;object-fit:contain;margin:0}
+/* Item 649: the corner owns a row after the content, before the card's normal
+   padding (including a covered sheet's overlap allowance). Flow also keeps a
+   static dossier root's corner on its own card without moving the folder tab. */
+.note-corner{position:static;display:flex;align-items:center;justify-content:center;width:2.75rem;height:2.75rem;margin-left:auto;color:var(--muted);cursor:pointer}
+.note-corner:hover{color:var(--ink)}
+.note-corner:focus-visible{outline:2px solid var(--focus);outline-offset:-4px}
+.note-corner-glyph{display:block;width:1rem;height:1rem;background:currentColor;-webkit-mask:var(--carry) center/contain no-repeat;mask:var(--carry) center/contain no-repeat}
+@media(forced-colors:active){.note-corner-glyph{background:CanvasText}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}

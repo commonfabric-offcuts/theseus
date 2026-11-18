@@ -34,7 +34,7 @@ import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
 import { AgentInvite, Invitation } from './agent-invite.mjs';
-import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf } from './marks.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords, carriesOf, paintNoteCorner } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, opened } from './fold.mjs';
@@ -62,6 +62,7 @@ import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { ToolPage, OutcomeTools, ToolsRail, TopicTools } from './skills.mjs';
 import { MessageMenu, openMessageMenu, sayOn, copyText, COPY_REFUSED } from './message-menu.mjs';
+import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
@@ -69,6 +70,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames } from './reply-stacks.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { paintThumb } from './image-pick.mjs';
 import { StackFeed } from './stack-feed.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { PressHold } from './press-hold.mjs';
@@ -693,8 +695,9 @@ function rechecked(session, ids, page) {
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
-// One attachment of a source: a button that fetches it, then shows an image
-// in place and offers the file to save. current() says the place it was
+// One attachment of a source: an existing thumbnail beside Open for a verified
+// inline image (653); Open still fetches it, shows it in place and offers the
+// file to save. The thumbnail keeps 651's new-tab act. current() says the place it was
 // offered from still shows that source; a refusal goes to notice, and an open
 // that succeeds sends notice('') to say an earlier refusal no longer holds.
 // Focus pressed onto Open moves to Download, or back to Open on a refusal,
@@ -711,7 +714,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
       if (!available()) return;
       const url = URL.createObjectURL(media.blob);
-      mediaURLs.add(url); host.replaceChildren();
+      mediaURLs.add(url); host.replaceChildren(); host.classList.remove('attachment-control');
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
@@ -719,6 +722,20 @@ function attachmentControl(attachment, sourceRef, current, notice) {
     } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
+  // Unknown/non-inline files keep Open alone. Never discover an image by
+  // speculatively reading a file; use the same verified descriptors as cards.
+  if (attachment.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(attachment.content_type)) {
+    host.classList.add('attachment-control'); show.classList.add('attachment-open');
+    const key = JSON.stringify(['attachment', sourceRef ?? 'own', attachment.id, attachment.sha256]);
+    paintThumb(host, key, async () => {
+      // A queued read belongs only to the control still offering this source.
+      // Open may already have replaced it, or its page may have moved on.
+      const currentImage = () => !retired && available() && show.isConnected;
+      if (!currentImage()) return null;
+      const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
+      return currentImage() && media.inline ? media.blob : null;
+    });
+  }
   return host;
 }
 // One of a Notebook page's images, read through the page at ref (page-image.mjs): the Reader's and a page in place.
@@ -740,12 +757,12 @@ function sourceAttachments(presentation) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null) {
+async function openSource(ref, opener, act = null, mode = 'reply') {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener, mode }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
@@ -1036,6 +1053,9 @@ function paintCardReading() {
     entry.dataset.talk = quiet ? 'agents' : '';
     paintReading(card, item, { read: cardRead(item), quiet, go: goToMessage });
     paintAwaiting(card, item);
+    // The shortcut is the card's last act, after its words and controls.
+    paintNoteCorner(card, item, (id, opener) => run(() =>
+      openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
 }
 // A message the page shows, brought into view: its stack opened first when it
@@ -2389,6 +2409,11 @@ async function initialize() {
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
+  new DossierSelectionQuote({ host: $('messages'), template: $('quote-selection'),
+    entryOf: target => menu?.entryOf(target), selected: entry => menu?.passages.selected(entry),
+    eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
+      !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
+    quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), item: id => views.messages.get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
     reply: (id, card) => run(() => replyMessage(id, card)),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),

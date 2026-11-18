@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { ROWS, misdrawn, misglyphed, misplaced } from './menu_glyphs.mjs';
 import { notebookSheetChecks, sheetHead } from './notebook_sheet_native.mjs';
+import { notebookImages653 } from './notebook_images_653_native.mjs';
 import { cardImageChecks } from './notebook_card_images_native.mjs';
 import { startCardScrollProbe, cardScrollHeld } from './card_scroll_probe.mjs';
 
@@ -21,6 +22,7 @@ import { startCardScrollProbe, cardScrollHeld } from './card_scroll_probe.mjs';
 // keys an input method composes with stay its own; and every key that leaves a
 // card picked brings it into view with a tenth of the window beyond it (379).
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
+  await notebookImages653({ check, page, until, control, view, facts, shot });
   await check('notebook a competing revision is reviewed without replacing active writing and a second tab cannot take its journal', async () => {
     const item='notebook-writing-conflict';
     assert.equal((await control({method:'outcome_reference',operation_id:item,item_id:item,title:'Concurrent notes',body:'Original writing.'})).status,'committed');

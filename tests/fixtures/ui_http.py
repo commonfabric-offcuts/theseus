@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from item_674_runtime import runtime as item674_runtime
 from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
@@ -691,6 +692,9 @@ def main():
                                   "sources": sources, "media": media, "max_reads": max_reads,
                                   "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
+                    elif request["method"] == "item_674_runtime":
+                        answer = item674_runtime(server, item645_candidate, item645_candidate_csp, root,
+                                                 request["phase"], server_module.web_build.load)
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
                     elif request["method"] == "counts":
@@ -1201,10 +1205,15 @@ def main():
                                     "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
                                     "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
                         assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
+                        # Item 653: same source owner and lost-topic permission,
+                        # with an optional verified image beside the text file.
+                        named_attachments = [{"id": media_id}]
+                        if request.get("image"):
+                            named_attachments += published(prefix + "-image", [{"name": "screen.png", "image": "screen.png"}], agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
-                            "attachments": [{"id": media_id}],
+                            "attachments": named_attachments,
                             "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
