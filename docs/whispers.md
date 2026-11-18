@@ -103,6 +103,16 @@ whom, who has written in the topic, items and takes, and the work ring.
 
 ## Reading
 
+The saved draft records a person's choice, so `draft.whisper` is absent or
+null before they choose. The existing **reply-to-whisper default** derives
+Whisper when replying to a whisper with its one agent named (`defaultChoice`
+and `choiceOf`). `Reader.send` makes that effective choice explicit through
+`sending` before the editor freezes the writing. Item 704 changes no default,
+preference, recipients or privacy rule. Its helper checks the undecided saved
+quote and the exact body, recipients, quote revision and privacy at Send.
+Owned intercepted commands release and await their continuations and response
+bodies before unroute or closing the context, including refused and error paths.
+
 A whisper keeps the existing dotted-line outline (the UI's dashed stroke)
 everywhere it is drawn: the feed, a dossier's sheets and header, the source
 above a composer's quote, and a phone. Its selection rectangle is dashed too;
