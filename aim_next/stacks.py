@@ -57,7 +57,7 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
-from . import cover_values
+from . import cover_values, dossier_order
 
 
 def _act_table(kinds):
@@ -154,10 +154,11 @@ def _flag(args, name, words):
 def _value(kind, args):
     """The act's stored value, from its command's args, or a refusal saying what it takes."""
     if kind == "aside":
-        through = args.get("through", False) if set(args) == {"through"} else False
+        through = args.get("through", False) if set(args) in ({"through"}, {"through", "key"}) else False
         if through is not None and (isinstance(through, bool) or not isinstance(through, int) or through < 1):
             raise Refusal("INVALID_ARGUMENT", "Name the last observed message sequence, or none to bring the dossier back")
-        return {"through": through}
+        key = _value("place", {"key": args["key"]}) if "key" in args else {}
+        return dict({"through": through}, **key)
     if kind == "star":
         return _flag(args, "starred", "Name one message and whether it is starred")
     if kind == "deal":
@@ -511,11 +512,15 @@ def stack_positions(db, actor, items):
             latest, others = _dossier(db, actor, root) if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
+            order = dossier_order.rank(db, actor, topic, root)
             positions[root] = {"root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "starred": starred,
+                               "order_key": order["key"],
+                               "order_tie": order["tie"],
+                               "order_entry_key": order["entry_key"],
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
                                "cover_refresh_revision": acts["cover_refresh_revision"],
                                "below": through is not None and not starred and (others is None or others <= through),
@@ -604,7 +609,14 @@ class Stacks:
                 code, words = NOT_THE_NAMER[why]
                 raise Refusal(code, words % namer if "%s" in words else words)
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
-        if (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value:
+        same = (self._act_value(db, message["id"], kind, owner) or NONE[kind]) == value
+        if kind == "place":
+            root = StackRoots(db, actor).root(message["id"])
+            order = dossier_order.rank(db, actor, message["topic_id"], root)
+            same = same and order["key"] == (order["entry_key"] if value["key"] is None else value["key"])
+        if kind == "aside" and "key" in value:
+            same = same and dossier_order.rank(db, actor, message["topic_id"], message["id"])["key"] == value["key"]
+        if same:
             return dict(result, **value, **{expected_name: current, "changed": False}), []
         revision = current + 1
         # The newest act in the topic its reader had heard of before this one: a page that read the topic's places at
@@ -636,6 +648,12 @@ class Stacks:
         version = db.execute("INSERT INTO message_acts(kind,message_id,topic_id,seq,owner,actor_id,value,at_ms,revision) VALUES (?,?,?,?,?,?,?,?,?)",
                              (kind, message["id"], message["topic_id"], message["seq"], owner, actor,
                               json.dumps(value, separators=(",", ":"), ensure_ascii=False), _now_ms(), revision)).lastrowid
+        if kind == "place":
+            dossier_order.placed(db, actor, message, value)
+        elif kind == "aside":
+            latest, others = _dossier(db, actor, message["id"])
+            if value["through"] is None or (others is not None and others > value["through"]):
+                dossier_order.returning(db, actor, message["topic_id"], message["id"], value.get("key"))
         if not tell:
             return version
         for reader in [actor] if owner else self._message_readers(db, message, actor):

@@ -229,11 +229,13 @@ class CoverRefreshCase(ReaderCase):
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": self.answer}, expected={"thumb_revision": 0}))
         acts = self.sql("SELECT * FROM message_acts ORDER BY id")
         messages = self.sql("SELECT * FROM messages ORDER BY seq")
+        self.sql("DELETE FROM dossier_order")  # isolate refresh rollback; order refusal is tested separately
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "47")["schema_version"], "47")
         with self.assertRaises(StoreError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("47",)])
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["schema_version"], "48")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "49")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT * FROM message_acts ORDER BY id"), acts)
         self.assertEqual(self.sql("SELECT * FROM messages ORDER BY seq"), messages)
