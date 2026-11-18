@@ -31,7 +31,7 @@ function mark(doc, d) {
 }
 
 // A Notebook page as a deck of cards (docs/decks.md): a list sorted with the
-// keys on a laptop, one card at a time, swiped through, on a phone, a card's
+// keys and touch at every width (item 652: the laptop editor on phones for now), a card's
 // children grouped under it and folded away in this browser at will. An act is
 // made on the deck at once and written as the page's next revision; acts made
 // while a save is on its way go together in the next. A save whose answer did
@@ -46,8 +46,8 @@ export class DeckPage {
   // header: the page's {eyebrow, title, description}. place(scope): {href, title} of the topic or outcome the page is in.
   // askIn(scope): where a card's ask goes, {topicId, agents}, or null when there is nowhere.
   // shortKeys: the lines of keys in their short form, the long form their tooltip.
-  constructor({ host, header, item, read, send, place, askIn, shortKeys = false, doc = globalThis.document, narrow = globalThis.matchMedia?.('(max-width: 760px)') }) {
-    Object.assign(this, { host, header, item, read, send, place, askIn, doc, narrow });
+  constructor({ host, header, item, read, send, place, askIn, shortKeys = false, doc = globalThis.document }) {
+    Object.assign(this, { host, header, item, read, send, place, askIn, doc });
     // The listeners on the document go with the page when it closes (close()).
     this.listening = new AbortController();
     const signal = this.listening.signal;
@@ -107,7 +107,6 @@ export class DeckPage {
       pointer = { x: event.screenX, y: event.screenY };
     }, { signal });
     doc.addEventListener('keydown', event => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) this.list.classList.remove('deck-pointing'); }, { signal });
-    this.list.addEventListener('scroll', () => this.scrolled(), { passive: true });
   }
   node(tag, className, text) {
     const element = this.doc.createElement(tag);
@@ -115,7 +114,6 @@ export class DeckPage {
     if (text !== undefined) element.textContent = text;
     return element;
   }
-  get phone() { return Boolean(this.narrow?.matches); }
   // Whether the page is marked a draft, its words kept from agents (NotebookPage: as the person's writing has it).
   drafted() { return this.source?.draft === true; }
 
@@ -142,8 +140,6 @@ export class DeckPage {
         const at = typeof this.recalled?.text === 'string' ? findCard(this.deck, this.recalled.text, this.recalled.at) : -1;
         if (at >= 0 && at !== this.picked) this.pick(at);
         await this.paintHeader();
-        // A phone opens on the cards themselves, the header above scrolled away.
-        if (this.phone) this.bar.scrollIntoView({ block: 'start' });
       }
       await this.loadTalks();
       return this.resume();
@@ -386,9 +382,8 @@ export class DeckPage {
     const card = this.deck.cards[this.picked], text = card ? cardText(card) : '', near = this.picked;
     // Past the first card or the last, the arrow goes on to what lies that way
     // on the page: the bar above the cards, the header (arrow-reach.mjs). With
-    // nothing focused the arrows stay the deck's, picking a card; but on a
-    // phone, where a pick moves no focus, so past the edge they go on too.
-    const plainArrow = !command && !event.shiftKey && !event.altKey && (this.list.contains(event.target) || (this.phone && event.target === this.doc.body));
+    // nothing focused the arrows stay the deck's, picking a card.
+    const plainArrow = !command && !event.shiftKey && !event.altKey && this.list.contains(event.target);
     if (plainArrow && (up || down) && this.beside(this.picked, up ? -1 : 1) === this.picked && this.handOn(up ? 'up' : 'down')) { event.preventDefault(); return; }
     if ((up || down) && command && !event.altKey && event.shiftKey) this.act({ kind: 'merge', text, step: up ? -1 : 1, near });
     else if ((up || down) && command && !event.altKey) this.actOn('move', up ? -1 : 1);
@@ -486,6 +481,7 @@ export class DeckPage {
     button.type = 'button';
     button.tabIndex = -1;
     button.setAttribute('aria-label', 'Cards under this one');
+    button.title = 'Cards under this one';
     button.setAttribute('aria-expanded', String(!this.folded.has(this.deck.cards[index].title)));
     button.append(mark(this.doc, CHEVRON));
     // While a card is being written, a click here finishes it and folds nothing.
@@ -502,13 +498,6 @@ export class DeckPage {
     this.mark();
     this.show(true);
   }
-  // On a phone the card in view is the one picked.
-  scrolled() {
-    if (!this.phone || this.editing || this.asking || !this.list.clientWidth) return;
-    const row = this.list.querySelectorAll('.deck-card:not([hidden])')[Math.round(this.list.scrollLeft / this.list.clientWidth)];
-    const index = Number(row?.dataset.index);
-    if (Number.isInteger(index) && index !== this.picked) { this.picked = index; this.mark(); }
-  }
   mark() {
     for (const row of this.list.querySelectorAll('.deck-card')) {
       const index = Number(row.dataset.index), picked = index === this.picked, selected = this.selected.has(index);
@@ -524,14 +513,11 @@ export class DeckPage {
     const card = this.deck.cards[this.picked];
     try { if (card) globalThis.sessionStorage.setItem(`deck:${this.item}`, JSON.stringify({ text: cardText(card), at: this.picked })); } catch {}
   }
-  // The picked card in view; on a laptop it takes the focus when the deck has it (or nothing does).
-  // A phone has no keys for the deck, so its cards never take the focus. Wherever a key leaves it picked, moved,
-  // merged, put back or picked again, the card keeps room below and above it (reveal.mjs); a click leaves the page
-  // where it is.
+  // The picked card in view, using the laptop list at every width for now (item 652).
+  // A key keeps room around it (reveal.mjs); a press reveals it without moving the writing's focus.
   show(focus) {
     const row = this.list.querySelector(`.deck-card[data-index="${this.picked}"]`);
     if (!row) return;
-    if (this.phone) { this.list.scrollTo({ left: [...this.list.querySelectorAll('.deck-card:not([hidden])')].indexOf(row) * this.list.clientWidth }); return; }
     if (this.keyed) revealSelection(row); else row.scrollIntoView({ block: 'nearest' });
     if (focus) row.focus({ preventScroll: true });
   }
@@ -547,7 +533,17 @@ export class DeckPage {
     const pictures = row ? [...row.querySelectorAll(':scope > .deck-images > .deck-image')] : [];
     const height = Math.max(0, (row?.getBoundingClientRect().height ?? 0) - (row?.querySelector(':scope > .deck-images')?.getBoundingClientRect().height ?? 0));
     const shownAt = new Map(pictures.map(figure => [figure.dataset.cardImage, figure.getBoundingClientRect().height]));
-    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height });
+    // A parent's first title line contains its chevron, taller by touch. Read
+    // that line's actual room before replacing the card. Extra title lines
+    // already wrap in the textarea, so they must not also become top padding.
+    const title = row?.querySelector(':scope > .deck-title'), body = row?.querySelector(':scope > .deck-words');
+    let bodyStart = null;
+    if (words && title?.querySelector('.deck-fold') && body) {
+      const range = this.doc.createRange(); range.selectNodeContents(title.lastChild);
+      const lines = [...range.getClientRects()], extra = lines.length ? lines[lines.length - 1].top - lines[0].top : 0;
+      bodyStart = body.getBoundingClientRect().top - title.getBoundingClientRect().top - extra;
+    }
+    this.open({ text: cardText(card), shown: cardText({ title: card.title, words }), stacks, images, kept: images.join('\n'), shownAt, depth: card.depth, near: this.picked, fresh: false, at, height, bodyStart });
   }
   written(card) {
     const { words, stacks } = cardStacks(card.words, address => (messageOf(address) ? stackLine(address) : null)), shown = cardImages(words);
@@ -605,6 +601,7 @@ export class DeckPage {
     field.rows = 1;
     field.setAttribute('autocomplete', 'off');
     field.value = editing.shown ?? editing.text;
+    if (editing.bodyStart != null) field.style.setProperty('--body-start', `${editing.bodyStart}px`);
     field.setAttribute('aria-labelledby', 'deck-editor-label');
     field.addEventListener('input', () => this.fit(field));
     this.editing = { ...editing, field, input: new WritingInput({ field }) };
@@ -614,7 +611,7 @@ export class DeckPage {
     this.paint();
     this.keyed = keyed;
     // On a laptop the box keeps the height its card showed at, less the room around it, and grows only when what is
-    // written needs more, so the text stays where it stood (aim.css reads --kept there; a phone's box has its own).
+    // written needs more, so the text stays where it stood (aim.css reads --kept at every width).
     if (editing.height) {
       const holder = field.closest('li'), images = holder.querySelector(':scope > .deck-images');
       const around = holder.getBoundingClientRect().height - field.getBoundingClientRect().height - (images?.getBoundingClientRect().height ?? 0);
@@ -623,7 +620,7 @@ export class DeckPage {
     }
     const at = Math.min(editing.at ?? field.value.length, field.value.length);
     field.setSelectionRange(at, at);
-    if (keyed && !this.phone) revealSelection(field.closest('li'));
+    if (keyed) revealSelection(field.closest('li'));
   }
   // Tab, ⇧Tab, ⌘↑ or ⌘↓ while a card is written: the card moves by the rules of a picked card, and is saved there,
   // while the writing and the cursor stay as they were; the writing is saved when the card is finished. A new card
@@ -704,6 +701,7 @@ export class DeckPage {
       link.href = routeHref({ kind: 'topic', id: topicId, message: messageId });
       link.tabIndex = -1;
       link.setAttribute('aria-label', !talk ? 'Reply stack' : talk.replies ? `Reply stack: ${talk.replies === 1 ? '1 reply' : `${talk.replies} replies`}${talk.unread ? `, ${talk.unread} not read` : ''}` : 'Reply stack: asked, no reply yet');
+      link.title = link.getAttribute('aria-label');
       link.classList.toggle('deck-unread', Boolean(talk?.unread));
       link.addEventListener('click', event => event.stopPropagation());
       holder.append(link);
@@ -714,6 +712,7 @@ export class DeckPage {
       ask.type = 'button';
       ask.tabIndex = -1;
       ask.setAttribute('aria-label', 'Ask an agent about this card');
+      ask.title = 'Ask an agent about this card';
       ask.addEventListener('click', event => { event.stopPropagation(); this.ask(index); });
       holder.append(ask);
     }
@@ -927,7 +926,7 @@ export class DeckPage {
       }
       this.fit(editing.field);
       // The card being written, moved by a key on a laptop, keeps that room too (open() reveals a card a key opens).
-      if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));
+      if (this.keyed) revealSelection(editing.field.closest('li'));
       else editing.field.closest('li').scrollIntoView({ block: 'nearest', inline: 'center' });
     } else if (asking && asking.form.contains(focused)) {
       focused.focus({ preventScroll: true });

@@ -3563,7 +3563,7 @@
    "break": [
     [
      "web/aim.css",
-     ".deck-worded>.deck-editor{padding-top:calc(1.35rem + .3rem - .92rem * 1.55)}",
+     ".deck-worded>.deck-editor{padding-top:calc(var(--body-start,1.65rem) - .92rem * 1.55)}",
      ""
     ]
    ],
@@ -3623,8 +3623,8 @@
    "break": [
     [
      "web/aim.css",
-     "@media(min-width:761px){.deck-fold{min-height:0}",
-     "@media(min-width:761px){"
+     ".deck-fold{min-height:0}",
+     ""
     ]
    ],
    "check": {
@@ -7156,7 +7156,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "if (this.keyed && !this.phone) revealSelection(editing.field.closest('li'));",
+     "if (this.keyed) revealSelection(editing.field.closest('li'));",
      "if (false) revealSelection(editing.field.closest('li'));"
     ]
    ],
@@ -7276,7 +7276,7 @@
    "break": [
     [
      "web/deck-page.mjs",
-     "    if (keyed && !this.phone) revealSelection(field.closest('li'));\n",
+     "    if (keyed) revealSelection(field.closest('li'));\n",
      ""
     ]
    ],
@@ -28503,6 +28503,80 @@
    ],
    "check": {
     "node": "tests/ui_topic_navigation.test.mjs"
+   }
+  },
+  {
+   "item": 652,
+   "act": "The laptop card list is the default on phones for now, with every card vertically reachable",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-cards{list-style:none;margin:0;padding:0;display:grid;gap:.45rem}",
+     ".deck-cards{list-style:none;margin:0;padding:0;display:flex;gap:.45rem}.deck-card{flex:0 0 100%}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 652 full phone-320 light normal"
+   }
+  },
+  {
+   "item": 652,
+   "act": "Phone writing uses the same in-place card box as the laptop",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-editor{min-height:var(--kept,0px);padding:0;border:0;",
+     ".deck-editor{min-height:var(--kept,0px);padding:0;border:3px solid var(--line);"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 652 full phone-320 light writing"
+   }
+  },
+  {
+   "item": 652,
+   "act": "A phone card chevron keeps a 44px touch target in the shared editor",
+   "break": [
+    [
+     "web/aim.css",
+     "@media(pointer:coarse){.deck-fold{width:2.75rem;height:2.75rem;min-height:2.75rem}",
+     "@media(pointer:coarse){.deck-fold{width:1.75rem;height:1.75rem;min-height:1.75rem}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 652 full phone-320 light normal"
+   }
+  },
+  {
+   "item": 652,
+   "act": "Picking a card at a phone width uses the laptop list focus without horizontal paging",
+   "break": [
+    [
+     "web/deck-page.mjs",
+     "if (focus) row.focus({ preventScroll: true });",
+     "if (false) row.focus({ preventScroll: true });"
+    ]
+   ],
+   "check": {
+    "node": "tests/ui_card_editor_652.test.mjs"
+   }
+  },
+  {
+   "item": 652,
+   "act": "B1 native Edit of an unchanged parent keeps body positions, wrapping and adjacent cards; Done records no revision",
+   "break": [
+    [
+     "web/aim.css",
+     ".deck-parent>.deck-editor{text-indent:2.75rem}",
+     ".deck-parent>.deck-editor{padding-left:2.75rem;text-indent:0}"
+    ]
+   ],
+   "check": {
+    "native": "compose",
+    "case": "item 652 B1 unchanged parent Edit full phone-320 light"
    }
   }
  ]
