@@ -404,7 +404,8 @@ def validate(source, judgment, git, github, repository, head, merged_context):
                       and partition_keys == {ci.key(r) for r in inventory['python-units']}, 'continuation incomplete Python inventory')
         for step, out, folder, commit, origin, partitioned in executions:
             name = step['name']
-            read_bytes(folder + '/' + name + '.log')
+            if name != 'wake-replay':
+                read_bytes(folder + '/' + name + '.log')
             if name in ci.NATIVE:
                 native = ci.NATIVE[name]
                 report = read(folder + '/native/' + native.name + '/' + native.results)

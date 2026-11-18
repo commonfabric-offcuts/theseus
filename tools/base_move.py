@@ -271,7 +271,7 @@ def unit_results(step, out, expected):
                 and counts.get('fail') == sum(status == 'not ok' for _, status in rows), 'source TAP outcomes differ')
         return [(row, {'status': status, 'failure': text}) for row, status in rows if status != 'ok']
     # Preserve the exact block, including the producer's separator length.
-    matches = list(re.finditer(r'^(FAIL|ERROR): (.+)\n-+\n(.*?)(?=\n[=-]{6,}\n)', text, re.M | re.S))
+    matches = list(re.finditer(r'^(FAIL|ERROR): ([^\n]+)\n-+\n(.*?)(?=\n[=-]{6,}\n)', text, re.M | re.S))
     errors = {(m[2], m[1]): m[0] for m in matches}
     failed = [(row, status) for row, status in rows if status != 'ok']
     require(len(errors) == len(matches) == len(failed)
@@ -445,8 +445,104 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
         require(Counter(summary.get('combined_from', [])) == Counter(n + '/summary.json' for n in names),
                 'source shard inventory differs')
         plan = ci.plan_steps(provenance['plan'])
-        require(Counter(s for shard in plan for s in shard) == Counter(required)
+        coverage = Counter(s for shard in plan for s in shard)
+        require(set(coverage) == set(required)
+                and all(count == 1 or name == 'python-units' for name, count in coverage.items())
                 and set(names) == {'check-%d' % i for i in range(len(plan))}, 'source shard plan differs')
+        partitioned = coverage['python-units'] > 1 or any('python_shard' in job for job in provenance['plan'])
+        python_parts, python_keys, python_files, python_indices = [], set(), set(), set()
+        expected_python, empty_python = {}, set()
+        # Validate the original complete partitions before consuming any results.
+        # The only authority for repeated steps is the original indexed plan.
+        for index, job in enumerate(provenance['plan']):
+            folder = 'check-%d' % index
+            raw = read(folder + '/summary.json')
+            if not partitioned or plan[index] != ['python-units']:
+                require('python_shard' not in job and 'python_shard' not in raw
+                        and all('python_shard' not in s for s in raw['steps']), 'source Python partition differs')
+                continue
+            require(len(raw['steps']) == 1 and raw['steps'][0]['name'] == 'python-units', 'source Python partition differs')
+            step = raw['steps'][0]
+            part = fields(step.get('python_shard'), 'index total files')
+            require(type(part['index']) is int and type(part['total']) is int
+                    and 1 <= part['index'] <= part['total']
+                    and job.get('python_shard') == '%d/%d' % (part['index'], part['total'])
+                    and canonical(job.get('files')) == canonical(part['files'])
+                    and canonical(raw.get('python_shard')) == canonical(part), 'source Python partition differs')
+            receipt = read(folder + '/run.json')
+            require(canonical(receipt.get('shard')) == canonical({'name': job.get('name'), 'steps': ['python-units']})
+                    and isinstance(job.get('name'), str) and bool(job['name']), 'source Python receipt differs')
+            checkout = raw.get('checkout')
+            require(isinstance(checkout, str) and Path(checkout).is_absolute()
+                    and step.get('tool') == 'unittest' and isinstance(step.get('argv'), list)
+                    and len(step['argv']) == 6 and isinstance(step['argv'][0], str) and bool(step['argv'][0])
+                    and step['argv'][1:] == [checkout + '/tools/unit_shards.py', '--root', checkout,
+                                            '--shard', job['python_shard']], 'source Python command differs')
+            log = (root / folder / 'python-units.log').read_text()
+            metadata = [loads(line) for line in log.splitlines() if line.startswith('{"unit_shards":')]
+            require(len(metadata) == 1 and type(metadata[0].get('unit_shards')) is int
+                    and metadata[0]['unit_shards'] == 1
+                    and canonical(metadata[0].get('python_shard')) == canonical(part)
+                    and type(metadata[0].get('tests')) is int
+                    and canonical(metadata[0]['tests']) == canonical(step.get('counts', {}).get('tests')),
+                    'source Python log partition differs')
+            require(len(re.findall(r'^Ran (\d+) tests? in ', log, re.M)) == 1
+                    and len(re.findall(r'^(OK|FAILED)(?: \((.*)\))?$', log, re.M)) == 1,
+                    'source Python log result differs')
+            require(canonical(metadata[0].get('timing')) == canonical(step.get('timing')),
+                    'source Python timing differs')
+            # The original producer permits completed empty file partitions,
+            # but ordinary unpartitioned units still need positive outcomes.
+            if metadata[0]['tests'] == 0:
+                require(re.findall(r'^Ran (\d+) tests? in ', log, re.M) == ['0']
+                        and re.findall(r'^(OK|FAILED)(?: \((.*)\))?$', log, re.M) == [('OK', '')]
+                        and canonical(step.get('counts')) == canonical({'tests': 0, 'status': 'OK'})
+                        and type(step.get('exit')) is int and step['exit'] == 0 and step.get('passed') is True,
+                        'source empty Python partition differs')
+                empty_python.add(folder)
+            rows = [r for r, _ in ci.unit_records(log.split('\n======================================================================\n', 1)[0], node=False)]
+            keys = {ci.key(r) for r in rows}
+            paths = part['files']
+            require(isinstance(paths, list) and all(isinstance(path, str) for path in paths), 'source Python files differ')
+            for path in paths:
+                safe_path(path)
+            require(len(paths) == len(set(paths)) and not python_files.intersection(paths)
+                    and not python_keys.intersection(keys) and part['index'] not in python_indices,
+                    'source duplicate Python partition')
+            python_files.update(paths); python_keys.update(keys); python_indices.add(part['index'])
+            expected_python[folder] = [r for r in inventory['python-units'] if ci.key(r) in keys]
+            python_parts.append(dict(step, partition=part))
+        if partitioned:
+            job_names = [job.get('name') for job in provenance['plan']]
+            require(all(isinstance(name, str) and bool(name) for name in job_names)
+                    and len(job_names) == len(set(job_names)), 'source Python receipt differs')
+            require(len(python_parts) == coverage['python-units']
+                    and {p['partition']['total'] for p in python_parts} == {len(python_parts)}
+                    and python_indices == set(range(1, len(python_parts) + 1))
+                    and python_keys == {ci.key(r) for r in inventory['python-units']}, 'source incomplete Python inventory')
+            # Match the producer's import-free unittest discovery using immutable
+            # Git paths, including package initializers and hook-suppressed files.
+            source_entries = entries(git, tested)
+            discovered = set()
+            for path in source_entries:
+                parts = path.split('/')
+                if (parts[0] == 'tests' and len(parts) >= 2
+                        and (re.fullmatch(r'test_\w*\.py', parts[-1])
+                             or (len(parts) > 2 and parts[-1] == '__init__.py'))
+                        and all('/'.join(parts[:i]) + '/__init__.py' in source_entries for i in range(2, len(parts)))):
+                    discovered.add(path)
+            require(python_files == discovered, 'source Python file inventory differs')
+            counts = {'tests': sum(p['counts']['tests'] for p in python_parts),
+                      'status': 'OK' if all(p['counts'].get('status') == 'OK' for p in python_parts) else 'FAILED'}
+            for key in ('skipped', 'failures', 'errors', 'expected failures', 'unexpected successes'):
+                if any(key in p['counts'] for p in python_parts):
+                    counts[key] = sum(p['counts'].get(key, 0) for p in python_parts)
+            combined_python = {'name': 'python-units', 'tool': 'unittest', 'counts': counts,
+                               'exit': max(p.get('exit', 1) for p in python_parts),
+                               'passed': counts['tests'] > 0 and all(p.get('passed') is True and p['counts'].get('tests', -1) >= 0
+                                                                  for p in python_parts),
+                               'shards': python_parts}
+            require(canonical(by_name['python-units']) == canonical(combined_python), 'source Python aggregate differs')
         ran, reds, raw_steps, reports = [], [], [], []
         for shard in shards:
             name = shard['artifact']; out = root / name
@@ -466,7 +562,8 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
             require(raw.get('tool') == release_check.TOOL and raw.get('commit') == tested
                     and raw.get('tree_unchanged') is True and raw.get('tree_after') == summary['tree_after']
                     and raw.get('only') == selected and not raw.get('skipped') and not raw.get('scoped')
-                    and raw.get('required') == summary['required'], 'dirty or partial source shard')
+                    and (raw.get('required') == summary['required'] or (partitioned and raw.get('required') == required)),
+                    'dirty or partial source shard')
             assignment = receipt.get('shard', {}).get('steps')
             if isinstance(assignment, str):
                 assignment = assignment.split(',')
@@ -475,7 +572,8 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                     and shard.get('tools') == tools and shard.get('steps') == selected, 'source shard provenance differs')
             for step in steps:
                 name = step['name']; ran.append(name)
-                require(by_name.get(name) == step, 'source aggregate step differs')
+                require((partitioned and name == 'python-units') or by_name.get(name) == step,
+                        'source aggregate step differs')
                 require(isinstance(inventory[name], (list, dict)) and bool(inventory[name]), 'empty source inventory')
                 if name in ci.NATIVE:
                     require(release_check.ran_whole(step), 'partial source browser mode')
@@ -492,13 +590,19 @@ def full_source(source, judgment, git, github, repository, head, merged_context)
                     require(canonical(counts) == canonical(step['counts']) and good is step['passed'], 'source case log differs')
                 else:
                     if name in ci.UNITS:
+                        if shard['artifact'] in empty_python:
+                            require(not ci.unit_records((out / (name + '.log')).read_text(), node=False),
+                                    'source empty Python partition has outcomes')
+                            continue
                         reds.extend({'step': name, 'case': ci.identity(r), 'observed': observed}
-                                    for r, observed in unit_results(step, out, inventory[name]))
+                                    for r, observed in unit_results(step, out, expected_python.get(shard['artifact'], inventory[name])))
                     else:
                         reds.extend(replay_results(step, out, inventory[name]))
                 if step['passed'] is not True:
                     raw_steps.append({k: step[k] for k in ('name', 'passed', 'exit', 'counts')})
             require(raw.get('passed') is all(s['passed'] for s in steps), 'source raw verdict differs')
+        if partitioned:
+            ran = [name for name in ran if name != 'python-units'] + ['python-units']
         require(Counter(ran) == Counter(required), 'incomplete source shard coverage')
         require(summary.get('passed') is all(s['passed'] for s in summary['steps']), 'source aggregate verdict differs')
         report_hashes(reports, git, tested)

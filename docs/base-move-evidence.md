@@ -22,7 +22,7 @@ An explicitly authorized cut train may add `source.continuation: Ref`, under
 [the original partial plus scoped completion contract](continuation-envelope.md).
 That separate envelope preserves original partial truth and requires the exact
 missing-only union; it creates no replacement full-run summary. Without this
-explicit field the complete-source path below remains unchanged.
+explicit field the complete-source path below applies.
 
 `source` is exactly `{run, attempt, tested_merge, base_at_run, files, inventory,
 audit, controller}`. Run and attempt are positive integers. `tested_merge` is
@@ -51,6 +51,29 @@ by selecting only results that happen to exist. For Python, the verbose listing
 ends at unittest's first error-report separator; failure blocks are then read
 separately. This avoids interpreting assertion tuple diffs as test names.
 This is a documented parsing transformation, not a new measurement.
+
+Ordinary complete runs may use the original producer's indexed Python file
+partitions. Only `python-units` may repeat, in Python-only jobs whose plan
+selector/files, named receipt, summary, step, unfiltered `unit_shards.py` command
+and single raw telemetry row agree. Indices cover `1..total` once; files and
+raw case identities are disjoint. Git's complete unittest file inventory
+(including package initializers and hook-suppressed files) must equal the file
+union, and the independently reviewed Python case inventory must equal the case
+union. A completed empty partition keeps its files and exact `Ran 0`/`OK`
+result; the complete reviewed case inventory and aggregate remain nonempty.
+
+The aggregate Python step must equal the original producer combine result in
+full: summed counts, status, exit, verdict, and every unchanged raw partition
+with its `partition` metadata, in plan order. Every other aggregate step still
+equals its single raw step exactly. The producer sorts aggregate `required`
+names while raw summaries retain the original required order; partitioned
+complete runs admit that exact original order as well as equal lists, with no
+missing/extra/duplicate names. Original aggregate, partitions, logs, failure
+blocks and red audit remain immutable; this creates no continuation or summary.
+The partition reconciliation itself does not change the continuation parser
+or shared unit failure-block parser. The separately documented
+[source-reader correction](source-readers-8715.md) is combined in the same
+reviewed installation.
 
 `controller` is exactly `{run, attempt, current_base, verdict_artifact, published_artifact}`.
 `current_base` is exactly `{ref, sha}`, the archived controller-observed current
