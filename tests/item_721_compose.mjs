@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 // All dimensions in CSS pixels. One pixel permits independent browser layout
 // rounding; a missing row or the 120px source-cap mutant exceeds it by far.
@@ -9,30 +10,43 @@ const SHORT = 'Source words stay here. A second sentence can be quoted explicitl
 const WRITING = 'Exact reply writing. Select these words.';
 
 export async function item721Compose(h) {
-  const { check, page, press, until, picture, close, control, facts, engine, measured, contexts } = h;
+  const { page, press, until, picture, close, control, facts, engine, measured, contexts } = h;
+  let failureSerial = 0;
+  const preserveFailure = async (error, phase) => {
+    const pages = [...contexts].flatMap(context => context.pages());
+    const captures = await Promise.allSettled(pages.map(p => picture(p, `item-721-failure-${++failureSerial}-${phase}`)));
+    const failed = captures.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failed.length) throw new AggregateError([error, ...failed], 'Original native failure and diagnostic capture failures');
+    throw error;
+  };
+  const check = (name, action) => h.check(name, async () => {
+    try { await action(); } catch (error) { await preserveFailure(error, 'case'); }
+  });
   const mutants = JSON.parse(await readFile(new URL('./fixtures/item_721_mutants.json', import.meta.url), 'utf8'));
   let serial = 0;
   const card = id => `#messages .message-card[data-id="${id}"]`;
   const entry = id => `#messages [data-id="${id}"]`;
   const opened = p => until(p, () => document.querySelector('#reader').open, 'the real Reader opens');
   const shut = p => until(p, () => !document.querySelector('#reader').open, 'the reply closes after keeping writing');
-  const snapshot = (p, id) => p.evaluate(([id, tolerance]) => {
+  const snapshot = (p, id) => p.evaluate(([id, tolerance, long]) => {
     const r = document.querySelector('#reader'), c = document.querySelector(`#messages .message-card[data-id="${id}"]`),
       source = c.querySelector(':scope > .message-preview'), field = document.querySelector('#writing-body');
     const visible = el => !!el?.getClientRects().length && getComputedStyle(el).display !== 'none';
     const box = el => { const b = el.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, width: b.width, height: b.height }; };
-    const s = getComputedStyle(source), sourceBox = box(source), replyBox = box(r);
+    const s = getComputedStyle(source), parentStyle = getComputedStyle(c), sourceBox = box(source), replyBox = box(r);
+    const paragraphs = [...source.querySelectorAll(':scope > .md-block')].map(block => block.textContent);
+    const complete = JSON.stringify(paragraphs) === JSON.stringify(long.split('\n\n'));
     return { dock: r.parentElement === c && r.hasAttribute('data-card-reply') && c.getAttribute('role') === 'group' && !r.matches(':modal'),
       readers: document.querySelectorAll('#reader').length, writingFields: document.querySelectorAll('#writing-body').length,
       body: field.value, title: visible(document.querySelector('#reader-title')) && !!document.querySelector('#reader-title').textContent,
       close: visible(document.querySelector('#reader-close')), addressing: visible(document.querySelector('#who-chip')),
-      whole: source.textContent === LONG && s.maxHeight === 'none' && s.overflowY === 'visible' && replyBox.top >= sourceBox.bottom - tolerance.edgePx,
-      select: s.userSelect || s.webkitUserSelect, source: source.textContent, sourceBox, replyBox,
+      whole: complete && s.maxHeight === 'none' && s.overflowY === 'visible' && parentStyle.maxHeight === 'none' && parentStyle.overflowY === 'visible' && source.scrollHeight - source.clientHeight <= tolerance.scrollPx && replyBox.top >= sourceBox.bottom - tolerance.edgePx,
+      select: s.userSelect || s.webkitUserSelect, source: source.textContent, paragraphs, sourceBox, replyBox,
       overflow: document.documentElement.scrollWidth - innerWidth, sourceScroll: source.scrollHeight - source.clientHeight,
       writingSelection: { start: field.selectionStart, end: field.selectionEnd }, active: document.activeElement?.id,
       open: r.open, modal: r.matches(':modal'), parent: r.parentElement.id, notice: document.querySelector('#source-access-status').textContent,
       disabled: document.querySelector('#send-reply').disabled };
-  }, [id, ITEM721_TOLERANCE]);
+  }, [id, ITEM721_TOLERANCE, LONG]);
   const seed = async (label, body = LONG, coordination = false) => {
     const topic = `item721-${engine}-${++serial}-${label}`;
     if (label === 'unavailable') {
@@ -41,14 +55,16 @@ export async function item721Compose(h) {
       return { topic: owned.topic_id, id: messages.items[0].id, body };
     }
     await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Reply in this card' }] });
+    if (coordination) await control({ method: 'topic_state', operation_id: topic + '-recipient', topic_id: topic, participants: ['aim-core'], args: { state: 'active', note: '' } });
     const message = await control({ method: 'agent_message', operation_id: topic + '-source', topic_id: topic, join: true, source: 'topic', body,
       addressees: coordination ? ['aim-core'] : [facts.actor] });
+    if (coordination) await control({ method: 'agent_message', operation_id: topic + '-coordination-reply', topic_id: topic, sender: 'aim-core', reply_to: message.result.message_id, body: 'The second agent replies in this dossier.', addressees: [facts.agent] });
     return { topic, id: message.result.message_id, body };
   };
   async function light(p, id) {
     const selector = card(id);
     await until(p, s => !!document.querySelector(s)?.getClientRects().length, 'source card drawn', selector);
-    const target = p.locator(selector + ' > .message-preview');
+    const target = p.locator(selector + ' > .message-preview > .md-block').first();
     const folded = await p.evaluate(s => document.querySelector(s).dataset.folded === 'true', selector);
     const at = folded ? p.locator(selector + ' > .message-folded') : target;
     await at.scrollIntoViewIfNeeded();
@@ -75,7 +91,7 @@ export async function item721Compose(h) {
     await until(p, text => document.querySelector('#writing-body').value === text, 'exact native writing', text);
   }
   async function dragSource(p, id) {
-    const target = p.locator(card(id) + ' > .message-preview');
+    const target = p.locator(card(id) + ' > .message-preview > .md-block').first();
     await target.scrollIntoViewIfNeeded();
     const b = await target.boundingBox();
     await p.mouse.move(b.x + 3, b.y + 9); await p.mouse.down();
@@ -86,14 +102,17 @@ export async function item721Compose(h) {
     const receipt = await control({ method: 'item_721_runtime', phase });
     measured.push({ engine, item: 721, kind: 'source-runtime', ...receipt });
     try { return await action(receipt); }
+    catch (error) { await preserveFailure(error, phase); }
     finally {
-      for (const context of contexts) await context.close();
+      const endings = await Promise.allSettled([...contexts].map(context => context.close()));
       contexts.clear();
-      await control({ method: 'read_fault_clear' });
       const restored = await control({ method: 'item_721_runtime', phase: 'restored' });
       assert.equal(restored.restored, true);
       assert.deepEqual(restored.hashes, receipt.candidate_hashes, 'exact candidate source restoration');
       measured.push({ engine, item: 721, kind: 'source-restore', ...restored });
+      await control({ method: 'read_fault_clear' });
+      const failed = endings.filter(result => result.status === 'rejected');
+      if (failed.length) throw new AggregateError(failed.map(result => result.reason), 'Owned native contexts failed to close after exact source restoration');
     }
   }
   const oracle = (key, observed) => {
@@ -119,6 +138,9 @@ export async function item721Compose(h) {
       // A coordination dossier is compact until its real title is pressed.
       const toggle = `#messages .reply-stack[data-stack="${data.id}"] > .stack-toggle`;
       await press(p, toggle);
+      await until(p, s => document.querySelector(s).dataset.state === 'folded', 'compact coordination dossier shows latest replies', toggle);
+      await press(p, toggle);
+      await until(p, s => document.querySelector(s).dataset.state === 'open', 'coordination source is open for native Reply', toggle);
     }
     await reply(p, data.id);
     if (['writing', 'escape', 'hidden', 'unavailable'].includes(key)) await write(p);
@@ -143,7 +165,10 @@ export async function item721Compose(h) {
   // Candidate bytes are observed first. The red controls below cannot replace
   // or silently repair the approved product before its own first observation.
   await check('item 721 approved source first: exact source and whole dock', async () => {
-    await runtime('restored', async () => oracle('dock', await observe('dock', 'stacked', 'light', '-approved-first')));
+    await runtime('restored', async () => {
+      const observed = await observe('whole', 'stacked', 'light', '-approved-first');
+      oracle('dock', observed); oracle('whole', observed);
+    });
   });
   for (const key of ['dock', 'whole', 'selection', 'title', 'addressing', 'writing', 'escape', 'hidden', 'unavailable']) {
     await check(`item 721 ${key}: applied source mutant is red then exact restored control`, async () => {
@@ -155,6 +180,11 @@ export async function item721Compose(h) {
       await control({ method: 'read_fault_clear' });
       await runtime('restored', async () => oracle(key, await observe(key, 'stacked', 'light', '-restored')));
       await control({ method: 'read_fault_clear' });
+    });
+    // The standing ledger selects this candidate-only contract, so an outer
+    // source mutation must fail the actual oracle, not mutation application.
+    await check(`item 721 contract ${key}: candidate behavioral assertion`, async () => {
+      await runtime('restored', async () => oracle(key, await observe(key, 'stacked', 'light', '-contract')));
     });
   }
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const scheme of ['light', 'dark']) {
@@ -185,7 +215,7 @@ export async function item721Compose(h) {
       assert.deepEqual(writing.writingSelection, { start: 0, end: WRITING.length }, 'native writing selection remains available');
       oracle('writing', writing);
       await picture(p, 'item-721-writing-selected');
-      await p.keyboard.press('End'); await p.keyboard.press('Enter'); await p.keyboard.insertText('New line.');
+      await p.keyboard.press('ArrowRight'); await p.keyboard.press('Enter'); await p.keyboard.insertText('New line.');
       const exact = WRITING + '\nNew line.';
       assert.equal(await p.locator('#writing-body').inputValue(), exact, 'Return remains a writing newline');
       await press(p, '#reader-close'); await shut(p);
@@ -208,7 +238,7 @@ export async function item721Compose(h) {
       assert.equal(await p.locator('#writing-body').inputValue(), exact);
       await picture(p, 'item-721-folded-revealed');
       // Another source uses the single existing Reader, retaining this writing.
-      const second = await control({ method: 'agent_message', operation_id: data.topic + '-second', topic_id: data.topic, body: SHORT, addressees: [facts.actor] });
+      const second = await control({ method: 'agent_message', operation_id: data.topic + '-second', topic_id: data.topic, source: 'topic', body: SHORT, addressees: [facts.actor] });
       await reply(p, second.result.message_id);
       assert.equal((await snapshot(p, second.result.message_id)).readers, 1);
       await reply(p, data.id);
@@ -221,15 +251,57 @@ export async function item721Compose(h) {
       await picture(p, 'item-721-explicit-reader');
       await close(p);
     });
-    for (const state of ['empty', 'image-choice', 'send-image', 'busy', 'error', 'refused']) {
+    for (const state of ['empty', 'image-choice', 'send-image', 'busy', 'error', 'refused', 'read-only', 'recovery']) {
       await check(`item 721 ${state} ${shape} ${scheme}: actual control and HTTP boundary`, async () => {
         const data = await seed('state-' + state, SHORT);
         const p = await page(shape, scheme, '/?topic=' + data.topic), commands = [], responses = [];
         p.on('request', request => { if (request.url().endsWith('/api/command')) commands.push(request.postDataJSON()); });
         p.on('response', async response => { if (response.url().endsWith('/api/command')) responses.push({ request: response.request().postDataJSON(), status: response.status() }); });
+        if (state === 'read-only' || state === 'recovery') {
+          // An unsupported saved image copy is real fixture data in the actual
+          // scoped IDB, not a DOM flag or a call to a presentation handler.
+          const installed = await p.evaluate(async ([instance, actor, source, topic]) => {
+            const { editorKey } = await import('/editor.mjs');
+            const context = { instanceId: instance, actor, sourceRef: { kind: 'message', id: source }, topicId: topic, kind: 'reply' };
+            const key = editorKey(context), writer = 'item721-unsupported-copy';
+            const row = { id: JSON.stringify([key, writer]), editorKey: key, writerId: writer, scope: JSON.stringify([instance, actor]), active: 1,
+              stamp: 'item721-opaque-exact-version', snapshot: { format: 2, context, unsupportedImageFormat: true } };
+            return new Promise((resolve, reject) => {
+              const opening = indexedDB.open('aim-next-pending', 2);
+              opening.onerror = () => reject(opening.error);
+              opening.onsuccess = () => {
+                const db = opening.result, tx = db.transaction('editors', 'readwrite');
+                const store = tx.objectStore('editors');
+                store.put(row);
+                let readback; store.get(row.id).onsuccess = event => { readback = event.target.result; };
+                tx.oncomplete = () => { db.close(); resolve(readback?.stamp === row.stamp && readback?.editorKey === key); };
+                tx.onerror = () => { db.close(); reject(tx.error); };
+              };
+            });
+          }, [facts.instance_id, facts.actor, data.id, data.topic]);
+          assert.equal(installed, true, 'scoped unsupported saved image copy was actually written and read back');
+        }
         await reply(p, data.id);
-        if (state === 'empty') {
-          await press(p, '#send-reply');
+        oracle('dock', await snapshot(p, data.id));
+        if (state === 'read-only' || state === 'recovery') {
+          await until(p, () => document.querySelector('#writing-body').readOnly, 'actual recovery owner makes untouched writing read-only');
+          await press(p, '#writing-body'); await p.keyboard.insertText('must not enter read-only writing');
+          assert.equal(await p.locator('#writing-body').inputValue(), '');
+          assert.equal(commands.some(c => ['submission.prepare', 'message.send'].includes(c.kind)), false);
+          await picture(p, 'item-721-read-only');
+          if (state === 'recovery') {
+            await press(p, '#review-versions');
+            const continueCopy = p.getByRole('button', { name: 'Continue without this copy', exact: true });
+            if (p.touch) await continueCopy.tap(); else await continueCopy.click();
+            await until(p, () => !document.querySelector('#writing-body').readOnly, 'explicit review resolves this exact image-copy barrier');
+            await press(p, '#review-close');
+            await until(p, () => !document.querySelector('#version-review').open, 'native review close');
+            await write(p, 'Writing after explicit recovery choice');
+            oracle('dock', await snapshot(p, data.id));
+          }
+        } else if (state === 'empty') {
+          assert.equal(await p.locator('#send-reply').isDisabled(), true, 'empty reply button is natively disabled');
+          await press(p, '#writing-body'); await p.keyboard.press('Meta+Enter');
           await until(p, () => document.querySelector('#reader-notice').textContent === 'Write a reply before sending.', 'empty reply notice');
           assert.equal(commands.some(c => ['submission.prepare', 'message.send'].includes(c.kind)), false);
         } else if (state === 'image-choice' || state === 'send-image') {
@@ -241,7 +313,7 @@ export async function item721Compose(h) {
           await (await chooser).setFiles(image);
           if (state === 'image-choice') {
             await until(p, () => document.querySelector('#writing-attachments .image-choice')?.hasAttribute('data-needs'), 'real image choice', undefined, 20000);
-            await press(p, '#send-reply');
+            await press(p, '#send-reply', true); // aria-disabled explains the barrier but remains a native button
             await until(p, () => document.querySelector('#writing-attachments .image-choice')?.hasAttribute('data-open'), 'blocked send opens actual image choices');
             assert.equal(commands.some(c => ['submission.prepare', 'message.send'].includes(c.kind)), false);
             assert.equal(await p.locator('#writing-body').inputValue(), WRITING);
@@ -249,7 +321,12 @@ export async function item721Compose(h) {
             await press(p, '#writing-attachments [data-method="remove"]');
             await until(p, () => !document.querySelector('#writing-attachments .image-choice'), 'native Remove resolves image choice');
           } else {
-            await until(p, () => document.querySelector('#writing-attachments .image-choice') && !document.querySelector('#writing-attachments .image-choice').hasAttribute('data-needs') && document.querySelector('#save-state').textContent.includes('Saved'), 'image saved through existing owner', undefined, 20000);
+            await until(p, () => document.querySelector('#writing-attachments .image-choice .image-open span')?.textContent === 'item721.png · Ready', 'real image publication is ready', undefined, 20000);
+            await picture(p, 'item-721-image-ready');
+            await press(p, '#reader-close'); await shut(p);
+            await reply(p, data.id);
+            await until(p, () => document.querySelector('#writing-attachments .image-choice .image-open span')?.textContent === 'item721.png · Ready', 'same image owner retained on reopening');
+            assert.equal(await p.locator('#writing-body').inputValue(), WRITING);
             await press(p, '#who-chip'); await press(p, '#who-panel [data-intent="whisper"]'); await press(p, '#who-done');
             const sent = p.waitForResponse(response => response.url().endsWith('/api/command') && response.request().postDataJSON()?.kind === 'message.send');
             await press(p, '#writing-body'); await p.keyboard.press('Meta+Shift+Enter');
@@ -257,6 +334,7 @@ export async function item721Compose(h) {
             const source = await control({ method: 'agent_view', name: 'source', args: { kind: 'message', id: receipt.result.message_id } });
             assert.equal(source.body, WRITING); assert.equal(source.reply_to, data.id); assert.equal(source.topic_id, data.topic);
             assert.equal(source.attachments.length, 1); assert.equal(source.attachments[0].name, image.name);
+            assert.equal(source.attachments[0].sha256, createHash('sha256').update(image.buffer).digest('hex'), 'exact native-chosen image published');
             assert.deepEqual(source.addressees, [facts.agent]); assert.equal(source.private_to, facts.agent);
             assert.equal(commands.filter(c => c.kind === 'message.send').length, 1);
             measured.push({ engine, shape, scheme, item: 721, state, receipt, source });
@@ -271,7 +349,7 @@ export async function item721Compose(h) {
             const request = route.request().postDataJSON();
             if (request.kind !== 'submission.prepare' || held) return route.continue();
             held = true;
-            if (state === 'refused' || state === 'read-only') {
+            if (state === 'refused') {
               const changed = await control({ method: 'private_writing', kind: 'reply', message_id: data.id, topic_id: data.topic, operation_id: data.topic + '-other-tab', body: 'Other tab kept this version' });
               assert.equal(changed.status, 'committed', 'actual competing Core draft mutation applied');
             }
@@ -283,7 +361,7 @@ export async function item721Compose(h) {
           });
           try {
             await press(p, '#writing-body'); await p.keyboard.press('Meta+Shift+Enter');
-            const prepared = await reached; assert.equal(prepared.status, ['refused', 'read-only'].includes(state) ? 'rejected' : 'committed', 'real preparation receipt from Core');
+            const prepared = await reached; assert.equal(prepared.status, state === 'refused' ? 'rejected' : 'committed', 'real preparation receipt from Core');
             {
               await write(p, 'New B while preparation answer waits');
               if (state === 'busy') {
@@ -298,12 +376,6 @@ export async function item721Compose(h) {
               await until(p, () => document.querySelector('#reader-notice').textContent.includes('Sent') || document.querySelector('#save-state').textContent.includes('Saved'), 'publication and B save settle', undefined, 20000);
               assert.equal(await p.locator('#writing-body').inputValue(), 'New B while preparation answer waits');
             } else {
-              if (state === 'read-only') {
-                await until(p, () => document.querySelector('#writing-body').readOnly, 'conflicting saved version makes writing read-only');
-                const kept = await p.locator('#writing-body').inputValue();
-                await press(p, '#writing-body'); await p.keyboard.insertText('must not enter read-only writing');
-                assert.equal(await p.locator('#writing-body').inputValue(), kept);
-              }
               await until(p, () => !!document.querySelector('#pending-submissions button')?.getClientRects().length, 'recovery Review remains available', undefined, 20000);
               assert.equal(commands.some(c => c.kind === 'message.send'), false, 'an unknown or refused preparation answer cannot publish on its own');
             }

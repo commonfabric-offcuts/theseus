@@ -12,7 +12,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 dock"
+      "case": "item 721 contract dock"
     }
   },
   {
@@ -28,7 +28,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 whole"
+      "case": "item 721 contract whole"
     }
   },
   {
@@ -44,7 +44,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 selection"
+      "case": "item 721 contract selection"
     }
   },
   {
@@ -60,7 +60,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 title"
+      "case": "item 721 contract title"
     }
   },
   {
@@ -76,7 +76,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 addressing"
+      "case": "item 721 contract addressing"
     }
   },
   {
@@ -92,7 +92,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 writing"
+      "case": "item 721 contract writing"
     }
   },
   {
@@ -108,7 +108,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 escape"
+      "case": "item 721 contract escape"
     }
   },
   {
@@ -129,7 +129,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 unavailable"
+      "case": "item 721 contract unavailable"
     }
   },
   {
@@ -145,7 +145,7 @@
     ],
     "check": {
       "native": "compose",
-      "case": "item 721 hidden"
+      "case": "item 721 contract hidden"
     }
   }
 ]

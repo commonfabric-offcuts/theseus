@@ -27,6 +27,8 @@ retains newer writing and reconciles one message.
 This document declares cases, not results. REPORT.md and ACCEPTANCE.json in
 the assigned external evidence folder record exact executed heads, failures,
 screens inspected and remaining limits. Unrun states are never marked passed.
-Native IDB adoption/read-only recovery and recipient/destination permutations
-outside these own cases remain explicit evidence gaps until exercised.
+Separate native read-only and recovery cases install and read back a scoped,
+unsupported saved-copy row in real IndexedDB, then use native writing and
+Review controls. Full adoption and recipient/destination permutations outside
+these own cases remain explicit evidence gaps until exercised.
 Only the two allocated compose calls and single node-units call may run.
