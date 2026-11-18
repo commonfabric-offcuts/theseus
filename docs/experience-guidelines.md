@@ -176,6 +176,12 @@ at the top of its outcome once, then stays until the reader moves it.
 "rail item 641" cases, check this at 320, 375, 390 and laptop widths, light
 and dark, including the reader’s own native reorder.
 
+Dossiers keep the reader's order in both feeds. Replies leave existing dossiers
+in place; a new dossier enters first and a reawakened one returns last above
+More. The `item 731` cases in `tests/stack_native.mjs` (`native-reading` and
+`native-webkit-reading`) compare actual dossier identities through live
+arrival, reload and the reader's native moves, with the 635 star hold.
+
 Opening, using and closing a card composer keeps the page at its place
 (item 644). Quoting on a laptop opens a stacked reply wide (item 668);
 a phone stays stacked. `tests/notebook_pages_native.mjs` (`native-notebook`,

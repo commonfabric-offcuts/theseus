@@ -762,7 +762,7 @@ function paintStack(section, stack, byId, context) {
   }
   if (stack.placed !== null && !p.placed) {
     p.placed = element(doc, 'p', 'stack-placed-line');
-    const words = element(doc, 'span', 'stack-placed-words', 'Placed here by you'), free = element(doc, 'button', 'stack-unplace', 'Let new replies move it');
+    const words = element(doc, 'span', 'stack-placed-words', 'Placed here by you'), free = element(doc, 'button', 'stack-unplace', 'Reset position');
     free.type = 'button'; p.placed.append(words, free); p.free = free;
   }
   if (p.placed) p.free.onclick = () => state.on?.unplace?.(stack);

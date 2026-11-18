@@ -45,6 +45,7 @@ from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSIO
                            MESSAGE_EDIT_UP)
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
+from .dossier_order import ORDER_SCHEMA as DOSSIER_ORDER_SCHEMA, ORDER_DOWN as DOSSIER_ORDER_DOWN, ORDER_OCCUPIED as DOSSIER_ORDER_OCCUPIED, freeze as freeze_dossier_order
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
 
 
@@ -203,6 +204,7 @@ STEPS = (
     ("45", "46", COVER_UP, COVER_DOWN, COVER_OCCUPIED),
     # Item 641: default topic positions never move with activity.
     ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
+    ("47", "48", DOSSIER_ORDER_SCHEMA + [freeze_dossier_order], DOSSIER_ORDER_DOWN, DOSSIER_ORDER_OCCUPIED),
 )
 
 

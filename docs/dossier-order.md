@@ -12,9 +12,21 @@ non-own activity, root placement, or latest legacy placement), without rewriting
 messages or acts. Reads never initialize records. Publication admits new roots
 at the top and returns sleeping roots at the bottom in the same transaction;
 ordinary replies leave keys untouched. The existing revision-fenced stack.place
-command moves a key, retaining operation retries and Undo. Each position carries
-order_key; partial pages use the same root's key. Changes remain actor scoped.
-No browser storage supplies order authority.
+command moves a key, retaining operation retries and Undo. Schema 48 adds `dossier_order`; downgrade is refused once it holds positions.
+Each position carries `order_key`, `order_tie` and `order_entry_key`; partial pages use the same root's key. Changes remain actor scoped.
+No browser storage supplies order authority. The migration and each publication
+keep actor visibility; a private reply never changes an outside reader's key.
+A new reader with no prior position uses the root's sequence until their own
+move or a new admission. Reset position restores the last admission position;
+it never enables activity ordering. Archive Undo carries the former key as the
+optional `stack.aside` argument `key`, fenced by the usual aside revision.
+
+The exact unmodified LIVE94 public Build is frozen in
+`tests/fixtures/item_731_original_web.{json,tar.gz}`. Native comparisons run it
+on the isolated candidate Core records, then restore every candidate public
+byte. Three Core record/routing/return mutants run one focused file each in
+fresh Python caches, restore bytes and run a restored control. The target-size
+mutant alters the actual CSS floor and is caught by the shared 0.5px tolerance.
 
 Native cases named `item 731` measure actual dossier identities/order and use
 native keys or taps for personal moves and archive/star actions. They capture

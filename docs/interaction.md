@@ -328,7 +328,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   on a fresh page. A press on a row whose move goes nowhere (the place
   already being read, or a move the guard refuses) lands the same way, on
   the page's heading; Return on such a row keeps the keys on it.
-- **The messages.** On a message (its card holding the keys), ⌘↑ and ⌘↓
+- **The messages.** Incoming replies keep every dossier in the reader's order;
+  new dossiers enter first and reawakened dossiers return last above More (731).
+  On a message (its card holding the keys), ⌘↑ and ⌘↓
   move its reply stack up or down in the reader's own order, → and ←
   switch it between its two states (latest plus unread, and all messages), x
   folds the message to its row for the reader alone (x again unfolds it), ⇧⌘↑ and

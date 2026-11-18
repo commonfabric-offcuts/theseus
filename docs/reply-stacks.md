@@ -3,8 +3,9 @@
 A topic page reads as stacks: a message, every loaded reply to it, and the
 replies to those, gathered into one stack. A stack reads as a chat does, its
 first message on top and its replies under it oldest first. The topic's
-stacks sit newest activity on top, unless the reader has put one somewhere
-else; the reader's own reply never moves its stack. This page holds the
+stacks keep the reader's order: incoming replies never move an existing dossier.
+New dossiers enter first, and reawakened dossiers enter last above More
+([dossier-order.md](dossier-order.md), item 731). This page holds the
 contract: what Core records, how the page orders and folds what it shows,
 and the one layer that decides how a stack looks.
 docs/topic-reading.md says how a card reads inside a stack, and
@@ -241,30 +242,15 @@ their acts.
   this one run. A join changes no message, only the display, so Split back
   out puts both stacks back exactly as they were. A stack's key is unchanged:
   its newest message that lifts it (below), whichever stack it came from.
-- **The stacks.** Each stack sorts by its key, newest first. The key is the
-  reader's place if they set one, or else the sequence of the newest message
-  in it that lifts it: any message but a reply of the reader's own. A new
-  stack therefore lands on top, the reader's own included, and a new reply
-  by anyone else lifts its stack unless the reader placed it. The reader's
-  own reply leaves its stack where it was, on every device and after a
-  reload, so what they answered stays where they were reading it; for
-  everyone else it lifts the stack as any reply does. A stack joined to
-  another counts for it whoever began it, so a join still puts the two
-  where the newer would sit. ⌘↑ and ⌘↓ set a place halfway past the neighbour.
-  A place is the dossier's, as its name is (item 550): it is kept on its
-  first message, loaded or not, fenced on the place revision Core sends with
-  each message's position (docs/dossier-below-more.md), so the dossier holds
-  it whatever of it the page loads. A page whose Core sends no place in the
-  positions places the stack's head. Before item 550 a stack was placed on the
-  message heading it, a reply or a stack later joined into the dossier; while
-  the first message carries no place, the one of those set last places the
-  dossier, loaded or not, whichever message heads its stack, and "Let new
-  replies move it" takes every one of them away with the first message's, ⌘Z
-  putting each back, the one set first first, so the same one places the
-  dossier again; each shows at once, before Core answers.
-  When no number fits between two places, the two stacks trade keys. A
-  placed stack says "Placed here by you", and "Let new replies move it"
-  takes the place away.
+- **The stacks (731).** Core's personal `order_key` places each dossier,
+  including a partial page whose first message is not loaded. The migration
+  preserves each existing reader's effective order, including saved and legacy
+  placements. Incoming replies never change it. New dossiers enter first;
+  reawakened dossiers enter last above More. ⌘↑ and ⌘↓ still place a dossier
+  halfway past its neighbour, and ⌘Z restores its previous key. Reset position
+  returns it to its last admission position and still permits no reply to lift
+  it. A join uses its destination's position; a split restores the source.
+  See [the record contract](dossier-order.md).
 - **Folding.** A stack has exactly two states, shared by its chevron,
   keyboard commands, header and menu (item 394 took away the header-only
   state, now that a swipe moves a dossier out of the way):

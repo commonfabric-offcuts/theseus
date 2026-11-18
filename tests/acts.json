@@ -2971,7 +2971,7 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "export const keyOf = stack => stack.placed ?? stack.lifted;",
+     "export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;",
      "export const keyOf = stack => stack.lifted;"
     ]
    ],
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -13669,8 +13669,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -13742,8 +13742,8 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
-     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();"
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.join' || kind === 'stack.place') await this.refreshPositions();",
+     "    if (kind === 'stack.aside' || kind === 'stack.name' || kind === 'stack.place') await this.refreshPositions();"
     ]
    ],
    "check": {
@@ -20654,7 +20654,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
+     "SCHEMA_VERSION = \"48\"",
      "SCHEMA_VERSION = \"46\""
     ]
    ],
@@ -27958,8 +27958,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "'aside_revision', 'name_revision', 'place_revision'];"
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "'aside_revision', 'name_revision', 'place_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -30981,7 +30981,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed };\n",
+     "        if ('placed' in pending) stack_position = { ...stack_position, placed: pending.placed,\n          ...('order_key' in stack_position ? { order_key: pending.placed ?? stack_position.order_entry_key } : {}) };\n",
      ""
     ]
    ],
@@ -30996,7 +30996,7 @@
    "break": [
     [
      "web/stack-feed.mjs",
-     " || kind === 'stack.place' && !firstLoaded) await this.refreshPositions();",
+     " || kind === 'stack.place') await this.refreshPositions();",
      ") await this.refreshPositions();"
     ]
    ],
@@ -31040,8 +31040,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'name_revision', 'place_revision', 'cover_revision'];",
-     "'name_revision', 'cover_revision'];"
+     "'name_revision', 'place_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];",
+     "'name_revision', 'cover_revision', 'order_key', 'order_tie', 'order_entry_key'];"
     ]
    ],
    "check": {
@@ -32097,6 +32097,63 @@
    ],
    "check": {
     "node": "tests/ui_card_scroll_probe.test.mjs"
+   }
+  },
+  {
+   "item": 731,
+   "act": "A publication routes a new dossier above even a saved personal position",
+   "break": [
+    [
+     "aim_next/conversation.py",
+     "published(db, set(self._message_readers(db, positioned, actor)) | set(audience), positioned)",
+     "None  # item 731 mutant: publication never routes dossier admission"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_order.py"
+   }
+  },
+  {
+   "item": 731,
+   "act": "A personal move changes the actual persisted dossier key",
+   "break": [
+    [
+     "aim_next/dossier_order.py",
+     "DO UPDATE SET key=excluded.key,entry_key=excluded.entry_key,tie=excluded.tie",
+     "DO UPDATE SET key=dossier_order.key,entry_key=excluded.entry_key,tie=excluded.tie"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_order.py"
+   }
+  },
+  {
+   "item": 731,
+   "act": "A reawakened dossier returns last above More",
+   "break": [
+    [
+     "aim_next/dossier_order.py",
+     "edge(db, actor, topic, False) if key is None else key",
+     "edge(db, actor, topic, True) if key is None else key"
+    ]
+   ],
+   "check": {
+    "python": "test_dossier_order.py"
+   }
+  },
+  {
+   "item": 731,
+   "act": "The actual browser consumes the stable dossier key instead of incoming activity",
+   "break": [
+    [
+     "web/stack-order.mjs",
+     "export const keyOf = stack => stack.orderKey ?? stack.placed ?? stack.lifted;",
+     "export const keyOf = stack => stack.placed ?? stack.lifted;"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "reading item 731 dossiers stay put topic laptop light"
    }
   }
  ]
