@@ -5,12 +5,19 @@ import path from 'node:path';
 import { geometry648 } from './swipe_648_geometry.mjs';
 
 export async function composeSwipe648({ check, page, open, press, until, picture, close, control, facts, engine, evidence }) {
-  const states = ['reading', 'writing', 'private-note', 'busy', 'refused', 'starred', 'folded', 'horizontal-code', 'empty'];
+  const states = ['reading', 'writing', 'private-note', 'busy', 'refused', 'starred', 'folded', 'horizontal-code', 'horizontal-table', 'source-control', 'empty'];
   for (const shape of ['phone-320', 'phone-375', 'phone-390', 'stacked']) for (const theme of ['light', 'dark']) for (const state of states) {
     await check(`item 648 ${shape} ${theme} ${state}: a right swipe folds only the composer's message and keeps exact writing`, async () => {
+      // Keep the original already-folded technical-name fixture distinct.
+      // The other states use a fictional display name, as the protection
+      // matrix does, without changing product layout or tolerances.
+      await control({ method: 'actor_name', actor_id: facts.agent, name: state === 'folded' ? facts.agent : 'Pipit' });
       const topic = `swipe648-${engine}-${shape}-${theme}-${state}`;
       await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Swipe in the composer' }] });
-      const body = state === 'horizontal-code' ? 'Swipe fixture.\n\n```\n' + 'wide code '.repeat(100) + '\n```' : 'Swipe fixture. Exact original words, kept for their reader.\n\nA second paragraph to read.';
+      const body = state === 'horizontal-code' ? 'Swipe fixture.\n\n```\n' + 'wide code '.repeat(100) + '\n```'
+        : state === 'horizontal-table' ? 'Swipe fixture.\n\n| Heading | ' + 'LongHeading'.repeat(30) + ' |\n| --- | --- |\n| Words | More words |'
+        : state === 'source-control' ? 'Swipe fixture.\n\n[Read the reference](https://example.invalid/reference)'
+        : 'Swipe fixture. Exact original words, kept for their reader.\n\nA second paragraph to read.';
       const id = (await control({ method: 'agent_message', operation_id: topic, topic_id: topic, join: true, source: 'topic', body })).result.message_id;
       const other = (await control({ method: 'agent_message', operation_id: topic + '-other', topic_id: topic, body: 'Other message, left alone.' })).result.message_id;
       if (state === 'starred') await control({ method: 'stack_act', sender: facts.actor, kind: state === 'starred' ? 'message.star' : 'message.fold', message_id: id, operation_id: topic + '-initial', args: state === 'starred' ? { starred: true } : { folded: true } });
@@ -55,12 +62,19 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       });
       // Named tolerance: screenshots and containment allow 2 CSS pixels for engine rounding.
       const EDGE_TOLERANCE_PX = 2;
-      const over = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      await mkdir(path.join(evidence, engine), { recursive: true });
-      await writeFile(path.join(evidence, engine, `${shape}-${theme}-item648-${state}-layout-before.json`), JSON.stringify(await p.evaluate(geometry648), null, 2));
-      await picture(p, `item648-${state}-before`);
-      assert.ok(over <= EDGE_TOLERANCE_PX, `page overflow <= ${EDGE_TOLERANCE_PX}px, got ${over}`);
-      const target = state === 'empty' ? field : state === 'horizontal-code' ? '#source-body .md-pre' : '#source-body';
+      const screen = async phase => {
+        const layout = await p.evaluate(geometry648);
+        await mkdir(path.join(evidence, engine), { recursive: true });
+        await writeFile(path.join(evidence, engine, `${shape}-${theme}-item648-${state}-layout-${phase}.json`), JSON.stringify(layout, null, 2));
+        await picture(p, `item648-${state}-${phase}`);
+        assert.ok(layout.overflow <= EDGE_TOLERANCE_PX, `page overflow <= ${EDGE_TOLERANCE_PX}px, got ${layout.overflow}`);
+        const PHONE_TARGET_TOLERANCE_PX = 1;
+        if (p.touch) for (const t of layout.targets) assert.ok(Math.min(t.width, t.height) >= 44 - PHONE_TARGET_TOLERANCE_PX,
+          `${phase}: ${t.id} 44px phone floor with named ${PHONE_TARGET_TOLERANCE_PX}px tolerance, got ${t.width}×${t.height}`);
+      };
+      await screen('before');
+      const target = state === 'empty' ? field : state === 'horizontal-code' ? '#source-body .md-pre'
+        : state === 'horizontal-table' ? '#source-body .md-table' : state === 'source-control' ? '#source-body a' : '#source-body';
       const box = await p.locator(target).boundingBox();
       const x = box.x + Math.min(box.width / 3, 70), y = box.y + Math.min(box.height / 2, 40);
       await p.mouse.move(x, y);
@@ -86,14 +100,14 @@ export async function composeSwipe648({ check, page, open, press, until, picture
         if (foldRequest) {
           await foldRequest;
           await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded === 'true', 'the message folded optimistically', id);
-          if (state === 'busy' || state === 'refused') await picture(p, `item648-${state}-pending`);
+          if (state === 'busy' || state === 'refused') await screen('pending');
           release();
           await (await foldedResponse).finished();
           if (state === 'refused') await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded !== 'true', 'refusal restores the message', id);
           else await until(p, id => document.querySelector(`#messages .message-card[data-id="${id}"]`)?.dataset.folded === 'true', 'the fold remains drawn', id);
         } else await until(p, () => document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).every(a => a.playState !== 'running'), 'the gesture has settled');
         if (state === 'refused') {
-          await picture(p, 'item648-refused-rollback');
+          await screen('rollback');
           const recovered = p.waitForResponse(r => r.url().endsWith('/api/command') && r.request().postDataJSON()?.kind === 'message.fold');
           // A native vertical wheel starts a new gesture; no timed gap/sleep.
           if (!(engine === 'chromium' && p.touch)) await p.mouse.wheel(0, 60);
@@ -107,6 +121,7 @@ export async function composeSwipe648({ check, page, open, press, until, picture
         if (folds.length) assert.deepEqual([folds[0].target.message_id, folds[0].args], [id, { folded: true }], 'only the message under the gesture folds');
         assert.equal(await p.locator(field).inputValue(), writing, 'exact writing is kept');
         assert.equal(await p.locator(audience).textContent(), destination, 'the destination is kept');
+        if (state !== 'empty') assert.equal(await p.locator('#note-chip').isVisible(), state === 'private-note', 'reply/private-note mode is kept');
         assert.equal(sent.some(e => ['message.send', 'submission.prepare', 'note.save'].includes(e.kind)), false, 'nothing sent or saved as a private note');
         const acts = (await control({ method: 'acts_as', reader: facts.actor, topic_id: topic })).acts;
         const folded = acts.items.find(row => row.message_id === id)?.acts.folded ?? false;
@@ -115,14 +130,15 @@ export async function composeSwipe648({ check, page, open, press, until, picture
         const foreign = await control({ method: 'acts_as', reader: facts.agent, topic_id: topic });
         assert.equal(foreign.acts.items.find(row => row.message_id === id)?.acts.folded ?? false, false, 'another actor has no fold');
         assert.ok(!JSON.stringify(foreign).includes('Exact α writing'), 'private writing is never another actor\'s acts');
-        await picture(p, `item648-${state}-after`);
+        await screen('after');
         if (state !== 'empty') {
           await press(p, '#reader-close');
           await until(p, () => !document.querySelector('#reader').open, 'the Reader closed with writing kept');
-          await picture(p, `item648-${state}-feed`);
+          await screen('feed');
         }
         await close(p);
       } finally { release(); if (foldRequest) await foldRequest.catch(() => {}); }
     });
   }
+  await control({ method: 'actor_name', actor_id: facts.agent, name: facts.agent });
 }

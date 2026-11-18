@@ -14,5 +14,7 @@ export const geometry648 = () => {
   }).map(e => ({ ...box(e), words: e.textContent.slice(0, 180),
     ancestors: [...(function* () { for (let at = e.parentElement; at; at = at.parentElement) yield box(at); })()] }));
   return { width: innerWidth, scrollX, overflow: document.documentElement.scrollWidth - innerWidth,
-    dialog: box(document.querySelector('#reader')), outliers };
+    dialog: box(document.querySelector('#reader')), outliers,
+    targets: [...document.querySelectorAll('#reader[open] :is(button,input,textarea,select), #new-message-sheet[open] :is(button,input,textarea,select)')]
+      .filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('#source-body')).map(box) };
 };

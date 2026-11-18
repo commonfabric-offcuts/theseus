@@ -30,6 +30,11 @@ export async function observe648(p) {
     p.swipe648ReaderHash = createHash('sha256').update(body).digest('hex');
     await route.fulfill({ response, body });
   });
+  await p.route('**/aim.css', async route => {
+    const response = await route.fetch(), body = await response.body();
+    p.swipe648CssHash = createHash('sha256').update(body).digest('hex');
+    await route.fulfill({ response, body });
+  });
   await p.route('**/app.mjs', async route => {
     const response = await route.fetch();
     const observer = `import { Reader as Swipe648Reader } from './reader.mjs';
@@ -61,6 +66,7 @@ export async function composeSwipe648Protections(h) {
   const snapshot = p => p.evaluate(() => {
     const p = window.swipe648Registry.current;
     return { open: document.querySelector('#reader').open, source: p.source.source_ref, text: document.querySelector('#source-body').textContent,
+      mode: p.mode, draft: structuredClone(p.editors.reply.draft), editorKey: p.editors.reply.key,
       writing: document.querySelector('#writing-body').value, destination: document.querySelector('#who-chip').textContent,
       unavailable: Boolean(p.sourceUnavailable), unconfirmed: Boolean(p.availabilityUnconfirmed), checking: Boolean(p.availabilityChecking),
       readOnly: document.querySelector('#writing-body').readOnly, coarse: matchMedia('(pointer:coarse)').matches, viewportScale: visualViewport.scale, inputs: window.swipe648Inputs };
@@ -110,15 +116,17 @@ export async function composeSwipe648Protections(h) {
     finally { if (zoom) await p.keyboard.up('Control'); }
   };
   const finger = async (p, dx = 100, dy = 0, { cancel = false, between = null, selector = '#source-body' } = {}) => {
-    const at = await point(p, selector), n = await p.evaluate(() => window.swipe648Inputs.length);
+    const at = await point(p, selector), n = await p.evaluate(() => window.swipe648TargetTerminals.length);
     const cdp = await p.ctx.newCDPSession(p);
     try {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] });
       if (between) await between();
       for (let step = 1; step <= 4; step++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: at.x + dx * step / 4, y: at.y + dy * step / 4 }] });
       await cdp.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
-      // Browser scrolling can cancel the page's touch path before end.
-      await until(p, n => window.swipe648Inputs.slice(n).some(e => ['touchend', 'touchcancel'].includes(e.type) && e.trusted), 'native touch completion or browser cancellation', n);
+      // A source redraw detaches the original target. Its trusted terminal
+      // event still arrives there, but cannot bubble to document. Observe
+      // that target itself, counting only events after this native contact.
+      await until(p, n => window.swipe648TargetTerminals.slice(n).some(e => ['touchend', 'touchcancel'].includes(e.type) && e.trusted && e.ids.includes(0)), 'native touch completion or browser cancellation on original target', n);
       await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     } finally {
       records.push({ shape: p.shape, theme: p.scheme, touch: await p.evaluate(() => ({
@@ -135,6 +143,7 @@ export async function composeSwipe648Protections(h) {
     assert.equal(now.open, true, `${label}: Reader stays open`);
     assert.equal(now.writing, f.before.writing, `${label}: exact writing kept`);
     assert.equal(now.destination, f.before.destination, `${label}: destination kept`);
+    assert.equal(now.mode, f.before.mode, `${label}: reply/private-note mode kept`);
     if (text) assert.equal(now.text, f.before.text, `${label}: exact source words kept`);
     assert.equal(f.commands.some(e => ['message.send', 'submission.prepare', 'note.save'].includes(e.kind)), false, `${label}: no send/private note act`);
     const mine = (await control({ method: 'acts_as', reader: facts.actor, topic_id: f.topic })).acts;
@@ -162,6 +171,13 @@ export async function composeSwipe648Protections(h) {
     if (f.p.touch) for (const t of geometry.targets) assert.ok(Math.min(t.w, t.h) >= 44 - PHONE_TARGET_TOLERANCE_PX, `${label}: ${t.id} 44px phone floor with named ${PHONE_TARGET_TOLERANCE_PX}px tolerance, got ${t.w}×${t.h}`);
   };
 
+  // Use a human-facing fictional display name for this matrix. Start09's
+  // exact 3px outlier was the *background* folded cue after the unshrinking
+  // technical name fixture-notebook-agent. Ordinary legacy folded cases keep
+  // that original fixture and their separate base placement; no CSS or
+  // containment tolerance is changed or waived here.
+  await control({ method: 'actor_name', actor_id: facts.agent, name: 'Pipit' });
+  try {
   for (const shape of shapes) for (const theme of ['light', 'dark']) {
     const input = engine === 'webkit' ? 'phone-width desktop wheel/native taps (laptop wheel at stacked)' : shape.startsWith('phone') ? 'native finger drag' : 'desktop wheel';
     await check(`item 648 protections ${shape} ${theme}: left short vertical zoom selection cancellation source-change; ${input}`, async () => {
@@ -170,7 +186,7 @@ export async function composeSwipe648Protections(h) {
       for (const [name, dx, dy] of [['left', -100, 0], ['short', 55, 0], ['vertical', 0, 100]]) {
         if (engine === 'chromium' && p.touch) await finger(p, dx, dy);
         else { await wheel(p, 0, 20); await wheel(p, -dx, dy); }
-        noFold(f); await kept(f, name); records.push({ shape, theme, negative: name, input });
+        noFold(f); await kept(f, name); await screen(f, `negative-${name}`); records.push({ shape, theme, negative: name, input });
       }
       // Native pointer selection tests the browser's actual selection, also
       // in touch-enabled contexts; this is not a WebKit finger-selection claim.
@@ -178,12 +194,15 @@ export async function composeSwipe648Protections(h) {
       await p.mouse.click(at.x, at.y, { clickCount: 2 });
       await until(p, () => !window.getSelection().isCollapsed, 'native selection on source words');
       await wheel(p, 0, 20); await wheel(p, -100); noFold(f); await kept(f, 'selection');
+      await screen(f, 'negative-selection');
       await p.mouse.click(at.x, at.y);
       await until(p, () => window.getSelection().isCollapsed, 'native click releases selection');
       if (engine === 'chromium' && p.touch) await finger(p, 100, 0, { cancel: true });
       else { await wheel(p, 0, 20); await wheel(p, -40); await wheel(p, 0, 60); await wheel(p, -50); }
       noFold(f); await kept(f, 'cancellation/reset');
+      await screen(f, 'negative-cancelled');
       await wheel(p, -100, 0, '#source-body', true); noFold(f); await kept(f, 'native Control-wheel zoom');
+      await screen(f, 'negative-zoom');
       // The native Next press changes the source between native gesture parts.
       // Use the keyboard for the concurrent step: starting a second
       // touchscreen tap while a finger is down would replace that contact.
@@ -192,12 +211,21 @@ export async function composeSwipe648Protections(h) {
         assert.equal(await p.locator('#source-body').evaluate(e => e === document.activeElement), true, 'native keys reach source before stepping');
       };
       await focusSource();
-      const change = async () => { await p.keyboard.press('Meta+ArrowUp'); await until(p, id => window.swipe648Reader.source.source_ref.id !== id, 'native Cmd-Up changes source', f.id); };
+      let changedBefore;
+      const change = async () => {
+        await p.keyboard.press('Meta+ArrowUp');
+        await until(p, id => window.swipe648Reader.source.source_ref.id === id && window.swipe648Registry.current.source.source_ref.id === id, 'native Cmd-Up changes to exact other source', f.other);
+        changedBefore = await snapshot(p);
+      };
       if (engine === 'chromium' && p.touch) await finger(p, 100, 0, { between: change });
       else { await wheel(p, 0, 20); await wheel(p, -40); await change(); await wheel(p, -50); }
       noFold(f);
       assert.equal((await snapshot(p)).source.id, f.other, 'source changed to the exact other message during gesture');
-      await kept(f, 'source changed during gesture', { text: false });
+      // Navigation legitimately presents the other source's own writing.
+      // Completing the old contact must change neither editor nor either To.
+      await kept({ ...f, before: changedBefore }, 'new source after old gesture');
+      const originalDraft = await p.evaluate(key => structuredClone(window.swipe648Registry.sessions.get(key).editor.draft), f.before.editorKey);
+      assert.deepEqual(originalDraft, f.before.draft, 'old source exact draft and addressees survive source change');
       await screen(f, 'source-changed-after');
       await focusSource(); await p.keyboard.press('Meta+ArrowDown'); await until(p, id => window.swipe648Reader.source.source_ref.id === id, 'native Cmd-Down restores source', f.id);
       await kept(f, 'source change and return'); await screen(f, 'negative-after'); await close(p);
@@ -281,8 +309,9 @@ export async function composeSwipe648Protections(h) {
         assert.equal(foreign.acts.items.find(row => row.message_id === f.id)?.acts.folded ?? false, false, 'other actor has no fold');
         assert.ok(!JSON.stringify(foreign).includes('Exact protected α writing'), 'private writing remains private');
         assert.equal(f.commands.some(e => ['message.send', 'submission.prepare', 'note.save'].includes(e.kind)), false, 'read-only gesture sends no writing');
-        await screen(f, 'writing-read-only-recovered'); await close(p);
-      } finally { await p.evaluate(() => window.swipe648SaveHold?.release?.()).catch(() => {}); }
+        await screen(f, 'writing-read-only-recovered');
+      } finally { await p.evaluate(() => window.swipe648SaveHold?.release?.()); }
+      await close(p);
     });
   }
 
@@ -333,4 +362,44 @@ export async function composeSwipe648Protections(h) {
     for (const [shape, theme] of [['phone-390', 'light'], ['stacked', 'dark']]) { await exercise(shape, theme, 'restored'); proof.cases.push({ shape, theme, phase: 'restored', passed: true }); }
     await saveRecords();
   });
+
+  await check('item 648 geometry actual CSS mutants and restored controls: named 2px containment and 1px phone floor tolerances', async () => {
+    const filename = path.join(root, 'web/aim.css'), original = await readFile(filename, 'utf8');
+    const proof = { file: 'web/aim.css', originalHash: digest(original), phases: [] };
+    const exercise = async (phase, expectedHash) => {
+      const f = await setup('phone-390', 'dark', `geometry-${phase}`);
+      try {
+        assert.equal(f.p.swipe648CssHash, expectedHash, 'browser received exact CSS mutation phase');
+        await screen(f, `geometry-${phase}`);
+      } finally { await close(f.p); }
+    };
+    for (const [name, css, assertion] of [
+      ['containment', '\n#reader{transform:translateX(12px)!important}\n', 'Reader contained within named 2px tolerance'],
+      ['target', '\n#reader-close{height:22px!important;min-height:22px!important}\n', 'reader-close 44px phone floor with named 1px tolerance'],
+    ]) {
+      const mutant = original + css, mutantHash = digest(mutant);
+      assert.notEqual(mutantHash, proof.originalHash, 'actual CSS mutation changes bytes');
+      try {
+        await writeFile(filename, mutant);
+        assert.equal(digest(await readFile(filename)), mutantHash, 'actual CSS mutant read back');
+        await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+        let failure;
+        try { await exercise(name, mutantHash); } catch (error) { failure = error; }
+        assert.ok(failure?.code === 'ERR_ASSERTION' && failure.message.includes(assertion), `geometry mutant fails intended measurement, not setup: ${failure?.stack}`);
+        proof.phases.push({ name, mutantHash, failure: failure.stack });
+      } finally {
+        await writeFile(filename, original);
+        await control({ method: 'server_stop' }); await control({ method: 'server_start' });
+        proof.restoredHash = digest(await readFile(filename));
+        records.push({ geometryMutation: structuredClone(proof) }); await saveRecords();
+      }
+      assert.equal(proof.restoredHash, proof.originalHash, 'CSS restored byte for byte');
+      await exercise(`${name}-restored`, proof.originalHash);
+      proof.phases.push({ name: `${name}-restored`, passed: true });
+    }
+    records.push({ geometryMutation: proof }); await saveRecords();
+  });
+  } finally {
+    await control({ method: 'actor_name', actor_id: facts.agent, name: facts.agent });
+  }
 }

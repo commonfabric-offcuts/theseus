@@ -532,3 +532,17 @@ transition. WebKit's phone-width input is desktop wheel with native taps. The
 unavailable native WebKit finger path remains harness item 720. Final physical
 phone acceptance is Tony's swipe on the coordinator's working preview, pending
 before independent review. Measured geometry uses named tolerances (#7715).
+
+The 8675 harness continuation observes trusted native touch termination on
+the original target, which may be detached when the source changes. A
+document-only observer cannot see that termination. The old and new source's
+own drafts and destinations are checked separately while stepping, and the
+original writing is checked again on return. Geometry keeps the named 2px
+containment and 1px phone-target tolerances, with actual served CSS mutants
+and restored controls. Ordinary and access/recovery fixtures use the fictional
+display name Pipit; the two original already-folded WebKit320 cases retain
+their technical-name fixture and their separate historical base placement.
+The recovered-state 3px diagnostic is specifically a background folded cue
+after that technical name, not Reader overflow, and is not waived by that
+older placement. Tony8674's supplied phone word, “yeah that works”, covers the
+precise smoke test and does not certify the engine matrix or every guard.
