@@ -10,6 +10,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from tests import own_receipt_fixtures as portable
 from tools import base_move as b
 import test_tools_base_move as existing
 
@@ -241,10 +242,10 @@ CORRECTION_OLD = 'f4b4524c5859212b62062f030a84c8d309b3cd72'
 CORRECTION_NEW = '7c4e13ba506c9eb4443ebe70202d8ee490db7bcc'
 
 def correction_bytes(revision, path, blob):
-    observed = subprocess.check_output(['git', 'rev-parse', revision + ':' + path], text=True).strip()
+    observed = subprocess.check_output(portable.git_command() + ['rev-parse', revision + ':' + path], text=True).strip()
     if observed != blob:
         raise AssertionError('independent correction fixture blob differs')
-    return subprocess.check_output(['git', 'show', revision + ':' + path]).decode()
+    return subprocess.check_output(portable.git_command() + ['show', revision + ':' + path]).decode()
 
 
 class CorrectionAdaptations(existing.BaseMoveFixture):
