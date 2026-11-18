@@ -3845,6 +3845,47 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     }
   });
 
+  // Item 731: a reply must not lift an existing dossier, including an unplaced one.
+  for (const device of ['laptop', 'phone', 'phone-375', 'phone-320']) for (const theme of ['light', 'dark']) {
+    for (const route of ['topic', 'conversation']) await check(`reading item 731 dossiers stay put ${route} ${device} ${theme}`, async () => {
+      const key = `stay-731-${route}-${device}-${theme}`, input = device === 'laptop' ? 'laptop' : 'phone';
+      let topic = key;
+      if (route === 'conversation') topic = (await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent })).topic_id;
+      else await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Dossiers stay put' }] });
+      const ids = {};
+      const post = async (name, reply = null) => {
+        ids[name] = (await control({ method: 'agent_message', operation_id: key + '-' + name, topic_id: topic, source: 'topic', sender: other,
+          join: true, addressees: [facts.actor], body: `Item 731 ${name}: exact dossier words.`, ...(reply ? { reply_to: ids[reply] } : {}) })).result.message_id;
+        return ids[name];
+      };
+      await post('b'); await post('b1', 'b'); await post('a'); await post('a1', 'a');
+      const query = route === 'conversation' ? '/?conversation=w1' : '/?topic=' + topic;
+      let p;
+      const order = () => p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(id=>${JSON.stringify([ids.a,ids.b])}.includes(id))`);
+      try {
+        p = await open(key, device, topic, ids.a, '', query);
+        await dossierTheme(p, theme);
+        await becomes(order, [ids.a, ids.b], 'A above B before arrival');
+        await away(p); await shot(p, key + '-before');
+        await post('b2', 'b');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(ids.b2))}))`), 'the incoming reply is actually drawn');
+        await away(p); await shot(p, key + '-after');
+        const actual = await order();
+        observations.push({ name: 'item 731 arrival', key, ids, actual, expected: [ids.a, ids.b] });
+        assert.deepEqual(actual, [ids.a, ids.b], 'an incoming reply to B preserves A above B');
+        await p.close(); p = await open(key + '-reload', device, topic, ids.a, '', query);
+        await becomes(order, [ids.a, ids.b], 'reload keeps A above B');
+        // The reader still moves a dossier through real keys or the touch menu.
+        if (input === 'laptop') { await keyTo(p, ids.b); await p.key('ArrowUp', 4); }
+        else { await menuAgain(p, input, ids.b2, ids.a1); await moveItem(p, input, 'Move its stack up'); }
+        await becomes(order, [ids.b, ids.a], 'the reader moves B above A');
+        await until(async () => typeof (await actsOf(topic, ids.b))?.placed === 'number', 'Core records the native move');
+        assert.equal((await actsOf(topic, ids.b, other))?.placed ?? null, null, 'the move belongs only to the reader');
+        assert.deepEqual(p.errors, []);
+      } finally { if (p) await p.close(); }
+    });
+  }
+
   await check('reading stacks ⌘↑ ⌘↓ move a stack where the reader wants it, kept after a reload; a new reply does not lift it; another reader keeps newest on top', async () => {
     const topic = 'stack-move';
     const ids = await seed(topic, [['a', { sender: other, join: true, addressees: [facts.actor], body: 'Stack A.' }],
