@@ -1203,6 +1203,8 @@ dialog.composer-home.notebook-mode[open]{overflow:hidden}
 @media(pointer:coarse){#reader-cover>summary{min-height:2.75rem}}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
 
+/* A displayed thumbnail opens its image (651), with visible keyboard focus. */
+.image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}

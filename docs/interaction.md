@@ -570,7 +570,9 @@ page painted. Its checks, by rule:
   message while the lit card's read ahead is slow …" holds that read ahead in
   the server and needs the whole message shown.
 - ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
-- Images: "reading #img in the topic's composer and in the Reader …" picks
+- Images: a displayed thumbnail opens its image in a new tab by click, tap
+  or Return (item 651, `tests/thumbnail_open_native.mjs`, `native-compose`);
+  the containing picker row's words still choose it. "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
   takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
   opens + and reads the button there, presses it, presses Choose file beside it

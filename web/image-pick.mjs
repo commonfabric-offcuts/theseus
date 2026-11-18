@@ -70,7 +70,19 @@ function keep(key, blob) {
   watcher = new globalThis.MutationObserver(() => letGo());
   watcher.observe(doc, { childList: true, subtree: true });
 }
-const show = (image, picture) => { picture.images.add(image); image.src = picture.url; image.hidden = false; };
+// Opening uses only the bytes already on this page, synchronously in the
+// person's gesture. Nothing is read or written and no parent act also runs.
+export function openThumbnail(image, event) {
+  if (!image?.src || image.hidden || !image.isConnected) return false;
+  event?.preventDefault(); event?.stopPropagation();
+  window.open(image.src, '_blank', 'noopener');
+  return true;
+}
+const show = (image, picture) => {
+  picture.images.add(image); image.src = picture.url; image.hidden = false;
+  image.tabIndex = 0; image.setAttribute('role', 'link');
+  image.alt = image.title = 'Open image in a new tab';
+};
 // A thumbnail in the row, at its start unless place(image) puts it elsewhere:
 // the image itself, made small (Theseus keeps no smaller copy), from the bytes
 // load() gives (null for none). A row keeps its thumbnail while its key is the
@@ -85,6 +97,8 @@ export function paintThumb(row, key, load, place = image => row.prepend(image), 
   if (image?.dataset.key === key) { place(image); return; }
   image?.remove();
   image = node(row.ownerDocument, 'img', undefined, 'image-thumb'); image.alt = ''; image.dataset.key = key; image.hidden = true;
+  image.onclick = event => openThumbnail(image, event);
+  image.onkeydown = event => { if (event.key === 'Enter') openThumbnail(image, event); };
   place(image);
   if (pictures.has(key)) { show(image, pictures.get(key)); return; }
   const shown = image;
@@ -125,7 +139,7 @@ export async function clipboardImage(nav = globalThis.navigator) {
 // topic_images view), thumb(item) a thumbnail's bytes, and choose(item) adds
 // the picked image to the writing. The field keeps focus throughout: ↑ ↓ move
 // through the list, Return or Tab picks, Escape closes it; a tap or click on
-// an image picks it.
+// the row's words picks it; its thumbnail opens the image in a new tab.
 export class ImagePick {
   constructor({ field, host, load, thumb, choose, admits = () => true }) {
     Object.assign(this, { field, host, load, thumb, choose, admits });
