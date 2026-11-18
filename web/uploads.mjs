@@ -92,10 +92,14 @@ export class Uploads {
     const blob = this.memory.get(e.selection_id);
     if (!blob) { e.local_error = 'Bytes not saved on this device — remove and choose the file again'; this.notify(); return false; }
     const metadata = Object.fromEntries(['name', 'size', 'type', 'last_modified'].map(k => [k, e.file[k]]));
-    const bytes = { id: JSON.stringify([this.editor.key, 'upload-bytes', e.selection_id]), kind: 'upload-bytes-v1',
-      scope: JSON.stringify([this.editor.context.instanceId, this.editor.context.actor]), editorKey: this.editor.key,
-      selection_id: e.selection_id, created_by_writer: this.journal.writerId, metadata, blob };
     try {
+      // A chooser's File can depend on browser-owned temporary backing that
+      // WebKit cannot store in IDB. Read outside the transaction and retain
+      // these exact bytes in the same durable row, independently of that file.
+      const retained = new Blob([await blob.arrayBuffer()], { type: blob.type });
+      const bytes = { id: JSON.stringify([this.editor.key, 'upload-bytes', e.selection_id]), kind: 'upload-bytes-v1',
+        scope: JSON.stringify([this.editor.context.instanceId, this.editor.context.actor]), editorKey: this.editor.key,
+        selection_id: e.selection_id, created_by_writer: this.journal.writerId, metadata, blob: retained };
       await this.journal.capture(this.editor.key, () => this.session.snapshot(), bytes, e, () => this.selected(e));
       this.memory.delete(e.selection_id); e.local_error = null; this.notify(); return true;
     } catch (error) {

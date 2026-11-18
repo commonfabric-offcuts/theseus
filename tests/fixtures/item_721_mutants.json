@@ -155,13 +155,29 @@
     "break": [
       [
         "web/app.mjs",
-        "const keepingWhole = reader?.card === card && item.preview;",
-        "const keepingWhole = false; // item 721 source revision mutant"
+        "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));",
+        "await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));\n        card.querySelector(':scope > .message-preview').style.maxHeight = '120px'; card.querySelector(':scope > .message-preview').style.overflow = 'auto';"
       ]
     ],
     "check": {
       "native": "compose",
       "case": "item 721 contract change"
+    }
+  },
+  {
+    "item": 721,
+    "act": "The durable chooser copy publishes the exact selected image bytes",
+    "key": "image",
+    "break": [
+      [
+        "web/uploads.mjs",
+        "new Blob([await blob.arrayBuffer()], { type: blob.type })",
+        "new Blob([new Uint8Array(blob.size)], { type: blob.type })"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract image"
     }
   }
 ]

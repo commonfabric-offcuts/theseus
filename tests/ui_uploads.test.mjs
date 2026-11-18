@@ -112,6 +112,16 @@ test('capture owns one byte row; typing and caret persistence carry no Blob byte
   assert.ok(f.puts.filter(p => p.bytes).every(p => p.kind === 'upload-bytes-v1'));
   assert.equal([...f.rows.values()].filter(r => r.kind === 'upload-bytes-v1').length, 1);
 });
+
+test('item 721 chooser capture retains exact bytes independently of the browser File backing', async t => {
+  const f = await fixture(t), id = await f.u.add(f.image, { start: false });
+  const selected = f.u.find(id), retained = f.rows.get(selected.bytes_ref);
+  assert.equal(selected.bytes_state, 'durable');
+  assert.ok(retained.blob instanceof Blob && !(retained.blob instanceof File), 'the durable row owns a memory-backed Blob');
+  assert.deepEqual(new Uint8Array(await retained.blob.arrayBuffer()), new Uint8Array(await f.image.arrayBuffer()), 'the durable copy preserves every original byte');
+  assert.deepEqual(retained.metadata, { name: f.image.name, size: f.image.size, type: f.image.type, last_modified: f.image.lastModified });
+  assert.equal(f.u.memory.has(id), false, 'the original File is released only after durable capture');
+});
 test('every-put instrument rejects bytes hidden in metadata, independent of sibling count', () => {
   const row = { snapshot: { nested: { memory: new Blob(['wrong place']) } } };
   assert.equal(countBlobs(row), 11);

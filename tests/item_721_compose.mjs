@@ -157,8 +157,7 @@ export async function item721Compose(h) {
     await press(p, '#writing-body'); await p.keyboard.insertText(text);
     await until(p, text => document.querySelector('#writing-body').value === text, 'exact native writing', text);
   }
-  async function dragSource(p, id) {
-    const target = p.locator(card(id) + ' > .message-preview > .md-block').first();
+  async function dragWords(p, target) {
     await target.scrollIntoViewIfNeeded();
     await target.hover();
     const points = await target.evaluate(el => {
@@ -177,6 +176,7 @@ export async function item721Compose(h) {
     await receipt(p);
     return p.evaluate(() => getSelection().toString());
   }
+  const dragSource = (p, id) => dragWords(p, p.locator(card(id) + ' > .message-preview > .md-block').first());
   async function runtime(phase, action) {
     const receipt = await control({ method: 'item_721_runtime', phase });
     sourcePhase = phase;
@@ -200,6 +200,7 @@ export async function item721Compose(h) {
     if (key === 'dock') assert.equal(observed.dock, true, 'item 721 dock oracle');
     if (key === 'whole') assert.equal(observed.whole, true, 'item 721 whole oracle');
     if (key === 'change') assert.ok(observed.whole && observed.dock && observed.body === WRITING && observed.framesWhole, 'item 721 change oracle');
+    if (key === 'image') assert.ok(observed.imageReceipt.status === 'committed' && observed.imageReceipt.result.sha256 === observed.imageHash && observed.imageReady, 'item 721 image oracle');
     if (key === 'selection') assert.ok(observed.selected.length > 0 && !observed.open, 'item 721 selection oracle: a source drag selects words and never opens Reader');
     if (key === 'title') assert.ok(observed.title && observed.close, 'item 721 title oracle');
     if (key === 'addressing') assert.equal(observed.addressing, true, 'item 721 addressing oracle');
@@ -226,13 +227,25 @@ export async function item721Compose(h) {
       await until(p, s => document.querySelector(s).dataset.state === 'open', 'coordination source is open for native Reply', toggle);
     }
     await reply(p, data.id);
-    if (['writing', 'escape', 'hidden', 'unavailable', 'change'].includes(key)) await write(p);
+    if (['writing', 'escape', 'hidden', 'unavailable', 'change', 'image'].includes(key)) await write(p);
+    let imageEvidence = {};
+    if (key === 'image') {
+      const image = await readFile(new URL('./fixtures/media/screen.png', import.meta.url));
+      await press(p, '#plus-button');
+      const chooser = p.waitForEvent('filechooser'); await press(p, '#add-image');
+      const published = p.waitForResponse(response => response.url().endsWith('/api/media/upload'));
+      await (await chooser).setFiles({ name: 'item721.png', mimeType: 'image/png', buffer: image });
+      const imageReceipt = await (await published).json();
+      await until(p, () => ['item721.png · Ready', 'item721.png · Could not attach'].includes(document.querySelector('#writing-attachments .image-choice .image-open span')?.textContent), 'actual image publication result is rendered');
+      imageEvidence = { imageReceipt, imageHash: createHash('sha256').update(image).digest('hex'), imageReady: await p.locator('#writing-attachments .image-choice .image-open span').textContent() === 'item721.png · Ready' };
+      await receipt(p);
+    }
     let framesWhole = true;
     if (key === 'change') {
       const start = await p.evaluate(() => window.__item721Trail.length);
       const changed = await control({ method: 'agent_edit', operation_id: data.topic + '-edit', message_id: data.id, sender: facts.agent, body: LONG + '\n\nChanged source words.' });
       assert.equal(changed.status, 'committed', 'actual Core source edit applied');
-      await until(p, async s => (await import('/message-format.mjs')).drawnRevision(document.querySelector(s)) === 2, 'the actual revised source is rendered', card(data.id) + ' > .message-preview');
+      await until(p, s => document.querySelector(s).textContent.includes('Changed source words.'), 'the whole revised source has arrived', card(data.id) + ' > .message-preview');
       framesWhole = await p.evaluate(start => window.__item721Trail.slice(start).filter(row => row.kind === 'render' && row.dock).every(row => row.sourceParagraphs >= 45), start);
     }
     if (key === 'writing' && suffix === '-mutant') await until(p, () => document.querySelector('#reader').matches(':modal'), 'writing click mutant actually opens full Reader');
@@ -246,7 +259,7 @@ export async function item721Compose(h) {
       assert.equal(revoked.status, 'committed', 'actual Core participation revocation applied');
       await until(p, () => document.querySelector('#source-access-status').textContent.includes('source is unavailable'), 'real HTTP source refusal reaches Reader', undefined, 20000);
     }
-    const observed = { ...await snapshot(p, data.id, key === 'change' ? LONG + '\n\nChanged source words.' : LONG), framesWhole };
+    const observed = { ...await snapshot(p, data.id, key === 'change' ? LONG + '\n\nChanged source words.' : LONG), framesWhole, ...imageEvidence };
     if (observed.open && !['hidden', 'unavailable'].includes(key)) await p.locator('#reader-close').scrollIntoViewIfNeeded();
     await picture(p, `item-721-${key}${suffix}`);
     measured.push({ engine, shape, scheme, item: 721, key, suffix, observed });
@@ -268,7 +281,7 @@ export async function item721Compose(h) {
       oracle('dock', observed); oracle('whole', observed);
     });
   });
-  for (const key of ['dock', 'whole', 'selection', 'title', 'addressing', 'writing', 'escape', 'hidden', 'unavailable', 'change']) {
+  for (const key of ['dock', 'whole', 'selection', 'title', 'addressing', 'writing', 'escape', 'hidden', 'unavailable', 'change', 'image']) {
     await check(`item 721 ${key}: applied source mutant is red then exact restored control`, async () => {
       assert.ok(mutants.some(row => row.key === key));
       await runtime(key, async () => {
@@ -365,12 +378,7 @@ export async function item721Compose(h) {
       assert.equal(await p.evaluate(() => document.querySelector('#reader').matches(':modal')), true, 'explicit Return keeps the full Reader route');
       await picture(p, 'item-721-explicit-reader');
       const chooseReader = async () => {
-        const words = p.locator('#source-body > .md-block').first();
-        await words.scrollIntoViewIfNeeded();
-        const b = await words.boundingBox();
-        await p.mouse.move(b.x + 3, b.y + 9); await p.mouse.down();
-        await p.mouse.move(b.x + Math.min(180, b.width - 3), b.y + 9, { steps: 12 }); await p.mouse.up();
-        const selected = await p.evaluate(() => getSelection().toString());
+        const selected = await dragWords(p, p.locator('#source-body > [data-start]').first());
         assert.ok(selected.length > 0, 'ordinary Reader still permits native source selection');
         return selected;
       };
