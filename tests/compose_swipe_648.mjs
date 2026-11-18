@@ -16,7 +16,7 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Swipe in the composer' }] });
       const body = state === 'horizontal-code' ? 'Swipe fixture.\n\n```\n' + 'wide code '.repeat(100) + '\n```'
         : state === 'horizontal-table' ? 'Swipe fixture.\n\n| Heading | ' + 'LongHeading'.repeat(30) + ' |\n| --- | --- |\n| Words | More words |'
-        : state === 'source-control' ? 'Swipe fixture.\n\n[Read the reference](https://example.invalid/reference)'
+        : state === 'source-control' ? 'Swipe fixture. Exact original words are kept. The reader can read this paragraph before opening the linked reference.\n\n[Read the reference](https://example.invalid/reference)'
         : 'Swipe fixture. Exact original words, kept for their reader.\n\nA second paragraph to read.';
       const id = (await control({ method: 'agent_message', operation_id: topic, topic_id: topic, join: true, source: 'topic', body })).result.message_id;
       const other = (await control({ method: 'agent_message', operation_id: topic + '-other', topic_id: topic, body: 'Other message, left alone.' })).result.message_id;
@@ -75,6 +75,10 @@ export async function composeSwipe648({ check, page, open, press, until, picture
       await screen('before');
       const target = state === 'empty' ? field : state === 'horizontal-code' ? '#source-body .md-pre'
         : state === 'horizontal-table' ? '#source-body .md-table' : state === 'source-control' ? '#source-body a' : '#source-body';
+      if (state === 'source-control') {
+        await p.locator(target).scrollIntoViewIfNeeded();
+        await screen('control-ready');
+      }
       const box = await p.locator(target).boundingBox();
       const x = box.x + Math.min(box.width / 3, 70), y = box.y + Math.min(box.height / 2, 40);
       await p.mouse.move(x, y);
