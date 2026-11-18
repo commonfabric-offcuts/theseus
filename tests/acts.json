@@ -20653,9 +20653,14 @@
      "(\"45\", \"46\", TOPIC_POSITION_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"47\", \"48\", COVER_WAIT_SCHEMA",
+     "(\"46\", \"47\", COVER_WAIT_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
-     "SCHEMA_VERSION = \"46\""
+     "SCHEMA_VERSION = \"48\"",
+     "SCHEMA_VERSION = \"47\""
     ]
    ],
    "check": {
