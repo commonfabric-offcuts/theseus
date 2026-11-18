@@ -17,6 +17,12 @@ only on one side retain that side's exact entry. Every overlap is reviewed;
 no extra feature work is permitted in resolutions. Review covers the entire
 binary source-head-to-assembly diff, including clean merges.
 
+An explicitly authorized cut train may add `source.continuation: Ref`, under
+[the original partial plus scoped completion contract](continuation-envelope.md).
+That separate envelope preserves original partial truth and requires the exact
+missing-only union; it creates no replacement full-run summary. Without this
+explicit field the complete-source path below remains unchanged.
+
 `source` is exactly `{run, attempt, tested_merge, base_at_run, files, inventory,
 audit, controller}`. Run and attempt are positive integers. `tested_merge` is
 exactly `{sha, tree, first_parent, second_parent}` and `base_at_run` exactly

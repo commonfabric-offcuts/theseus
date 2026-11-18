@@ -326,7 +326,12 @@ def replay_results(step, out, traffic):
 
 
 def audit_reds(source, judgment, head, reds):
-    audit = fields(document(source['audit']), 'version reviewer record run attempt source_head tested_merge inventory files_sha256 summary_sha256 reds')
+    names = 'version reviewer record run attempt source_head tested_merge inventory files_sha256 summary_sha256 reds'
+    if 'continuation' in source:
+        names += ' continuation_sha256'
+    audit = fields(document(source['audit']), names)
+    if 'continuation' in source:
+        require(audit['continuation_sha256'] == source['continuation']['sha256'], 'source audit continuation binding differs')
     require(type(audit['version']) is int and audit['version'] == 1, 'unknown source audit version')
     words(audit['reviewer']); words(audit['record'])
     require(audit['record'] == judgment['audit'] and type(audit['run']) is int and type(audit['attempt']) is int
@@ -351,6 +356,9 @@ def audit_reds(source, judgment, head, reds):
 
 
 def full_source(source, judgment, git, github, repository, head):
+    if isinstance(source, dict) and 'continuation' in source:
+        from tools import continuation_envelope
+        return continuation_envelope.validate(source, judgment, git, github, repository, head)
     fields(source, 'run attempt tested_merge base_at_run files inventory audit controller')
     number(source['run']); number(source['attempt'])
     base_fact(source['base_at_run'])
@@ -620,6 +628,8 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
         result['source'].update(summary=data['source']['files']['release-check/summary.json'],
                                 provenance=data['source']['files']['release-check/provenance.json'],
                                 artifacts_sha256=digest(canonical(data['source']['files'])))
+        if 'continuation' in data['source']:
+            result['source']['continuation'] = data['source']['continuation']
         return result
     except (ci.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise Refused('base move: invalid or incomplete evidence: %s' % error)

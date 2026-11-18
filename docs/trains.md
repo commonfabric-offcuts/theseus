@@ -142,6 +142,12 @@ none of them is ever a known red.
 
 ## A complete record
 
+An explicitly reviewed [continuation envelope](continuation-envelope.md) can
+retain a cut train's authenticated completed steps and add only its missing
+modes from an authorized run. It retains both runs and partial-shard limits;
+it does not turn a partial shard into a complete original run. The stock
+single-run combine and no-envelope guards below remain unchanged.
+
 - A step whose harness did not reach its end makes the record incomplete. The
   stock deploy refuses it (`tools/known_reds.py`, "the harness did not reach
   its end") before it reads any case. A ruling or an isolated rerun can settle
