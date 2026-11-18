@@ -24,6 +24,12 @@ fold or dossier-position change. There is no reply-specific source height
 limit, clipping or inner source scroller. A long message can put the bar below
 the viewport; it remains part of the same page-scrolling card.
 
+An edit arriving while that bar is open keeps the previous whole source in
+place until the revised whole source is read through CardScroll. It never
+replaces the source with a newly received excerpt. A superseded source read
+cannot overwrite a newer revision or another reply owner. Writing stays in
+the same editor while the source changes.
+
 Under warp8627's bounded correction, a native drag over source words selects
 text and never opens Reader. Pointer movement owns this distinction before
 selection exists; checking only the selection at click time is insufficient.

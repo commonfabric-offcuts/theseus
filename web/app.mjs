@@ -1728,7 +1728,8 @@ function repaintEdited(ids, edits) {
     const line = card.querySelector(':scope > .message-reply-to'), answers = replyLine(item);
     if (line && answers) linkWords(line, answers, { partial: true });
     const preview = card.querySelector(':scope > .message-preview');
-    if (preview) {
+    const keepingWhole = reader?.card === card && item.preview;
+    if (preview && !keepingWhole) {
       formatWords(preview, item.body, { partial: item.preview === true, copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
@@ -1738,7 +1739,14 @@ function repaintEdited(ids, edits) {
     }
     paintCardImages(card, item, cardImageBytes(id));
     paintFoldWords(entry, item);
-    cardScroll?.forget(id, card);
+    if (keepingWhole) {
+      // Keep the old whole source while its revision is read, rather than
+      // briefly shrinking this reply's source to the arriving excerpt.
+      cardScroll.forget(id);
+      run(async () => {
+        await cardScroll.showFull(card, item, () => reader.card === card && revisionOf(views.messages.get(id)) === revisionOf(item));
+      });
+    } else cardScroll?.forget(id, card);
     // An agent's edit of words the person had read makes the message new to them again (item 614): Core says so
     // (unread), and opening it in the Reader earlier in this visit no longer reads it.
     if (item.unread === true) openedIds.delete(id);

@@ -147,5 +147,21 @@
       "native": "compose",
       "case": "item 721 contract hidden"
     }
+  },
+  {
+    "item": 721,
+    "act": "A source revision stays whole above the same writing",
+    "key": "change",
+    "break": [
+      [
+        "web/app.mjs",
+        "const keepingWhole = reader?.card === card && item.preview;",
+        "const keepingWhole = false; // item 721 source revision mutant"
+      ]
+    ],
+    "check": {
+      "native": "compose",
+      "case": "item 721 contract change"
+    }
   }
 ]

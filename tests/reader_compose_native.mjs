@@ -2521,7 +2521,7 @@ async function runSending() {
 // interruption too and writes native.json, but leaves harnessCompleted false and the run's own error in place.
 const ENGINES = ['chromium', 'webkit'];
 async function runItem721() {
-  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts });
+  await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts, evidence });
 }
 const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
 const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];

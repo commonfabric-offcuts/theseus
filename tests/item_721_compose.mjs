@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 // All dimensions in CSS pixels. One pixel permits independent browser layout
@@ -10,26 +11,24 @@ const SHORT = 'Source words stay here. A second sentence can be quoted explicitl
 const WRITING = 'Exact reply writing. Select these words.';
 
 export async function item721Compose(h) {
-  const { page: createPage, press, until, picture, close, control, facts, engine, measured, contexts } = h;
+  const { page: createPage, press, until, picture, close, control, facts, engine, measured, contexts, evidence } = h;
+  await mkdir(evidence, { recursive: true });
+  let receiptSerial = 0;
   const trails = new WeakMap();
   const page = async (...args) => {
     const p = await createPage(...args), trail = { engine, item: 721, kind: 'request-render-trail', shape: args[0], scheme: args[1], requests: [], responses: [], failed: [] };
-    const pending = new Set();
-    trails.set(p, { trail, pending });
+    trails.set(p, { trail });
     p.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) trail.requests.push({ url: request.url(), method: request.method(), body: new URL(request.url()).pathname === '/api/command' ? request.postDataJSON() : undefined }); });
     p.on('requestfailed', request => { trail.failed.push({ url: request.url(), error: request.failure() }); });
     p.on('response', response => {
       if (!new URL(response.url()).pathname.startsWith('/api/')) return;
       const record = { url: response.url(), status: response.status() }; trail.responses.push(record);
-      // Successful streaming GETs do not finish until the page closes. Image
-      // publication and commands are finite boundaries, and errors carry bodies.
-      if (response.request().method() === 'GET' && response.status() < 400) return;
-      const finished = (async () => {
-        const error = await response.finished();
-        if (error) record.error = String(error);
-        else if (response.status() >= 400 || response.request().method() !== 'GET') record.body = await response.text();
-      })();
-      pending.add(finished.then(() => ({ ok: true }), error => ({ ok: false, error: String(error) })));
+      const endpoint = new URL(response.url()).pathname;
+      if (!['/api/command', '/api/media/upload'].includes(endpoint) && response.status() < 400) return;
+      // A receipt may see headers while a body is still pending. Say that
+      // truthfully; diagnostics must never wait indefinitely on a failed act.
+      record.bodyState = 'pending';
+      response.text().then(body => { record.body = body; record.bodyState = 'complete'; }, error => { record.readError = String(error); record.bodyState = 'failed'; });
     });
     await p.evaluate(async () => {
       window.__item721Trail = [];
@@ -49,6 +48,7 @@ export async function item721Compose(h) {
       const record = kind => {
         const reader = document.querySelector('#reader');
         window.__item721Trail.push({ kind, open: reader.open, modal: reader.matches(':modal'), dock: reader.hasAttribute('data-card-reply'),
+          sourceParagraphs: reader.parentElement.querySelector(':scope > .message-preview')?.querySelectorAll(':scope > .md-block').length,
           images: document.querySelector('#writing-attachments').textContent, notice: document.querySelector('#reader-notice').textContent });
       };
       new MutationObserver(() => record('render')).observe(document.querySelector('#reader'), { subtree: true, childList: true, characterData: true, attributes: true });
@@ -62,10 +62,10 @@ export async function item721Compose(h) {
     return p;
   };
   const receipt = async p => {
-    const { trail, pending } = trails.get(p);
-    const diagnostics = await Promise.all(pending);
-    measured.push({ ...trail, diagnostics, renders: await p.evaluate(() => window.__item721Trail) });
-    assert.ok(diagnostics.every(row => row.ok), 'all diagnostic response bodies retained');
+    const { trail } = trails.get(p);
+    const retained = structuredClone({ ...trail, renders: await p.evaluate(() => window.__item721Trail) });
+    measured.push(retained);
+    await writeFile(path.join(evidence, `item721-${engine}-trail-${++receiptSerial}.json`), JSON.stringify(retained, null, 2));
   };
   let failureSerial = 0;
   const preserveFailure = async (error, phase) => {
@@ -86,7 +86,7 @@ export async function item721Compose(h) {
   let sourcePhase = 'restored';
   const opened = p => until(p, () => document.querySelector('#reader').open, 'the real Reader opens');
   const shut = p => until(p, () => !document.querySelector('#reader').open, 'the reply closes after keeping writing');
-  const snapshot = (p, id) => p.evaluate(([id, tolerance, long]) => {
+  const snapshot = (p, id, expected = LONG) => p.evaluate(([id, tolerance, long]) => {
     const r = document.querySelector('#reader'), c = document.querySelector(`#messages .message-card[data-id="${id}"]`),
       source = c.querySelector(':scope > .message-preview'), field = document.querySelector('#writing-body');
     const visible = el => !!el?.getClientRects().length && getComputedStyle(el).display !== 'none';
@@ -104,7 +104,7 @@ export async function item721Compose(h) {
       writingSelection: { start: field.selectionStart, end: field.selectionEnd }, active: document.activeElement?.id,
       open: r.open, modal: r.matches(':modal'), parent: r.parentElement.id, notice: document.querySelector('#source-access-status').textContent,
       disabled: document.querySelector('#send-reply').disabled };
-  }, [id, ITEM721_TOLERANCE, LONG]);
+  }, [id, ITEM721_TOLERANCE, expected]);
   const seed = async (label, body = LONG, coordination = false) => {
     const topic = `item721-${engine}-${++serial}-${label}`;
     if (label === 'unavailable') {
@@ -199,6 +199,7 @@ export async function item721Compose(h) {
   const oracle = (key, observed) => {
     if (key === 'dock') assert.equal(observed.dock, true, 'item 721 dock oracle');
     if (key === 'whole') assert.equal(observed.whole, true, 'item 721 whole oracle');
+    if (key === 'change') assert.ok(observed.whole && observed.dock && observed.body === WRITING && observed.framesWhole, 'item 721 change oracle');
     if (key === 'selection') assert.ok(observed.selected.length > 0 && !observed.open, 'item 721 selection oracle: a source drag selects words and never opens Reader');
     if (key === 'title') assert.ok(observed.title && observed.close, 'item 721 title oracle');
     if (key === 'addressing') assert.equal(observed.addressing, true, 'item 721 addressing oracle');
@@ -207,7 +208,7 @@ export async function item721Compose(h) {
     if (key === 'hidden' || key === 'unavailable') assert.ok(observed.modal && !observed.dock && observed.body === WRITING, `item 721 ${key} oracle`);
   };
   async function observe(key, shape, scheme, suffix = '') {
-    const data = await seed(key, key === 'whole' ? LONG : SHORT, key === 'hidden');
+    const data = await seed(key, ['whole', 'change'].includes(key) ? LONG : SHORT, key === 'hidden');
     const p = await page(shape, scheme, '/?topic=' + data.topic);
     await until(p, s => !!document.querySelector(s), 'isolated source', card(data.id));
     if (key === 'selection') {
@@ -225,7 +226,15 @@ export async function item721Compose(h) {
       await until(p, s => document.querySelector(s).dataset.state === 'open', 'coordination source is open for native Reply', toggle);
     }
     await reply(p, data.id);
-    if (['writing', 'escape', 'hidden', 'unavailable'].includes(key)) await write(p);
+    if (['writing', 'escape', 'hidden', 'unavailable', 'change'].includes(key)) await write(p);
+    let framesWhole = true;
+    if (key === 'change') {
+      const start = await p.evaluate(() => window.__item721Trail.length);
+      const changed = await control({ method: 'agent_edit', operation_id: data.topic + '-edit', message_id: data.id, sender: facts.agent, body: LONG + '\n\nChanged source words.' });
+      assert.equal(changed.status, 'committed', 'actual Core source edit applied');
+      await until(p, async s => (await import('/message-format.mjs')).drawnRevision(document.querySelector(s)) === 2, 'the actual revised source is rendered', card(data.id) + ' > .message-preview');
+      framesWhole = await p.evaluate(start => window.__item721Trail.slice(start).filter(row => row.kind === 'render' && row.dock).every(row => row.sourceParagraphs >= 45), start);
+    }
     if (key === 'writing' && suffix === '-mutant') await until(p, () => document.querySelector('#reader').matches(':modal'), 'writing click mutant actually opens full Reader');
     if (key === 'escape') { await p.keyboard.press('Escape'); if (suffix !== '-mutant') await shut(p); }
     if (key === 'hidden') {
@@ -237,7 +246,7 @@ export async function item721Compose(h) {
       assert.equal(revoked.status, 'committed', 'actual Core participation revocation applied');
       await until(p, () => document.querySelector('#source-access-status').textContent.includes('source is unavailable'), 'real HTTP source refusal reaches Reader', undefined, 20000);
     }
-    const observed = await snapshot(p, data.id);
+    const observed = { ...await snapshot(p, data.id, key === 'change' ? LONG + '\n\nChanged source words.' : LONG), framesWhole };
     if (observed.open && !['hidden', 'unavailable'].includes(key)) await p.locator('#reader-close').scrollIntoViewIfNeeded();
     await picture(p, `item-721-${key}${suffix}`);
     measured.push({ engine, shape, scheme, item: 721, key, suffix, observed });
@@ -259,7 +268,7 @@ export async function item721Compose(h) {
       oracle('dock', observed); oracle('whole', observed);
     });
   });
-  for (const key of ['dock', 'whole', 'selection', 'title', 'addressing', 'writing', 'escape', 'hidden', 'unavailable']) {
+  for (const key of ['dock', 'whole', 'selection', 'title', 'addressing', 'writing', 'escape', 'hidden', 'unavailable', 'change']) {
     await check(`item 721 ${key}: applied source mutant is red then exact restored control`, async () => {
       assert.ok(mutants.some(row => row.key === key));
       await runtime(key, async () => {
@@ -342,10 +351,13 @@ export async function item721Compose(h) {
       measured.push({ engine, shape, scheme, item: 721, state: 'normal', before, after: await snapshot(p, data.id), tolerance: ITEM721_TOLERANCE });
       await picture(p, 'item-721-retained-after-arrival');
       const changedBody = LONG + '\n\nChanged source words.';
+      const changeStart = await p.evaluate(() => window.__item721Trail.length);
       const changed = await control({ method: 'agent_edit', operation_id: data.topic + '-edit', message_id: data.id, sender: facts.agent, body: changedBody });
       assert.equal(changed.status, 'committed', 'real Core source revision changed');
       await until(p, s => document.querySelector(s).textContent.includes('Changed source words.'), 'changed source rendered on its card', card(data.id) + ' > .message-preview');
       assert.equal((await snapshot(p, data.id)).dock, true, 'source revision keeps the existing bar in its card');
+      assert.equal((await snapshot(p, data.id, changedBody)).whole, true, 'the revised source remains whole above the reply');
+      assert.equal(await p.evaluate(start => window.__item721Trail.slice(start).filter(row => row.kind === 'render' && row.dock).every(row => row.sourceParagraphs >= 45), changeStart), true, 'no rendered edit state replaces the whole source with its excerpt');
       assert.equal(await p.locator('#writing-body').inputValue(), exact, 'source revision retains exact writing');
       await picture(p, 'item-721-source-changed');
       await press(p, '#reader-close'); await shut(p);
