@@ -204,7 +204,9 @@ feed or the shortcut's attributes. The `reading item 649` native cases in
 light and dark, in Chromium and WebKit. Measured bounds use a named 1px tolerance.
 
 The corner takes its own 44px row in the card's normal flow, after the words
-and other card content. A dossier root stays static so its tab still belongs
+and other card content. The card painter adds it after reading controls, and
+later reaction controls insert before it, so an author repaint cannot put it
+between the author and the message. A dossier root stays static so its tab still belongs
 to the folder. A covered reply keeps the card system's ordinary bottom padding
 and overlap allowance below the corner: the next sheet covers no part of its
 target. Root and last-reply notes remain distinct. The B1/B2 cases measure

@@ -379,11 +379,13 @@ export async function readingChecks({ check, page, until, view, control, shot, f
           await control({method:'private_writing', operation_id:topic+'-draft-'+key, topic_id:topic, message_id:ids[key], kind:'draft', body:drafts[key]});
         }
         const p = await open(topic,size,topic,ids.root,noteFaults,undefined,q=>q.send('Emulation.setEmulatedMedia', {features:[{name:'prefers-color-scheme',value:theme}]}));
-        const section = card(ids.root) + ' .stack-who';
+        const section = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
         assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen`),'false','root starts collapsed');
         assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root)+' > .note-corner')}).getClientRects().length`),0,'collapsed root exposes no corner');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(section)}).dataset.state`),'folded','fixture: native chevron starts at latest/unread');
         await centre(p,section); await press(p,device,section);
-        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen==='true'`),'native header press opens root');
+        await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(card(ids.root))}).closest('.reply-stack').dataset.headOpen==='true'`),'product: native chevron opens root');
+        observations.push({name:'reading '+name+' fixture reached native open dossier',branch,gesture:'chevron press',headOpen:true});
         const key = shape === 'B1-root' ? 'root' : 'covered';
         return {p,topic,ids,key,notes,drafts,corner:card(ids[key])+' > .note-corner'};
       };
@@ -446,6 +448,28 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       await check(`reading ${name} normal own card and whole target with original-runtime negative and restored native presses`,async()=>{
         const s=await setup('normal'),{p}=s;
         const good=await geometry(s);assertGeometry(good);
+        // eb054586 called paintNoteCorner while only the author existed.
+        // Reapply that exact DOM order on the real page, then restore it.
+        let orderRed;
+        try {
+          await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[s.key]))}),n=c.querySelector(':scope > .note-corner');c.querySelector(':scope > .message-author').after(n)})()`);
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(s.corner)}).previousElementSibling.classList.contains('message-author')`),true,'failed-head placement mutation actually applied');
+          orderRed=await geometry(s);
+          assert.throws(()=>assertGeometry(orderRed),/corner lies after all words/,'failed-head corner before words is native red');
+          await shot(p,'reading-'+name.replaceAll(' ','-')+'-failed-head-red');
+        } finally {
+          await p.evaluate(`(()=>{const c=document.querySelector(${JSON.stringify(card(s.ids[s.key]))});c.append(c.querySelector(':scope > .note-corner'))})()`);
+        }
+        assertGeometry(await geometry(s));
+        // The ledger's real size mutant must also fail native geometry.
+        let smallRed;
+        try {
+          await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-small-target';e.textContent='.note-corner{width:1rem;height:1rem}';document.head.append(e)})()`);
+          smallRed=await geometry(s);
+          assert.equal(smallRed.b.width,16,'16px size mutation actually applied');
+          assert.throws(()=>assertGeometry(smallRed),/full 44px target/,'small target is native red');
+        } finally { await p.evaluate("document.querySelector('#item649-small-target')?.remove()"); }
+        assertGeometry(await geometry(s));
         let negative;
         try{
           await p.evaluate(`(()=>{const e=document.createElement('style');e.id='item649-original-runtime-control';e.textContent=${JSON.stringify(brokenCornerRules)};document.head.append(e)})()`);
@@ -460,7 +484,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
         }finally{await p.evaluate("document.querySelector('#item649-original-runtime-control')?.remove()");}
         assert.equal(await p.evaluate("Boolean(document.querySelector('#item649-original-runtime-control'))"),false,'negative stylesheet removed');
         const restored=await geometry(s);assertGeometry(restored);
-        observations.push({name:'reading '+name+' applied original-runtime negative and restored',layoutTolerancePx,negative,restored});
+        observations.push({name:'reading '+name+' applied original-runtime negative and restored',layoutTolerancePx,orderRed,smallRed,negative,restored});
         await shot(p,'reading-'+name.replaceAll(' ','-')+'-card');
         await pressOwn(s,s.key,true);await shown(s);await kept(s);
         await shot(p,'reading-'+name.replaceAll(' ','-')+'-note');
