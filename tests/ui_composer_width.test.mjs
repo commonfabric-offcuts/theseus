@@ -1,6 +1,62 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeWidth } from '../web/composer-width.mjs';
+import { composerWidth, edgeWidth } from '../web/composer-width.mjs';
+
+// Adapter-level pointer regression. Hosted native cases separately exercise
+// the same uninterrupted gesture through the browser's input system.
+function pointerFixture(initial) {
+  const properties = new Map(), edges = [], listeners = new Map(), root = {};
+  const win = { innerWidth: initial <= 390 ? initial : 1280,
+    getComputedStyle: el => el === root ? { fontSize: '16px' } : { getPropertyValue: () => '72rem' },
+    ResizeObserver: class { observe() {} },
+  };
+  const doc = { defaultView: win, documentElement: root,
+    createElement() {
+      const events = new Map(), captured = new Set();
+      return { dataset: {}, setAttribute() {},
+        addEventListener(name, fn) { events.set(name, fn); },
+        setPointerCapture(id) { captured.add(id); },
+        hasPointerCapture(id) { return captured.has(id); },
+        releasePointerCapture(id) { captured.delete(id); },
+        fire(name, x) { events.get(name)?.({ pointerId: 1, button: 0, isPrimary: true, clientX: x,
+          preventDefault() {}, stopPropagation() {} }); },
+      };
+    },
+  };
+  const dialog = { ownerDocument: doc, open: true, id: 'reader', dataset: {},
+    classList: { contains() { return false; } },
+    style: { setProperty(name, value) { properties.set(name, value); } },
+    getBoundingClientRect() { return { width: parseFloat(properties.get('--composer-width') || String(initial)) }; },
+    append(edge) { edges.push(edge); },
+    addEventListener(name, fn) { listeners.set(name, fn); },
+  };
+  composerWidth(dialog);
+  return { dialog, edges };
+}
+
+for (const initial of [320, 375, 390, 1152]) for (const [index, side, inward] of [[0, 'left', 16], [1, 'right', -16]]) {
+  test(`item 650 ${initial} ${side}: a held drag follows a return through its origin`, () => {
+    const { dialog, edges } = pointerFixture(initial), edge = edges[index];
+    const WIDTH_TOLERANCE_PX = 0.01; // Adapter arithmetic, without browser layout rounding.
+    const near = (expected, words) => assert.ok(Math.abs(dialog.getBoundingClientRect().width - expected) <= WIDTH_TOLERANCE_PX,
+      `${words}; tolerance ${WIDTH_TOLERANCE_PX}px: ${dialog.getBoundingClientRect().width} vs ${expected}`);
+    edge.fire('pointerdown', 100);
+    edge.fire('pointermove', 100 + inward);
+    near(initial - 32, 'inward motion narrows both sides');
+    edge.fire('pointermove', 100);
+    near(initial, 'returning the held pointer restores the original width');
+    // The entire old dead zone is covered, including crossing the origin.
+    for (const delta of [inward, inward / 32, inward, -inward / 32]) {
+      edge.fire('pointermove', 100 + delta);
+      near(edgeWidth(initial, delta, side, initial <= 390 ? 280 : 760, initial), 'every held position uses the starting width');
+    }
+    edge.fire('pointerup', 100);
+    assert.equal(dialog.dataset.widthDragging, undefined, 'release ends the drag');
+    const released = dialog.getBoundingClientRect().width;
+    edge.fire('pointermove', 100 + inward);
+    near(released, 'motion after release cannot resize');
+  });
+}
 
 test('either edge follows its pointer by the same distance on both sides of the centre', () => {
   for (const [side, inward] of [['left', 16], ['right', -16]]) {

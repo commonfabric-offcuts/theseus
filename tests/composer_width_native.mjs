@@ -32,7 +32,9 @@ export async function composerWidthCases(h) {
   const refusedName = 'item650-refused.heic';
   const receipts = [];
   const surfaces = ['Reader', 'New message', 'Wide Reader'];
-  const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error', 'permission unavailable', 'private note'];
+  const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error',
+    'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
+    'recovery discovery', 'authority recovery blocked', 'authority recovery ready', 'private note'];
   const shapes = ['phone-320', 'phone-375', 'phone-390', 'stacked'];
   // Named tolerances: fractional CSS layout and native pointer rounding differ
   // between engines. A 16px edge movement changes the width by 32px, well above
@@ -41,8 +43,8 @@ export async function composerWidthCases(h) {
   const near = (actual, expected, words) => assert.ok(Math.abs(actual - expected) <= GEOMETRY_PX,
     `${words}, tolerance ${GEOMETRY_PX}px: ${actual} vs ${expected}`);
   const at = surface => surface === 'New message'
-    ? { dialog: '#new-message-sheet', composer: '#inline-composer', field: '#inline-writing-body', sign: '#inline-save-state', send: '#inline-send', plus: '#inline-plus-button', add: '#inline-add-image', strip: '#inline-attachments', ref: 'item650Inline' }
-    : { dialog: '#reader', composer: '#reader-composer', field: '#writing-body', sign: '#save-state', send: '#send-reply', plus: '#plus-button', add: '#add-image', strip: '#writing-attachments', ref: 'item650Reader' };
+    ? { dialog: '#new-message-sheet', composer: '#inline-composer', field: '#inline-writing-body', sign: '#inline-save-state', send: '#inline-send', plus: '#inline-plus-button', add: '#inline-add-image', strip: '#inline-attachments', retry: '#inline-retry', review: '#inline-review-versions', ref: 'item650Inline' }
+    : { dialog: '#reader', composer: '#reader-composer', field: '#writing-body', sign: '#save-state', send: '#send-reply', plus: '#plus-button', add: '#add-image', strip: '#writing-attachments', retry: '#retry-source', review: '#review-versions', ref: 'item650Reader' };
   const geometry = (p, a) => p.evaluate(a => {
     const d = document.querySelector(a.dialog), b = d.getBoundingClientRect();
     return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height,
@@ -53,7 +55,11 @@ export async function composerWidthCases(h) {
     return { text: f.value, start: f.selectionStart, end: f.selectionEnd, readOnly: f.readOnly, disabled: f.disabled,
       draft: JSON.stringify(e?.draft), context: JSON.stringify(e?.context), mode: adapter.mode ?? 'new',
       source: document.querySelector('#source-body').textContent, sendDisabled: document.querySelector(a.send).disabled,
-      sendDim: document.querySelector(a.send).getAttribute('aria-disabled'), images: document.querySelector(a.strip).textContent };
+      sendDim: document.querySelector(a.send).getAttribute('aria-disabled'), images: document.querySelector(a.strip).textContent,
+      recovery: JSON.stringify([e?.conflict, e?.authorityRecovery, e?.recoveryDiscovery]),
+      controls: [a.retry, a.review].map(selector => {
+        const el = document.querySelector(selector); return [el.textContent, el.hidden, el.disabled];
+      }) };
   }, a);
   const instrument = (p, baseline = false) => p.route(/\/(reader|inline-composer)\.mjs(?:\?.*)?$/, async route => {
     const response = await route.fetch();
@@ -154,10 +160,38 @@ export async function composerWidthCases(h) {
     if (state === 'error' && surface !== 'New message') await p.evaluate(a => {
       window[a.ref].notice('Composer temporarily unavailable. Your writing is kept.');
     }, a);
-    if (state === 'permission unavailable') await p.evaluate(a => {
-      const adapter = window[a.ref]; adapter.presentation.sourceUnavailable = true;
-      adapter.hideUnavailableSource(); adapter.paintStatus();
-    }, a);
+    // Distinct access and review branches paint different status/recovery
+    // controls. New message has topic access even though it has no source body.
+    if (['permission unavailable', 'access unconfirmed', 'access checking'].includes(state)) await p.evaluate(([a, state]) => {
+      const adapter = window[a.ref], presentation = adapter.presentation;
+      adapter.editor.unavailable = true; presentation.destinationAvailable = false;
+      presentation.availabilityUnconfirmed = state !== 'permission unavailable';
+      presentation.availabilityChecking = state === 'access checking';
+      if (a.ref === 'item650Reader') {
+        presentation.sourceUnavailable = state === 'permission unavailable';
+        adapter.hideUnavailableSource();
+      }
+      adapter.paintStatus();
+    }, [a, state]);
+    if (['conflict review', 'composition refused', 'recovery discovery', 'authority recovery blocked', 'authority recovery ready'].includes(state)) {
+      await p.evaluate(([a, state]) => {
+        const adapter = window[a.ref], editor = adapter.editor;
+        // Keep the actual editor's writing/destination and preserve the seed
+        // for cleanup; no private state from another actor is introduced.
+        window.item650LocalVersion = editor.localVersion;
+        if (state === 'conflict review' || state === 'composition refused') editor.conflict = {
+          error: { code: state === 'composition refused' ? 'INVALID_TOPIC_COMPOSITION' : 'REVISION_CONFLICT' },
+          remote: { ...structuredClone(editor.draft), body: 'Other saved item 650 version.' },
+        };
+        if (state === 'recovery discovery') { editor.recoveryDiscovery = true; editor.localVersion = 0; }
+        if (state.startsWith('authority recovery')) editor.authorityRecovery = {
+          phase: state.endsWith('ready') ? 'ready' : 'blocked',
+          message: 'Runtime changed — review saved version', authority: { authority_id: 'item650-runtime', authority_epoch: 2 },
+          remote: { ...structuredClone(editor.draft), body: 'Saved item 650 runtime version.' },
+        };
+        adapter.paintStatus();
+      }, [a, state]);
+    }
     if (state === 'private note') {
       await press(p, '#plus-button');
       await until(p, () => !document.querySelector('#plus-panel').hidden, 'the plus panel');
@@ -168,6 +202,52 @@ export async function composerWidthCases(h) {
     }
     await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(x => x.playState !== 'running'), 'the settled state');
     return { p, a, release, held, applied };
+  }
+  async function stateProof(p, a, state) {
+    const value = await kept(p, a);
+    if (['read-only', 'composition refused', 'recovery discovery'].includes(state)) assert.equal(value.readOnly, true, `${state} really makes writing read-only`);
+    if (state === 'conflict review' || state.startsWith('authority recovery')) assert.equal(value.readOnly, false, `${state} keeps local typing available`);
+    if (['permission unavailable', 'access unconfirmed', 'access checking'].includes(state)) {
+      const [text, hidden, disabled] = value.controls[0];
+      assert.equal(text, 'Retry access');
+      assert.equal(hidden, a.ref === 'item650Inline' && state === 'access checking', `${state} paints its actual Retry access branch`);
+      if (!hidden) assert.equal(disabled, state === 'access checking', `${state} admits retry only once checking ends`);
+      assert.equal(value.sendDisabled || value.sendDim === 'true', true, 'unavailable access cannot send');
+    }
+    if (['conflict review', 'composition refused', 'recovery discovery'].includes(state) || state.startsWith('authority recovery')) {
+      assert.equal(value.controls[1][1], false, `${state} offers Review versions`);
+      assert.equal(value.sendDisabled || value.sendDim === 'true', true, `${state} blocks sending`);
+      // Exercise the recovery control, read its actual dialog, and return by
+      // its native close control before testing the composer's own edges.
+      await press(p, a.review);
+      await until(p, () => document.querySelector('#version-review').open, 'the version review');
+      const text = await p.locator('#review-content').textContent();
+      assert.ok(text.includes(value.text), 'review preserves the exact local writing');
+      if (state.startsWith('authority recovery')) {
+        assert.equal(await p.locator('#review-retry').isVisible(), true, 'authority recovery offers Retry');
+        assert.equal(await p.locator('#review-save').isDisabled(), state.endsWith('blocked'), 'only ready authority recovery offers resume');
+      }
+      await press(p, '#review-close');
+      await until(p, () => !document.querySelector('#version-review').open, 'review closes back to its composer');
+    }
+  }
+  // A traversal, not focus() or Locator.press(): every iteration performs the
+  // next native Tab and reads the resulting focus stop. Stop after one cycle.
+  async function tabToEdge(p, a, side) {
+    const seen = new Set();
+    for (;;) {
+      await p.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
+      const stop = await p.evaluate(a => {
+        const el = document.activeElement, dialog = document.querySelector(a.dialog);
+        return { index: [...document.querySelectorAll('*')].indexOf(el),
+          side: el?.parentElement === dialog ? el.dataset.edge : null,
+          ring: el?.matches(':focus-visible') };
+      }, a);
+      if (stop.side === side) { assert.equal(stop.ring, true, 'Tab gives the edge visible keyboard focus'); return; }
+      if (seen.has(stop.index)) break;
+      seen.add(stop.index);
+    }
+    assert.fail(`native Tab reaches the ${side} composer edge before its focus order repeats`);
   }
   async function drag(p, a, side, dx, dy = 0, touch = false) {
     const selector = `${a.dialog} > .composer-edge[data-edge="${side}"]`;
@@ -186,6 +266,35 @@ export async function composerWidthCases(h) {
       await p.mouse.move(x + dx, y + dy, { steps: 4 }); await p.mouse.up();
     }
     await until(p, () => !document.querySelector('[data-width-dragging]'), 'the edge release');
+  }
+  async function returnDrag(p, a, side, touch) {
+    const before = await geometry(p, a), inward = side === 'left' ? STEP_PX : -STEP_PX;
+    const b = await p.locator(`${a.dialog} > .composer-edge[data-edge="${side}"]`).boundingBox();
+    assert.ok(b, 'the return drag has a native hit target');
+    const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    const shrink = async () => near((await geometry(p, a)).width, before.width - 2 * STEP_PX, `${side} held inward motion shrinks symmetrically`);
+    const restored = async () => near((await geometry(p, a)).width, before.width, `${side} held return to origin restores width`);
+    if (touch) {
+      const cdp = await p.ctx.newCDPSession(p);
+      try {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + inward, y }] });
+        await shrink();
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+        await restored();
+      } finally {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await cdp.detach();
+      }
+    } else {
+      await p.mouse.move(x, y); await p.mouse.down();
+      try {
+        await p.mouse.move(x + inward, y, { steps: 4 }); await shrink();
+        await p.mouse.move(x, y, { steps: 4 }); await restored();
+      } finally { await p.mouse.up(); }
+    }
+    await until(p, () => !document.querySelector('[data-width-dragging]'), 'the return drag releases');
+    near((await geometry(p, a)).width, before.width, `${side} released return keeps the restored width`);
   }
   async function proof(p, a, label, touch = false) {
     assert.equal(await p.locator(`${a.dialog} > .composer-edge`).count(), 2, 'either edge offers width adjustment');
@@ -223,18 +332,21 @@ export async function composerWidthCases(h) {
         near(vertical.top, initial.top, 'vertical dragging cannot move');
       }
       for (const side of ['left', 'right']) {
-        const edge = p.locator(`${a.dialog} > .composer-edge[data-edge="${side}"]`);
-        await edge.press(side === 'left' ? 'ArrowRight' : 'ArrowLeft');
+        await tabToEdge(p, a, side);
+        await p.keyboard.press(side === 'left' ? 'ArrowRight' : 'ArrowLeft');
         near((await geometry(p, a)).width, initial.width - 32, 'keyboard moves the focused edge symmetrically');
-        await edge.press(side === 'left' ? 'ArrowLeft' : 'ArrowRight');
+        await p.keyboard.press(side === 'left' ? 'ArrowLeft' : 'ArrowRight');
         near((await geometry(p, a)).width, initial.width, 'keyboard grows it back');
+        await returnDrag(p, a, side, touch);
       }
       assert.deepEqual(await kept(p, a), saved, 'width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
       assert.deepEqual(commands, [], 'dragging neither saves nor sends nor changes recipients');
       await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
   }
-  for (const surface of surfaces) for (const state of surface === 'New message' ? ['refused with recovery', 'error'] : ['refused with recovery']) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
+  for (const surface of surfaces) for (const state of ['refused with recovery', ...(surface === 'New message' ? ['error'] : []),
+    'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
+    'recovery discovery', 'authority recovery blocked', 'authority recovery ready']) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
     await check(`item 650 base reproof ${surface} ${state} ${shape} ${scheme}`, async () => {
       const { p, a } = await setup(surface, state, shape, scheme, { baseline: true });
       await picture(p, `item-650-base-${surface.replaceAll(' ', '-')}-${state.replaceAll(' ', '-')}`);
@@ -244,19 +356,28 @@ export async function composerWidthCases(h) {
     });
   }
   for (const surface of surfaces) for (const state of states) {
-    if (surface === 'New message' && ['permission unavailable', 'private note'].includes(state)) continue;
+    if (surface === 'New message' && state === 'private note') continue;
     for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
       await check(`item 650 ${surface} ${state} ${shape} ${scheme}`, async () => {
         const { p, a, release, held } = await setup(surface, state, shape, scheme);
         try {
+          await stateProof(p, a, state);
           const label = `item-650-${surface.replaceAll(' ', '-')}-${state.replaceAll(' ', '-')}`;
           await picture(p, `${label}-before`);
           await proof(p, a, label, engine === 'chromium' && p.touch);
         } finally { release(); if (held) await held; }
         // Seeded states are reversed before ordinary owned-page cleanup.
         await p.evaluate(a => {
-          const adapter = window[a.ref]; if (adapter.editor) adapter.editor.adopting = false;
-          if (a.ref === 'item650Reader') adapter.presentation.sourceUnavailable = false;
+          const adapter = window[a.ref], editor = adapter.editor;
+          if (editor) {
+            editor.adopting = false; editor.unavailable = false; editor.conflict = null;
+            editor.authorityRecovery = null; editor.recoveryDiscovery = false;
+            if (window.item650LocalVersion !== undefined) editor.localVersion = window.item650LocalVersion;
+          }
+          if (adapter.presentation) {
+            adapter.presentation.sourceUnavailable = false; adapter.presentation.availabilityUnconfirmed = false;
+            adapter.presentation.availabilityChecking = false; adapter.presentation.destinationAvailable = true;
+          }
         }, a);
         await close(p);
       });
@@ -270,14 +391,27 @@ export async function composerWidthCases(h) {
     { name: 'vertical-resize', old: "const delta = event.clientX - drag.x;", new: "dialog.style.height = '400px'; const delta = event.clientX - drag.x;", expected: /no vertical movement|no vertical resize/ },
     { name: 'keyboard-inert', old: "const delta = event.key === 'ArrowLeft' ? -16 : 16;", new: "const delta = 0;", expected: /keyboard moves the focused edge symmetrically/ },
     { name: 'writing-lost', old: "const delta = event.clientX - drag.x;", new: "doc.querySelector('#writing-body').value = 'lost'; const delta = event.clientX - drag.x;", expected: /width changes preserve exact writing/ },
+    { name: 'return-origin-discarded', old: 'const delta = event.clientX - drag.x;', new: 'const delta = event.clientX - drag.x; if (Math.abs(delta) < 1) return;', expected: /held return to origin restores width/ },
+    { name: 'tab-unreachable', old: 'edge.tabIndex = 0;', new: 'edge.tabIndex = -1;', expected: /native Tab reaches the left composer edge/ },
   ];
+  // Break width in each newly covered branch using the real adapter state.
+  // Each control must pass for that same state after source restoration.
+  for (const surface of ['Reader', 'New message']) for (const state of [
+    'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
+    'recovery discovery', 'authority recovery blocked', 'authority recovery ready',
+  ]) mutations.push({ name: `${surface.replaceAll(' ', '-')}-${state.replaceAll(' ', '-')}-inert`, surface, state,
+    old: "width + 2 * delta * (side === 'left' ? -1 : 1)", new: "width + (side === 'left' ? 0 : 2 * delta)",
+    expected: /left shrinks both edges symmetrically/ });
   for (const mutation of mutations) await check(`item 650 applied mutant ${mutation.name} and restored control`, async () => {
-    const broken = await setup('Reader', 'writing', 'stacked', 'light', { mutation });
+    const surface = mutation.surface ?? 'Reader', state = mutation.state ?? 'writing';
+    const broken = await setup(surface, state, 'stacked', 'light', { mutation });
     assert.ok(broken.applied, 'the product source mutant was actually served');
+    await stateProof(broken.p, broken.a, state);
     await assert.rejects(() => proof(broken.p, broken.a, `mutant-${mutation.name}`), error => error.code === 'ERR_ASSERTION' && mutation.expected.test(error.message), `the gesture catches ${mutation.name} on its own assertion`);
     await close(broken.p);
     await control({ method: 'reset_drafts' });
-    const restored = await setup('Reader', 'writing', 'stacked', 'light');
+    const restored = await setup(surface, state, 'stacked', 'light');
+    await stateProof(restored.p, restored.a, state);
     await proof(restored.p, restored.a, `restored-${mutation.name}`);
     await close(restored.p);
     receipts.push({ ...broken.applied, caught: true, restored: true, restoredHash: hashes['web/composer-width.mjs'] });
