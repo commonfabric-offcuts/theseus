@@ -61,6 +61,7 @@ COMMANDS = {
     "message.fold_through": "_command_message_fold_through",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
     "stack.cover": "_command_stack_cover",
+    "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
 EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
@@ -101,7 +102,7 @@ EXPECTED = {**{"assessment."+name:set() for name in ("request","attach","finish"
             "outline.order_set": {"order_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
             "stack.place": {"place_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
-            "stack.cover": {"cover_revision"},
+            "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
 REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
@@ -118,7 +119,7 @@ REQUIRED_EXPECTED = {"agent.execution": "execution_revision", "draft.save": "dra
                      "outline.order_set": "order_revision",
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.name": "name_revision", "stack.join": "join_revision",
-                     "stack.cover": "cover_revision"}
+                     "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
     "changes": {"scope", "cursor", "limit"},

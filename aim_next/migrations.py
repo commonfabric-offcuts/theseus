@@ -46,6 +46,8 @@ from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSIO
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
+from .stacks import REFRESH_UP, REFRESH_DOWN
+from .cover_refresh import WRITER_SCHEMA, WRITER_BACKFILL
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -203,6 +205,9 @@ STEPS = (
     ("45", "46", COVER_UP, COVER_DOWN, COVER_OCCUPIED),
     # Item 641: default topic positions never move with activity.
     ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
+    ("47", "48", REFRESH_UP + WRITER_SCHEMA + WRITER_BACKFILL,
+     ["DROP TABLE cover_writers"] + REFRESH_DOWN,
+     "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover_refresh')"),
 )
 
 

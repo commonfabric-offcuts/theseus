@@ -442,6 +442,17 @@
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
 .cover-line>.cover-src{margin-left:.35rem}
 .cover-stands{font-size:.95rem;font-weight:550}
+.cover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem}
+.cover-refresh{display:inline-flex;align-items:center;gap:.25rem;min-width:0;flex-wrap:wrap;color:var(--muted);font-size:.78rem;font-weight:400}
+.cover-refresh-glyph{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;
+  width:2rem;min-height:2rem;padding:.3rem;border:0;border-radius:.35rem;background:transparent;color:var(--muted);cursor:pointer}
+.cover-refresh-glyph:hover{color:var(--ink);background:var(--soft)}
+.cover-refresh-glyph:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.cover-refresh-glyph[data-pending=true] svg{animation:cover-refresh-turn 1.4s linear infinite}
+.cover-refresh-status{overflow-wrap:anywhere;max-width:28rem}
+@keyframes cover-refresh-turn{to{transform:rotate(360deg)}}
+@media(pointer:coarse){.cover-refresh-glyph{width:44px;min-height:44px}}
+@media(prefers-reduced-motion:reduce){.cover-refresh-glyph[data-pending=true] svg{animation:none}}
 .cover-words{min-width:0;overflow-wrap:anywhere}
 .cover-label{color:var(--muted);font-size:.78rem;font-weight:600;letter-spacing:.02em}
 .cover-note{display:block;color:var(--muted);font-size:.8rem}

@@ -115,6 +115,13 @@ COVER_DOWN = _rebuilt(ACT_FRESH[0]) + ASIDE_INDEXES[1:]
 # Any cover, even one cleared since: version 45 cannot hold its rows, and dropping them would restart its revisions.
 COVER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover')"
 
+# Pipeline 738: refresh is its own act; existing cover values/revisions stay exact.
+ACT_REFRESH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover", "cover_refresh"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES
+REFRESH_UP = _rebuilt(ACT_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+REFRESH_DOWN = _rebuilt(ACT_COVERS[0]) + ASIDE_INDEXES[1:]
+REFRESH_DOWN += COVER_INDEXES
+
+
 PERSONAL = {"star", "deal", "fold", "place", "aside"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
@@ -135,7 +142,7 @@ NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt"
         "cover": cover_values.EMPTY_COVER}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0,
-         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0}
+         "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0}
 
 
 def _flag(args, name, words):
@@ -223,9 +230,21 @@ def current_acts(db, actor, message_ids):
                 owners[row["topic_id"]] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
                                                      (row["topic_id"],)).fetchone()[0]
             acts["cover"] = cover_values.shown(db, actor, cover_values.stored_value(row["value"]), row["actor_id"], row["at_ms"], owners[row["topic_id"]])
+        elif kind == "cover_refresh":
+            acts["cover_refresh"] = json.loads(row["value"])
         else:
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
+    for message_id, acts in found.items():
+        if acts["cover"] is None and (acts["cover_refresh"] or {}).get("state") == "pending":
+            acts["cover"] = dict(cover_values.EMPTY_COVER, by=None, at_ms=None, owner=None)
+            # The request remains visible; no cleared words are restored.
+            acts["cover"]["owner"] = db.execute("SELECT w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id JOIN messages m ON m.topic_id=t.id WHERE m.id=?", (message_id,)).fetchone()[0]
+        if acts["cover"] is not None:
+            writer = db.execute("SELECT actor_id FROM cover_writers WHERE message_id=?", (message_id,)).fetchone()
+            acts["cover"].update(root_id=message_id, revision=acts["cover_revision"],
+                                 writer=writer[0] if writer else None, refresh=acts["cover_refresh"],
+                                 refresh_revision=acts["cover_refresh_revision"])
     return found
 
 
@@ -498,6 +517,7 @@ def stack_positions(db, actor, items):
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "starred": starred,
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
+                               "cover_refresh_revision": acts["cover_refresh_revision"],
                                "below": through is not None and not starred and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
