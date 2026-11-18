@@ -406,7 +406,8 @@ export async function item721Compose(h) {
       const quotedWords = await chooseReader();
       await until(p, () => !document.querySelector('#quote-selection').hidden, 'ordinary Quote selection remains offered');
       await press(p, '#quote-selection');
-      await until(p, text => document.querySelector('#writing-body').value === text, 'ordinary explicit Quote preserves exact writing and source words', copied + '\n\n> ' + quotedWords + '\n\n');
+      const quotedBlock = quotedWords.replaceAll('\n', '\n> ');
+      await until(p, text => document.querySelector('#writing-body').value === text, 'ordinary explicit Quote preserves exact writing and source words', copied + '\n\n> ' + quotedBlock + '\n\n');
       await picture(p, 'item-721-explicit-quote');
       const withQuote = await p.locator('#writing-body').inputValue();
       await press(p, '#reader-close'); await shut(p);
