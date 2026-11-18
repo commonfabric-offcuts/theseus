@@ -268,7 +268,13 @@ press cannot reach.
   read", at a laptop's width and at 390, 375 and 320 on a phone, light and
   dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
   message it leads to are one rule ([attention.md](attention.md)).
-- `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
+- Current 646 preview direction (Tony8575 / warp8576): the always-visible
+  second-line star toggles the reader's star on the actual first message,
+  without navigation, reveal or a focus jump. Zero checks are authored/run
+  for this revision before Tony's new preview word. 735 remains parked;
+  the historical reveal contract and attempted checks below do not establish
+  the current toggle's behavior or approve 735.
+- Historical `tests/item_735_native.mjs`, reached by `tests/stack_native.mjs` in those
   same two engines: "reading item 735 first starred message red first and
   restored" and
   "reading item 735 hidden starred message red first and restored" at 320,

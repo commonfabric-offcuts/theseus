@@ -1,4 +1,27 @@
-# The dossier title star (item 735, warp 8421/8463)
+# The dossier star: current 646 direction and parked 735 history
+
+Tony8575 / warp8576 supersedes the lit-star reveal default below. The one
+always-visible star returns to the **second line under the title**, drawn
+as the previous `★ Starred` mark, with the existing outline `☆` when off.
+It toggles this reader's star on the **actual first message**, both star and
+unstar, with no navigation, reveal or focus jump. An unloaded first message
+is loaded by its exact Core identity, never replaced by a loaded reply.
+See [reply-stacks.md](reply-stacks.md#header-star-preview-646-tony8575--warp8576).
+
+The 646 header's reveal callback/adapter is removed. 735 remains parked;
+its selector and reading-landing source, tests, raw failures and parent
+history remain preserved. Its final bounded return had 12/20 assertions
+pass and 8/20 fail in each engine, four total starts and no further allowance.
+At 320px its floating message bar covers the own-message star. The hidden
+reply could not load its root prerequisite, and its no-scroll proof remains
+missing. This source-only 646 correction repairs none of those faults and
+claims no 735 approval. No checks or review run here; only Tony's actual new
+word on the revised copied preview starts tests.
+
+## Historical contract (735 warp8421/8463, composed under warp8529; superseded)
+
+The following records the previous implementation, not the current 646
+control or a passing result. It remains here to preserve the work history.
 
 A press on the filled star in a dossier's title opens the earliest message
 **you starred** in that dossier (message order, not when stars were added).

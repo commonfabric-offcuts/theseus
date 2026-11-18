@@ -16,7 +16,7 @@
 // reader's, on every device, until they unfold it.
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
-import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf, firstStarredMessage } from './stack-order.mjs';
+import { moveOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
 import { keyAction } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
@@ -160,9 +160,8 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    showStarred = () => {}, loadMessage = async () => null, colorOf = () => null, clock = () => Date.now(), doc = document }) {
+    loadMessage = async () => null, colorOf = () => null, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
-    this.showStarred = showStarred;
     this.loadMessage = loadMessage; this.headerStars = new Set();
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
@@ -258,13 +257,12 @@ export class StackFeed {
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, doc: this.doc, on: {
       more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
-      starred: stack => { const id = firstStarredMessage(stack, this.shownMessages()); if (id) this.showStarred(id, dossierOf(stack)); },
       coordinationCount: count => this.paintCoordination(count), coordinationShown: () => this.paintCoordination(),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(),
-      // 646's unlit half; the lit half above is 735's existing callback.
+      // One first-message toggle, in either state; no reveal callback (646).
       star: stack => this.starDossier(stack),
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
@@ -533,10 +531,11 @@ export class StackFeed {
   }
   // Core names the actual first message, even when this stack starts on a
   // reply. Reuse the page's bounded loader and the existing star act; never
-  // infer a first message/revision from the loaded slice, or toggle an own star.
+  // infer a first message/revision from the loaded slice. Both star and
+  // unstar use the reader's actual acts and the same confirmed command path.
   async starDossier(stack) {
     const root = dossierOf(stack), anchor = stack.head.id;
-    if (this.gone || this.heldByStar(stack)) return;
+    if (this.gone) return;
     if ([...this.doubts.values()].some(act => act.kind === 'message.star' && act.item.id === root)) {
       this.paintNotice(); return;
     }
@@ -545,15 +544,15 @@ export class StackFeed {
       this.status(waiting); return;
     }
     this.headerStars.add(root);
+    this.status(waiting);
     try {
       const item = await this.loadMessage(root);
       if (this.gone) return;
       const current = stackOf(this.list, this.entryFor(anchor))?.stack;
       if (!item || item.id !== root || !current || dossierOf(current) !== root ||
           item.topic_id !== stack.head.topic_id || item.stack_position?.root_id !== root) {
-        this.status('This dossier’s first message is unavailable or its dossier changed. Nothing was starred.'); return;
+        this.status('This dossier’s first message is unavailable or its dossier changed. No star was changed.'); return;
       }
-      if (this.heldByStar(current) || this.actsOf(root, item).starred) return;
       await this.star(item, { confirmed: true });
     } catch (error) {
       // Act failures already have the existing exact-operation recovery and

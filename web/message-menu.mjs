@@ -143,18 +143,18 @@ export class MessageMenu {
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
-      // The title star owns its first tap, just as a link does (item 735).
-      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, [data-stack-act=starred]') && cardIn(entry).dataset.folded !== 'true') {
+      // The dossier toggle owns its first tap, without lighting or focusing a message (646).
+      if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .stack-star') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
-        // The reply arrow and always-visible dossier star answer their own first tap.
-        if (event.target.closest?.('.replied-mark, .stack-star')) return;
+        // The reply arrow answers its own first tap.
+        if (event.target.closest?.('.replied-mark')) return;
         event.preventDefault(); event.stopPropagation();
       }
     }, true);
     // A click or tap in a message or a dossier also moves the keys' place there
     // (item 386): it runs before the control pressed acts, so whatever that
     // control focuses itself (a menu, the Reader, a field) still takes the focus.
-    host.addEventListener('click', event => this.claim(event.target), true);
+    host.addEventListener('click', event => { if (!event.target.closest?.('.stack-star')) this.claim(event.target); }, true);
     // A tap anywhere but a message, its bar, its menu or a pop-up lets the light go. A
     // finger lifted after a scroll ends in pointercancel, so scrolling keeps it.
     // Where the tap landed is read from the path the release was sent along: a

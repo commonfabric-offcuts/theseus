@@ -324,7 +324,7 @@ export function headClick(list, entry, event) {
   if (!found?.head || !found.section || !found.stack.replies.length) return false;
   const { stack } = found, act = event?.target?.closest?.('.stack-act')?.dataset.stackAct;
   if (act === 'rename') { state.on?.rename?.(stack); return true; }
-  if (act === 'starred') { state.on?.starred?.(stack); return true; }
+  if (act === 'star') { state.on?.star?.(stack); return true; }
   // The first message drawn as an earlier one's row, under the tab: a press
   // there shows it whole, for this visit (item 476); the tab acts as before.
   if (state.earlierRows.has(stack.id) && onEarlierRow(entry, event?.target)) { state.whole.add(stack.id); state.again(); return true; }
@@ -499,8 +499,8 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // started the stack and the marks of what that first message carries (an
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
 // replied and who, and what is new. One always-visible star replaces the
-// passive indicator (646). Lit means any message is starred (635); its
-// single starred action uses 735 and the existing 613 landing.
+// passive indicator (646), in its original second line. It toggles only the
+// reader's star on Core's actual first message, without a reading landing.
 function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
@@ -540,21 +540,24 @@ function paintHead(card, stack, { open, starred, state, unread, nameOf, doc }) {
   }
   star.onclick = event => {
     event.preventDefault(); event.stopPropagation();
-    if (state.starred.has(dossierOf(stack))) state.on?.starred?.(stack);
-    else state.on?.star?.(stack);
+    state.on?.star?.(stack);
   };
-  star.dataset.stackAct = starred ? 'starred' : 'star';
-  const starWords = starred ? 'Starred' : 'Star this dossier', starGlyph = starred ? '★' : '☆';
+  // Pointer/touch keeps the current writing or reading focus; Tab still
+  // reaches this control and Return/Space activate it in place.
+  star.onpointerdown = event => event.preventDefault();
+  star.dataset.stackAct = 'star';
+  const starWords = starred ? 'Unstar' : 'Star for me', starGlyph = starred ? '★ Starred' : '☆';
   if (star.textContent !== starGlyph) star.textContent = starGlyph;
   star.setAttribute('aria-label', starWords); star.title = starWords;
+  star.setAttribute('aria-pressed', String(starred));
   // The first message's marks stand beside who began it (paintHeadCarries puts them back there), then a minted name's mark.
   // Leave the star attached while replacing the other header words.
   for (const child of [...row.childNodes]) if (child !== star) child.remove();
   row.prepend(name, pen, who, ...(carried ? [carried] : []),
     ...(minted ? [minted] : []),
-    ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []),
-    meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
+    ...(head.headNew ? [element(doc, 'span', 'stack-new', 'New')] : []));
   if (star.parentNode !== row) row.append(star);
+  star.after(meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
@@ -689,8 +692,10 @@ function paintStack(section, stack, byId, context) {
   if (drawnOpen) state.held.set(stack.id, [stack.head, ...stack.replies][before.length].id);
   const held = state.held.get(stack.id) ?? null;
   const starred = Boolean(stack.head.acts?.starred), open = !single && level === 'open' && (!headBefore || earlierOpen);
-  // The title bar shows the reader's star when any message of the dossier is starred by them (item 635).
-  const marked = state.starred.has(dossierOf(stack));
+  // The toggle represents only the actual first message. Loaded acts win
+  // over stale position metadata; a starred reply never lights this toggle.
+  const root = dossierOf(stack), first = state.messages.get(root);
+  const marked = first ? first.acts?.starred === true : (positionOf(stack)?.starred ?? []).includes(root);
   // Item 550: a stack gathered under a first message the page has not loaded
   // (stack-order.mjs, gather) is headed by one of its replies, a card of its
   // own before 550: folded, it shows whole, as each reply kept in view does,
@@ -818,7 +823,7 @@ function paintStack(section, stack, byId, context) {
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
-  Object.assign(state, { viewer, colorOf, again: () => arrangeStacks(list, messages, options) });
+  Object.assign(state, { viewer, colorOf, messages, again: () => arrangeStacks(list, messages, options) });
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
@@ -827,7 +832,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const stacks = ordered(gather(loaded, { viewer, filled: state.filled, apart: state.apart }));
   for (const [from, to] of reheaded(state.stacks, stacks)) rehead(state, from, to);
   state.stacks = stacks;
-  // The dossiers whose title bar shows the reader's star, and which Move below More refuses (item 635).
+  // Dossiers which Move below More refuses (635); the header toggle is the root's alone (646).
   state.starred = starredDossiers(stacks, id => messages.has(id));
   state.earlierRows = new Set();
   state.folded = new Set(loaded.filter(item => rowFolded(item, { peeked: each => state.peeked.has(each.id) })).map(item => item.id));
