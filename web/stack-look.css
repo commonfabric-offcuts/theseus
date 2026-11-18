@@ -441,7 +441,7 @@
 .cover-line{display:block;min-width:0}
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
 .cover-line>.cover-src{margin-left:.35rem}
-.cover-stands{font-size:.95rem;font-weight:550}
+.cover-stands{font-size:.95rem;font-weight:550;white-space:pre-line}
 .cover-words{min-width:0;overflow-wrap:anywhere}
 .cover-label{color:var(--muted);font-size:.78rem;font-weight:600;letter-spacing:.02em}
 .cover-note{display:block;color:var(--muted);font-size:.8rem}

@@ -6,7 +6,7 @@ read from the owner's record, and what each reader is shown. No effects: covers.
 A cover is the newest `cover` act on a dossier's first message (message_acts, owner ''), so it keeps every revision
 and is fenced like any other act. It holds three fields, each set or cleared on its own:
 
-- `stands`: one line of where things stand;
+- `stands`: lines of where things stand (item 769);
 - `waiting`: what waits on the outcome's owner, each with the default that holds if they say nothing;
 - `payload`: what the dossier produced, in words, optionally a link and a kind, and the message that delivered it.
 
@@ -36,13 +36,16 @@ DONE_REFUSED = ("Done is the owner's to give: their 👍 on the payload's messag
                 "A cover's writer proposes the payload; nothing was changed")
 
 
-def _line(value, name, limit, required=True):
-    """One line of words: its spaces and line breaks folded to single spaces. Empty is None unless required."""
+def _line(value, name, limit, required=True, keep_lines=False):
+    """Fold whitespace to spaces, retaining LF boundaries only for stands. Empty is None unless required."""
     if value is None and not required:
         return None
     if not isinstance(value, str):
         raise Refusal("INVALID_ARGUMENT", "%s is words" % name)
-    folded = " ".join(value.split())
+    # Stands keeps LF boundaries; all other fields retain their one-line contract.
+    # CRLF becomes LF as CR is folded with whitespace within each line.
+    folded = ("\n".join(" ".join(line.split()) for line in value.split("\n")).strip()
+              if keep_lines else " ".join(value.split()))
     if not folded:
         if required:
             raise Refusal("INVALID_ARGUMENT", "%s says something" % name)
@@ -105,7 +108,7 @@ def written(args):
         raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting and payload only")
     fields = {}
     if "stands" in args:
-        fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False)
+        fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False, keep_lines=True)
     if "waiting" in args:
         fields["waiting"] = _waiting(args["waiting"])
     if "payload" in args:

@@ -103,6 +103,44 @@ whom, who has written in the topic, items and takes, and the work ring.
 
 ## Reading
 
+The saved draft records a person's choice, so `draft.whisper` is absent or
+null before they choose. The existing **reply-to-whisper default** derives
+Whisper when replying to a whisper with its one agent named (`defaultChoice`
+and `choiceOf`). `Reader.send` makes that effective choice explicit through
+`sending` before the editor freezes the writing. Item 704 changes no default,
+preference, recipients or privacy rule. Its helper checks the undecided saved
+quote and the exact body, recipients, quote revision and privacy at Send.
+Owned intercepted commands release and await their continuations and response
+bodies before unroute or closing the context, including refused and error paths.
+
+A whisper keeps the existing dotted-line outline (the UI's dashed stroke)
+everywhere it is drawn: the feed, a dossier's sheets and header, the source
+above a composer's quote, and a phone. Its selection rectangle is dashed too;
+no solid spread rim is added around it. Keyboard focus on its source, writing
+and who chip keeps the normal visible focus ring, with the dashed stroke.
+Public messages keep their ordinary frame and selection. No words, recipient,
+quote revision or privacy rule changes for this drawing (item 704).
+
+The drawing branches are a standalone card, a dossier sheet (whole or folded
+to its row), and a dossier head drawn as a folder and its tab. Each has a
+resting and a selected drawing. The Reader's source has its resting and
+keyboard-focus drawings; its line is kept with empty writing, a quote, a save
+in flight and a refused save with its review control. A missing source removes
+the `whispering` class and its words (`Reader.hideUnavailableSource`); an
+empty feed draws no message frame. Read-only writing uses the same stroke:
+the rule changes no admission or disabled state. No asynchronous act is added.
+
+`tests/whisper_outline_native.mjs`, called by `native-reading`,
+`native-webkit-reading` and `native-compose`, checks the `item 704` cases at
+320, 375, 390 and laptop widths in both themes. The reading cases cover both
+the person's and the agent's cards. The composer uses native Tab for focus
+and a pressed passage and Quote for the exact writing. Source mutations turn
+the dashed strokes solid; each runs in a fresh page on a restarted isolated
+fixture, verifies the served CSS snapshot, fails the frame check and restores
+the exact source bytes before its passing control. Geometry checks allow 2px
+for page edges and .25px for the 2px ring, so absent or solid rings fail in
+either engine. Another actor's private note is seeded and must never appear.
+
 `topic_messages` items carry `whisper` and, for a whisper, `private_to`; the
 viewer's own whisper with no whisper reply yet carries `no_answer: true`. A
 reply whose parent the viewer cannot see has no `reply_to_author` or
