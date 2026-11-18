@@ -3,6 +3,7 @@
 import { glyph } from './glyphs.mjs';
 import { linkNode } from './links.mjs';
 import { notTaken, NOT_TAKEN } from './api.mjs';
+import { waitingDots } from './outcome-conversation.mjs';
 
 let runtime = null;
 const requests = new Map(), painters = new WeakMap();
@@ -47,7 +48,7 @@ export function refreshControl(doc, cover, context) {
       : doc.createElement('button');
     control.className = 'cover-refresh-glyph'; control.title = label; control.setAttribute('aria-label', label);
     control.dataset.pending = String(pending || local.busy);
-    control.append(glyph('refresh', doc, 17));
+    control.append(pending || local.busy ? waitingDots(doc, label) : glyph('refresh', doc, 17));
     if (!pending) {
       control.type = 'button'; control.setAttribute('aria-disabled', String(local.busy));
       control.onclick = async event => {
@@ -92,7 +93,7 @@ export function refreshControl(doc, cover, context) {
       };
     }
     const status = doc.createElement('span'); status.className = 'cover-refresh-status'; status.setAttribute('role', 'status');
-    status.textContent = local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '');
+    status.textContent = local.error || (!pending && local.busy ? 'Requesting update…' : '');
     const focused = host.contains(doc.activeElement);
     host.replaceChildren(control, status);
     if (focused) control.focus({ preventScroll: true });
