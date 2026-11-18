@@ -937,6 +937,9 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/dossier_order.py": ("position reads use a canonical root already checked by visible(); publication touches only its "
+                                 "message readers, and its numeric topic ceiling returns no message identity or words; the explicit "
+                                 "migration enumerates readers internally, groups messages under VISIBLE and resolves only visible roots; return detection uses MEMBERS under VISIBLE", 7),
     "aim_next/hosted_control.py": ("waiting and pending work filtered by VISIBLE and topic/addressed access before LIMIT, then _message_access checks the link again", 2),
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "

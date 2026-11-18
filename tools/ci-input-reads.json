@@ -4462,6 +4462,14 @@
         "tests/fixtures/item_731_original_web.tar.gz"
       ],
       "scope": "repository"
+    },
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "scope": "generated/system/product",
+      "inputs": []
     }
   },
   "tests/stack_native.mjs": {
@@ -4470,6 +4478,69 @@
       "inputs": [
         "tests/fixtures/item_645_original_web.json"
       ]
+    }
+  },
+  "tests/test_item_655_fixture.py": {
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b1806f6be502a6ca4315a5a09c922e105ac26ec1c9b2b70d841944e8fc11117c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_folded_names.test.mjs": {
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "66a02d4736568a6a1a82d2a26dd84821c31694b36bfae49e3edc7c0b8f8fffec": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "5a63cfed37169284ee79c097693187334903b670b5ba16b9933258cdf7d1cd1c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/ui_item_655_evidence.test.mjs": {
+    "6be7568042f3fd4493a6fee5275f2ec746527576f770f592e2c073030b0af976": {
+      "inputs": [
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "328a883acb0a67fe74a39f8596cbca262838c15d1394d582cfe90d582e0747e5": {
+      "inputs": [
+        "tests/topic_reading_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86:1": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
     }
   }
 }

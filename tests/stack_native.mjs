@@ -3871,7 +3871,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     for (const route of ['topic', 'conversation']) await check(`reading item 731 dossiers stay put ${route} ${device} ${theme}`, async () => {
       const key = `stay-731-${route}-${device}-${theme}`, input = device === 'laptop' ? 'laptop' : 'phone';
       let topic = key;
-      if (route === 'conversation') topic = (await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: facts.agent, team: [other] })).topic_id;
+      if (route === 'conversation') topic = (await control({ method: 'coordinator', operation_id: key + '-coordinator', coordinator: other, team: [facts.agent] })).topic_id;
       else await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Dossiers stay put' }] });
       const ids = {};
       const post = async (name, reply = null) => {
@@ -3982,9 +3982,14 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
           await openReader(p,input,ids.b4,'Item 731 b4'); await targets731(p,targetTolerance731); await closeReader(p,input);
         }
         if (route === 'topic' && device === 'laptop' && theme === 'light') {
-          await keyTo(p,ids.a); await p.key('ArrowDown',12);
-          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.b, 'native join records the actual destination dossier');
-          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a1))}).closest('.reply-stack').dataset.stack`),ids.b,'joined messages are actually under B');
+          // The fixture's own opening is between A and the returned B. Join
+          // upward into the actual adjacent C, rather than assuming A/B are adjacent.
+          const allRoots = await p.evaluate(`[...document.querySelector('#messages').children].map(e=>e.dataset.stack??e.dataset.id).filter(Boolean)`);
+          assert.equal(allRoots[allRoots.indexOf(ids.a)-1],ids.c,'the actual adjacent dossier is C');
+          observations.push({name:'item 731 join neighbours',key,allRoots,from:ids.a,into:ids.c});
+          await keyTo(p,ids.a); await p.key('ArrowUp',12);
+          await until(async () => (await positionIn(topic,ids.a)).root_id===ids.c, 'native join records the actual destination dossier');
+          assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(card(ids.a1))}).closest('.reply-stack').dataset.stack`),ids.c,'joined messages are actually under C');
           await p.key('z',4);
           await until(async () => (await positionIn(topic,ids.a)).root_id===ids.a,'native Undo splits back to A');
           await becomes(order,[ids.c,ids.a,ids.b],'split back restores the source position');
