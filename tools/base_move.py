@@ -484,6 +484,56 @@ def full_source(source, judgment, git, github, repository, head):
                 'failed': summary['failed'], 'steps': raw_steps, 'red_count': len(reds), 'controller': controller}
 
 
+def legacy_own_receipt(receipt, git, assembly, assembly_tree, expected):
+    measured_source = snapshot(receipt['snapshot'], git, assembly, assembly_tree)
+    step = document(receipt['step']); report = document(receipt['report']); log = artifact(receipt['log']).decode()
+    name = step['name']; require(name in ci.NATIVE, 'unknown receipt step')
+    teardown(report)
+    native = ci.NATIVE[name]
+    argv = step.get('argv')
+    require(isinstance(argv, list) and all(isinstance(arg, str) and bool(arg) for arg in argv)
+            and len(argv) in (4 + len(native.flags), 5 + len(native.flags))
+            and argv[1] == native.harness and argv[4:4 + len(native.flags)] == list(native.flags)
+            and step.get('tool') == native.harness, 'own-case command/harness binding differs')
+    if native.results != 'results.json':
+        require('fixtureExitSignal' in report, 'fixture cleanup signal is absent')
+    require(ci.NATIVE[name].harness in measured_source['inputs'], 'missing harness source input hash')
+    rows = report.get('results')
+    require(isinstance(rows, list) and bool(rows), 'missing receipt cases')
+    keys = []
+    for row in rows:
+        require(isinstance(row, dict) and row.get('passed') is True and not row.get('expectedFailure'), 'own case did not pass')
+        native = ci.NATIVE[name]
+        engines = ('webkit',) if native.harness == release_check.WEBKIT else (
+            ('chromium', 'webkit') if native.harness in (release_check.COMPOSE, release_check.FENCE_COPY, release_check.CARD_MARKS)
+            else ('chromium',))
+        require(row.get('engine') in engines, 'receipt engine differs from harness')
+        key = (name, row['name'], row.get('phase'), row.get('engine'))
+        require(key in expected, 'wrong own case or engine')
+        keys.append(key)
+    require(len(keys) == len(set(keys)), 'duplicate case in receipt')
+    # Use the established harness validators, including end/fixture and
+    # browser cleanup. Each receipt is its own native output folder.
+    with tempfile.TemporaryDirectory(prefix='train-own-case-') as temp:
+        out = Path(temp); native = ci.NATIVE[name]
+        folder = out / 'native' / native.name; folder.mkdir(parents=True)
+        (folder / native.results).write_bytes(artifact(receipt['report']))
+        (out / (name + '.log')).write_text(log)
+        ci.cases(step, out, rows)
+        counts, good = release_check.native_counts(native, folder, log)
+        require(good and step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0
+                and canonical(step.get('counts')) == canonical(counts), 'own-case counts/status differ')
+    return keys
+
+
+def own_receipt(receipt, git, github, repository, assembly, assembly_tree, expected):
+    if isinstance(receipt, dict) and 'pool' in receipt:
+        from tools import own_case_receipt
+        return own_case_receipt.validate(receipt, git, github, repository, assembly, assembly_tree, expected)
+    fields(receipt, 'snapshot step report log')
+    return legacy_own_receipt(receipt, git, assembly, assembly_tree, expected), None
+
+
 def validate(ref, judgment, git, github, repository, live, merge, items):
     """The verified record, including all artifact references and review, or refusal."""
     try:
@@ -545,50 +595,16 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
             require(all(any(c == case and p == phase and eng == e for _, c, p, eng in expected)
                         for e in ('chromium', 'webkit')), 'partial engine obligations')
         require(isinstance(data['receipts'], list) and bool(data['receipts']), 'missing own-case receipts')
-        got, unique = Counter(), set()
+        got, unique, derived_receipts = Counter(), set(), []
         for receipt in data['receipts']:
-            fields(receipt, 'snapshot step report log')
+            require(isinstance(receipt, dict), 'invalid own-case receipt')
+            fields(receipt, 'snapshot step report log pool' if 'pool' in receipt else 'snapshot step report log')
             identity = tuple(receipt[k]['sha256'] for k in ('snapshot', 'step', 'report', 'log'))
             require(identity not in unique, 'duplicate own-case receipt')
             unique.add(identity)
-            measured_source = snapshot(receipt['snapshot'], git, assembly, data['assembly_tree'])
-            step = document(receipt['step']); report = document(receipt['report']); log = artifact(receipt['log']).decode()
-            name = step['name']; require(name in ci.NATIVE, 'unknown receipt step')
-            teardown(report)
-            native = ci.NATIVE[name]
-            argv = step.get('argv')
-            require(isinstance(argv, list) and all(isinstance(arg, str) and bool(arg) for arg in argv)
-                    and len(argv) in (4 + len(native.flags), 5 + len(native.flags))
-                    and argv[1] == native.harness and argv[4:4 + len(native.flags)] == list(native.flags)
-                    and step.get('tool') == native.harness, 'own-case command/harness binding differs')
-            if native.results != 'results.json':
-                require('fixtureExitSignal' in report, 'fixture cleanup signal is absent')
-            require(ci.NATIVE[name].harness in measured_source['inputs'], 'missing harness source input hash')
-            rows = report.get('results')
-            require(isinstance(rows, list) and bool(rows), 'missing receipt cases')
-            keys = []
-            for row in rows:
-                require(isinstance(row, dict) and row.get('passed') is True and not row.get('expectedFailure'), 'own case did not pass')
-                native = ci.NATIVE[name]
-                engines = ('webkit',) if native.harness == release_check.WEBKIT else (
-                    ('chromium', 'webkit') if native.harness in (release_check.COMPOSE, release_check.FENCE_COPY, release_check.CARD_MARKS)
-                    else ('chromium',))
-                require(row.get('engine') in engines, 'receipt engine differs from harness')
-                key = (name, row['name'], row.get('phase'), row.get('engine'))
-                require(key in expected, 'wrong own case or engine')
-                keys.append(key)
-            require(len(keys) == len(set(keys)), 'duplicate case in receipt')
-            # Use the established harness validators, including end/fixture and
-            # browser cleanup. Each receipt is its own native output folder.
-            with tempfile.TemporaryDirectory(prefix='train-own-case-') as temp:
-                out = Path(temp); native = ci.NATIVE[name]
-                folder = out / 'native' / native.name; folder.mkdir(parents=True)
-                (folder / native.results).write_bytes(artifact(receipt['report']))
-                (out / (name + '.log')).write_text(log)
-                ci.cases(step, out, rows)
-                counts, good = release_check.native_counts(native, folder, log)
-                require(good and step.get('passed') is True and type(step.get('exit')) is int and step['exit'] == 0
-                        and canonical(step.get('counts')) == canonical(counts), 'own-case counts/status differ')
+            keys, derived = own_receipt(receipt, git, github, repository, assembly, data['assembly_tree'], expected)
+            if derived is not None:
+                derived_receipts.append(derived)
             got.update(keys)
         require(got == Counter({key: 1 for key in expected}), 'need one passing receipt for every own case and engine')
         # Keep the complete frozen manifest by digest, rather than exceeding
@@ -599,6 +615,8 @@ def validate(ref, judgment, git, github, repository, live, merge, items):
                       source={k: data['source'][k] for k in ('run', 'attempt', 'tested_merge', 'base_at_run', 'inventory', 'audit')},
                       receipts={'artifacts_sha256': digest(canonical(data['receipts'])),
                                 'count': len(data['receipts']), 'obligations': obligations})
+        if derived_receipts:
+            result['receipts']['pool'] = derived_receipts
         result['source'].update(summary=data['source']['files']['release-check/summary.json'],
                                 provenance=data['source']['files']['release-check/provenance.json'],
                                 artifacts_sha256=digest(canonical(data['source']['files'])))
