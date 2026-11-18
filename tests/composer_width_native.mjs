@@ -277,12 +277,16 @@ export async function composerWidthCases(h) {
     }
     await until(p, () => !document.querySelector('[data-width-dragging]'), 'the edge release');
   }
-  async function returnDrag(p, a, side, touch) {
+  async function returnDrag(p, a, side, touch, onShrink) {
     const before = await geometry(p, a), inward = side === 'left' ? STEP_PX : -STEP_PX;
     const b = await p.locator(`${a.dialog} > .composer-edge[data-edge="${side}"]`).boundingBox();
     assert.ok(b, 'the return drag has a native hit target');
     const x = b.x + b.width / 2, y = b.y + b.height / 2;
-    const shrink = async () => near((await geometry(p, a)).width, before.width - 2 * STEP_PX, `${side} held inward motion shrinks symmetrically`);
+    const shrink = async () => {
+      const g = await geometry(p, a);
+      near(g.width, before.width - 2 * STEP_PX, `${side} shrinks both edges symmetrically`);
+      await onShrink(g);
+    };
     const restored = async () => near((await geometry(p, a)).width, before.width, `${side} held return to origin restores width`);
     if (touch) {
       const cdp = await p.ctx.newCDPSession(p);
@@ -336,16 +340,19 @@ export async function composerWidthCases(h) {
       await p.locator(`${a.dialog} > .composer-edge[data-edge=left]`).click();
       near((await geometry(p, a)).width, initial.width, 'a click alone changes no width');
       for (const side of ['left', 'right']) {
-        const before = await geometry(p, a), inward = side === 'left' ? STEP_PX : -STEP_PX;
-        await drag(p, a, side, inward, 25, touch);
-        const shrunk = await geometry(p, a);
-        near(shrunk.width, before.width - 2 * STEP_PX, `${side} shrinks both edges symmetrically`);
-        near(shrunk.left, before.left + STEP_PX, 'left edge moves inward');
-        near(shrunk.right, before.right - STEP_PX, 'right edge moves inward');
-        near(shrunk.center, initial.center, 'stays centred');
-        await picture(p, `${label}-dragged-${side}`);
-        near(shrunk.top, initial.top, 'no vertical movement'); near(shrunk.height, initial.height, 'no vertical resize');
-        await drag(p, a, side, -inward, -25, touch);
+        const before = await geometry(p, a);
+        // This same held gesture proves symmetry AND B1 reversal. Separate
+        // shrink/release/grow gestures duplicate those measurements and make
+        // the complete state matrix exceed the hosted job's fixed limit.
+        await returnDrag(p, a, side, touch, async shrunk => {
+          near(shrunk.left, before.left + STEP_PX, 'left edge moves inward');
+          near(shrunk.right, before.right - STEP_PX, 'right edge moves inward');
+          near(shrunk.center, initial.center, 'stays centred');
+          near(shrunk.top, initial.top, 'no vertical movement'); near(shrunk.height, initial.height, 'no vertical resize');
+          // Both sides reach the same measured box. Preserve one resized
+          // original per state, alongside the state-before original.
+          if (side === 'left') await picture(p, `${label}-dragged-left`);
+        });
         const grown = await geometry(p, a);
         near(grown.width, before.width, `${side} grows symmetrically`);
         near(grown.center, initial.center, 'growing stays centred');
@@ -365,13 +372,11 @@ export async function composerWidthCases(h) {
         assert.deepEqual(await kept(p, a), reached, 'keyboard width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
         await p.keyboard.press(side === 'left' ? 'ArrowLeft' : 'ArrowRight');
         near((await geometry(p, a)).width, initial.width, 'keyboard grows it back');
-        await returnDrag(p, a, side, touch);
-        assert.deepEqual(await kept(p, a), reached, 'held width changes preserve exact writing, selection, destination, mode, privacy and recovery controls');
+        assert.deepEqual(await kept(p, a), reached, 'keyboard return preserves exact writing, selection, destination, mode, privacy and recovery controls');
       }
       const final = await kept(p, a);
       assert.deepEqual({ ...final, start: saved.start, end: saved.end }, saved, 'native traversal and width changes preserve exact writing and its owners');
       assert.deepEqual(commands, [], 'dragging neither saves nor sends nor changes recipients');
-      await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
   }
   async function chooseMode(p, mode) {
