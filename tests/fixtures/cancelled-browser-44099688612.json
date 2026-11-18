@@ -1,0 +1,26 @@
+{
+ "source": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/666-build/shard1-cancelled-44099688612.log",
+ "run_id": "44099688612",
+ "attempt": "1",
+ "name": "browser 1 of 3 (about 24 min)",
+ "steps": [
+  "native-reading",
+  "native-notebook",
+  "native-conversation",
+  "native-webkit-rail",
+  "native-navigation",
+  "native-health",
+  "native-webkit-pipeline",
+  "native-webkit-targets",
+  "native-forms",
+  "native-pipeline",
+  "native-connected",
+  "native-targets",
+  "native-whispers",
+  "native-reader-review-gaps",
+  "native-sources",
+  "native-webkit-device"
+ ],
+ "log": "2026-11-17T14:47:43.5317870Z {\"name\": \"native-reading\", \"exit\": 1, \"passed\": false, \"counts\": {\"tests\": 251, \"pass\": 250, \"fail\": 1, \"failed\": [\"reading stacks a split or a join waiting for its answer leaves each head row naming its own dossier and a rename going to it, on a full page and one holding only replies\"], \"browser_closed\": true}}\n2026-11-17T14:57:14.7982350Z {\"name\": \"native-notebook\", \"exit\": 1, \"passed\": false, \"counts\": {\"tests\": 63, \"pass\": 62, \"fail\": 1, \"failed\": [\"notebook in the composer: opening another page replaces the first, whose unfinished card goes on to Core and opens again with it\"], \"browser_closed\": true}}\n2026-11-17T15:00:12.8131160Z {\"name\": \"native-conversation\", \"exit\": 0, \"passed\": true, \"counts\": {\"tests\": 41, \"pass\": 41, \"fail\": 0, \"failed\": [], \"browser_closed\": true}}\n2026-11-17T15:20:24.0384590Z {\"name\": \"native-webkit-rail\", \"exit\": 0, \"passed\": true, \"counts\": {\"tests\": 92, \"pass\": 92, \"fail\": 0, \"failed\": [], \"browser_closed\": true}}\n2026-11-17T15:22:13.0674430Z {\"name\": \"native-navigation\", \"exit\": 0, \"passed\": true, \"counts\": {\"tests\": 23, \"pass\": 23, \"fail\": 0, \"failed\": [], \"browser_closed\": true}}\n2026-11-17T15:23:20.7215760Z {\"name\": \"native-health\", \"exit\": 0, \"passed\": true, \"counts\": {\"tests\": 13, \"pass\": 13, \"fail\": 0, \"failed\": [], \"browser_closed\": true}}\n2026-11-17T15:23:38.1923370Z ##[error]The operation was canceled.\n",
+ "cancelled_at": "2026-11-17T15:23:38.1923370Z"
+}

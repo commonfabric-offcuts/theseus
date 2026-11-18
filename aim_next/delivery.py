@@ -7,7 +7,7 @@ import uuid
 
 from .contract import LIMITS, Refusal, StoreError, _identifier, _json, _page_size, _prefix
 from .marks import MARKED
-from .topic_reading import unread_groups
+from .topic_reading import ADDRESSED, SUBSCRIBED, unread_groups
 from .message_edit import current_words, held_refusal, holding, is_held, mark, plain, words_at
 
 
@@ -248,19 +248,19 @@ class Delivery:
         if topics is not None:
             subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending "
                                        "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 CROSS JOIN topics t ON t.id=g.topic_id "
-                                       "WHERE g.recipient_id=? AND g.kind='subscription' AND g.active=1 AND g.pending_count>0" + scope + " GROUP BY g.topic_id",
+                                       "WHERE " + SUBSCRIBED + " AND g.pending_count>0" + scope + " GROUP BY g.topic_id",
                                        (actor,) + values)
         else:
             subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending FROM delivery_groups g INDEXED BY eligible_groups "
                                        "CROSS JOIN topics t ON t.id=g.topic_id "
-                                       "WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND g.kind='subscription'" + scope + " GROUP BY g.topic_id",
+                                       "WHERE " + SUBSCRIBED + " AND g.pending_count>0" + scope + " GROUP BY g.topic_id",
                                        (actor,) + values)
         for row in subscriptions:
             counts[row["topic_id"]] = [row["pending"], 0, row["workspace_id"]]
         for row in db.execute("SELECT m.topic_id,t.workspace_id,COUNT(*) AS pending FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
                               "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
                               "CROSS JOIN messages m ON m.id=d.message_id CROSS JOIN topics t ON t.id=m.topic_id "
-                              "WHERE g.recipient_id=? AND g.kind='direct' AND g.topic_id='' AND g.participant_epoch=0 AND g.active=1 AND g.pending_count>0"
+                              "WHERE " + ADDRESSED + " AND g.pending_count>0"
                               + direct_scope + " GROUP BY m.topic_id",
                               (actor,) + values):
             entry = counts.setdefault(row["topic_id"], [0, 0, row["workspace_id"]])
@@ -279,30 +279,36 @@ class Delivery:
         sent_ms is when it was sent, so the New line can say so before its card
         is loaded; null for a message from before times were kept.
 
-        Unread is what the counts hold (_unread): a delivery pending in an
-        active group, or a mark. A delivery left pending by a subscription the
-        actor's leaving cancelled is not unread, and the actor's own messages,
-        which are never delivered to them, do not count even when marked.
+        Unread is what the counts hold (_unread), by the same rule read from
+        the same place (topic_reading.SUBSCRIBED and ADDRESSED, marks.MARKED):
+        a delivery pending in an active group, or a mark. So a topic whose
+        count is above nought always has a message here for its count to lead
+        to (item 613). A delivery left pending by a subscription the actor's
+        leaving cancelled is not unread, and the actor's own messages, which
+        are never delivered to them, do not count even when marked.
 
         Deliveries are queued in the transaction that writes their message, so
         delivery order is message order. The actor's pending deliveries that
-        count are in two groups at most: the topic's subscription group of the
-        actor's current participation, and the actor's one direct group. Each
-        is found by its key, and its first pending row in the topic, in the
-        (group, topic, delivery) index, is its oldest; rows a cancelled
-        subscription left pending are in other groups and never read. The
-        marks are read through the actor's marked index in sequence order,
-        stopping at the first row, past only the actor's marks on their own
-        messages; the topic's history and other topics are never read."""
-        groups = unread_groups(db, actor, topic_id, self._addressed_group(db, actor))
+        count are in two groups at most: the topic's active subscription group,
+        which is their current participation's, and the actor's one direct
+        group. Each is found by its key, and its first pending row in the
+        topic, in the (group, topic, delivery) index, is its oldest; rows a
+        cancelled subscription left pending are in other groups and never read.
+        The marks are read through the actor's marked index in sequence order,
+        stopping at the first one counted, past only marks the counts leave
+        out (on the actor's own messages, or on a message a delivery above
+        counts already); the topic's history and other topics are never read."""
+        groups = unread_groups(db, actor, topic_id)
         rows = [db.execute("SELECT m.id,m.seq,m.sent_ms FROM deliveries d INDEXED BY pending_group_topic_deliveries "
                            "CROSS JOIN messages m ON m.id=d.message_id "
                            "WHERE d.group_id=? AND d.topic_id=? AND d.state='pending' ORDER BY d.seq LIMIT 1",
                            (group, topic_id)).fetchone() for group in groups]
+        # The marks the counts count (MARKED): one whose message a pending delivery counts already is found above.
         rows.append(db.execute("SELECT k.seq,k.message_id AS id,m.sent_ms FROM message_marks k INDEXED BY reader_marks "
+                           "CROSS JOIN topics t ON t.id=k.topic_id CROSS JOIN workspaces w ON w.id=t.workspace_id "
                            "CROSS JOIN messages m ON m.id=k.message_id "
-                           "WHERE k.actor_id=? AND k.topic_id=? AND k.revision%2=1 AND m.author_id<>? ORDER BY k.seq LIMIT 1",
-                           (actor, topic_id, actor)).fetchone())
+                           "WHERE k.actor_id=? AND k.topic_id=? AND " + MARKED + " ORDER BY k.seq LIMIT 1",
+                           (actor, topic_id)).fetchone())
         found = [row for row in rows if row is not None]
         if not found:
             return None
@@ -361,8 +367,7 @@ class Delivery:
                 "waiting_outcomes": self._waiting_outcomes(db, actor, here_id)}
 
     def _addressed_group(self, db, actor):
-        return db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
-                          (actor,)).fetchone()
+        return db.execute("SELECT g.id FROM delivery_groups g WHERE " + ADDRESSED, (actor,)).fetchone()
 
     def _addressed_after(self, db, actor):
         """The newest delivery naming this actor that waits now, or 0.

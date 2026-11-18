@@ -85,7 +85,7 @@ It refuses (exit 2) before running anything when:
 
 Then it runs, one at a time:
 
-1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
+1. Python units: `/usr/bin/python3 tools/unit_shards.py` (`--python` to change the interpreter). It discovers the same unittest suite, prints wall time and its 25 slowest tests, and keeps file times in the step's `timing`. Hosted jobs pass `--only python-units --python-shard INDEX/TOTAL` to the release check; the measured whole-file deal, independent Node/deploy jobs, timeouts and combined count are described in [unit-shards.md](unit-shards.md).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
 3. The deploy's refusals: the `DeployRefuses` classes of `tests/test_tools_deploy.py` and every test of `tests/test_tools_train.py`, the merged train the deploy may take in place of a summary (`-p 'test_tools_*.py' -k test_tools_deploy.DeployRefuses -k test_tools_train.`), which the outcome's "deploy refuses" check reads.
 4. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes`, `header` and `health` among them), `tests/reader_openings_native.mjs`, the default and five modes of `tests/reader_native.mjs`, and the nine modes of `tests/webkit_native.mjs` that run checks again in Safari's engine, the phone check page, the New line and inviting an agent among them ([device-evidence.md](device-evidence.md)). A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
@@ -129,6 +129,12 @@ That harness writes two lines per case to the step's log: `{"case": NAME, "start
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1), unless every failure in it is a case the quarantine holds (`--quarantine-at`, below).
 
+A Python file partition may complete with zero tests (for example, an empty
+package initializer). It still reports `Ran 0 tests` / `OK`, timings and exact
+file coverage. The combined Python step requires every partition and at least
+one test in total; an unpartitioned empty run still refuses
+([unit-shards.md](unit-shards.md)).
+
 Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several. The WebKit modes load playwright-core from `--playwright`, else `AIM_PLAYWRIGHT_CORE`, else the one version under `~/Library/Caches/deno/npm/registry.npmjs.org/playwright-core/`; it refuses when there are none or several, or the directory is not playwright-core.
 
 `--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step it ran passed and the checkout did not change; a run that skipped steps says so in `skipped` (above). A refused run writes a summary with `refused` and `passed: false`, unless `--out` is the reason, so a refusal never changes the checkout.
@@ -150,7 +156,76 @@ The summary's `quarantine` says which commit it was read at (`at`), how many cas
 
 The Checks workflow plans a small-fix pull request with `tools/check_plan.py`, using the deploy's own `release_check.scope` and `small_fix_problems`. It deals only the chosen native steps beside units/deploy refusals and the parallel wake replay, omitting empty browser shards. Pushes, larger or forbidden diffs and unreadable scope always get the full run. The aggregate keeps `scoped` and never claims omitted modes passed; the validator independently rechooses its scope. [scoped-ci.md](scoped-ci.md) describes the plan and its dry run.
 
-The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present (a shard cancelled at its time limit leaves no summary, and one refused before running leaves a summary with no commit and no steps: either way its steps are missing), every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. Every other shard's summary must name the one commit checked.
+The Checks workflow passes `--quarantine-at event` to every shard, and its combine job keeps the whole run's `passed` raw while it writes `quarantine` (`at`, the bases the shards read, `held`, `green`) and exits 0 when the run passed or is green: every required step is present, no browser shard was cancelled, every shard's checkout unchanged, every shard read the same base, and each failed step's record is green, not refused, names no case it does not hold, and has `held` exactly its failed cases, at least one. A shard refused before running leaves a summary with no commit and no steps; its steps stay missing. Every other shard's summary must name the one commit checked. Cancelled browser jobs retain their logged results as described below. The combined summary's `jobs`, `missing_jobs` and `missing` name the planned jobs and absent results even if a cancelled job published nothing. Python's single required result needs every planned partition with disjoint files; its count is the sum of those partitions, and a missing partition leaves `python-units` missing. The plan contributes required names independently of surviving summaries.
+
+### Browser shard minutes (item 666)
+
+The plan deals browser steps largest first onto the lightest of four shards,
+using `.github/check-weights.json`. Each weight is the maximum finished step
+time from Checks runs 44007172971, 44044963750 and 44099688612 (17 November's
+brief, consecutive step-result timestamps); `sources` lists each step's run
+and minutes. The cancelled run contributes only steps it finished. The 48
+browser steps total 200.9 minutes and deal to 50.3, 50.2, 50.2 and 50.2,
+within five minutes of the 50.225-minute even split. `native-reading`,
+`native-rail`, `native-webkit-reading` and `native-compose` each have their own
+shard. A fifth long step goes onto the lightest shard when its turn comes:
+with only four shards, some long steps must then share one (today
+`native-webkit-rail` shares with `native-compose`). Ties retain step order and
+choose the first lightest shard, making a plan reproducible.
+
+The same deal accepts a scoped selection or a small fix's selected browser
+steps; the selection owns which steps run, and the weights own where they run.
+Empty shards are omitted. An unmeasured step takes the upper median of all
+measured weights (1.1 minutes today), or 1 minute with no measurements. That
+keeps it in the run without treating an unknown duration as zero; update its
+weight from the next full run.
+
+Each browser matrix entry carries its `minutes`, `timeout_minutes` and
+`timeout_source`: the ceiling of the longest dealt total plus half,
+`ceil(longest * 1.5)`, or 76 minutes for today's full selection. The runner
+reads that matrix field; a scoped selection recomputes it. Python partitions,
+Node and deploy refusals use their measured limits
+([unit-shards.md](unit-shards.md)); wake replay keeps 45 minutes. These
+eleven jobs can queue under an account's concurrent-job cap.
+
+The combined summary's `required` includes both the plan's steps and those
+named by the shard summaries. Every planned step with no result is named in
+`failed` and printed as `missing`, including every unreached step of a cancelled or
+refused shard, even when surviving summaries name only their own steps. A
+missing step makes both raw and quarantine verdicts red. The deploy still
+checks the required step inventory independently. The next merged train's
+full run is the wall-clock acceptance: all four browser jobs must finish
+inside their derived limits and within five minutes of an even split.
+
+When a browser job is cancelled at its limit, combine uses GitHub's
+[workflow-job log API](https://docs.github.com/en/rest/actions/workflow-jobs#download-job-logs-for-a-workflow-run)
+to recover completed step records even if the job never uploaded an artifact.
+It lists only this run's current attempt, matches the job to the plan and event
+head (a PR's head differs from the tested merge), and records the tested commit
+separately. Only completed `name/exit/passed/counts` lines are kept. Each recovered
+result retains those values and carries `shard`, `cancelled_at`, `github_job`,
+`logged_at` and `result_source: "github-job-log"`. If the artifact also has that
+result, the two must agree and the result appears once. `cancelled_shards` in
+the summary and provenance names the job, cancellation time and recovered steps.
+The cancel time is the log's cancellation event, falling back to GitHub's job
+completion time when that line is unavailable.
+
+Recovery also works when no sibling has a finished summary: all other artifacts
+may be absent or contain only refusals. Combine still writes the recovered
+results and the plan's complete missing-step inventory. With no receipts it
+names the event commit for diagnostics, leaving the merge tree and parents
+unknown; it never substitutes the event's PR base for a Git-read parent. With
+no finished summary it claims no unchanged checkout and both verdicts stay red.
+If no job times are available, the summary's start and finish times are null.
+
+Train 33 (44099688612) supplies the regression: two failed and four passed
+results survive, while its ten unreached steps stay missing. Unavailable logs
+leave every unrecovered step missing and name `log_error`; a job from another
+run, attempt or plan is refused. Cancellation keeps raw and quarantine verdicts
+red even after the last step result: it cannot prove the shard finished or its
+checkout stayed unchanged. Recovered counts are diagnostic evidence, never a
+release sample or an independent release verdict. This changes the producer
+only; the protected validator and deploy retain their own completeness checks.
 
 `tools/quarantine.py count` prints the number of quarantined cases, one plain number, from this checkout's policy, or `--at COMMIT` (a ref works) from that commit's: the board reads it. A malformed list prints no number and exits 2. `tools/quarantine.py passes SUMMARY…` prints, for each quarantined case, in how many of those summaries its whole step ran with the case in it and in how many of those it passed (`10 of 10  native-colors | …`), from each step's `quarantine.cases`.
 

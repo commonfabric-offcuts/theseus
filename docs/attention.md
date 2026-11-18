@@ -544,11 +544,12 @@ its message, and an index on (group, topic, delivery) over the pending ones
 gives a group's first pending delivery in the topic; deliveries are queued in
 the transaction that writes their message, so that is the oldest message the
 group holds unread. What counts is in two groups at most, each found by its
-key: the topic's subscription group of the reader's current participation,
-and the reader's one direct group. Rows that a subscription cancelled by
-leaving left pending are in other groups, so they are never read, however many
-there are. The reader's marked index gives their oldest mark in the topic,
-passing over only marks on their own messages. Each read stops at its first
+key: the topic's active subscription group, which is the reader's current
+participation's, and the reader's one direct group. Rows that a subscription
+cancelled by leaving left pending are in other groups, so they are never read,
+however many there are. The reader's marked index gives their oldest mark in
+the topic that the counts count, passing over only marks on their own messages
+and marks on messages a pending delivery counts already. Each read stops at its first
 row, so the cost does not grow with the topic, other topics, what the reader
 has read, or what they left pending by leaving.
 
@@ -637,6 +638,40 @@ topic's row carries the count its list read for it. A visible page reloads its
 outcome and topic lists after each commit, on topic pages as on outcome pages
 and beside a new topic or outcome, keeping the rows loaded with More; a hidden
 one reloads them when shown again.
+
+A topic row's count leads to what it counts (item 613). A press on the count,
+in the outline, the outcome page's topic list or the right rail's Build rows,
+opens the topic at the oldest message still unread for the reader
+(`?topic=T&at=unread`, docs/links.md), where the rest of the row opens the topic
+as before. The page reads in older pages of the topic as far as that message,
+however far up it is, and on to the first message of the dossier it is in, so
+the dossier is drawn whole rather than from the message; it opens the dossier,
+expands its earlier row as far as the message (docs/reply-stacks.md, "Earlier
+messages"), and brings it whole into view with the keys on it; on a phone the
+drawer closes first. Return on a topic row with an unread count makes the same
+landing, in either rail; without a count it opens the topic as before. The
+"More new below" button also brings the message whole into its open dossier.
+These explicit reading acts capture the message's unread-mark revision before
+loading its older pages and clear only that revision once the card is shown,
+focused and on screen. A mark renewed while loading survives; a background
+page waits until shown, and leaving the card cancels that waiting clear.
+While the landing loads pages, intermediate card positions report no reading;
+on-screen reports resume at its destination, leaving newer unread messages for
+the next press rather than consuming them on the way to an older mark.
+The phone's open outline drawer makes the topic inert: no card behind that
+drawer reports reading, even if a redraw places it inside the viewport.
+Reading it on screen settles its delivery, and the count goes. The count's tooltip says "Show the oldest
+unread message", and on a phone it answers a finger 44px each way. The count and
+the message it leads to are one rule, written once and read by both: a delivery
+pending in one of the reader's active groups (`SUBSCRIBED` and `ADDRESSED` in
+`aim_next/topic_reading.py`) or a mark (`MARKED` in `aim_next/marks.py`), which
+`_unread` counts, `_oldest_unread` names and a page's cards mark unread. So
+while a topic's count is above nought its oldest unread message is one the
+reader's own pages of the topic reach, and what the reader cannot reach (a
+topic they left, a whisper between others, another reader's delivery) is never
+counted. `tests/test_new_line.py`, `CountLeadsThereCase`, holds the two
+together, and `tests/stack_native.mjs`, "reading unread count one press lands",
+presses it.
 
 Outcome pages list the newest messages sent to the reader by name. One in a
 topic they can open links there, where reading it settles it; one in a topic

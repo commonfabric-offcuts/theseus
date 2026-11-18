@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT, starredDossiers, dossierOf, reheaded } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -364,6 +364,154 @@ test('a position a join or a split has made stale is not the stack\'s: the head 
   assert.deepEqual([positionOf(joinedAfar[0]).root_id, headOf(joinedAfar[0]).name], ['m5', 'Dossier name'], 'joined to a dossier the page has not loaded, it reads that dossier\'s position');
 });
 
+// Item 550: a dossier whose fork sits above the loaded page is one stack, not one per branch. Core's position names
+// the dossier's first message on every reply; the branches that name one gather under the oldest loaded head, or under
+// that first message where the page has loaded it, whatever is loaded between.
+test('the branches of one dossier whose fork sits above the loaded page are one stack: one name, one count, its replies in time order', () => {
+  const at = (root, name, acts = 3) => ({ root_id: root, through: null, below: false, aside_revision: 0, name, name_revision: name ? 1 : 0, at: { acts, messages: 0 } });
+  const minted = { text: 'Lantern repair plan', by: 'agent-a', at_ms: 1, minted: true };
+  const lantern = extra => ({ stack_position: at('m1', minted), ...extra });
+  // m1, the lantern dossier's first message, and m9, a fork under it, are above the page. m10, m11 and m13 answer m1
+  // itself; m15 answers m9; m12 and m14 answer m10 and m11.
+  const branches = [message(10, lantern({ reply_to: 'm1' })), message(11, lantern({ reply_to: 'm1', author_id: 'agent-b' })), message(12, lantern({ reply_to: 'm10' })),
+    message(13, lantern({ reply_to: 'm1' })), message(14, lantern({ reply_to: 'm11' })), message(15, lantern({ reply_to: 'm9' }))];
+  // m2, another dossier above the page, with no name of its own; m20, a dossier whose first message is loaded.
+  const other = [message(16, { reply_to: 'm2', stack_position: at('m2', null) }), message(17, { reply_to: 'm16', stack_position: at('m2', null) })];
+  const loaded = [message(20, { stack_position: at('m20', null) }), message(21, { reply_to: 'm20', stack_position: at('m20', null) })];
+  const stacks = stacksOf([...branches, ...other, ...loaded]);
+  const lanterns = stacks.filter(stack => headOf(stack).name === 'Lantern repair plan');
+  assert.equal(lanterns.length, 1, 'the dossier is one stack: its name shows once');
+  const [one] = lanterns;
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m10', ['m11', 'm12', 'm13', 'm14', 'm15']], 'the oldest loaded head, every other reply oldest first');
+  assert.deepEqual([headOf(one).count, headOf(one).mintedBy, headOf(one).repliers], [5, 'agent-a', ['agent-b', 'agent-a']], 'one count, its minted name\'s agent, who replied');
+  assert.equal(positionOf(one).root_id, 'm1');
+  assert.deepEqual(ids(stacks.map(stack => stack.head)), ['m20', 'm16', 'm10'], 'three stacks: the lantern dossier sits where its newest reply does');
+  // The negatives: another dossier stays its own, under its own first line and no minted name.
+  const second = stacks.find(stack => stack.id === 'm16');
+  assert.deepEqual([ids(second.replies), headOf(second).name, headOf(second).mintedBy], [['m17'], 'Message 16', null], 'another dossier is its own stack and takes no other name');
+  // A dossier whose first message is loaded reads as it did.
+  assert.deepEqual(ids(stacks.find(stack => stack.id === 'm20').replies), ['m21']);
+  // More: the fork m9 loads, then the first message; the dossier stays one stack, never split or doubled.
+  const fork = message(9, lantern({ reply_to: 'm1' }));
+  const withFork = stacksOf([fork, ...branches, ...other, ...loaded]);
+  assert.deepEqual(withFork.filter(stack => headOf(stack).name === 'Lantern repair plan').map(stack => [stack.head.id, ids(stack.replies)]),
+    [['m9', ['m10', 'm11', 'm12', 'm13', 'm14', 'm15']]], 'the fork loaded: one stack under it');
+  const root = message(1, { acts: { name: minted }, stack_position: at('m1', minted) });
+  const whole = stacksOf([root, fork, ...branches, ...other, ...loaded]);
+  assert.deepEqual(whole.filter(stack => headOf(stack).name === 'Lantern repair plan').map(stack => [stack.head.id, stack.replies.length]), [['m1', 7]], 'the first message loaded: one stack under it');
+  // The first message loaded and the fork not (two runs of the page with a gap between): m15 goes into m1's stack.
+  const gap = stacksOf([root, ...branches]);
+  assert.deepEqual(gap.map(stack => [stack.head.id, ids(stack.replies)]), [['m1', ['m10', 'm11', 'm12', 'm13', 'm14', 'm15']]], 'the root loaded, the fork not: one stack');
+  // A branch older than the loaded first message (a stack joined into a message of the dossier above the page) goes
+  // under that first message, which heads the dossier and names it.
+  const older = stacksOf([message(3, { acts: { joined: { into: 'm4', by: 'owner' } }, stack_position: at('m5', null) }),
+    message(5, { acts: { name: { text: 'Oar racks', by: 'owner', at_ms: 1 } }, stack_position: at('m5', null) }), message(6, { reply_to: 'm5', stack_position: at('m5', null) })]);
+  assert.deepEqual(older.map(stack => [stack.head.id, ids(stack.replies), headOf(stack).name]), [['m5', ['m3', 'm6'], 'Oar racks']], 'the first message heads it, though a branch is older');
+  // The reader's own reply under the dossier's first message does not lift it, as in any stack.
+  const mine = ordered(gather([...branches, message(25), message(30, lantern({ reply_to: 'm1', author_id: 'owner' }))], { viewer: 'owner' }));
+  assert.deepEqual(mine.map(stack => [stack.head.id, stack.replies.length]), [['m25', 0], ['m10', 6]], 'the reader\'s own reply joins the dossier and leaves it where it was');
+  // A split not yet answered: the head carries positions Core read before it, naming the dossier it left. It gathers
+  // nothing by them and takes none of its name.
+  const split = stacksOf([...branches, message(40, { reply_to: 'm39', moving: true, acts: { joined: null, name: { text: 'Its own', by: 'owner', at_ms: 1 } }, stack_position: at('m1', minted) }),
+    message(41, lantern({ reply_to: 'm40' }))]);
+  assert.deepEqual(split.map(stack => [stack.head.id, ids(stack.replies), headOf(stack).name]),
+    [['m40', ['m41'], 'Its own'], ['m10', ['m11', 'm12', 'm13', 'm14', 'm15'], 'Lantern repair plan']], 'a split not yet answered stays out, under its own name');
+  assert.equal(positionOf(split[0]), null);
+});
+
+// Item 550: one dossier's stack is the dossier's whatever of it is loaded. Earlier messages can load a reply older than
+// its head, made straight under its first message, or the first message itself, and either heads the stack from then
+// on; the reader's place is the dossier's, on its first message, and what the page keeps for this visit goes with it.
+test('a dossier whose first message is above the page keeps the reader\'s place and what the page keeps of it when an older reply, or its first message, loads and heads its stack', () => {
+  const at = (root, place = {}) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, join_revision: 0, placed: null, place_revision: 0, at: { acts: 3, messages: 0 }, ...place });
+  // The reader placed the sailcloth dossier (first message m1, above the page) at 2.5, below every other stack.
+  const placed = at('m1', { placed: 2.5, place_revision: 1 });
+  const page = [message(10, { reply_to: 'm1', stack_position: placed }), message(11, { reply_to: 'm1', stack_position: placed }), message(12, { reply_to: 'm10', stack_position: placed }),
+    message(20, { stack_position: at('m20') }), message(21, { reply_to: 'm20', stack_position: at('m20') })];
+  const old = message(5, { reply_to: 'm1', stack_position: placed }), root = message(1, { acts: { placed: 2.5, place_revision: 1 }, stack_position: placed });
+  const shown = stacks => stacks.map(stack => [stack.id, stack.dossier, stack.placed]);
+  const first = stacksOf(page);
+  assert.deepEqual(shown(first), [['m20', 'm20', null], ['m10', 'm1', 2.5]], 'the dossier\'s place is its first message\'s, as its position carries it');
+  const older = stacksOf([old, ...page]);
+  assert.deepEqual(shown(older), [['m20', 'm20', null], ['m5', 'm1', 2.5]], 'an older reply under the first message heads the stack, and the place holds');
+  const whole = stacksOf([root, old, ...page]);
+  assert.deepEqual(shown(whole), [['m20', 'm20', null], ['m1', 'm1', 2.5]], 'the first message loaded heads it, its own acts holding the same place');
+  // What the page keeps for a stack by its head goes to the dossier's new head, each time.
+  assert.deepEqual([...reheaded(first, older)], [['m10', 'm5']], 'm10\'s stack is m5\'s now');
+  assert.deepEqual([...reheaded(older, whole)], [['m5', 'm1']], 'and m1\'s once it loads');
+  // The negatives. Where the first message carries a place, a place on the reply heading the stack (one set before
+  // item 550 placed a dossier on its first message) is not read: the first message's wins.
+  const branch = stacksOf(page.map(item => item.id === 'm10' ? { ...item, acts: { placed: 99, place_revision: 1 } } : item));
+  assert.deepEqual(shown(branch), shown(first), 'the first message\'s place wins over one on the reply heading the stack');
+  // A dossier the reader never placed sorts by its newest reply, whatever loads.
+  const free = page.map(item => item.stack_position.root_id === 'm1' ? { ...item, stack_position: at('m1') } : item);
+  assert.deepEqual([shown(stacksOf(free)), shown(stacksOf([{ ...old, stack_position: at('m1') }, ...free]))], [[['m20', 'm20', null], ['m10', 'm1', null]], [['m20', 'm20', null], ['m5', 'm1', null]]]);
+  // A page whose Core sends no place with its positions keeps the head's own place.
+  const before550 = page.map(item => ({ ...item, stack_position: (({ placed: _, place_revision: __, ...rest }) => rest)(item.stack_position), ...(item.id === 'm10' ? { acts: { placed: 1.5, place_revision: 1 } } : {}) }));
+  assert.equal(stacksOf(before550).find(stack => stack.id === 'm10').placed, 1.5);
+  // A stack whose head still heads one carries nothing; nor does a join, which puts one dossier into another.
+  assert.deepEqual([...reheaded(first, stacksOf([...page, message(30)]))], [], 'a new stack beside them carries nothing');
+  const joined = page.map(item => item.id === 'm20' ? { ...item, acts: { joined: { into: 'm12', by: 'owner', at_ms: 1 } } } : item.id === 'm21' ? { ...item, stack_position: placed } : item);
+  assert.deepEqual([...reheaded(first, stacksOf(joined.map(item => item.id === 'm20' ? { ...item, stack_position: placed } : item)))], [], 'm20 joined into the dossier gives its state to no one');
+  // Two dossiers above the page stay two: one's older reply loading gives nothing to the other.
+  const ferry = [message(13, { reply_to: 'm2', stack_position: at('m2') }), message(14, { reply_to: 'm13', stack_position: at('m2') })];
+  assert.deepEqual([...reheaded(stacksOf([...page, ...ferry]), stacksOf([old, ...page, ...ferry]))], [['m10', 'm5']], 'the ferry dossier keeps its own');
+});
+
+// Item 550: before a dossier was placed on its first message, a stack was placed on the message heading it, a reply
+// or a stack later joined into the dossier, and such places are in the store. Core's position lists the reader's own
+// places on the dossier's other messages (places, each with when it was set, at_ms). While the first message carries
+// no place, the most recently set of them places the dossier, whichever message heads its stack and whether or not
+// the page has loaded the message it is on: the stack shows Placed here by you and new replies do not move it.
+test('a place the reader set on any message of a dossier, before places went on the first message, places it while the first message carries none, the most recently set winning', () => {
+  const at = (root, place = {}) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, join_revision: 0, placed: null, place_revision: 0, places: [], at: { acts: 3, messages: 0 }, ...place });
+  // Dossier m1, never loaded: m1 <- m2 <- m4 <- m6 (placed at 100) <- m30, and the sibling branch m1 <- m3 <- m5.
+  // m20 is another dossier, with m25.
+  const held = at('m1', { places: [{ message_id: 'm6', placed: 100, place_revision: 1, at_ms: 200 }] });
+  const d = (seq, extra) => message(seq, { stack_position: held, ...extra });
+  const m4 = d(4, { reply_to: 'm2' }), m5 = d(5, { reply_to: 'm3' }), m6 = d(6, { reply_to: 'm4', acts: { placed: 100, place_revision: 1 } }), m30 = d(30, { reply_to: 'm6' });
+  const m20 = message(20, { stack_position: at('m20') }), m25 = message(25, { reply_to: 'm20', stack_position: at('m20') });
+  const shown = items => stacksOf(items).map(stack => [stack.id, stack.dossier, stack.placed]);
+  assert.deepEqual(shown([m6, m20, m25]), [['m6', 'm1', 100], ['m20', 'm20', null]], 'the placed reply heading the stack places it, with Placed here by you (reply-stacks.mjs draws it for a placed stack)');
+  assert.deepEqual(shown([m4, m5, m6, m20, m25]), [['m4', 'm1', 100], ['m20', 'm20', null]], 'Earlier messages loads m4 and m5: m4 heads the stack, and the place holds');
+  assert.deepEqual(shown([m5, m6, m20, m25]), [['m5', 'm1', 100], ['m20', 'm20', null]], 'only the sibling m5 loaded: it heads the stack, and the place holds');
+  assert.deepEqual(shown([m30, m20, m25]), [['m30', 'm1', 100], ['m20', 'm20', null]], 'the placed message not loaded at all: the place holds');
+  // New replies do not move it.
+  assert.deepEqual(shown([m6, m20, m25, d(40, { reply_to: 'm30' })]), [['m6', 'm1', 100], ['m20', 'm20', null]], 'a new reply leaves it where it is placed');
+  // The most recently set place wins, not the newest message's: m4, the older message, was placed after m6.
+  const both = at('m1', { places: [{ message_id: 'm6', placed: 100, place_revision: 1, at_ms: 200 }, { message_id: 'm4', placed: 5, place_revision: 2, at_ms: 300 }] });
+  const recent = [m4, m6].map(item => ({ ...item, stack_position: both, ...(item.id === 'm4' ? { acts: { placed: 5, place_revision: 2 } } : {}) }));
+  assert.deepEqual(shown([...recent, m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 5]], 'the place set last, on m4, the older message');
+  assert.deepEqual(shown([...recent.map(item => ({ ...item, stack_position: { ...both, places: [...both.places].reverse() } })), m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 5]], 'whatever order Core lists them in');
+  // The negatives. A place on the first message wins over every other, whichever sorts higher.
+  const first = at('m1', { placed: 2.5, place_revision: 1, places: both.places });
+  assert.deepEqual(shown([...recent.map(item => ({ ...item, stack_position: first })), m20, m25]), [['m20', 'm20', null], ['m4', 'm1', 2.5]], 'the first message\'s place, not the others\'');
+  // A place in another dossier never counts: m25's places m20's dossier alone, and m1's own message without a listed
+  // place is placed by none.
+  const ferry = at('m20', { places: [{ message_id: 'm25', placed: 1000, place_revision: 1, at_ms: 400 }] });
+  const free = [m4, m5].map(item => ({ ...item, stack_position: at('m1') }));
+  assert.deepEqual(shown([...free, { ...m20, stack_position: ferry }, { ...m25, stack_position: ferry, acts: { placed: 1000, place_revision: 1 } }]), [['m20', 'm20', 1000], ['m4', 'm1', null]], 'm25\'s place is m20\'s dossier\'s alone');
+  // A place Core no longer lists (taken away) places nothing, even on the head.
+  assert.deepEqual(shown([{ ...m6, stack_position: at('m1') }, m20, m25]), [['m20', 'm20', null], ['m6', 'm1', null]], 'listed by none, it moves with new replies');
+});
+
+// Item 550: a stack someone joined into one branch of a dossier whose first message is above the page keeps its join
+// line, with Split back out, once that branch is gathered into the dossier's one stack under another branch's head.
+test('a stack joined into a branch that is not the head\'s, in a dossier whose first message is above the page, keeps its join line in the one stack', () => {
+  const at = root => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 3, messages: 0 } });
+  const join = { into: 'm11', by: 'owner', at_ms: 5 };
+  // m10 and m11 answer m1, above the page; m12, a stack of its own, was joined into m11, and m13 answers m12.
+  const items = [message(10, { reply_to: 'm1', stack_position: at('m1') }), message(11, { reply_to: 'm1', stack_position: at('m1') }),
+    message(12, { acts: { joined: join }, stack_position: at('m1') }), message(13, { reply_to: 'm12', stack_position: at('m1') }), message(14, { reply_to: 'm10', stack_position: at('m1') })];
+  const [one, ...rest] = stacksOf(items);
+  assert.deepEqual([one.id, ids(one.replies), rest.length], ['m10', ['m11', 'm12', 'm13', 'm14'], 0], 'one stack under m10');
+  assert.deepEqual([...one.joins], [['m12', join]], 'm12\'s join is the one stack\'s');
+  assert.deepEqual(words(rowsOf(one, { level: 'open' })), ['m11', 'join m12', 'm12', 'm13', 'm14'], 'its join line just before it, where Split back out is');
+  // The negative: the branch gathered into the stack (m11) is no join, and split back out m12 heads its own stack again.
+  const split = stacksOf(items.map(item => item.id === 'm12' ? { ...item, acts: { joined: null }, stack_position: at('m12') } : item.id === 'm13' ? { ...item, stack_position: at('m12') } : item));
+  assert.deepEqual(split.map(stack => [stack.id, ids(stack.replies), [...stack.joins.keys()]]), [['m10', ['m11', 'm14'], []], ['m12', ['m13'], []]]);
+});
+
 test('the one New line goes under the lowest stack holding anything new since its message, never cutting a stack', () => {
   const items = [message(1), message(2), message(3, { reply_to: 'm1' }), message(4)];
   const stacks = stacksOf(items);
@@ -533,4 +681,86 @@ test('the newest seven are counted when the dossier is drawn open: a message arr
   assert.deepEqual(earlierOf(eleven, 'folded', { held: 'm4' }), []);
   // Not held (drawn open for the first time): the last seven, as before.
   assert.deepEqual(ids(earlierOf(eleven, 'open')), ['m1', 'm2', 'm3', 'm4']);
+});
+
+// Item 635: a dossier's title bar shows the reader's star when any message of it is starred by them, and the move
+// below More is refused while it does. The page reads its loaded messages' acts as it shows them, and Core's position
+// (starred) for the messages it has not loaded.
+test('a dossier the reader starred any message of: a later reply, one Core names unloaded, never another reader\'s or one outside it', () => {
+  const at = (root, starred = []) => ({ root_id: root, through: null, below: false, aside_revision: 0, name: null, name_revision: 0, starred, at: { messages: 0, acts: 1 } });
+  const items = [message(1, { stack_position: at('m1') }), message(2, { reply_to: 'm1', stack_position: at('m1') }),
+    message(3, { reply_to: 'm2', stack_position: at('m1') }), message(4, { stack_position: at('m4') }), message(5, { reply_to: 'm4', stack_position: at('m4') })];
+  const has = id => items.some(item => item.id === id);
+  const starring = (id, on = true) => items.map(item => (item.id === id ? { ...item, acts: { starred: on, star_revision: 1 } } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(items), has)], [], 'no star, no dossier starred');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m3')), has)], ['m1'], 'a star on its latest reply, not only its first message');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m1')), has)], ['m1'], 'its first message\'s star as before');
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m3', false)), has)], [], 'unstarred, it shows none');
+  // Core names a star of the reader's on a message the page has not loaded: the dossier is starred.
+  const named = items.map(item => (item.stack_position.root_id === 'm4' ? { ...item, stack_position: at('m4', ['m9']) } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(named), has)], ['m4'], 'a star Core names on a message not loaded');
+  // Core's word on a message the page has loaded gives way to the page's own acts: taken off here, it shows none.
+  const stale = starring('m3', false).map(item => (item.stack_position.root_id === 'm1' ? { ...item, stack_position: at('m1', ['m3']) } : item));
+  assert.deepEqual([...starredDossiers(stacksOf(stale), has)], [], 'a star taken off on the page, before Core is read again');
+  // Another reader's star is never in this reader's acts or position; a star outside a dossier stars only its own.
+  assert.deepEqual([...starredDossiers(stacksOf(starring('m5')), has)], ['m4'], 'a star in one dossier never stars another');
+  // Item 550 gathers the missing-root branches; More can still keep a fragment apart.
+  const parted = [message(6, { reply_to: 'm0', stack_position: at('m0') }), message(7, { reply_to: 'm0', stack_position: at('m0') }),
+    message(8, { reply_to: 'm7', stack_position: at('m0'), acts: { starred: true, star_revision: 1 } })];
+  const stacks = stacksOf(parted);
+  assert.equal(stacks.length, 1, '550 gathers the branches of the same dossier');
+  assert.deepEqual([...starredDossiers(stacks, id => parted.some(item => item.id === id))], ['m0']);
+  const fragments = gather(parted, { apart:new Set(['m6']) });
+  assert.equal(fragments.length, 2, 'More may keep an older card apart');
+  assert.deepEqual([fragments.map(dossierOf), [...starredDossiers(fragments, id => parted.some(item => item.id === id))]], [['m0', 'm0'], ['m0']]);
+});
+
+// Item 550's limits (docs/reply-stacks.md, "One dossier, one stack"): each way of showing a dossier loses nothing in
+// it, and every message stays reachable where it is. A topic whose messages all answer its opening message, which is
+// above the page: each is a branch of one dossier, gathered into one stack.
+const opening = (seq, extra = {}) => message(seq, { reply_to: 'm1', stack_position: { root_id: 'm1', through: null, below: false, aside_revision: 0, name: null, name_revision: 0, at: { acts: 1, messages: 0 } }, ...extra });
+
+test('folded, a stack gathered under a first message the page has not loaded keeps each branch\'s head in view; one whose first message is loaded folds as before', () => {
+  const [one] = stacksOf([opening(10), opening(11), opening(12, { reply_to: 'm11' }), opening(13), opening(14)]);
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m10', ['m11', 'm12', 'm13', 'm14']]);
+  const read = () => false;
+  assert.deepEqual(one.replies.filter(item => shown(one, item, { level: 'folded', kept: read })).map(item => item.id), ['m11', 'm13', 'm14'],
+    'each branch head (m11, m13) shows, as it did as a stack of its own before 550; m12 under m11 folds, and the newest shows');
+  assert.deepEqual(words(rowsOf(one, { level: 'folded', kept: read })), ['m11', '1 more reply', 'm13', 'm14']);
+  // The negative: with the first message loaded, the stack is that message's, and folds to its latest as it always did.
+  const [whole] = stacksOf([message(1), opening(10), opening(11), opening(12, { reply_to: 'm11' }), opening(13), opening(14)]);
+  assert.deepEqual([whole.head.id, whole.branches, whole.replies.filter(item => shown(whole, item, { level: 'folded', kept: read })).map(item => item.id)], ['m1', null, ['m14']]);
+});
+
+test('a reply of the reader\'s own never heads a stack gathered under a first message not loaded while another branch can; all their own, the oldest does', () => {
+  const mine = ordered(gather([opening(10, { author_id: 'owner' }), opening(11), opening(12, { author_id: 'owner' }), opening(13)], { viewer: 'owner' }));
+  assert.deepEqual([mine.length, mine[0].head.id, ids(mine[0].replies)], [1, 'm11', ['m10', 'm12', 'm13']], 'the oldest head not the reader\'s, their own a reply, its card their own');
+  assert.equal(stacksOf([opening(10, { author_id: 'owner' }), opening(11)])[0].head.id, 'm10', 'with no viewer named, the oldest heads, as before');
+  const all = ordered(gather([opening(10, { author_id: 'owner' }), opening(12, { author_id: 'owner' })], { viewer: 'owner' }));
+  assert.equal(all[0].head.id, 'm10', 'every branch the reader\'s own: the oldest heads');
+  // The negative: the dossier's first message, loaded, heads it whoever wrote it.
+  assert.equal(ordered(gather([message(1, { author_id: 'owner' }), opening(10)], { viewer: 'owner' }))[0].head.id, 'm1');
+});
+
+test('older messages More filled a stack with show at its end, newest first, whole at every level, and never head it', () => {
+  const page = [opening(40), opening(41), opening(42), opening(43), opening(44), opening(45), opening(46), opening(47), opening(48)];
+  const older = [opening(20), opening(21), opening(22, { reply_to: 'm21' })];
+  const filled = new Set(ids(older));
+  const [one] = ordered(gather([...older, ...page], { filled }));
+  assert.deepEqual([one.head.id, ids(one.replies)], ['m40', ['m41', 'm42', 'm43', 'm44', 'm45', 'm46', 'm47', 'm48', 'm22', 'm21', 'm20']],
+    'the head it had, what it showed, then the older messages newest first, where the button was');
+  assert.deepEqual([...one.filled], ['m22', 'm21', 'm20']);
+  for (const level of ['folded', 'open', 'head']) assert.ok(older.every(item => shown(one, one.replies.find(each => each.id === item.id), { level })), `each shows at ${level}`);
+  assert.deepEqual(ids(earlierOf(one, 'open')), ['m40', 'm41'], 'the seven are counted without them: none goes behind the row');
+  assert.deepEqual(words(rowsOf(one, { level: 'open' })).slice(-4), ['m48', 'm22', 'm21', 'm20']);
+  // The negative: the same messages not filled go in time order, and the oldest heads the stack.
+  const [plain] = ordered(gather([...older, ...page]));
+  assert.deepEqual([plain.head.id, ids(plain.replies).slice(0, 3), plain.filled.size], ['m20', ['m21', 'm22', 'm40'], 0]);
+  // The dossier's first message, loaded by More, joins the run: it gathers nothing the page showed and heads nothing,
+  // so the stack and what it showed stay as they were, every branch head in view.
+  const [rooted] = ordered(gather([message(1), ...older, ...page], { filled: new Set(['m1', ...filled]) }));
+  assert.deepEqual([rooted.head.id, ids(rooted.replies).slice(-4)], ['m40', ['m22', 'm21', 'm20', 'm1']]);
+  assert.ok(rooted.replies.slice(0, 8).every(item => shown(rooted, item, { level: 'folded' })), 'every branch head still in view');
+  // The negative: the first message loaded otherwise heads the dossier, as 550 has it.
+  assert.equal(ordered(gather([message(1), ...older, ...page]))[0].head.id, 'm1');
 });
