@@ -6,7 +6,7 @@
     }
   },
   "tests/composer_width_native.mjs": {
-    "9d8122b4bced2b17cc09c8dec6ac0e015b091c74e84c2978a15d49e472d6bb29": {
+    "4129c3e7e053e3130c55723de3f5049d97a301c9da3fa6e8f367f46fa384c826": {
       "inputs": [
         "web/reader.mjs",
         "web/inline-composer.mjs",
@@ -15,6 +15,8 @@
         "web/writing-helpers.mjs",
         "web/compose-bar.mjs",
         "web/app.mjs",
+        "web/app-session.mjs",
+        "web/session.mjs",
         "web/index.html",
         "tests/reader_compose_native.mjs",
         "tests/composer_width_native.mjs",

@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 
 export async function composerWidthCases(h) {
   const { check, page, open, press, until, picture, close, control, root, evidence, engine, second, HEIC } = h;
-  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py'];
+  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/app-session.mjs', 'web/session.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py'];
   const hashes = {};
   for (const name of inputs) {
     let bytes;
@@ -78,7 +78,7 @@ export async function composerWidthCases(h) {
       // painted by app.changed, separately from Reader.paintStatus.
       await p.route(/\/app\.mjs(?:\?.*)?$/, async route => {
         const response = await route.fetch(), source = await response.text();
-        await route.fulfill({ response, body: `${source}\nwindow.item650Changed = changed;\n` });
+        await route.fulfill({ response, body: `${source}\nwindow.item650Changed = changed;\nwindow.item650Flush = editor => registry.flush(editor);\n` });
       });
       if (surface === 'New message' && state === 'error') {
         let refused = false;
@@ -119,6 +119,10 @@ export async function composerWidthCases(h) {
     if (state !== 'empty' && !(state === 'error' && surface === 'New message')) {
       await press(p, a.field);
       await p.keyboard.insertText(`Exact item 650 writing — ${surface}.`);
+      // Setup uses the real save owner to settle native typing without
+      // waiting out its idle debounce in every geometry case. Saving/busy
+      // acts below still hold real requests; no resize handler is invoked.
+      await p.evaluate(a => window.item650Flush(window[a.ref].editor), a);
       await until(p, a => document.querySelector(a.sign).dataset.save === 'saved', 'the exact writing saved', a, 15000);
     }
     if (state === 'saving' || state === 'busy') {
@@ -208,6 +212,7 @@ export async function composerWidthCases(h) {
       await press(p, '#toggle-note');
       await until(p, () => window.item650Reader.mode === 'note', 'the private note');
       await press(p, a.field); await p.keyboard.insertText('Private item 650 note, never a reply.');
+      await p.evaluate(a => window.item650Flush(window[a.ref].editor), a);
       await until(p, a => document.querySelector(a.sign).dataset.save === 'saved', 'the private note saved', a, 15000);
     }
     await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(x => x.playState !== 'running'), 'the settled state');
@@ -430,6 +435,7 @@ export async function composerWidthCases(h) {
     await openNew(p);
     await width(n, defaults.stacked, 'New message has its independent default');
     await press(p, n.field); await p.keyboard.insertText('Independent New message item 650 writing.');
+    await p.evaluate(n => window.item650Flush(window[n.ref].editor), n);
     await until(p, n => document.querySelector(n.sign).dataset.save === 'saved', 'New message writing saved', n);
     const newSaved = await kept(p, n);
     await drag(p, n, 'right', -16, 0, touch);
