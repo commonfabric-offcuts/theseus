@@ -1,60 +1,30 @@
-# 740 — bounded browser planning (proposal; not installed)
+# 740 correction under warp9266 (future cuts only)
 
-Source: live98 `851471193d72f88312d428bb9e0383dae887a4e0`.
-This change is for future plans only. Existing jobs, wrappers, receipts, verdicts,
-continuation unions, cleanup and item734's conservative selection stay intact.
+This supersedes the inherited 90-minute refusal proposal. Default policy:
+`browser-120m-fit-first-v1`: 120-minute capacity, 5-minute setup/upload reserve,
+1.25 times the maximum retained observation by step name. Timing selection does
+not require tested-merge objects or current complete-input equivalence. Retain
+source, runtime, inventory and original receipt provenance; timing is never
+acceptance. A partial elapsed interval is a lower bound, never a completed upper
+bound. Failed results remain failed. No case is removed, split or truncated.
 
-Contract: select through the existing item734 input graph first. Budget whole
-native steps using the maximum completed, source/inventory/runtime-fitting
-observation, never a median. Bind measurements to the exact committed input
-manifest for that step and its command, plus a complete named case inventory
-fingerprint and normal browser cleanup. A failed completed step is timing
-information, never a passing verdict. A partial prefix is neither completion nor
-an upper bound. Preserve observations and their provenance rather than overwriting
-older maxima. Old scalar weights remain historical information only.
+Unknown steps run alone at full capacity and supply their first measurement.
+Stale timing is used for planning and replaced by the next observation, never a
+reason to refuse. Long steps (more than half the usable measured-time capacity)
+and steps with partial observations run alone. Deterministic longest-first packing
+adds bins when necessary and checks exact coverage. An observed step whose padded
+time plus reserve exceeds 120 refuses explicitly, naming its data; no silent
+omission or invented duration. Capacity is policy, not an ETA or guarantee.
 
-Chosen default: `browser-90m-refuse-unmeasured-v1`, a **configured capacity** of
-90 minutes/job, with 5 minutes reserved for checkout/browser installation and
-upload, and 1.5 times measured step wall time. This is a conservative planning
-policy, not an ETA, measured setup guarantee, or GitHub platform limit. The old
-76/77-minute browser and 18-minute Python cuts match our configured job limits;
-the retained records do not establish a universal hosted cap. The one-off 7/147
-continuation allowance is not a default. Coordinator/warp must resolve any desire
-to use 100/147 instead of this proposed default before installation.
+Python keeps the exact existing four-way whole-file deal, discovery/load hooks,
+wall timing and collector coverage. Every Python partition has a 49-minute job
+capacity and runs only python-units, including Python4 alone. Historical file
+weights retain their allocation role; no new median-based duration promise.
+Node, refusals and replay retain independent limits. Raw verdict, continuation,
+cleanup and conservative item734 scope semantics remain intact.
 
-Pack deterministically within that capacity; the requested shard count is an
-initial parallelism preference, not permission to overfill. More whole-step bins
-may be needed. Refuse any unmeasured/stale/new step or a single step whose padded
-wall time plus reserve exceeds capacity, naming the whole blocked inventory.
-No automatic timeout escalation, arbitrary case splitting, prefix acceptance,
-coverage omission or failure rewrite. The named conservative fallback is refusal
-until an independently authorized complete measurement or trustworthy full-step
-completion boundary exists. No orchestration or new continuation acceptance path.
-
-Evidence: train45 start/result log deltas include preflight and are conservative
-observations, not exact inner step times. PR86 finished summaries carry actual
-step timestamps; train49 check0/1 are complete and check2/3 partial reports do not
-certify their unfinished modes. Train49 includes cases absent at live98, so its
-measurements cannot be represented as unchanged live98 source. 650/721 own-case
-job wall times are capacity context, not whole-compose measurements. Compact
-source-bound observations and original artifact hashes will be retained in the
-evidence directory; no large artifacts enter Git.
-
-Python4 PR86/train49 and 737's 55-minute Python cut remain unresolved by this
-browser correction. Whole-file Python weights and discovery timing need their
-own bounded follow-up; this change must not claim all hosted timeouts solved.
-Validation here is focused CPython3.9 planner/collector/selection contracts,
-genuine red/green and applied/caught/restored mutations. No browser, full suite,
-runner, dispatch, install, PR or push is authorized. Missing hosted source-fitting
-measurements will be returned explicitly for the next bounded phase.
-
-Final fit limitation: the external ledger retains 59 completed observations and
-all named `(phase, name)` inventories from PR86/train49. Their ephemeral tested
-merge objects are absent in this clone, so no complete-input equivalence is
-asserted and no eligible observation is seeded. Current full browser planning
-refuses, as designed. Train44's original summary was located and independently
-read: 1694.395223 seconds, source4b565b2a,259 cases. The 90-minute proposal can
-refuse even train45's64-minute reading step (1.5x+5 >90); it never silently raises
-that bound. Original 100-minute and one-off147-minute allowances do not resolve
-this future-default choice. Coordinator/warp owns that ruling and the next
-bounded measurement phase. See docs/shard-budgeting.md for the record API.
+Install requires the coordinator's independent auditor reading this corrected
+contract. Carry planner, weights and workflow together into the source used for
+future train cuts; change no live product or running job. This builder installs,
+dispatches and pushes nothing. REPORT.md will name exact install/revert mechanics,
+original receipts, full runnable plan and focused red/mutation evidence.

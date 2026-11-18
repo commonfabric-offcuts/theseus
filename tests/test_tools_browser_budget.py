@@ -10,8 +10,8 @@ from tools import unit_shards as planner, release_check as check
 class BrowserBudget(unittest.TestCase):
     def setUp(self):
         self.ids = {name: str(i) * 64 for i, name in enumerate(('native-a', 'native-b', 'native-c'), 1)}
-        self.policy = {'policy': 'browser-90m-refuse-unmeasured-v1', 'capacity_minutes': 90,
-                       'setup_upload_minutes': 5, 'duration_factor': 1.5}
+        self.policy = {'policy': 'browser-120m-fit-first-v1', 'capacity_minutes': 120,
+                       'setup_upload_minutes': 5, 'duration_factor': 1.25}
 
     def observation(self, name, seconds):
         return {'step': name, 'source': 'a' * 40, 'inputs_sha256': self.ids[name],
@@ -22,49 +22,86 @@ class BrowserBudget(unittest.TestCase):
     def jobs(self, rows, names=None, initial=1):
         return planner.browser_jobs(list(self.ids) if names is None else names, rows, self.ids, self.policy, initial)
 
-    def test_public_plan_refuses_old_scalar_only_weights_and_oversized_observation(self):
-        from pathlib import Path
-        fake_units = [{'name': 'python 1', 'steps': 'python-units', 'python_shard': '1/1', 'timeout': 1}]
-        required = ('native-a', 'python-units', 'wake-replay')
-        with mock.patch.object(check, 'NATIVE_STEPS', [check.NativeStep('a', '', (), '')]), \
-                mock.patch.object(check, 'REQUIRED', required), \
-                mock.patch.object(planner, 'jobs', side_effect=lambda *args: copy.deepcopy(fake_units)), \
-                mock.patch.object(planner, 'committed_browser_identities', return_value=self.ids, create=True):
-            for rows in ([], [self.observation('native-a', 3420)]):
-                with self.subTest(rows=bool(rows)), self.assertRaises(check.Refused):
-                    planner.plan(Path('.'), 'push', {}, 'a' * 40, 1, {'native-a': 57},
-                                 {'browser_budget': self.policy, 'browser_observations': rows})
+    def test_unknown_runs_alone_at_full_capacity_and_stale_timing_still_plans(self):
+        row = self.observation('native-a', 60)
+        row['inputs_sha256'] = 'f' * 64
+        jobs = self.jobs([row], ['native-a', 'native-b'])
+        self.assertEqual(sorted(j['steps'] for j in jobs), ['native-a', 'native-b'])
+        unknown = next(j for j in jobs if j['steps'] == 'native-b')
+        self.assertEqual(unknown['timeout_minutes'], 120)
+        self.assertIsNone(unknown['minutes'])
+        self.assertIsNone(unknown['budget_minutes'])
+        self.assertEqual(unknown['timing_basis'], 'unknown-first-run')
+        self.assertEqual(next(j for j in jobs if j['steps'] == 'native-a')['minutes'], 1)
 
-    def test_maximum_observation_not_median_and_whole_selection_once(self):
+    def test_maximum_observation_not_median_and_long_steps_are_alone(self):
         rows = [self.observation('native-a', 2400), self.observation('native-a', 3000),
                 self.observation('native-b', 1800), self.observation('native-c', 600)]
         jobs = self.jobs(rows)
         self.assertEqual(sorted(n for j in jobs for n in j['steps'].split(',')), sorted(self.ids))
         self.assertEqual(len(jobs), 2)
-        # a alone uses 75+5; b+c uses 60+5. Neither can absorb the other.
-        self.assertEqual(sorted(j['budget_minutes'] for j in jobs), [65, 80])
-        self.assertTrue(all(j['timeout_minutes'] == 90 for j in jobs))
+        self.assertEqual(next(j for j in jobs if 'native-a' in j['steps'])['steps'], 'native-a')
+        self.assertEqual(sorted(j['budget_minutes'] for j in jobs), [55, 68])
+        self.assertTrue(all(j['timeout_minutes'] == 120 for j in jobs))
         self.assertEqual(jobs, self.jobs(list(reversed(rows)), list(reversed(self.ids))))
 
-    def test_unmeasured_new_stale_runtime_or_source_never_gets_a_median(self):
-        rows = [self.observation('native-a', 60)]
-        for change in ('new', 'source/runtime', 'partial', 'cleanup', 'missing inventory'):
-            with self.subTest(change=change):
-                row = copy.deepcopy(rows[0])
-                if change == 'source/runtime': row['inputs_sha256'] = 'f' * 64
-                if change == 'partial': row['complete'] = False
-                if change == 'cleanup': row['cleanup'] = False
-                if change == 'missing inventory': row.pop('cases_sha256')
-                with self.assertRaisesRegex(check.Refused, 'native-'):
-                    self.jobs([row], ['native-a', 'native-b'] if change == 'new' else ['native-a'])
+    def test_partial_is_a_planning_lower_bound_never_a_completion_certificate(self):
+        row = self.observation('native-a', 2700)
+        row.update(complete=False, cleanup=False, kind='partial-lower-bound')
+        row['evidence']['log_sha256'] = 'd' * 64
+        before = copy.deepcopy(row)
+        jobs = self.jobs([row, self.observation('native-b', 60)], ['native-a', 'native-b'])
+        partial = next(j for j in jobs if j['steps'] == 'native-a')
+        self.assertEqual(partial['timing_basis'], 'includes-partial-lower-bound')
+        self.assertEqual(partial['measurements']['native-a'], [before])
+        self.assertEqual(row, before)
 
-    def test_setup_reserve_and_single_oversize_refuse_without_a_partial_plan(self):
-        # 57 minutes * 1.5 = 85.5, exceeding 90 only when the reserve is counted.
-        for seconds in (3420, 3845.305875):
-            with self.assertRaisesRegex(check.Refused, 'native-a.*oversize'):
-                self.jobs([self.observation('native-a', seconds)], ['native-a'])
-        row = self.observation('native-a', 3400)
-        self.assertEqual(self.jobs([row], ['native-a'])[0]['budget_minutes'], 90)
+    def test_reserve_factor_and_oversize_are_enforced_without_partial_output(self):
+        # 92m * 1.25 + 5 = 120 exactly; one more second cannot fit.
+        self.assertEqual(self.jobs([self.observation('native-a', 5520)], ['native-a'])[0]['budget_minutes'], 120)
+        with self.assertRaisesRegex(check.Refused, 'native-a.*oversize'):
+            self.jobs([self.observation('native-a', 5521)], ['native-a', 'native-b'])
+        for key, value in [('capacity_minutes', 90), ('setup_upload_minutes', 0), ('duration_factor', 1)]:
+            broken = dict(self.policy, **{key: value})
+            with self.assertRaises(check.Refused):
+                planner.browser_jobs(['native-a'], [], self.ids, broken, 1)
+        rows = [self.observation(n, 2760) for n in self.ids]
+        jobs = self.jobs(rows)
+        self.assertEqual(len(jobs), 2)
+        self.assertTrue(all(j['minutes'] * 1.25 + 5 <= 120 for j in jobs))
+        self.assertEqual(sorted(n for j in jobs for n in j['steps'].split(',')), sorted(self.ids))
+
+    def test_next_measurement_replaces_stale_timing_without_losing_other_steps(self):
+        stale = [self.observation('native-a', 3000), self.observation('native-b', 60)]
+        fresh = [self.observation('native-a', 600)]
+        before = copy.deepcopy(stale)
+        rows = planner.replace_browser_observations(stale, fresh)
+        jobs = self.jobs(rows, ['native-a', 'native-b'])
+        self.assertEqual(sum(j['minutes'] for j in jobs), 11)
+        self.assertEqual(stale, before)
+        self.assertEqual(len(rows), 2)
+
+    def test_runnable_default_accounts_for_real_inventory_and_python_partitions(self):
+        import json
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        result = planner.plan(root, 'push', {}, '', weights=json.loads((root / '.github/check-weights.json').read_text()))
+        ordinary = [n for j in result['shards'] if not j.get('python_shard') for n in j['steps'].split(',')]
+        self.assertCountEqual(ordinary + ['python-units'], check.REQUIRED)
+        self.assertEqual(len(ordinary), len(set(ordinary)))
+        python = [j for j in result['shards'] if j.get('python_shard')]
+        self.assertEqual([j['python_shard'] for j in python], ['1/4','2/4','3/4','4/4'])
+        self.assertTrue(all(j['steps']=='python-units' and j['timeout_minutes']==49 for j in python))
+        files = [f for j in python for f in j['files']]
+        self.assertEqual(sorted(files), planner.test_files(root))
+        self.assertEqual(len(files), len(set(files)))
+        for job in result['shards']:
+            if not job['name'].startswith('browser '): continue
+            self.assertEqual(job['timeout_minutes'], 120)
+            if job['minutes'] is None:
+                self.assertEqual(len(job['steps'].split(',')), 1)
+            else:
+                self.assertLessEqual(job['minutes'] * 1.25 + 5, 120)
 
     def test_nonfinite_and_nonpositive_durations_refuse(self):
         for value in (0, -1, float('nan'), float('inf'), True):
@@ -115,8 +152,8 @@ class BrowserBudget(unittest.TestCase):
                          [('mutant', 'same case'), ('restored', 'same case')])
         rows = [self.observation('native-a', 60), self.observation('native-a', 90)]
         rows[1]['cases_sha256'] = 'f' * 64
-        with self.assertRaisesRegex(check.Refused, 'case inventory differs'):
-            self.jobs(rows, ['native-a'])
+        self.assertEqual(self.jobs(rows, ['native-a'])[0]['minutes'], 1.5)
+        self.assertEqual(len(self.jobs(rows, ['native-a'])[0]['measurements']['native-a']), 2)
 
     def test_no_duplicate_or_missing_coverage_is_permitted(self):
         rows = [self.observation(n, 60) for n in self.ids]

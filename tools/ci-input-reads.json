@@ -5005,5 +5005,13 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/test_tools_browser_budget.py": {
+    "4d2d1431f1d74ea2c7bd97335eb48506ebe9af31e96c4663fa00ddbd010f9880": {
+      "scope": "repository",
+      "inputs": [
+        ".github/check-weights.json"
+      ]
+    }
   }
 }

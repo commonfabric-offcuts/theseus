@@ -387,7 +387,7 @@ class PythonFileShards(unittest.TestCase):
         for job in planned:
             minutes = (sum(measured.get(f, fallback) for f in job['files']) if job.get('python_shard')
                        else config['minutes'][job['steps']])
-            self.assertEqual(job['timeout'], math.ceil((minutes + config['setup_minutes']) * 1.5))
+            self.assertEqual(job['timeout'], 49 if job.get('python_shard') else math.ceil((minutes + config['setup_minutes']) * 1.5))
             if job.get('python_shard'):
                 self.assertLess(minutes, 20)
         bins = unit_shards.deal(['a', 'b', 'c', 'new'], {'a': 10, 'b': 8, 'c': 2}, 2)

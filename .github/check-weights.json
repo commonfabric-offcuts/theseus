@@ -1,5 +1,5 @@
 {
- "about": "Historical scalar browser timings only; not completion bounds. Item740 uses browser_observations with exact committed source/case/runtime fit. Missing or oversize steps refuse; no median fallback.",
+ "about": "Warp9266 browser-120m-fit-first-v1: maximum retained observations by step name, including explicit partial lower bounds; source/runtime/inventory provenance is timing input, never acceptance. Unknown steps run alone at full capacity; stale timing is replaced by the next measurement. Historical scalar minutes below are not completion bounds.",
  "minutes": {
   "native-asks": 0.2,
   "native-card-marks": 1.7,
@@ -861,10 +861,2275 @@
   }
  },
  "browser_budget": {
-  "policy": "browser-90m-refuse-unmeasured-v1",
-  "capacity_minutes": 90,
+  "policy": "browser-120m-fit-first-v1",
+  "capacity_minutes": 120,
   "setup_upload_minutes": 5,
-  "duration_factor": 1.5
+  "duration_factor": 1.25
  },
- "browser_observations": []
+ "browser_observations": [
+  {
+   "step": "native-reading",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 2995.354952,
+   "case_count": 398,
+   "cases_sha256": "d915c2dc5b4957311df439c3793f716d5ace389b0028145a9f0026a706cced81",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "76bceda358174d395bc7b0e114ba4fb98e433aee66fa1c5a76d58e0b4536e1b4",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-header",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 163.206563,
+   "case_count": 66,
+   "cases_sha256": "c15911d511a0340764b84071637e1e1c40406d1f84904c5a73e9c32db8b19b2d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "e886f61e4e04d837f8b36bc5c866bc1cad8844c4a8b210ed6de090df12976582",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-conversation",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 146.835803,
+   "case_count": 41,
+   "cases_sha256": "2fbefff9dc824a666a6c37e3baca3eb92bc4f450a546d3f820eaa1b9c8d2c603",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "4d26a5a55a35df339626b8f04aa6a2b77c06bd42108107057f1f2b3217ece5be",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-targets",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 75.687853,
+   "case_count": 12,
+   "cases_sha256": "4d11aef9b18a9288afd35a8114bfc99d0052532a9c0b8e9cab591c446733e5d0",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "474e3a4d4ab83cd7e688d215377490a460df77a9b496d2aa693347c986d28253",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-light",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 79.526955,
+   "case_count": 6,
+   "cases_sha256": "c47c0087f0ce2a89e61168d9b76860990c3903392eddb8ad92f8b5bca927b811",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "76897722cdc56a8a829879fc5c4817b2e9fdf3ae7f8e326c7a69cdd8c629d6e9",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-health",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 74.824373,
+   "case_count": 11,
+   "cases_sha256": "109d2862cb9c10c54009b7c07649f4190564f9ba16ad3cc1fe0040dc35128134",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "9d2f9de730d6181eb0d4c4212ea70ddba0d97f7fc53df77b269741a04feea334",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-whispers",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 52.382935,
+   "case_count": 19,
+   "cases_sha256": "b01f82f29a6b5dc8cd19646ba99b2b24d9a021b84760f78018320a6b37d63560",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "d3153d97936801473b9b800dab13ebf2819f9c797750da3347da0a377c3c4206",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-colors",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 177.27188,
+   "case_count": 81,
+   "cases_sha256": "19060334917312f47ad0e21e7e7994eb5ed3273be7991472145a2e5aaa443861",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "bdf402c1f2df8fc215782e303c1d5353e827b990ea36c0501572a7daebaf42bd",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-duties",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 9.62035,
+   "case_count": 2,
+   "cases_sha256": "f702948d6ffb804f8e50242e4bafe363869021a3dac126ef1604998a36febbea",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "a668931dd3d6849405b232d253f208e67e2b6123555796cf1c73780bd37b1e49",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader-mutations",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 11.554807,
+   "case_count": 14,
+   "cases_sha256": "28790b99f90eac7970d58e873f9b87f6a0d0aa226f38a19841141ee201a6ad0e",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "5d5cc111f0f7e760a0a03f0833f29e362f1316b1466922eab6cbf0f3589e5af3",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-device",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 4.503545,
+   "case_count": 2,
+   "cases_sha256": "bd3d24a3dd17ee28de35b52163ff51a65faff4b86228bd4871b0c03d267845bc",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "80d54831d811651ee8ab1fc2f0f1bca5b87c6906dbca4d5f8a70b55aa763645a",
+    "report_sha256": "584525c687806fb3dacdfc29c2c1c966067738f5d59a624abb77593be0adf216",
+    "run": "44284000276",
+    "artifact": "check-0",
+    "original_zip_sha256": "eb555d4c6071be986f8ae3dffec94f207202d9c59557dfe155697c3ff0ed2cb9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-rail",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 2357.228179,
+   "case_count": 226,
+   "cases_sha256": "44b958edc7e6445095347f4bce65b3331a0ba3e9750c56a14d2ee77df70bbd49",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "f8770ddf90647178da48e5084b7af5eff6b68761bac5cd32892e92706f4570d0",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-webkit-notebook",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 684.737552,
+   "case_count": 182,
+   "cases_sha256": "030250b9421f40e1487317dc94e66b6ef91d0d32cd0b038c3bea6570179f82f1",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "31aebcbcefb2ce73323e8e1a99a6415da8f1a8f064e793569f4f1ee99e7fe412",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-fence-copy",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 378.860407,
+   "case_count": 72,
+   "cases_sha256": "41a34a94600aea0c3b8df8460623c19e009f270e07d82edc0e61557dc903b772",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "60cc6cae3db8ce8959533c919fdb45d3155bf267b98ce77b7fe2a6af66540116",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-navigation",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 150.593875,
+   "case_count": 30,
+   "cases_sha256": "57f58a509a0c6bb47dd29c5fa8434d1152202756aa86f2ddb6a59d5198b45b21",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "1f603146e8f007bf33fb983ad7973dc00450a843979d599e2853bbc26fe1211b",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-targets",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 81.960496,
+   "case_count": 5,
+   "cases_sha256": "d4f7e7683856a8795a1b8ae38f890c7e7029c38d8bc5c06cb39ade35eb7e56aa",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "98565c3f8e51dcdfc998d19e3414e839111bd4c8f857984d92cdf2c343b5d39b",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-pipeline",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 67.404327,
+   "case_count": 12,
+   "cases_sha256": "e3d139a545628ef7425f6d440b0e1d701c48ec2950e5e12c440e5dc3eef7e20d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "0437ff0acf77e79645b65dd0166351ffafe288137f8525ae482ae9b4238ca2d3",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-forms",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 118.497135,
+   "case_count": 16,
+   "cases_sha256": "a580fa9cd021744eb5e0d816530e8c8a0a9d7d377b205212ca76b3543805fece",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "5a4ec21d156cd8fc2e725adc89506eb9f570c32fe5f27121690a0d3f3e1016f1",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-correction",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 50.454552,
+   "case_count": 14,
+   "cases_sha256": "2e9885705cc8379802530cb6619c3a8da466efb6d7e799b38b32fad221917c3f",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "4a1211232f27a5b4c2246906c21083aab66df9f8e624acb52edbac6814a72dd6",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-list",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 20.439882,
+   "case_count": 6,
+   "cases_sha256": "df10273f74b211380613acd57692ff676b0daba56fbbf75f76acf82740a5d291",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "75840763b7693cfa5f806d79663b2ff6603858aa64e56037db0e5e243864bd1a",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-asks",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 16.983652,
+   "case_count": 4,
+   "cases_sha256": "a96d0ffef4b22e89f41ac4cf454f0bafca295d59f031aa8d41fbf3838b26e313",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "8efa867ce07ae19b27d3d912e3b353238f57e9eee47a3309bcccb86c4fd7cfaa",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-wakes",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 14.38307,
+   "case_count": 3,
+   "cases_sha256": "a62280641c2d6950868a8b46dbe27ef9d87220bf605ace1293379347b7ace9e4",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "26214ed913772dcb91eb51841e6b2a7283f528cde0614c9ae8f479e095eb7021",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 6.184569,
+   "case_count": 5,
+   "cases_sha256": "f376af902d6f4dc3a21e02bd6e3a7989d2b3b68086fa063e624c721fa1969e7a",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7ef2de5da256f4be8bbd330cdd56b9503c357e2a1c2ce50f2d33daa61db0b5fa",
+    "report_sha256": "5f382caa045922b9664db05c9fd9497b154ce3579262bf93e07fa7d4d202522b",
+    "run": "44284000276",
+    "artifact": "check-1",
+    "original_zip_sha256": "28d5c207a97ed74cb3471a1df3a85fdb4b3d7185909ea5735a4f92be0434004c"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-reading",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 2399.549841,
+   "case_count": 386,
+   "cases_sha256": "c7416698e88183758961b6c8691dac6197e6d635bc52382fb743edaafa4fb952",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "c1ff1b64a509bfff0e2125f3c8a9eba130ed9391080253d6ff323c148f383dfd",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-notebook",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 692.949335,
+   "case_count": 178,
+   "cases_sha256": "5e974d0762c64346c78ee40a6a47b4518d48a7d042c2f0abdaeb41dd85e006f5",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "0e0688eaa73ef0e86fb671063ad31642e8dccb3633a0678ba5bb6825367301d9",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-colors",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 645.36078,
+   "case_count": 97,
+   "cases_sha256": "2ab4ea66db5b95cb5f81d09e0facebc4216f0bbc07874d52f278a1e8c25738ce",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "2026347ede0f1b21bc30c7a010ac375dedba4366bfce7a7ddf08e9047128df2c",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-images",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 217.358535,
+   "case_count": 33,
+   "cases_sha256": "ca36a1355dae210d4e039edeec21c0057695419bf1014cd5aa4b50c2b511a7a7",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "50a263b557ec45646af335fc1d9f21937cfda324f476ddbbbfb100bbbc931f41",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-freshness",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 182.104532,
+   "case_count": 32,
+   "cases_sha256": "3262e9168be36e480e4d75784886a4ccd3842e4f9853d784fc70e5e37721cc4f",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "23ad5b801ec55ed7621d6753da9b11f91d91c2f1fa799c39ee2790bc7191fecd",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-card-marks",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 116.405978,
+   "case_count": 42,
+   "cases_sha256": "28da14eda617438e60c7b42624d08aab790545050afe21b076e7b0fc0f71605b",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "fb5d30bba8857dd2284c74cd399e608ce7bebfbe7a234aebf7e3aad54e2b5371",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-pipeline",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 88.365956,
+   "case_count": 12,
+   "cases_sha256": "e3d139a545628ef7425f6d440b0e1d701c48ec2950e5e12c440e5dc3eef7e20d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "ebb1d669fae8862188831d837aa929a457327588d37aac29e4a4f34d62d19f77",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader-finished",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 49.279792,
+   "case_count": 21,
+   "cases_sha256": "f451b78fa0038e7a69ac370697f3d0d4f8aab6ff72f83443a3c6cff2b586acbe",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "6054c24870768d3945149d3463eb4980d4bcf828fd73674a8756b127287ab88e",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-connected",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 20.682994,
+   "case_count": 5,
+   "cases_sha256": "442db51aa58541b00f4cd908b39f7a69fbfb250f6999513bdb73da89365e74e3",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "b8002b55b6b8da7c45707ef2f3869f545a0dd98759988c840212fbac4c6994ea",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-invite",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 33.858113,
+   "case_count": 10,
+   "cases_sha256": "9582cf09b6da1a3c980777bdef61ed6e250cd35d5fdead57967937149012e441",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "bdd1b65c16c7d69ea5906cf04b7c33e73e62f83a59d57d405c2aa9b8ff14ad92",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-sources",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 11.396144,
+   "case_count": 2,
+   "cases_sha256": "4246e20a82b42d8b0d05486cc105c889e618f6609d597bda3c44da64dd083aa9",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "1ea176f36008872ef64383b224e5e625ac5e0bdec79b5e91302a6e5cb7a1a72d",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-journal",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 7.587075,
+   "case_count": 10,
+   "cases_sha256": "e56bd466777da41532f161f8a39d18f001653b3dc9fa113071da6432740f9a52",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "0ed2f6a60e79b8c7d807a664ad96ece1d6410833ef7b7d63bdd61763787c9dde",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader-keyboard",
+   "source": "5896b1312642199a8717cd3398dda97accf2f4f3",
+   "inputs_sha256": null,
+   "seconds": 3.506538,
+   "case_count": 1,
+   "cases_sha256": "bb1176307452945a2ce8b1fe06f59ae82113da25d255a9eb4dcaa9e4dc51954d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "68253a2986fe8aca4017aea99195ae4288148842b7e42d90d3242782c4dfd7e0",
+    "report_sha256": "c19ab36477b8a716dcb2b22759b9dc2ebae69134870d117ff31a2b428279a013",
+    "run": "44284000276",
+    "artifact": "check-2",
+    "original_zip_sha256": "4fc54115499fb24265703d0cbfe10048f0865b886bda2176894c0b0f754025d9"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reading",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 2576.011557,
+   "case_count": 495,
+   "cases_sha256": "eaa918e6f9403c7821735f0265007f31962f710bc5e6598fc5830ae5758a4a21",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "52328bd3eb6060540ee12c60410a3539b659ad2d3e084264ca300d9a93492047",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-header",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 133.314685,
+   "case_count": 66,
+   "cases_sha256": "c15911d511a0340764b84071637e1e1c40406d1f84904c5a73e9c32db8b19b2d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "82b7088af58f230630f3bd7ee413e6949715740089fba95e02aeb598ad930a07",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-conversation",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 143.455538,
+   "case_count": 41,
+   "cases_sha256": "2fbefff9dc824a666a6c37e3baca3eb92bc4f450a546d3f820eaa1b9c8d2c603",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "c4f77b636a2dea44dc5d83b3ea35ca4dc6fec16d465f593c66568d7851577c31",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-targets",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 131.764807,
+   "case_count": 12,
+   "cases_sha256": "4d11aef9b18a9288afd35a8114bfc99d0052532a9c0b8e9cab591c446733e5d0",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "1cd5fd2ed30a0d8415f5947d599f09355e1f5e441e6a48f1436f1fd728de3b32",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-light",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 78.63252,
+   "case_count": 6,
+   "cases_sha256": "c47c0087f0ce2a89e61168d9b76860990c3903392eddb8ad92f8b5bca927b811",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "8025fd1f158d15f76d0675f96bbd5049c3f9f51ae2c8d7cb046aa2283398efa2",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-health",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 57.391267,
+   "case_count": 11,
+   "cases_sha256": "109d2862cb9c10c54009b7c07649f4190564f9ba16ad3cc1fe0040dc35128134",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "888da80d86e9b0606effa282b3bd3f68514264d3d60c999f64398d1e55733bf2",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-whispers",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 34.900396,
+   "case_count": 19,
+   "cases_sha256": "b01f82f29a6b5dc8cd19646ba99b2b24d9a021b84760f78018320a6b37d63560",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "9b0c0be21051c76eccf2e7f1854921e1128c4b25921d1aad92f497e6b15192a6",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-colors",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 138.760954,
+   "case_count": 81,
+   "cases_sha256": "19060334917312f47ad0e21e7e7994eb5ed3273be7991472145a2e5aaa443861",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "b9d626019db9aa8af6a840f8ef8705dbe0ea2e3d68f86e1388254aa9704da8e0",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-duties",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 7.113031,
+   "case_count": 2,
+   "cases_sha256": "f702948d6ffb804f8e50242e4bafe363869021a3dac126ef1604998a36febbea",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "798f93c061b638fdf02c868f9a1364373dfd04e5999e4489fb22128f37493f80",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader-mutations",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 8.302953,
+   "case_count": 14,
+   "cases_sha256": "28790b99f90eac7970d58e873f9b87f6a0d0aa226f38a19841141ee201a6ad0e",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "f36e66efa84a86970daac9a327e6ad2081c9c4ee30aae69d1fc64dc7aa3e97f6",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-device",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 4.931521,
+   "case_count": 2,
+   "cases_sha256": "bd3d24a3dd17ee28de35b52163ff51a65faff4b86228bd4871b0c03d267845bc",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "7f35f40b327b3d940731152c69eb9aa31cc676ee9bcf7d20e66eae83199291c3",
+    "report_sha256": "43cce15ef0f2e224f9df0578d57bb2c3956d7e13e9e77c0ae1721df358d5be3d",
+    "run": "44330945466",
+    "artifact": "check-0",
+    "original_zip_sha256": "8ee4a989291b92bc2527719a73de4f48cbcb7e86bb83c6b0d0327a0eea706edb"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-rail",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 2251.169542,
+   "case_count": 226,
+   "cases_sha256": "44b958edc7e6445095347f4bce65b3331a0ba3e9750c56a14d2ee77df70bbd49",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "380cf5d152eab6c55e05aa1a45e5ab45720b235688849503751bf65add7469bf",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-webkit-notebook",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 656.232762,
+   "case_count": 182,
+   "cases_sha256": "030250b9421f40e1487317dc94e66b6ef91d0d32cd0b038c3bea6570179f82f1",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "e794bee692ff22851678320ac039f472cc1c5f4c89ee8ee100d7762620fc302a",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-fence-copy",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 286.614168,
+   "case_count": 72,
+   "cases_sha256": "41a34a94600aea0c3b8df8460623c19e009f270e07d82edc0e61557dc903b772",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "5936037dc74701fde064b0a3f08ead66654fc20862d4e800ae5a34547f7acf72",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-navigation",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 157.383679,
+   "case_count": 30,
+   "cases_sha256": "57f58a509a0c6bb47dd29c5fa8434d1152202756aa86f2ddb6a59d5198b45b21",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "a8d4449a58e8e837aa30e20a380c43ae4be6f4b0471a1d1ca760adc4ff3ca25e",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-webkit-targets",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 78.583,
+   "case_count": 5,
+   "cases_sha256": "d4f7e7683856a8795a1b8ae38f890c7e7029c38d8bc5c06cb39ade35eb7e56aa",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "199db51b25c86e874f411adc0035541c6b5896d2f88d4921f40fbaad01b14743",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-pipeline",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 73.627893,
+   "case_count": 12,
+   "cases_sha256": "e3d139a545628ef7425f6d440b0e1d701c48ec2950e5e12c440e5dc3eef7e20d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "098cb5965dd2d234751c6d372c3e850a8307a49090fbef635a3256006f1a3954",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-forms",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 66.568321,
+   "case_count": 16,
+   "cases_sha256": "a580fa9cd021744eb5e0d816530e8c8a0a9d7d377b205212ca76b3543805fece",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "c3f2eae2e8188fb946c3acfbc82d3095ba7284e2fb6e2866158b1cbae56b149e",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-correction",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 44.824473,
+   "case_count": 14,
+   "cases_sha256": "2e9885705cc8379802530cb6619c3a8da466efb6d7e799b38b32fad221917c3f",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "23fd327cc6fdae4aa826f6a0583a1dce6da095af011ed6632c77a5a5f9a9aa74",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-list",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 19.466168,
+   "case_count": 6,
+   "cases_sha256": "df10273f74b211380613acd57692ff676b0daba56fbbf75f76acf82740a5d291",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "eb6e11d1f10b14fa78f41fdbd6234aa301c5c922f2930044a3d400bb6a23aa91",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": false,
+   "raw_exit": 1
+  },
+  {
+   "step": "native-asks",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 15.047831,
+   "case_count": 4,
+   "cases_sha256": "a96d0ffef4b22e89f41ac4cf454f0bafca295d59f031aa8d41fbf3838b26e313",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "43c52ae28a59cee2bd289a958de5b572d9bcf4820a07cc3cd23d438bca71a7d6",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-wakes",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 10.549084,
+   "case_count": 3,
+   "cases_sha256": "a62280641c2d6950868a8b46dbe27ef9d87220bf605ace1293379347b7ace9e4",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "16c6e5f50fe2c629a2ed2154497c20728a2431c032a37c7a24c1181db728d898",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-reader",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "inputs_sha256": null,
+   "seconds": 4.860485,
+   "case_count": 5,
+   "cases_sha256": "f376af902d6f4dc3a21e02bd6e3a7989d2b3b68086fa063e624c721fa1969e7a",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "summary_sha256": "0333bd627e35091cba8e5974f4a07aee7bc98693a12242ae51463962472c0aa9",
+    "report_sha256": "ba030639aaad6cad85b2697773efae4bae99aeeeb1386dfe77563ef0b6f4fe44",
+    "run": "44330945466",
+    "artifact": "check-1",
+    "original_zip_sha256": "a655b09dc4d483ba9743fda6b75ad156913be59828363347cdb99d8f3226419e"
+   },
+   "fit_live98": null,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "workflow_runtime_binding": "included in committed input fingerprint; actual future host not measured",
+   "kind": "completed-step",
+   "timing_selection": "step-name under warp9266; not acceptance",
+   "raw_passed": true,
+   "raw_exit": 0
+  },
+  {
+   "step": "native-webkit-pipeline",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 93.78241,
+   "case_count": 12,
+   "cases_sha256": "e3d139a545628ef7425f6d440b0e1d701c48ec2950e5e12c440e5dc3eef7e20d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "91bcfa7e1158639302ec7262d970fd83a113fbc17d2524d264f5c8a3fa0229e1",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-reader-finished",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 53.718817,
+   "case_count": 21,
+   "cases_sha256": "f451b78fa0038e7a69ac370697f3d0d4f8aab6ff72f83443a3c6cff2b586acbe",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "6f760f05a5b28964f74ac2e63cd69937ad6b16c0f248933bdbc0ba9ca06ea18a",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-connected",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 22.182176,
+   "case_count": 5,
+   "cases_sha256": "442db51aa58541b00f4cd908b39f7a69fbfb250f6999513bdb73da89365e74e3",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "13d457fc71c52a4fcc39178773aa33ecb770ce0a39bc8d7466df7b178251846e",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-webkit-invite",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 27.926078,
+   "case_count": 10,
+   "cases_sha256": "9582cf09b6da1a3c980777bdef61ed6e250cd35d5fdead57967937149012e441",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "2bce5fa05b97e9694a0ff23d7e93b60c8cd90777d4bdce6f2fc4fb557eb82da1",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-sources",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 9.949181,
+   "case_count": 2,
+   "cases_sha256": "4246e20a82b42d8b0d05486cc105c889e618f6609d597bda3c44da64dd083aa9",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "c46a60b5f640b4076e1462dc5ecef00a90083b0de3916adb76c2f4aff3b2f9c5",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-journal",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 6.753717,
+   "case_count": 10,
+   "cases_sha256": "e56bd466777da41532f161f8a39d18f001653b3dc9fa113071da6432740f9a52",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "ea862efada5c6a62f477536a7f0bc26b548b25d09587ad9063b2d2b38ab1b9c9",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-reader-keyboard",
+   "source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+   "inputs_sha256": null,
+   "seconds": 2.703757,
+   "case_count": 1,
+   "cases_sha256": "bb1176307452945a2ce8b1fe06f59ae82113da25d255a9eb4dcaa9e4dc51954d",
+   "complete": true,
+   "cleanup": true,
+   "evidence": {
+    "run": "44348385545",
+    "artifact": "check-0",
+    "summary_sha256": "6332c550ad14b97f83aa334ecc12cad2e6252a251dd2304fb7f4b0cb0167934f",
+    "report_sha256": "7c2386c6cf76ad99b6ae0cc8ce6c7ab0242477abdf56b79ec10a4f3d4e89f6e1",
+    "original_zip_sha256": "5261986d1348c8cbdaf15e7eb22c6e416bb0f50048bdebd892018a7804372eb1"
+   },
+   "kind": "completed-step",
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_observed": {
+    "chrome": "156.0.8078.47",
+    "python": "3.9.6",
+    "node": "v26.13.1"
+   },
+   "timing_selection": "step-name under warp9266; not acceptance"
+  },
+  {
+   "step": "native-webkit-reading",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "seconds": 2576.032,
+   "kind": "partial-lower-bound",
+   "complete": false,
+   "cleanup": false,
+   "step_report_final": true,
+   "case_count": 483,
+   "cases_sha256": "a6818a02d7f384c455b6412921c38affc14e592e33a2fa42a299472bc661ff67",
+   "inputs_sha256": null,
+   "runtime_observed": {
+    "engine": "webkit",
+    "webkit": "26.6",
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "44330945466",
+    "artifact": "check-2",
+    "report_sha256": "84cdacb40d72dac5e9e86bbd3e534dc5904a941c7e35f79921167a128d11c423",
+    "log_sha256": "768cae6be8aa45f32839a08a08c3d67b3c963bff79e786f541bb4451f042c53a",
+    "original_zip_sha256": "45710fa9c3a264303fb8264317bf64290af5fb988c524507d9cab21bf775e882"
+   },
+   "qualification": "sum of retained per-case ms; missing overhead/error times; no final shard summary; not acceptance"
+  },
+  {
+   "step": "native-webkit-rail",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "seconds": 1737.554,
+   "kind": "partial-lower-bound",
+   "complete": false,
+   "cleanup": false,
+   "step_report_final": true,
+   "case_count": 216,
+   "cases_sha256": "dc1db4eb2bb14d6e281a3796e24cfebde1e70e4bdd9c51b5b2b747972ee2553e",
+   "inputs_sha256": null,
+   "runtime_observed": {
+    "engine": "webkit",
+    "webkit": "26.6",
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "44330945466",
+    "artifact": "check-3",
+    "report_sha256": "a5dd1424154b5e9f2715adf7e31a6ef2006653e043169ed977b2c6bde2b0b16d",
+    "log_sha256": "761250d31a08b273c272fbc317bad40c2460e5a0335acce6bfcdb1a132aaa7d0",
+    "original_zip_sha256": "c2cadb217b61f80df5251b76ff20e4bd3ce93738bc975cd8e87116d042826489"
+   },
+   "qualification": "sum of retained per-case ms; missing overhead/error times; no final shard summary; not acceptance"
+  },
+  {
+   "step": "native-compose",
+   "source": "0790c718c87ad9aee4d1e07e93b7c8ccedbe6089",
+   "seconds": 1955.686,
+   "kind": "partial-lower-bound",
+   "complete": false,
+   "cleanup": false,
+   "case_count": 768,
+   "cases_sha256": "0c56c8a7464d43d9c1b7247f1aa30dad1b00da65c102d62cdc4e040fd357241f",
+   "inputs_sha256": null,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "44330945466",
+    "artifact": "check-3",
+    "log_sha256": "99a90b1d052f3d97891af5d9242eb75a5ec9e3214b0e23eccbf1f26ec6646803",
+    "case_progress_sha256": "4f8704246041801574126b50071972aeb8f311da1ff43007f3fc3f36e7a3f8fa",
+    "phase_progress_sha256": "b0e70e3afb2e8e95997ae0e24327273cb0cb1e6ce75f3285fec7f7280f2dc80d",
+    "original_zip_sha256": "c2cadb217b61f80df5251b76ff20e4bd3ce93738bc975cd8e87116d042826489"
+   },
+   "qualification": "successful-case ms sum only; excludes failed-case time and overhead; unfinished whole step"
+  },
+  {
+   "step": "native-reading",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 3845.305875,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 412,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T01:58:44.3480100Z",
+    "finish": "2026-11-18T03:02:49.6538850Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-header",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 181.04216,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 66,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:02:49.6538850Z",
+    "finish": "2026-11-18T03:05:50.6960450Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-conversation",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 152.929408,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 41,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:05:50.6960450Z",
+    "finish": "2026-11-18T03:08:23.6254530Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-targets",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 97.778472,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 12,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:08:23.6254530Z",
+    "finish": "2026-11-18T03:10:01.4039250Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-light",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 81.039131,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 6,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:10:01.4039250Z",
+    "finish": "2026-11-18T03:11:22.4430560Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-webkit-health",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 91.366418,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 11,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:11:22.4430560Z",
+    "finish": "2026-11-18T03:12:53.8094740Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-webkit-whispers",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 56.609608,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 19,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": true,
+   "raw_exit": 0,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359818",
+    "log_sha256": "65c4b4193e3f07595ec9e7c692d2a1dcfc7228a5015d99793bcc5f99f37f00ca"
+   },
+   "interval": {
+    "start": "2026-11-18T03:12:53.8094740Z",
+    "finish": "2026-11-18T03:13:50.4190820Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-webkit-reading",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 2872.871818,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 400,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359783",
+    "log_sha256": "930863391ff5eb084442b557db6e54b26fc8d2fc468f9c86783c6616a702b383"
+   },
+   "interval": {
+    "start": "2026-11-18T01:58:44.0494740Z",
+    "finish": "2026-11-18T02:46:36.9212920Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-notebook",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 709.003082,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 178,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359783",
+    "log_sha256": "930863391ff5eb084442b557db6e54b26fc8d2fc468f9c86783c6616a702b383"
+   },
+   "interval": {
+    "start": "2026-11-18T02:46:36.9212920Z",
+    "finish": "2026-11-18T02:58:25.9243740Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-colors",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 647.654621,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 97,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359783",
+    "log_sha256": "930863391ff5eb084442b557db6e54b26fc8d2fc468f9c86783c6616a702b383"
+   },
+   "interval": {
+    "start": "2026-11-18T02:58:25.9243740Z",
+    "finish": "2026-11-18T03:09:13.5789950Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-images",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 159.939471,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 33,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359783",
+    "log_sha256": "930863391ff5eb084442b557db6e54b26fc8d2fc468f9c86783c6616a702b383"
+   },
+   "interval": {
+    "start": "2026-11-18T03:09:13.5789950Z",
+    "finish": "2026-11-18T03:11:53.5184660Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  },
+  {
+   "step": "native-freshness",
+   "source": "63a1ad488da90a4e0e55fec11a9c8ca15e4ee158",
+   "seconds": 135.434282,
+   "kind": "completed-log-interval",
+   "complete": true,
+   "cleanup": true,
+   "case_count": 32,
+   "cases_sha256": null,
+   "inputs_sha256": null,
+   "raw_passed": false,
+   "raw_exit": 1,
+   "runtime_declared": {
+    "runner": "macos-26",
+    "chrome": "156.0.8078.47",
+    "playwright": "1.63.0",
+    "node": "26"
+   },
+   "evidence": {
+    "run": "train45",
+    "artifact": "134518359783",
+    "log_sha256": "930863391ff5eb084442b557db6e54b26fc8d2fc468f9c86783c6616a702b383"
+   },
+   "interval": {
+    "start": "2026-11-18T03:11:53.5184660Z",
+    "finish": "2026-11-18T03:14:08.9527480Z"
+   },
+   "qualification": "release-command/result or prior-result/result interval includes preflight/transition; complete named inventory unavailable; not acceptance"
+  }
+ ]
 }

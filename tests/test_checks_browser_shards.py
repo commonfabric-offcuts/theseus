@@ -59,8 +59,8 @@ class BrowserShards(unittest.TestCase):
         browser = [shard for shard in plan if shard['name'].startswith('browser ')]
         for shard in browser:
             wall = sum(self.measured[n] for n in shard['steps'].split(','))
-            self.assertLessEqual(wall * 1.5 + 5, 90)
-            self.assertEqual(shard['budget_minutes'], math.ceil(wall * 1.5 + 5))
+            self.assertLessEqual(wall * 1.25 + 5, 120)
+            self.assertEqual(shard['budget_minutes'], math.ceil(wall * 1.25 + 5))
 
     def test_capacity_is_transported_by_workflow_and_unit_limits_remain_separate(self):
         self.assertIn('timeout-minutes: ${{ matrix.timeout_minutes }}', self.workflow)
@@ -68,7 +68,7 @@ class BrowserShards(unittest.TestCase):
         jobs = unit_shards.jobs(ROOT, json.loads((ROOT / '.github/check-weights.json').read_text()))
         actual = {s['name']: s['timeout_minutes'] for s in self.plan()}
         self.assertTrue(all(actual[j['name']] == j['timeout'] for j in jobs))
-        self.assertTrue(all(j['timeout_minutes'] == 90 for j in self.plan() if j['name'].startswith('browser ')))
+        self.assertTrue(all(j['timeout_minutes'] == 120 for j in self.plan() if j['name'].startswith('browser ')))
         self.assertEqual(actual['wake replay'], 45)
 
     def test_historical_weights_keep_each_maximum_with_its_original_source(self):
@@ -76,12 +76,16 @@ class BrowserShards(unittest.TestCase):
         self.assertEqual({n: weights['minutes'].get(n) for n in self.measured}, self.measured)
         for name, minutes in self.measured.items():
             self.assertEqual(max(row['minutes'] for row in weights['sources'][name]), minutes)
-        self.assertEqual(weights['browser_observations'], [])
+        self.assertTrue(weights['browser_observations'])
 
-    def test_new_mode_refuses_instead_of_getting_the_old_median(self):
+    def test_new_mode_runs_alone_at_full_capacity(self):
         native = tuple(release_check.NATIVE_STEPS) + (release_check.NativeStep('unmeasured', '', (), ''),)
-        with self.assertRaisesRegex(release_check.Refused, 'native-unmeasured'):
-            self.plan(native=native)
+        with mock.patch.object(release_check, 'REQUIRED', release_check.REQUIRED + ('native-unmeasured',)):
+            plan = self.plan(native=native)
+        job = next(j for j in plan if 'native-unmeasured' in j['steps'])
+        self.assertEqual(job['steps'], 'native-unmeasured')
+        self.assertEqual(job['timeout_minutes'], 120)
+        self.assertIsNone(job['minutes'])
 
     def test_fifth_long_step_opens_an_extra_bin_instead_of_overfilling(self):
         native = tuple(release_check.NativeStep(n, '', (), '') for n in ('a', 'b', 'c', 'd', 'e'))
