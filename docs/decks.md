@@ -37,9 +37,24 @@ Whatever card a key leaves picked comes into view by the one rule for what
 the keys select (docs/interaction.md, "What the keys select comes into view"):
 one picked by ↑ ↓ ← →, moved by ⌘↑ ⌘↓, merged by ⇧⌘↑ ⇧⌘↓, moved in or out by
 Tab or ⇧Tab, put back by ⌘Z, left picked by ⌘⌫ or Escape, and a card being
-written that Return opens or ⌘↑ ⌘↓ move. A click on a card leaves the page
-where it is. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
+written that Return opens or ⌘↑ ⌘↓ move. Opening a card by click or touch, writing in it, and closing it with
+Escape or Done keep the page where it is (item 644). Rendering, saving and
+setting the caret do not reveal the whole card; only navigation between cards
+asks for a new place. If permission is refused while writing, the full page
+keeps its height while the writing controls are away, so closing the retained
+card cannot pull the page up from its end. `deck-page.mjs` marks the time a key is acting (`keyed`), so every
 act a key starts reads the rule, whichever path paints the card.
+
+The item 644 cases in `tests/notebook_pages_native.mjs` sample scroll positions
+on every animation frame: the document, the sheet wrapper, the dialog and the
+visible `.notebook-sheet-page` (the sheet's actual overflow owner). Each sheet
+case first applies and restores a 350px jump to that owner and requires the
+same predicate to reject the trace, even after the owner returns to its start.
+This control covers normal, saving, refused, read-only, empty and error states
+at 320, 375, 390 and 1280px in both themes. The shared sampler and predicate
+also have a browser-free instrument control in
+`tests/ui_card_scroll_probe.test.mjs`; removing the sheet-owner sample must
+fail that check. This unit control alone does not establish native behavior.
 
 | act | laptop | phone |
 | --- | --- | --- |
@@ -327,18 +342,20 @@ showing a page at a revision. Over the outcome's own page, which has no feed,
 it comes up over that page. A link to a page at a revision still opens it in
 the Reader, or in place on its outcome's page, to read.
 
-The sheet's head is one line on a laptop: the page's title, Text and Cards as
-chips with the page's Draft toggle beside them, the saving sign, a Full page glyph (↗, `?cards=ITEM`, below) and ✕, each
-glyph named for screen readers and with a tooltip; on a phone it takes two
-lines, the title with ↗ and ✕, then the chips and the sign, which on a screen
-too narrow for both whole (320 points) takes a line of its own below the chips,
-never one over the other; each chip, and the Draft mark that stands for the
-toggle for someone who reads the page, is 44 points tall there. When the sign
-says what needs the person (a refused save with Try again and Discard my
-writing, a save paused, the device's copy unavailable), it takes a line of its
-own below the rest of the head at every width, on a laptop as on a phone, its
-words whole and wrapping and its buttons after them (44 points tall on touch),
-so a press on a chip always reaches the chip. Below it is one
+The sheet's head on a laptop has the page's title, Text and Cards as chips
+with the page's Draft toggle beside them, a Full page glyph (↗, `?cards=ITEM`,
+below) and ✕, each glyph named for screen readers and with a tooltip. On a
+phone the title and glyphs take the first row and the three chips the next;
+each chip, and the Draft mark that stands for the toggle for someone who
+reads the page, is 44 points tall there.
+
+The saving sign always has a row of its own below those controls, on the
+laptop and at every phone width (item 642). "Saved to Theseus", keeping a
+device copy, saving, uploading and every attention or read-only state change
+only that row: Text, Cards and Draft keep identical boxes while the status
+words change. Attention notices wrap whole there. A refusal's Try again and Discard
+my writing follow its words, wrapping when needed, and are 44 points tall on
+touch. An empty sign keeps its row. Below the head is one
 place that scrolls; on a phone one card fills it, swiped through as on the full
 page. The line of keys above the cards is short there (↑ ↓ pick · Return new
 card · ⌘Return edit, and while writing Escape done · ⌘Return next card), the
@@ -390,4 +407,9 @@ cards, where a phone's keyboard never covers Done, and a phone opens scrolled
 to them.
 
 The checks are `tests/notebook_sheet_native.mjs`, in the `notebook` and
-`webkit-notebook` modes, at a laptop's width and a phone's.
+`webkit-notebook` modes. Its "notebook item 642" cases compare the controls'
+boxes across every saving-sign branch and during native typing/autosave, at
+320, 375, 390 and 1440 pixels, in light and dark. Geometry fixtures render the
+real `NotebookPage.writingChanged` branches; the typing case checks Core's
+confirmed words, focus and each painted frame. CSS mutants break the laptop
+row, the phone row and the old status width cap separately and restore each rule.

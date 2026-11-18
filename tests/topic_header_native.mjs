@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { teamBarChecks } from './team_bar_native.mjs';
 import { pngPixels } from './png-bands.mjs';
 
 // The top of a topic, Topic settings and its Team, in the real browser against
@@ -6,6 +7,7 @@ import { pngPixels } from './png-bands.mjs';
 // keyboard, pointer and phone behaviour, and one pill per person in the Team on
 // the title row's right (item 465). Every press and key is a native input event.
 export async function headerChecks({ check, page, until, control, view, facts, shot }) {
+  await teamBarChecks({ check, page, until, shot, control, view, facts, prefix: 'header', onlySpelling: true });
   const HINT = 'Open a message to read, quote, reply, or keep a private note.';
   const NOTE = 'Ongoing: each release and what comes next';
   const phone = async q => {
@@ -991,12 +993,13 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     let stop = null;
     const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
     const seen = [];
-    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to four stops before the people.
+    // A lit card's header star and bar buttons follow it in the Tab order (docs/interaction.md): up to five stops before
+    // the people (the star, 👍, Reply, Fold since item 473, and ⋯).
     let past = 0;
     for (;;) {
       await p.key('Tab');
       const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),bar:Boolean(a.closest('.message-bar'))||a.classList.contains('card-star'),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
-      if (!at.pill && at.bar && !seen.length && past++ < 4) continue;
+      if (!at.pill && at.bar && !seen.length && past++ < 5) continue;
       if (!at.pill) { stop = await p.evaluate(`(a=>a.tagName+'#'+a.id+'.'+a.className+' '+a.textContent.slice(0,30))(document.activeElement)`); break; }
       seen.push(at.name);
       assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
@@ -1214,16 +1217,17 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   // overlay scrollbar takes no width, and hid a Team that wrapped "+ Add" there): the scrollbar is always shown, so it
   // takes its width from the header whatever the topic holds, and the Team still keeps one line with room to spare.
   await check('header the Team\'s pills and "+ Add" stand apart, never touching, on a laptop and a phone, light and dark', async () => {
+    const geometryTolerance = 2, gapShare = .4, standardScrollbar = 15, minimumSpare = 4; // CSS-pixel rounding; touching pills and a 16px displacement still fail.
     await control({ method: 'navigation_topics', topics: [{ id: 'header-pill-gap', title: 'Pills apart' }] });
     await control({ method: 'agent_message', operation_id: 'header-pill-gap-join', topic_id: 'header-pill-gap', source: 'topic', join: true, body: 'Here with the person.' });
     await setState('header-pill-gap-state', { state: 'active', note: NOTE }, 'header-pill-gap');
     // Each pill and "+ Add" in the order shown: the gap from the one before it on its row (its left less that one's
     // right), the rows they take, whether "+ Add" is last and flush right, and the label's offset from the first pill.
     const measure = p => p.evaluate(`(()=>{const parts=[...document.querySelectorAll('#topic-people .person-pill, #participants .add-chip')].filter(e=>e.getClientRects().length),boxes=parts.map(e=>e.getBoundingClientRect());
-      const gaps=[];for(let i=1;i<boxes.length;i++)if(Math.abs(boxes[i].top-boxes[i-1].top)<2)gaps.push(Math.round((boxes[i].left-boxes[i-1].right)*10)/10);
+      const gaps=[],directions=[];for(let i=1;i<boxes.length;i++){const a=boxes[i-1],b=boxes[i],sameRow=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>${geometryTolerance};directions.push(sameRow?'across':'down');gaps.push(sameRow?b.left-a.right:b.top-a.bottom)}
       const row=document.querySelector('.topic-header .title-row').getBoundingClientRect(),label=document.querySelector('#people-heading').getBoundingClientRect(),add=document.querySelector('#participants .add-chip');
-      return {parts:parts.length,gaps,rows:new Set(boxes.map(b=>Math.round(b.top))).size,addLast:parts.at(-1)===add,right:Math.round(row.right-boxes.at(-1).right),
-        offset:Math.round((label.top+label.height/2)-(boxes[0].top+boxes[0].height/2)),sideways:document.documentElement.scrollWidth>innerWidth,
+      return {parts:parts.length,gaps,directions,rows:1+directions.filter(d=>d==='down').length,rem:parseFloat(getComputedStyle(document.documentElement).fontSize),addLast:parts.at(-1)===add,right:row.right-boxes.at(-1).right,
+        offset:(label.top+label.height/2)-(boxes[0].top+boxes[0].height/2),sideways:document.documentElement.scrollWidth>innerWidth+${geometryTolerance},
         bar:innerWidth-document.documentElement.clientWidth,
         spare:Math.round((document.querySelector('#topic-description').getBoundingClientRect().width-6*parseFloat(getComputedStyle(document.documentElement).fontSize))*10)/10}})()`);
     // A standard scrollbar, 15px wide, on every scrolling box of the page from its first layout, the page's always shown.
@@ -1235,15 +1239,17 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       await p.evaluate('scrollTo(0, 0)');
       const at = await measure(p), said = `${width} ${theme}: ${JSON.stringify(at)}`;
       console.log(`header pill gap ${said}`);
-      // At 320 the second pill takes a line of its own; every two that share a line stand apart.
-      assert.ok(at.gaps.length >= 1, `at least two of them share a line: ${said}`);
-      assert.ok(at.gaps.every(gap => gap >= 4), `each pill and "+ Add" stands at least 4px from the one before it: ${said}`);
-      assert.ok(at.gaps.every(gap => gap <= 10), `a modest gap, not a wide one: ${said}`);
-      assert.deepEqual([at.addLast, Math.abs(at.offset) <= 2, at.sideways], [true, true, false], `"+ Add" comes last, the label sits beside the first pill, nothing sideways: ${said}`);
+      // At 320 each pill and Add may take its own row (643 reserves Add/Done's width).
+      // Every consecutive pair keeps the modest gap, across a row or down to the next.
+      const gapTarget = gapShare * at.rem;
+      assert.ok(at.parts >= 3 && at.gaps.length === at.parts - 1, `the two pills and Add each have their separation measured: ${said}`);
+      assert.ok(at.gaps.every(gap => gap >= gapTarget - geometryTolerance), `each pill and "+ Add" stands apart by .4rem within ${geometryTolerance}px: ${said}`);
+      assert.ok(at.gaps.every(gap => gap <= gapTarget + geometryTolerance), `a modest gap within ${geometryTolerance}px, not a wide one: ${said}`);
+      assert.deepEqual([at.addLast, Math.abs(at.offset) <= geometryTolerance, at.sideways], [true, true, false], `"+ Add" comes last, the label sits beside the first pill, nothing sideways: ${said}`);
       if (device === 'laptop') {
-        assert.equal(at.bar, 15, `on a laptop the page's standard scrollbar takes 15px: ${said}`);
-        assert.deepEqual([at.rows, at.gaps.length, Math.abs(at.right) <= 2], [1, at.parts - 1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
-        assert.ok(at.spare >= 4, `with room to spare: the subtitle beside the Team keeps at least 4px (a quarter rem) more than its 6rem: ${said}`);
+        assert.ok(Math.abs(at.bar - standardScrollbar) <= geometryTolerance, `on a laptop the page's standard scrollbar takes 15px within ${geometryTolerance}px: ${said}`);
+        assert.deepEqual([at.rows, at.gaps.length, Math.abs(at.right) <= geometryTolerance], [1, at.parts - 1, true], `on a laptop the pills keep one line and "+ Add" stays flush with the title row's right: ${said}`);
+        assert.ok(at.spare >= minimumSpare - geometryTolerance, `with room to spare: the subtitle beside the Team keeps at least 4px (a quarter rem) more than its 6rem within ${geometryTolerance}px: ${said}`);
       }
       await shot(p, `header-pill-gap-${device}-${width}-${theme}`);
       assert.deepEqual(p.errors, []); await p.close();

@@ -22,7 +22,7 @@
 // the page when there is room; it reads only while it shows. What it shows
 // is drawn for one place and one scope: when either changes, what was shown
 // goes at once, and a read for a place or scope left behind draws nothing.
-import { paintChanged, paintMarks, questionOf } from './topic-navigation.mjs';
+import { paintChanged, paintMarks, questionOf, landsOnUnread } from './topic-navigation.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { clock, shownTime, datedTime } from './times.mjs';
 import { readFailure } from './freshness.mjs';
@@ -583,8 +583,8 @@ export class ThingsRail {
     })) };
   }
   // The reader's stars: this topic's (on a Conversation, this outcome's) first,
-  // then the rest under Elsewhere. A press lands on the message, its stack
-  // opened, where the page shows it; elsewhere it opens its topic on it.
+  // then the rest under Elsewhere. A press opens its composer in its topic;
+  // the composer names its dossier and its title returns there (item 655).
   // Unstar beside each takes the star off, wherever its message is.
   starredSection(stars, found, reader) {
     if (!stars.length) return null;
@@ -595,7 +595,7 @@ export class ThingsRail {
       const off = element(doc, 'button', { type: 'button', className: 'things-unstar', textContent: 'Unstar', title: 'Take the star off' });
       off.setAttribute('aria-label', `Unstar "${firstWords(star.excerpt, 40)}"`);
       off.onclick = () => this.handles.unstar?.(star);
-      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id, land: true }, firstWords(star.excerpt, 70), sub), off);
+      return element(doc, 'li', { className: 'things-starred' }, this.placeLink({ kind: 'topic', id: star.topic_id, message: star.message_id }, firstWords(star.excerpt, 70), sub), off);
     };
     return { sum: String(stars.length), key: JSON.stringify(['star', stars.map(star => [star.message_id, star.star_revision, here(star)])]), node: () => element(doc, 'div', {},
       ...(mine.length ? [element(doc, 'ul', { className: 'things-list' }, ...mine.map(row))] : []),
@@ -674,8 +674,10 @@ export class ThingsRail {
     link.onclick = event => {
       if (!plainClick(event) || !this.handles) return;
       event.preventDefault();
+      // A press on a topic's unread count opens it at its oldest unread message (item 613).
+      const to = target.kind === 'topic' && landsOnUnread(event.target, event) ? { kind: 'topic', id: target.id, at: 'unread' } : target;
       if (!this.wide?.matches) this.close(false);
-      this.handles.open(target, title || 'that page', link);
+      this.handles.open(to, title || 'that page', link);
     };
     return link;
   }

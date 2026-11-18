@@ -242,13 +242,11 @@ class StandingConversation:
         if set(target) != {"workspace_id"} or set(args) != {"actor_id"}:
             raise Refusal("INVALID_ARGUMENT", "Name one outcome and its coordinator, or null for nobody")
         workspace = self._workspace(db, actor, target["workspace_id"])
-        # Only the owner chooses who answers in the conversation; organising it is not enough.
-        if workspace["owner_id"] != actor:
-            raise Refusal("FORBIDDEN", "Only the outcome's owner chooses its coordinator")
+        # Any reader chooses who coordinates, recorded under this caller's own identity.
         _revision(envelope.get("expected", {}), "workspace_revision", workspace["version"])
         chosen = args["actor_id"]
         if chosen is not None:
-            _identifier(chosen, "actor_id")
+            chosen = self._recipients(db, [chosen])[0]
             if not db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace["id"], chosen)).fetchone():
                 raise Refusal("INVALID_RECIPIENT", "The coordinator must belong to the outcome's team")
         result = {"workspace_id": workspace["id"], "coordinator_id": chosen, "version": workspace["version"]}

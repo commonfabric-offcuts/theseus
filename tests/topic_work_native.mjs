@@ -14,6 +14,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
   const read = (p, selector = row) => p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)});return r?{title:r.title,dot:Boolean(r.querySelector('.topic-work')),words:[...r.querySelectorAll('.sr-only')].map(e=>e.textContent),size:(()=>{const d=r.querySelector('.topic-work');if(!d)return null;const b=d.getBoundingClientRect();return [b.width,b.height]})()}:null})()`);
 
   await check('work a topic someone just posted in carries the dot, and its title says who and when, nothing more', async () => {
+    const geometryTolerance = 2, ringSizeTarget = 8; // CSS pixels; a 16px ring or overhang still fails.
     await control({ method: 'agent_message', operation_id: 'work-agent-posts', body: 'Picked this up.', topic_id: 't1', addressees: [] });
     const p = await page('work-row', null, true);
     const shown = await until(async () => { const r = await read(p); return r?.title.startsWith('fixture-notebook-agent · ') && r.size?.[0] > 0 && r; }, 'row shows the agent post as activity');
@@ -23,15 +24,18 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     // A state and a time (item 86): who worked in it, and when; never what they did.
     assert.match(shown.title, /^fixture-notebook-agent · \d{1,2}:\d{2}\s[AP]M$/);
     // The row's other words for screen readers, its unread count (", 1 unread"),
-    // come and go with what is read; the work's words are the title's.
-    assert.deepEqual(shown.words.filter(words => !/^, \d+ unread/.test(words)), [' · ' + shown.title], 'screen readers hear the title');
-    assert.ok(shown.size[0] > 0 && shown.size[0] <= 10 && shown.size[1] <= 10, 'the ring is small: ' + shown.size);
+    // come and go with what is read; the work's words are the title's. Item
+    // 613 also describes the row's Return action, separately from its work.
+    const unreadHint = '. Return shows the oldest unread message';
+    assert.deepEqual(shown.words.filter(words => !/^, \d+ unread/.test(words) && words !== unreadHint), [' · ' + shown.title], 'screen readers hear the work title');
+    assert.deepEqual(shown.words.filter(words => words === unreadHint), [unreadHint], 'screen readers hear the unread Return action once');
+    assert.ok(shown.size[0] > 0 && shown.size[0] <= ringSizeTarget + geometryTolerance && shown.size[1] <= ringSizeTarget + geometryTolerance, 'the ring is small: ' + shown.size);
     for (const r of await p.evaluate(`[...document.querySelectorAll('#topics .nav-item')].map(a=>a.title)`)) assert.doesNotMatch(r, /nobody|no one/i);
     // A hollow ring in the quiet text color, not the filled accent dot of
     // presence and unread; and a key, in words, at laptop and phone width.
     const ring = async q => q.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(row + ' .topic-work')}),c=getComputedStyle(d),k=${KEY},b=k.getBoundingClientRect();
       return {fill:c.backgroundColor,border:[c.borderTopColor,c.borderRightColor,c.borderBottomColor,c.borderLeftColor],quiet:getComputedStyle(k).color,
-        key:!k.hidden&&b.height>0&&b.width>0&&b.right<=innerWidth,words:k.textContent.trim(),hiddenFromReaders:k.getAttribute('aria-hidden')}})()`);
+        key:!k.hidden&&b.height>0&&b.width>0&&b.right<=innerWidth+${geometryTolerance},words:k.textContent.trim(),hiddenFromReaders:k.getAttribute('aria-hidden')}})()`);
     const laptop = await ring(p);
     assert.deepEqual([laptop.fill, laptop.border, laptop.key, laptop.words, laptop.hiddenFromReaders], ['rgba(0, 0, 0, 0)', Array(4).fill(laptop.quiet), true, 'Posted in or worked on in the last hour, or waiting on an answer', 'true'], 'a hollow ring, and its key: ' + JSON.stringify(laptop));
     await shot(p, 'work-row-dot');
