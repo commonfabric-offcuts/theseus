@@ -1,0 +1,68 @@
+// Focused mapping/freshness controls. No browser, gestures or measured layout.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { coverSheet, coverPills, coverKey, coverSummary } from '../web/dossier-cover.mjs';
+import { laterActs, laterPosition, stackCover } from '../web/stack-order.mjs';
+import { TopicViews } from '../web/topic-views.mjs';
+import { Freshness } from '../web/freshness.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
+const context = { viewer: 'owner', nameOf: id => id, topicId: 't1' };
+const rows = [{ workspace_id: 'w1', number: 1, title: 'Make the reader clearer', state: 'Build', sources: ['actual-source'], piece_id: 'actual-piece' },
+  { workspace_id: 'w1', number: 2, title: 'Speed up the feed', state: 'Review', sources: ['actual-source'], piece_id: 'second-piece' }];
+const cover = { stands: 'Cabin is booked', payload: { text: 'Cabin decision', message_id: 'actual-source', seq: 7, done: null },
+  waiting: [{ text: 'Choose the cabin', default: 'Keep the current booking' }], owner: 'owner', items: rows };
+const of = (node, cls) => [...node.descendants()].filter(node => node.classList.contains(cls));
+const href = node => node.href ?? node.getAttribute('href');
+
+test('757 sheet preserves manual lines before and after two independently linked item rows', () => {
+  const sheet = coverSheet(miniDocument(), cover, context);
+  assert.deepEqual(sheet.children.map(n => n.className), ['cover-line cover-stands', 'cover-line cover-payload', 'cover-line cover-item', 'cover-line cover-item', 'cover-line cover-wait']);
+  assert.deepEqual(of(sheet, 'cover-item').map(n => n.text), ['Make the reader clearer · Build', 'Speed up the feed · Review']);
+  assert.deepEqual(of(sheet, 'cover-item').map(n => href(n.querySelector('a'))), ['?pipeline=w1&item=1', '?pipeline=w1&item=2']);
+  assert.ok(sheet.text.includes('Cabin is booked'));
+  assert.ok(sheet.text.includes('Cabin decision'));
+  assert.ok(sheet.text.includes('Choose the cabin'));
+  assert.ok(sheet.text.includes('Default: Keep the current booking.'));
+  assert.equal(of(sheet, 'cover-src').length, 1, 'only the actual manual payload has a message citation');
+});
+
+test('757 singleton and Reader summary retain separate rows without inventing payload acceptance', () => {
+  const pills = coverPills(miniDocument(), cover, context);
+  assert.equal(of(pills, 'cover-item').length, 2);
+  assert.deepEqual(pills.children.map(n => n.className), ['row-pill pill-payload', 'cover-item', 'cover-item', 'row-pill pill-waits'], 'singleton keeps generated rows before manual waits');
+  assert.equal(of(pills, 'pill-payload').length, 1);
+  const generated = { ...cover, stands: null, payload: null, waiting: [] };
+  assert.equal(coverSummary(generated), 'Make the reader clearer · Build; Speed up the feed · Review');
+  assert.equal(of(coverPills(miniDocument(), generated, context), 'pill-payload').length, 0);
+  const newer = { ...cover, items: [rows[0], { ...rows[1], state: 'Wait' }] };
+  assert.notEqual(coverKey(cover, context), coverKey(newer, context), 'stage change redraws the cover');
+});
+
+test('757 newer projected positions draw rows even with no cover act and refuse late snapshots', () => {
+  const position = { root_id: 'root', cover, cover_revision: 0, cover_read_seq: 9, at: { acts: 0, messages: 0 } };
+  const stale = { ...position, cover: null, cover_read_seq: 8 };
+  const head = { id: 'root', acts: { cover: null, cover_revision: 0, cover_read_seq: 8 }, stack_position: position };
+  assert.equal(stackCover({ head, replies: [{}] }), cover);
+  assert.equal(stackCover({ head, replies: [] }, { alone: true }), cover);
+  assert.equal(laterPosition(position, stale), position, 'late position cannot erase newer generated rows');
+  const acts = { cover, cover_revision: 0, cover_read_seq: 9 };
+  assert.equal(laterActs(acts, { cover: null, cover_revision: 0, cover_read_seq: 8 }).cover, cover);
+  const views = new TopicViews({ instanceId: 'synthetic', topicId: 't1', reader: 'owner' });
+  views.messages.set('root', { ...head, stack_position: stale });
+  assert.equal(views.learnPositions([{ message_id: 'root', stack_position: position }]), true, 'generated-only change paints the cover');
+});
+
+test('757 opaque source-cover change refreshes only this loaded topic and forces equal-version rereads', async () => {
+  // Exercise the real scoped actor-change consumer, with a normal bounded
+  // response and no handler/event synthesis. UI-only synthetic identities.
+  const bootstrap = { instance_id: 'synthetic', actor: 'owner', authority: { authority_id: 'a', authority_epoch: 'e' } };
+  const scope = { kind: 'actor', id: 'owner' };
+  const checkpoint = after_seq => ({ v: 1, kind: 'checkpoint', instance_id: 'synthetic', actor_id: 'owner', authority_id: 'a', authority_epoch: 'e', scope, after_seq });
+  const f = new Freshness({ bootstrap, topicId: 't1', checkpoint: { after_seq: 4 }, actorCheckpoint: checkpoint(1) });
+  const invalidated = [];
+  f.invalidate = (...args) => invalidated.push(args);
+  await f.readWhispers(async () => ({ instance_id: 'synthetic', scope, items: [
+    { resource_kind: 'source_cover', resource_id: 'elsewhere', version: 1 },
+    { resource_kind: 'source_cover', resource_id: 't1', version: 1 }], has_more: false, checkpoint: checkpoint(4) }), () => true);
+  assert.deepEqual(invalidated, [['acts', 0, true]], 'only loaded relevant topic refreshes, even without a new cover act');
+});

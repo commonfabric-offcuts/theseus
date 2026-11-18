@@ -188,3 +188,13 @@ the step. The page is covered by the `reading covers …` cases in
 message is more than a page behind its newest reply, the Reader's sheet
 opening only where it is pressed (at 320, 375 and 390 and on a laptop), and the
 open Reader's line following a rewrite and the owner's 👍.
+
+## Automatic source-item rows
+
+By default a cover also has one generated row per readable source-linked item,
+with its short name and plain state, linking the existing pipeline item record.
+Manual stands and payload precede the rows; waits and defaults follow them.
+These rows are read from actual source, item, stage and release relationships
+and filtered by Core for destination access. They write no cover acts and never
+change manual fields, authorship or acceptance. See [the contract](source-item-covers.md)
+for ordering, state precedence, indexes, read snapshots and preview limits.

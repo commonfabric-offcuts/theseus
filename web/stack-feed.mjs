@@ -805,10 +805,11 @@ export class StackFeed {
   }
   // The cover of the dossier a message is in, as its folder shows it (item 624, stackCover: from its place when its
   // first message is not loaded), with the topic its links go to and the dossier's first message (rootId); null for a
-  // message on its own, one no stack drawn holds, and a dossier with no cover.
+  // message on its own without generated items, one no stack drawn holds, and a dossier with no cover.
   dossierCover(id) {
     const stack = this.state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
-    const cover = stack ? stackCover(stack) : null;
+    const candidate = stack ? stackCover(stack, { alone: true }) : null;
+    const cover = candidate?.items?.length ? candidate : stack ? stackCover(stack) : null;
     return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }
   // Whether the dossier stack is drawn from holds a message the reader

@@ -34,6 +34,9 @@ export function laterActs(known, answer) {
     if (!known || !(revision in known)) continue;
     if (!(revision in answer) || answer[revision] < known[revision]) { acts[field] = known[field]; acts[revision] = known[revision]; }
   }
+  if ((known?.cover_read_seq ?? -1) > (answer.cover_read_seq ?? -1)) {
+    acts.cover = known.cover; acts.cover_read_seq = known.cover_read_seq;
+  }
   return acts;
 }
 
@@ -306,6 +309,8 @@ export function headOf(stack, { preview = item => String(item.body ?? '').split(
 export function stackCover(stack, { alone = false } = {}) {
   const position = positionOf(stack);
   if (position && position.root_id !== stack.head.id) return position.cover ?? null;
+  const acts = actsOf(stack.head);
+  if (position?.cover_read_seq !== undefined && position.cover_read_seq >= (acts.cover_read_seq ?? -1) && position.cover_revision >= (acts.cover_revision ?? 0)) return stack.replies.length || alone ? position.cover ?? null : null;
   return stack.replies.length || alone ? actsOf(stack.head).cover ?? null : null;
 }
 
@@ -499,7 +504,7 @@ export function foldStep({ level }, way, { replies: has = true } = {}) {
 // undo a newer join, personal move, split or arriving reply.
 export function laterPosition(known, answer) {
   if (!answer) return known;
-  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && answer.at.messages < known.at.messages)) return known;
+  if (known && (answer.at.acts < known.at.acts || answer.at.acts === known.at.acts && (answer.at.messages < known.at.messages || (answer.cover_read_seq ?? 0) < (known.cover_read_seq ?? 0)))) return known;
   return answer;
 }
 // The stack's position, from the positions its messages carry. One is the

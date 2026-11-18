@@ -16,7 +16,7 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];
 const starsOf = position => (position.starred ?? []).join(' ');
 const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
-const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) : !b);
+const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
 const behind = () => Object.assign(Error('The requested version is not available yet.'), { code: 'RESOURCE_NOT_CURRENT' });
 // A reply's line reads how the message it answers begins: its first 120

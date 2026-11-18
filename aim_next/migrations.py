@@ -46,6 +46,7 @@ from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSIO
 from .invite import INVITATIONS_BACKFILL, INVITATIONS_DOWN, INVITATIONS_OCCUPIED, INVITATIONS_SCHEMA
 from .tools_core import TOOLS_DOWN, TOOLS_OCCUPIED, TOOLS_SCHEMA
 from .outcome_end import ENDS_DOWN, ENDS_OCCUPIED, ENDS_SCHEMA
+from .source_item_covers import SOURCE_COVER_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -203,6 +204,9 @@ STEPS = (
     ("45", "46", COVER_UP, COVER_DOWN, COVER_OCCUPIED),
     # Item 641: default topic positions never move with activity.
     ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
+    # Item 757: indexed source covers and reconstructible release-item links.
+    ("47", "48", SOURCE_COVER_SCHEMA, ("DROP TRIGGER source_cover_release_insert", "DROP TABLE source_cover_releases",
+                                      "DROP INDEX source_cover_items", "DROP INDEX source_cover_topics"), "SELECT 0"),
 )
 
 

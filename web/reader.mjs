@@ -19,7 +19,7 @@ import { ComposeBar } from './compose-bar.mjs';
 import { copyText, COPY_REFUSED } from './message-menu.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
-import { coverSheet, coverKey, payloadPill } from './dossier-cover.mjs';
+import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -1033,7 +1033,7 @@ export class Reader {
     if (!found) { line.replaceChildren(); return; }
     const { cover } = found, shown = { ...context, owner: cover.owner };
     const words = document.createElement('span'); words.className = 'reader-cover-words';
-    words.textContent = cover.stands || cover.payload?.text || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
+    words.textContent = coverSummary(cover) || `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${cover.owner === shown.viewer ? 'you' : shown.nameOf(cover.owner)}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
     host.append(coverSheet(document, cover, context));

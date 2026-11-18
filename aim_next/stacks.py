@@ -226,6 +226,15 @@ def current_acts(db, actor, message_ids):
         else:
             acts.update(_shown(kind, row))
         acts[kind + "_revision"] = row["revision"]
+    from .source_item_covers import project
+    roots = StackRoots(db, actor)
+    snapshot = int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
+    for mid in message_ids:
+        if roots.root(mid) != mid:
+            continue
+        acts = found.setdefault(mid, dict(EMPTY))
+        acts["cover"] = project(db, actor, mid, acts["cover"])
+        acts["cover_read_seq"] = snapshot
     return found
 
 
@@ -498,6 +507,7 @@ def stack_positions(db, actor, items):
                                "places": [each for each in places.get(root, []) if each["message_id"] != root],
                                "starred": starred,
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
+                               "cover_read_seq": acts.get("cover_read_seq", 0),
                                "below": through is not None and not starred and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]

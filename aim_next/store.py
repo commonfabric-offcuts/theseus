@@ -46,6 +46,7 @@ from .outcome_rules import KIND_BEFORE_R21
 from .reactions import Reactions, REACTION_SCHEMA
 from .outline_order import OutlineOrder, ORDER_SCHEMA, TOPIC_POSITION_SCHEMA
 from .stacks import Stacks, ACT_COVERS
+from .source_item_covers import SOURCE_COVER_SCHEMA
 from .covers import Covers
 from .blocking import Blocking, BLOCKS_SCHEMA
 from .message_edit import MessageEdit, EDIT_SESSION_UP, MESSAGE_EDIT_UP
@@ -55,7 +56,7 @@ from .tool_records import Records as ToolRecords
 from . import message_edit
 
 
-SCHEMA_VERSION = "47"
+SCHEMA_VERSION = "48"
 
 
 def commit_identity_intact(metadata):
@@ -131,7 +132,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA + HEALTH_SCHEMA + REACTION_SCHEMA + ORDER_SCHEMA + ACT_COVERS + BLOCKS_SCHEMA + MEMORY_DRAFT_SCHEMA + MESSAGE_EDIT_UP + EDIT_SESSION_UP + JUDGMENT_SCHEMA + INVITATIONS_SCHEMA + TOOLS_SCHEMA + ENDS_SCHEMA + TOPIC_POSITION_SCHEMA + SOURCE_COVER_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -577,6 +578,8 @@ class Store(Assessments, HostedControl, Drafts, Openings, Delivery, Conversation
         scope, which holds only these keys, so a page learns who may organise it now."""
         self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
         self._change(db, "outcome", workspace_id, "workspace", workspace_id, version)
+        from .source_item_covers import notify
+        notify(self, db, workspace_id, "access")
 
     def _command_workspace_create(self, db, actor, envelope):
         args = envelope.get("args", {})

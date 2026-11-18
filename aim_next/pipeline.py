@@ -344,6 +344,9 @@ class Pipeline:
         for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines ORDER BY workspace_id").fetchall():
             self._fact(db, workspace_id, "record", release["recorded_ms"], None, {"release": release["release"]})
             self._settle(db, workspace_id)
+            from .source_item_covers import notify
+            for number in release["items"]:
+                notify(self, db, workspace_id, number)
 
     def _settle(self, db, workspace_id):
         """THE DERIVED STATE, written (docs/pipeline.md, "The derived state"). Every write that appends a fact then calls
@@ -444,6 +447,8 @@ class Pipeline:
         db.execute("UPDATE pipelines SET version=version+1 WHERE workspace_id=?", (workspace_id,))
         version = db.execute("SELECT version FROM pipelines WHERE workspace_id=?", (workspace_id,)).fetchone()[0]
         self._change(db, "workspace", workspace_id, "pipeline", str(record), version)
+        from .source_item_covers import notify
+        notify(self, db, workspace_id, record)
         return version
 
     def _event(self, db, workspace_id, number, kind, actor, payload, ms=None):

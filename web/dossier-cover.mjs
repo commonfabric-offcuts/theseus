@@ -86,6 +86,7 @@ export function coverSheet(doc, cover, context) {
     const done = payload.done;
     if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
   }
+  for (const item of cover.items ?? []) line('cover-item').append(itemRow(doc, item));
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait');
     row.append(waitsLabel(doc, cover.owner, ctx), ' ', element(doc, 'span', 'cover-words', wait.text), element(doc, 'span', 'cover-note', `Default: ${wait.default}.`));
@@ -94,12 +95,26 @@ export function coverSheet(doc, cover, context) {
   return sheet;
 }
 
+// One generated row per actual item, beside the manual fields.
+export function itemRow(doc, item) {
+  const row = element(doc, 'span', 'cover-words');
+  row.append(linkNode(doc, item.title, { route: { kind: 'item', id: item.workspace_id, item: String(item.number) }, written: true }),
+    ' · ', element(doc, 'span', 'cover-item-state', item.state));
+  return row;
+}
+
+export const coverSummary = cover => cover.stands || cover.payload?.text ||
+  (cover.items?.length ? cover.items.map(item => `${item.title} · ${item.state}`).join('; ') : null);
+
 // What a cover on a message on its own shows instead: its payload's pill and
 // one pill for what waits on the owner, under who wrote it. Null with neither.
 export function coverPills(doc, cover, context) {
   const ctx = { ...context, owner: cover.owner };
   const pills = element(doc, 'span', 'row-pills');
   if (cover.payload) pills.append(payloadPill(doc, cover.payload, ctx));
+  for (const item of cover.items ?? []) {
+    const row = element(doc, 'span', 'cover-item'); row.append(itemRow(doc, item)); pills.append(row);
+  }
   if ((cover.waiting ?? []).length) {
     const pill = element(doc, 'span', 'row-pill pill-waits'); pill.dataset.state = 'waiting';
     const count = cover.waiting.length;
@@ -113,7 +128,7 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, context.viewer, context.topicId]) : '');
+export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.items, cover.owner, context.viewer, context.topicId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

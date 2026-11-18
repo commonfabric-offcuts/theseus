@@ -459,3 +459,7 @@
   .dossier-cover{font-size:.88rem}
   .cover-stands{font-size:.92rem}
 }
+
+/* Source-item rows keep separate lines, including singleton cards. */
+.row-pills>.cover-item{flex-basis:100%;min-width:0;overflow-wrap:anywhere}
+.cover-item .cover-words{overflow-wrap:anywhere}
