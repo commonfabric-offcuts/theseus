@@ -72,7 +72,7 @@ test('item 721 recovery retains the originating request error before transaction
   const journal = await openJournal({ instanceId: 'i1', actor: 'person', win: fakeWindow() });
   t.after(() => journal.close());
   const context = { instanceId: 'i1', actor: 'person', kind: 'reply', sourceRef: { kind: 'message', id: 'source' }, topicId: 'topic' };
-  await assert.rejects(journal.save({ context, key: editorKey(context) }), error => error === failure, 'the exact originating storage error is retained');
+  await assert.rejects(journal.save({ format: 2, context, key: editorKey(context) }), error => error === failure, 'the exact originating storage error is retained');
   assert.equal(puts, 1, 'the real journal reached the failed storage boundary');
 });
 
@@ -96,7 +96,7 @@ test('item 721 the real journal adapter stores binary once and reads exact bytes
   const context = { instanceId: 'i1', actor: 'person', kind: 'reply', sourceRef: { kind: 'message', id: 'source' }, topicId: 'topic' }, key = editorKey(context);
   const original = new Uint8Array([1, 3, 9, 255]), metadata = { name: 'image.png', size: 4, type: 'image/png', last_modified: 0 };
   const entry = { selection_id: 'selected', file: metadata, bytes_ref: null, bytes_state: 'capturing' };
-  const snapshot = () => ({ context, key, uploadState: { entries: [entry] } });
+  const snapshot = () => ({ format: 2, context, key, uploadState: { entries: [entry] } });
   const bytes = { id: JSON.stringify([key, 'upload-bytes', entry.selection_id]), kind: 'upload-bytes-v1', scope: JSON.stringify(['i1', 'person']),
     editorKey: key, selection_id: entry.selection_id, created_by_writer: journal.writerId, metadata, blob: new Blob([original], { type: metadata.type }) };
   await journal.capture(key, snapshot, bytes, entry, () => true);
