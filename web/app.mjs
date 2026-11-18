@@ -754,36 +754,153 @@ async function openSource(ref, opener, act = null) {
   }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
 }
-// A repaint leaves in place what the person is at: the inline writing, a
-// field on the page they are typing in, or else the first card in view. A
-// button, checkbox or other control keeps no place: More would hold itself still and scroll past what
-// it loaded. At the top of the topic, where its newest card drawn shows from
-// its top edge, nothing is held: what arrives comes into view above that
-// card, with the New line under it, instead of landing out of sight. A card
-// held is one the page draws (drawn, the page's one view) before and after
-// the repaint: when the repaint stops drawing it (put below More on another
-// device), the card drawn next below it is held instead.
-// roomy: gives back the room a hold kept (holdRoom).
-let roomy = null;
-function keepListAnchor(paint) {
+// One hold for repaints and later layout changes: writing, a visible typing
+// field, or the first card at the window's top edge, even at the topic's top.
+// More keeps its existing landing rule. A card no longer drawn hands the hold
+// to the next card below it. roomy gives back the room holdRoom kept.
+let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false;
+const newAbove = new Set();
+let newAboveButton = null;
+function captureListAnchor() {
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
   const first = writing || field ? null : firstInView();
-  const anchor = writing ? inline.field : field ? at : first && !first.dataset.seq && !first.classList.contains('memory-card') ? list : first;
+  const loading = first?.id === 'more-messages' || first?.dataset.line === 'older';
+  const anchor = writing ? inline.field : field ? at : loading ? list : first;
   const control = anchor === list && (first.id === 'more-messages' || first.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
-  const held = cards.includes(anchor) ? cards.slice(cards.indexOf(anchor)) : [anchor];
+  const cardHold = !writing && !field && anchor !== list && list.contains(anchor);
+  const held = cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
   const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
-  const atTop = !writing && !field && anchor && anchor === cards[0] && tops.get(anchor) >= 0;
+  // Inside a long card, hold the line crossing the edge, so an image or
+  // rewrap above that line is absorbed even when the card's own top stayed.
+  let point = null;
+  if (cardHold && tops.get(anchor) < 0) {
+    const box = anchor.getBoundingClientRect(), x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
+    const caret = document.caretPositionFromPoint?.(x, 1), old = caret ? null : document.caretRangeFromPoint?.(x, 1);
+    const text = caret?.offsetNode ?? old?.startContainer, offset = caret?.offset ?? old?.startOffset;
+    if (text?.nodeType === Node.TEXT_NODE && anchor.contains(text)) {
+      const range = document.createRange();
+      range.setStart(text, offset); range.setEnd(text, Math.min(text.length, offset + 1));
+      if (range.getClientRects().length) point = { range, text, words: text.data, top: range.getBoundingClientRect().top };
+    }
+  }
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
-  paint();
+  return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
+    height: document.documentElement.scrollHeight,
+    newest: entries(list).reduce((seq, card) => Math.max(seq, Number(card.dataset.seq) || 0), 0) };
+}
+function restoreListAnchor(saved) {
+  if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
+  const { list, anchor, cards, held, tops, point, control, edge, last, present } = saved;
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy(); roomy = null; }
   const landed = control && last ? loadedAfter(list, present, last) : null;
-  if (landed) { window.scrollBy(0, landed.getBoundingClientRect().top - edge); return; }
-  const hold = cards.includes(anchor) ? held.find(node => node.isConnected && drawn(list, node.dataset.id)) : anchor;
-  if (hold?.isConnected && !atTop) window.scrollBy(0, holdRoom(list, hold, tops.get(hold)));
+  if (landed) { window.scrollBy({ top: landed.getBoundingClientRect().top - edge, behavior: 'instant' }); return; }
+  const hold = held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) : node.getClientRects().length));
+  const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
+  if (hold) window.scrollBy({ top: holdRoom(list, hold, line ? line.top : tops.get(hold), line ? () => line.range.getBoundingClientRect().top : undefined), behavior: 'instant' });
+  // Older pages and the person's own writing never make this offer. Remember
+  // arrivals by identity, so a later repaint or a new reply cannot lose it.
+  if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {
+    if (Number(entry.dataset.seq) > saved.newest && drawn(list, entry.dataset.id) &&
+        views.messages.get(entry.dataset.id)?.author_id !== bootstrap.actor && entry.getBoundingClientRect().top < 0) newAbove.add(entry.dataset.id);
+  }
+}
+function rememberListAnchor() {
+  if (retired || !$('messages')?.isConnected) return;
+  listAnchor = captureListAnchor();
+  paintNewAbove();
+  anchorWatch?.observe();
+  anchorWatch?.mutations.takeRecords();
+}
+function keepListAnchor(paint) {
+  // Nested stack arrangements belong to the same repaint and the same hold.
+  if (anchorDepth || anchorActing) return paint();
+  if (anchorWatch && listAnchor?.y === window.scrollY) restoreListAnchor(listAnchor);
+  const saved = captureListAnchor();
+  anchorDepth++;
+  try { return paint(); }
+  finally { anchorDepth--; restoreListAnchor(saved); rememberListAnchor(); }
+}
+function paintNewAbove() {
+  const list = $('messages');
+  for (const id of newAbove) {
+    const entry = messageEntries.get(id);
+    if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
+  }
+  if (!newAboveButton && newAbove.size) {
+    newAboveButton = button('New above', () => {
+      const entry = entries(list).find(card => newAbove.has(card.dataset.id));
+      if (!entry) return;
+      reveal(entry);
+      entry.scrollIntoView({ block: 'start', behavior: 'instant' });
+      opened(entry).focus({ preventScroll: true });
+      rememberListAnchor();
+    });
+    newAboveButton.className = 'unread-count new-above';
+    newAboveButton.setAttribute('aria-label', 'Read new messages above');
+    $('main').append(newAboveButton);
+  }
+  if (newAboveButton) {
+    newAboveButton.hidden = !newAbove.size || list.hidden;
+    newAboveButton.style.left = `${list.getBoundingClientRect().left}px`;
+  }
+}
+function watchListAnchor() {
+  anchorWatch?.stop();
+  const list = $('messages'), main = $('main'), observed = new Set();
+  const settle = () => {
+    if (retired || anchorDepth) return;
+    // A deliberate scroll (including a send's landing or the keys) has its
+    // own destination. Do not put the old reading place back over it.
+    const clamped = listAnchor && document.documentElement.scrollHeight < listAnchor.height &&
+      window.scrollY >= Math.max(0, document.documentElement.scrollHeight - innerHeight) - 1;
+    if (!anchorActing && (listAnchor?.y === window.scrollY || clamped)) restoreListAnchor(listAnchor);
+    rememberListAnchor();
+  };
+  const sizes = new ResizeObserver(settle);
+  const observe = () => {
+    const wanted = new Set([main, ...main.children, ...list.querySelectorAll('[data-id], .reply-stack, .stack-replies, .dossier-cover')]);
+    for (const node of observed) if (!wanted.has(node)) { sizes.unobserve(node); observed.delete(node); }
+    for (const node of wanted) if (!observed.has(node)) { sizes.observe(node); observed.add(node); }
+  };
+  // Mutation delivery and ResizeObserver both run before paint. The former
+  // also catches equal-height rearrangements; the latter catches image/font
+  // layout with no DOM edit. Both restore exactly the same saved hold.
+  const mutations = new MutationObserver(() => { observe(); settle(); });
+  mutations.observe(main, { subtree: true, childList: true, characterData: true, attributes: true,
+    attributeFilter: ['class', 'style', 'hidden', 'open', 'data-fold', 'data-folded', 'data-compact'] });
+  const scrolled = () => {
+    if (anchorDepth) return;
+    const clamped = listAnchor && document.documentElement.scrollHeight < listAnchor.height &&
+      window.scrollY >= Math.max(0, document.documentElement.scrollHeight - innerHeight) - 1;
+    if (clamped) settle(); else rememberListAnchor();
+  };
+  // Capture before handlers and accept their final layout before paint.
+  // A frame callback also covers handlers that stop the event's bubbling.
+  let actionFrame = 0;
+  const acted = () => {
+    anchorActing = true;
+    if (!actionFrame) actionFrame = requestAnimationFrame(() => {
+      actionFrame = 0; anchorActing = false; rememberListAnchor();
+    });
+  };
+  const acts = ['pointerdown', 'click', 'keydown', 'input', 'touchend', 'focusin'];
+  for (const kind of acts) document.addEventListener(kind, acted, true);
+  window.addEventListener('scroll', scrolled, { passive: true });
+  main.addEventListener('scroll', scrolled, { capture: true, passive: true });
+  window.addEventListener('resize', acted);
+  anchorWatch = { mutations, observe, stop: () => {
+    mutations.disconnect(); sizes.disconnect();
+    if (actionFrame) cancelAnimationFrame(actionFrame);
+    anchorActing = false;
+    for (const kind of acts) document.removeEventListener(kind, acted, true);
+    window.removeEventListener('scroll', scrolled); window.removeEventListener('resize', acted);
+    main.removeEventListener('scroll', scrolled, true);
+  } };
+  observe(); rememberListAnchor();
 }
 // How far the page scrolls to put hold back where it was (top). Where what is
 // drawn above it shrank by more than the page is scrolled (a reply taking the
@@ -791,15 +908,16 @@ function keepListAnchor(paint) {
 // would cut it short. Then the list keeps the rest as room between what changed
 // and the writing, so the writing stays exactly where it was (item 363): just
 // above the New message composer resting among the messages (item 465, the
-// sheet's --hold-room, aim.css), or at the list's end for a hold below it. The
+// sheet's --hold-room, aim.css), at the list's top for a card, or at the
+// list's end for a hold below it. The
 // next hold gives that room back, and keeps only what it needs.
-function holdRoom(list, hold, top) {
-  const moved = hold.getBoundingClientRect().top - top, short = -(window.scrollY + moved);
+function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect().top) {
+  const moved = position() - top, short = -(window.scrollY + moved);
   const home = $('new-message-sheet'), resting = home.parentElement === list && !home.open && home.contains(hold);
-  if (!(short > 0) || !resting && (list.contains(hold) || !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING))) return moved;
-  const [room, side] = resting ? [home, '--hold-room'] : [list, 'padding-bottom'];
+  if (!(short > 0) || !resting && !list.contains(hold) && !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
+  const [room, side] = resting ? [home, '--hold-room'] : [list, list.contains(hold) ? 'padding-top' : 'padding-bottom'];
   room.style.setProperty(side, `${short}px`); roomy = () => room.style.removeProperty(side);
-  return hold.getBoundingClientRect().top - top;
+  return position() - top;
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The first card in view. With More, or the New line that loads older
@@ -815,7 +933,7 @@ function inView(node) { const box = node.getBoundingClientRect(); return box.bot
 // its stack moves it no more than one above the stack.
 const MESSAGE_ENTRIES = '#messages > [data-id], #messages > .reply-stack > [data-id], #messages > .reply-stack > .stack-replies > [data-id]';
 function firstInView() {
-  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
+  return [...document.querySelectorAll(`${MESSAGE_ENTRIES}, #messages .dossier-cover, #messages .stack-earlier, #messages > [data-line=older], #more-messages, #memory-items .memory-card`)].find(inView);
 }
 // The first card drawn now, after last, that the list did not hold before:
 // one loaded, not one a fold or a join only draws again.
@@ -1046,6 +1164,7 @@ function landOn(id, { full = false } = {}) {
   reveal(entry, { full });
   const card = opened(entry);
   card.scrollIntoView({ block: 'nearest' });
+  rememberListAnchor();
   return card;
 }
 // A message a link on the page names (the person's reply, or a tag's), opened
@@ -2365,6 +2484,7 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
+  watchListAnchor();
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
@@ -3343,7 +3463,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
+window.addEventListener('pagehide', () => { anchorWatch?.stop(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
