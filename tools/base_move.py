@@ -200,11 +200,12 @@ def controller_binding(source, judgment, github, repository, head):
             and prs[0].get('base', {}).get('ref') == current['ref']
             and prs[0].get('base', {}).get('sha') == current['sha'], 'archived check current PR binding differs')
     external = '%d-%d' % (source['run'], source['attempt'])
-    # The early, unretargeted receipt publishes an empty base, not a guessed
-    # original ref. Both PR records above still bind its complete base facts.
-    retargeted = current != original
-    name = 'Verdict for ' + current['ref'] if retargeted else 'Verdict'
-    published_base = current['ref'] if retargeted else ''
+    # Plain early refusals require equal complete base facts and the exact
+    # publication pair. Branch-named receipts also occur without a base move.
+    # Both PR records above and all three names below must still agree.
+    plain = current == original and (pub.get('name'), pub.get('base')) == ('Verdict', '')
+    name = 'Verdict' if plain else 'Verdict for ' + current['ref']
+    published_base = '' if plain else current['ref']
     require(pub.get('check_run_id') == listed['id'] == raw.get('id')
             and pub.get('head_sha') == head and pub.get('name') == name and pub.get('base') == published_base
             and pub.get('external_id') == external, 'published Verdict binding differs')

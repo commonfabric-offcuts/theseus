@@ -65,8 +65,8 @@ matches the original source; its
 base is the current observed base, never substituted for original provenance.
 The controller ref must exactly match its API run head branch.
 The check must come from trusted App id 5763648 (`theseus-verdict`), be named
-exactly `Verdict` when current and original base facts are equal, or exactly
-`Verdict for BRANCH` when they differ, where BRANCH is authenticated `current_base.ref`,
+exactly `Verdict` for the equal-base early-refusal shape, or exactly
+`Verdict for BRANCH` for the branch-named shape, where BRANCH is authenticated `current_base.ref`,
 bind the producer via external_id, match the published check ID and
 controller attempt, and match retained check output and refusal bytes. API
 summary may append only the known `Published by controller run ... attempt ...`
@@ -125,16 +125,18 @@ No full run on the assembly is requested or claimed. Missing genuine evidence
 is a blocker. Coordinator installation/use waits for independent review of
 this new freeze in a dedicated checkout; v1 was not cleared.
 
-V4 selects exactly one authentic receipt shape using equality of the complete
-`current_base` and `base_at_run` facts (both ref and SHA). When equal, the plain
-shape requires `published.json.name == "Verdict"` and `base == ""`, exactly as
-in the original early-refusal receipt. The empty publication base is not a
-base fact: producer PR and trusted check API PR must still bind the full current
-ref/SHA, equal to the original base. When unequal, the retargeted shape requires
-`name == "Verdict for " + current_base.ref` and `base == current_base.ref`.
-All three published/API/archived check names must equal that selected name.
+V4 admits two authenticated publication pairs. The plain early-refusal pair is
+`published.json.name == "Verdict"` and `base == ""`; it additionally requires
+equality of the complete `current_base` and `base_at_run` facts (both ref and SHA).
+The branch-named pair is `name == "Verdict for " + current_base.ref` and
+`base == current_base.ref`; it applies to both same-base and retargeted receipts.
+A branch-named receipt does not imply that the base changed. The empty
+publication base is not a base fact: producer PR and trusted check API PR must
+still bind the full current ref/SHA, source head and PR number in both shapes.
+All three published/API/archived check names must equal the selected name.
 Names and publication base fields cannot cross shapes; absent fields refuse.
-There is no fallback based on which name happens to be supplied. Original
+Selection checks the publication pair and authenticated base facts, never the
+supplied name alone, and all API/archive identity checks remain required. Original
 merge facts absent from an early refusal remain absent; full-source provenance
 and Git must independently bind the original merge. Nothing is relabeled.
 

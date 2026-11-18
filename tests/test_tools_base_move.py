@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 import copy
+import itertools
 
 from tools import deploy, release_check, ci_known_reds as ci, base_move
 from test_tools_train import TrainCase, listed, BRANCH, REPOSITORY
@@ -1040,6 +1041,124 @@ class PlainControllerProvenance(unittest.TestCase):
         f = self.f; f.refusals = b'another refusal\n'; f.freeze(); f.refuses('refusal ground')
 
 
+class BranchNamedSameBaseController(unittest.TestCase):
+    """Same-base branch naming is a publication shape, not retargeting evidence."""
+    def setUp(self):
+        self.f = ControllerProvenance()
+        self.f.setUp()
+        self.addCleanup(self.f.doCleanups)
+        f = self.f
+        f.source['base_at_run'] = dict(f.current_base)
+        f.source['tested_merge']['first_parent'] = f.current
+
+    def test_same_base_branch_receipt_preserves_original_failure(self):
+        f = self.f; result = f.consume()
+        self.assertEqual(result['current_base'], f.source['base_at_run'])
+        self.assertEqual(result['output'], f.check['output'])
+        self.assertEqual(result['refusals'], 'original refusal\n')
+        self.assertEqual(f.check['conclusion'], 'failure')
+
+    def test_crossed_publication_api_archive_names_and_base(self):
+        branch = self.f.check['name']
+        names = ('Verdict', branch, 'Verdict for other')
+        for pub, api, archived, base in itertools.product(
+                names, names, names, ('', 'release/live73', 'other')):
+            if pub == api == archived == branch and base == 'release/live73':
+                continue
+            if pub == api == archived == 'Verdict' and base == '':
+                continue
+            with self.subTest(pub=pub, api=api, archived=archived, base=base):
+                self.setUp(); f = self.f
+                f.published.update(name=pub, base=base)
+                f.raw['name'] = api; f.check['name'] = archived
+                f.freeze()
+                with self.assertRaises(base_move.Refused): f.consume()
+
+    def test_missing_base_facts_and_publication_fields(self):
+        rows = [('source', ('base_at_run',)), ('source', ('base_at_run', 'ref')),
+                ('source', ('base_at_run', 'sha')), ('source', ('controller', 'current_base')),
+                ('current_base', ('ref',)), ('current_base', ('sha',)),
+                ('binding', ('producer', 'pull_request', 'base_ref')),
+                ('binding', ('producer', 'pull_request', 'base_sha')),
+                ('raw', ('pull_requests', 0, 'base', 'ref')),
+                ('raw', ('pull_requests', 0, 'base', 'sha')),
+                ('published', ('name',)), ('published', ('base',))]
+        for target, path in rows:
+            with self.subTest(target=target, path=path):
+                self.setUp(); f = self.f; obj = getattr(f, target)
+                for key in path[:-1]: obj = obj[key]
+                del obj[path[-1]]
+                f.freeze()
+                with self.assertRaises(base_move.Refused): f.consume()
+
+    def test_authenticated_field_negatives(self):
+        rows = [
+            ('source', ('base_at_run', 'sha'), '0' * 40, 'original merge binding'),
+            ('current_base', ('ref',), 'other', 'current PR binding'),
+            ('current_base', ('sha',), '0' * 40, 'current PR binding'),
+            ('binding', ('producer', 'pull_request', 'base_ref'), 'other', 'current PR binding'),
+            ('binding', ('producer', 'pull_request', 'base_sha'), '0' * 40, 'current PR binding'),
+            ('binding', ('producer', 'pull_request', 'head_sha'), '0' * 40, 'current PR binding'),
+            ('binding', ('producer', 'head_sha'), '0' * 40, 'producer binding'),
+            ('binding', ('producer', 'head_repository'), 'other/repo', 'producer binding'),
+            ('binding', ('controller', 'sha'), '0' * 40, 'protected controller identity'),
+            ('binding', ('controller', 'ref'), 'refs/heads/other', 'protected controller identity'),
+            ('source', ('controller', 'attempt'), 2, 'controller run identity'),
+            ('run', ('head_sha',), '0' * 40, 'artifact provenance'),
+            ('run', ('path',), '.github/workflows/other.yml', 'controller run identity'),
+            ('published', ('check_run_id',), 999, 'published Verdict binding'),
+            ('published', ('head_sha',), '0' * 40, 'published Verdict binding'),
+            ('published', ('external_id',), '101-2', 'published Verdict binding'),
+            ('published', ('controller_attempt',), '2', 'published attempt binding'),
+            ('published', ('producer_attempt',), '2', 'published attempt binding'),
+            ('published', ('controller_run',), '203', 'published attempt binding'),
+            ('published', ('producer_run',), '102', 'published attempt binding'),
+            ('raw', ('app', 'id'), 1, 'untrusted Verdict App'),
+            ('raw', ('app', 'slug'), 'other', 'untrusted Verdict App'),
+            ('raw', ('head_sha',), '0' * 40, 'source check binding'),
+            ('raw', ('details_url',), 'other', 'source check binding'),
+            ('raw', ('external_id',), '101-2', 'source check binding'),
+            ('check', ('external_id',), '101-2', 'source check binding'),
+            ('raw', ('conclusion',), 'success', 'source check binding'),
+            ('raw', ('pull_requests', 0, 'number'), 32, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'head', 'sha'), '0' * 40, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'base', 'sha'), '0' * 40, 'archived check current PR'),
+            ('raw', ('pull_requests', 0, 'base', 'ref'), 'other', 'archived check current PR'),
+            ('raw', ('output', 'summary'), 'fake pass', 'Verdict output')]
+        for target, path, value, why in rows:
+            with self.subTest(target=target, path=path):
+                self.setUp(); f = self.f; obj = getattr(f, target)
+                for key in path[:-1]: obj = obj[key]
+                obj[path[-1]] = value
+                f.freeze(); f.refuses(why)
+
+    def test_wrong_source_run_and_attempt(self):
+        for key in ('run_id', 'run_attempt'):
+            with self.subTest(key=key):
+                self.setUp(); f = self.f
+                f.binding['producer'][key] = '999'; f.freeze()
+                with self.assertRaises(ci.Refused): f.consume()
+
+    def test_wrong_refusal(self):
+        f = self.f; f.refusals = b'changed refusal\n'; f.freeze(); f.refuses('refusal ground')
+
+    def test_archive_metadata_identity_and_digest(self):
+        rows = [(('name',), 'other'), (('digest',), 'sha256:' + '0' * 64),
+                (('workflow_run', 'id'), 101), (('workflow_run', 'head_sha'), '0' * 40)]
+        for artifact_id in (301, 302):
+            for path, value in rows:
+                with self.subTest(artifact=artifact_id, path=path):
+                    self.setUp(); f = self.f; obj = f.api['actions/artifacts/' + str(artifact_id)]
+                    for key in path[:-1]: obj = obj[key]
+                    obj[path[-1]] = value
+                    f.refuses('artifact provenance')
+        for kind in ('verdict', 'published'):
+            with self.subTest(kind=kind):
+                self.setUp(); f = self.f
+                f.source['controller'][kind + '_artifact']['archive']['sha256'] = '0' * 64
+                f.refuses('artifact digest')
+
+
 class PlainSourceBindings(BaseMoveFixture):
     def setUp(self):
         super().setUp()
@@ -1064,6 +1183,39 @@ class PlainSourceBindings(BaseMoveFixture):
         self.evidence_body['source']['controller']['current_base']['ref'] = 'train/wrong'
         self.controller_producer['producer']['pull_request']['base_ref'] = 'train/wrong'
         self.github.answers['repos/' + REPOSITORY + '/check-runs/201']['pull_requests'][0]['base']['ref'] = 'train/wrong'
+        self.freeze_controller()
+        self.evidence_body['source']['controller']['current_base'] = dict(ref='train/wrong', sha=self.old)
+        self.refuse('source merge binding')
+
+
+class BranchNamedSameBaseSourceBindings(BaseMoveFixture):
+    def setUp(self):
+        super().setUp()
+        self.controller_producer['producer']['pull_request'].update(
+            base_ref=self.original_base['ref'], base_sha=self.original_base['sha'])
+        name = 'Verdict for ' + self.original_base['ref']
+        self.controller_check['name'] = self.published['name'] = name
+        self.published['base'] = self.original_base['ref']
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201'].update(
+            name=name, pull_requests=[{'number': 31, 'head': {'sha': self.head}, 'base': dict(self.original_base)}])
+        self.freeze_controller()
+        self.evidence_body['source']['controller']['current_base'] = dict(self.original_base)
+
+    def test_branch_full_source_preserves_original_red(self):
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+        measured = self.evidence_of('02-release')['record']['measurements']['train']['base_move']
+        self.assertFalse(measured['source_observed']['passed'])
+        self.assertEqual(measured['source_observed']['controller']['current_base'], self.original_base)
+        self.assertEqual(measured['source_observed']['controller']['refusals'], 'the base is not judged here\n')
+
+    def test_branch_original_ref_still_binds_provenance(self):
+        self.evidence_body['source']['base_at_run']['ref'] = 'train/wrong'
+        self.controller_producer['producer']['pull_request']['base_ref'] = 'train/wrong'
+        self.controller_check['name'] = self.published['name'] = 'Verdict for train/wrong'
+        self.published['base'] = 'train/wrong'
+        self.github.answers['repos/' + REPOSITORY + '/check-runs/201'].update(
+            name='Verdict for train/wrong',
+            pull_requests=[{'number': 31, 'head': {'sha': self.head}, 'base': dict(ref='train/wrong', sha=self.old)}])
         self.freeze_controller()
         self.evidence_body['source']['controller']['current_base'] = dict(ref='train/wrong', sha=self.old)
         self.refuse('source merge binding')
