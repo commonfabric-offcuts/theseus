@@ -45,3 +45,19 @@ To/writing preservation, permission changes while open, recovery, deep paging,
 Only new and both-rail integration remain qualified by the checks actually
 run and source reads; this piece claims no blanket qualification. No scaling
 claim or performance measurement is made.
+
+The first full Python run retained 3,169 tests and 11 failures. Corrections
+to verification code distinguish compact durable wait heads from expanded
+question navigation, count both blocking and plain asks, repair two ledger
+anchors, classify the relocated visibility query, and declare the own case's
+two generated-database reads. Focused controls cover these corrections; the
+full Python raw result remains failed. Nineteen undeclared input reads also
+exist on parent96 and remain unresolved here.
+
+Verification-order breach: the builder applied two temporary product mutants
+to prove the repaired ledger anchors after the native runs, then restored
+both files byte-for-byte. The brief explicitly invalidates native binding
+after product edits, so those 8/8 results in each engine remain historical
+evidence and are not final qualification. No native retry is authorized by
+the four-slot allocation. The handoff remains not ready despite restored
+product hashes; the coordinator decides the next action.
