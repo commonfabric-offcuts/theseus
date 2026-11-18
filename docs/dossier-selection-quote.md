@@ -4,7 +4,7 @@ On a phone, selecting text in a message inside a dossier shows the same Quote
 pill the composer uses; tapping it opens the composer with the selected text
 quoted. Selecting alone opens nothing.
 
-This source-only feel preview uses the current Reader pill's markup and style,
+The preview implementation uses the current Reader pill's markup and style,
 the card's existing selection-to-Markdown mapping, and the existing
 `replyMessage` → `Reader.quoteFrom` → `Reader.quoteInto` owner. The source is
 the selected message and its displayed revision, never the dossier's first
@@ -35,5 +35,23 @@ Scope uses the existing coarse-pointer convention for phone controls, including
 landscape. There is no new destination default. Unresolved until Tony tries his
 actual phone: pill placement versus Safari's selection UI and handles, and
 whether the current quote destination/Reader opening is the intended feel.
-Source reasoning supplies no phone or native-selection proof. No tests or
-review processes are authorized until Tony approves that feel.
+Source reasoning supplies no phone or native-selection proof. Warp9078 advances this exact preview to tests now, superseding the earlier
+wait. This is not evidence that Tony tried or approved it on a physical phone.
+
+
+## Checks under warp9078
+
+`tests/dossier_selection_quote_native.mjs`, reached through the existing
+`native-reading` and `native-webkit-reading` steps with `item 674`, uses browser
+mouse selection and native touch/keyboard activation on isolated fixtures.
+`tests/ui_dossier_selection_quote.test.mjs` checks capture validation and the
+existing Reader quote owner below the browser; its simulated objects make no
+native-gesture or phone claim. The historical preview source remains
+`c865e195d79db737e5af3f4ff56cc9cd217f8838`. Before captures use exact public
+source overlays from its parent, with digests; source mutants must apply once,
+fail their semantic assertion, and restore every candidate public byte.
+
+The current quote destination/layout and writing owners are the default.
+Desktop WebKit does not establish physical iOS selection handles, system menus,
+software-keyboard geometry or native touch-drag cancellation. Unreached states
+and raw failures belong in the stage report; they are not passing checks.
