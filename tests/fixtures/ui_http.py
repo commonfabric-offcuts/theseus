@@ -1321,10 +1321,15 @@ def main():
                                     "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
                                     "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
                         assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
+                        # Item 653: same source owner and lost-topic permission,
+                        # with an optional verified image beside the text file.
+                        named_attachments = [{"id": media_id}]
+                        if request.get("image"):
+                            named_attachments += published(prefix + "-image", [{"name": "screen.png", "image": "screen.png"}], agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
-                            "attachments": [{"id": media_id}],
+                            "attachments": named_attachments,
                             "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
