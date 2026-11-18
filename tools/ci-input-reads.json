@@ -4635,5 +4635,37 @@
       "scope": "generated/system/product",
       "inputs": []
     }
+  },
+  "tests/test_forward_landing_9716.py": {
+    "3e8554e3aa1baa050576f5d67ca6e71606c2bec5fd43b548c41ef32115f3a708": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "dc945be22f4461647372f35248b15876ec1b28789eeacbbf6ea84e14bbfb2546": {
+      "inputs": [
+        "tools/forward_plan.py",
+        "tools/compose_forward.py",
+        "tools/compose_groups.py",
+        "tools/compose_inventory.cjs",
+        "tools/compose_instrument.cjs",
+        "tools/compose_deadline_775.mjs",
+        "tools/compose_worker_775.mjs",
+        "tools/run_compose_group.py"
+      ],
+      "scope": "repository"
+    },
+    "f53890b7c1ebb2823b88b309c7d33604044c67195df37147431040c5bf8c49ed": {
+      "inputs": [
+        "tools/forward_plan.py",
+        "tools/compose_forward.py",
+        "tools/compose_groups.py",
+        "tools/compose_inventory.cjs",
+        "tools/compose_instrument.cjs",
+        "tools/compose_deadline_775.mjs",
+        "tools/compose_worker_775.mjs",
+        "tools/run_compose_group.py"
+      ],
+      "scope": "repository"
+    }
   }
 }

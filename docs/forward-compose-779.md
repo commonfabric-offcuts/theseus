@@ -42,6 +42,11 @@ are rehearsed in an isolated copy, never applied to the live tools by this seat.
 
 Packet version2 has exact fields: version, product, package, archives, review.
 Each archive binding uses grouped_admission.archive's existing strict fields.
+The fresh release-check archive alone selects the summary role: its exact job
+is "the whole run's summary" and its successful upload step is "Keep the whole
+run's summary". Exactly one summary archive is required. Check archives retain
+the default "Keep the evidence" upload binding. Role selection does not change
+the original run, attempt, source, API digest or upload-window checks.
 Package fields: producer (exact filename-to-SHA256 map), workflow_head,
 workflow_sha256, instrumented_sha256, review. Product is the actual tested
 merge's head/tree/ordered parents; its PR head remains separate in the outer

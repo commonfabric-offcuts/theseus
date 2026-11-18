@@ -61,8 +61,14 @@ def review(ref, body, judgment, kind):
     return data
 
 
-def archive(binding, git, github, repository, facts=None):
+def archive(binding, git, github, repository, facts=None, role='check'):
     b.fields(binding, 'run attempt run_head workflow_head event job job_name id name archive')
+    b.require(role in ('check', 'summary'), 'grouped archive role differs')
+    upload = 'Keep the evidence'
+    if role == 'summary':
+        b.require(binding['name'] == 'release-check' and binding['job_name'] == "the whole run's summary",
+                  'grouped summary archive/job differs')
+        upload = "Keep the whole run's summary"
     b.sha(binding['workflow_head']); b.sha(binding['run_head'])
     b.require(binding['event'] in ('pull_request', 'workflow_dispatch'), 'grouped event differs')
     key = (binding['run'], binding['attempt'], binding['run_head'], binding['event'])
@@ -83,7 +89,7 @@ def archive(binding, git, github, repository, facts=None):
               and wr.get('head_branch') == run['head_branch']
               and wr.get('repository_id') == run['repository']['id']
               and wr.get('head_repository_id') == run['head_repository']['id'], 'grouped artifact provenance differs')
-    uploads = [s for s in job.get('steps', []) if s.get('name') == 'Keep the evidence'
+    uploads = [s for s in job.get('steps', []) if s.get('name') == upload
                and s.get('status') == 'completed' and s.get('conclusion') == 'success']
     b.require(len(uploads) == 1 and ce.stamp(uploads[0]['started_at']) <= ce.stamp(meta['created_at'])
               <= ce.stamp(job['completed_at']), 'grouped artifact attempt/upload differs')

@@ -46,6 +46,7 @@ def validate(ref, judgment, git, github, repository, head, anchor, source_files)
     patched=f.f779_patch(original)
     b.require(package['instrumented_sha256']==b.digest(patched), 'fresh reviewed instrument differs')
     archives=packet['archives']
+    b.require(sum(a['name']=='release-check' for a in archives)==1, 'fresh missing/duplicate summary archive')
     facts={}
     endpoint='repos/%s/actions/runs/%d/artifacts'%(repository,anchor['run'])
     artifacts=listing(github,endpoint,'artifacts')
@@ -57,7 +58,8 @@ def validate(ref, judgment, git, github, repository, head, anchor, source_files)
             b.require(binding['run']==anchor['run'] and binding['attempt']==anchor['attempt']
                       and binding['run_head']==anchor['tested_merge']['second_parent'] and binding['event']=='pull_request'
                       and binding['workflow_head']==package['workflow_head'], 'fresh archive wrong run/source')
-            for read,run,job in g.archive(binding,git,github,repository,facts):
+            role='summary' if binding['name']=='release-check' else 'check'
+            for read,run,job in g.archive(binding,git,github,repository,facts,role=role):
                 b.require(job.get('conclusion') in ('success','failure'), 'fresh producer job not retired')
                 b.require(binding['name'] not in contents, 'fresh duplicate archive name')
                 members={}
