@@ -14,6 +14,16 @@ starting width, including movements back through the origin. The initial size is
 bounded by the existing maximum and the window; the minimum leaves room for
 the existing composer controls. Width is only a presentation choice in the
 open page, never writing, a destination, a send or a private-note action.
+Tony #8665 approves the drag feel at 58523903; Warp #8667 requires separate
+stacked and Wide widths before shipping and waives another preview. Each
+Reader layout keeps its own last chosen outer width for that element's page
+lifetime. Switching layouts restores that layout's choice; an unchosen layout
+uses its existing default. Close/reopen keeps both choices. New message owns
+its separate width. Reload recreates all three choices at their defaults:
+at viewport <=760px, viewport width; above it, min(72rem, viewport - 48px)
+for stacked/New message and min(100rem, viewport - 48px) for Wide. Existing
+mode preference and Wide writing share (.45) retain their separate owners.
+There is no Core migration, durable width preference or new preference UI.
 The topic's composer resting in the feed and Notebook pages keep their existing
 layout; these are not new floating composer surfaces.
 
@@ -65,10 +75,10 @@ these bounds cannot hide a missing or asymmetric resize. Red-before shots
 come from the base application with the new cases only; no before shot is
 manufactured. Source snapshots accompany the screenshots.
 
-Review correction status: the held-origin adapter regression is red before
-and green after locally. The added native traversal/state cases and mutants
-are UNRUN: the piece used all six configured starts before this review (four
-compose, one Python, one Node). A hosted red-before call and a hosted corrected
-own-set call, including mutants/restored controls and new screenshots, require
-two additional compose starts to be authorized/configured. The overall ceiling
-of 18 leaves 12 numerically unused starts; this is not permission to use them.
+The correction adds native mode/default/close/reopen/reload roundtrips and
+wrong-mode, undersize and drift mutants with exact restored controls. Revised
+B1 held reversal, B2 native Tab reach and B3 recovery cases require fresh
+proof; historical 358/358 is not that proof. Six historical starts remain spent.
+The 8667 correction allows at most six compose, two Python and two Node starts,
+sequentially, with two remaining unallocated under the whole-piece ceiling 18.
+Current run evidence belongs in the 650-correction-8667 report.

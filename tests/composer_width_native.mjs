@@ -344,6 +344,90 @@ export async function composerWidthCases(h) {
       await picture(p, `${label}-after`);
     } finally { p.off('request', observe); }
   }
+  async function chooseMode(p, mode) {
+    await press(p, '#reader-menu');
+    await until(p, () => Boolean(document.querySelector('[role=menu]')), 'the layout menu');
+    await press(p, `[role=menuitem]:text-is("${mode === 'wide' ? 'Wide' : 'Stacked'} layout")`);
+    await until(p, mode => document.querySelector('#reader').dataset.layout === mode, 'the chosen layout', mode);
+    await until(p, () => document.getAnimations().filter(x => x.effect?.getTiming().iterations !== Infinity).every(x => x.playState !== 'running'), 'the settled layout');
+  }
+  async function putAway(p, a) {
+    await press(p, a.dialog === '#reader' ? '#reader-close' : '#new-message-close');
+    await until(p, a => !document.querySelector(a.dialog).open, 'the composer closed', a);
+  }
+  async function openNew(p) {
+    await press(p, '#new-message');
+    await until(p, () => document.querySelector('#new-message-sheet').open, 'New message opens');
+  }
+  async function lifetimeProof(shape, scheme, mutation = null) {
+    const { p, a, applied } = await setup('Reader', 'writing', shape, scheme, { mutation });
+    const n = at('New message'), saved = await kept(p, a), initial = await geometry(p, a);
+    const phone = initial.view <= 760, touch = engine === 'chromium' && p.touch;
+    const defaults = { stacked: phone ? initial.view : Math.min(72 * 16, initial.view - 48),
+      wide: phone ? initial.view : Math.min(100 * 16, initial.view - 48) };
+    const width = async (adapter, expected, words) => {
+      const g = await geometry(p, adapter);
+      near(g.width, expected, words);
+      near(g.center, g.view / 2, `${words}: centred`);
+    };
+    await width(a, defaults.stacked, 'stacked starts at its source-defined default');
+    await picture(p, 'item-650-lifetime-default-stacked');
+    await drag(p, a, 'left', 16, 0, touch);
+    const stacked = defaults.stacked - 32;
+    await width(a, stacked, 'stacked keeps its chosen width');
+    let wide;
+    if (!phone) {
+      await chooseMode(p, 'wide');
+      await width(a, defaults.wide, 'unchosen Wide uses its own default without stacked leakage');
+      await picture(p, 'item-650-lifetime-default-wide');
+      await drag(p, a, 'right', -32);
+      wide = defaults.wide - 64;
+      await width(a, wide, 'Wide keeps its own chosen width');
+      await chooseMode(p, 'stacked');
+      await width(a, stacked, 'switching back restores stacked choice');
+      await chooseMode(p, 'wide');
+      await width(a, wide, 'switching back restores Wide choice');
+    }
+    assert.deepEqual(await kept(p, a), saved, 'mode switches preserve exact writing, To, images and selection');
+    await picture(p, 'item-650-lifetime-reader-chosen');
+    await putAway(p, a);
+    await openNew(p);
+    await width(n, defaults.stacked, 'New message has its independent default');
+    await press(p, n.field); await p.keyboard.insertText('Independent New message item 650 writing.');
+    await until(p, n => document.querySelector(n.sign).dataset.save === 'saved', 'New message writing saved', n);
+    const newSaved = await kept(p, n);
+    await drag(p, n, 'right', -16, 0, touch);
+    await width(n, defaults.stacked - 32, 'New message keeps its own chosen width');
+    assert.deepEqual(await kept(p, n), newSaved, 'New message resize keeps exact writing, To, images and selection');
+    await picture(p, 'item-650-lifetime-new-chosen');
+    await putAway(p, n); await openNew(p);
+    await width(n, defaults.stacked - 32, 'New message close/reopen restores its choice');
+    await putAway(p, n); await open(p, second);
+    await width(a, phone ? stacked : wide, 'Reader close/reopen restores its current mode choice');
+    if (!phone) {
+      await chooseMode(p, 'stacked');
+      await width(a, stacked, 'New message leaves stacked choice independent');
+      await chooseMode(p, 'wide');
+      await width(a, wide, 'New message leaves Wide choice independent');
+    }
+    await p.reload();
+    await until(p, () => document.body?.dataset.ready === 'true', 'reloaded application');
+    await open(p, second);
+    await width(a, defaults.stacked, 'reload restores stacked source-defined default');
+    if (!phone) {
+      await chooseMode(p, 'wide');
+      await width(a, defaults.wide, 'reload restores Wide source-defined default');
+    }
+    await picture(p, 'item-650-lifetime-reader-reloaded');
+    await putAway(p, a); await openNew(p);
+    await width(n, defaults.stacked, 'reload restores independent New message default');
+    await picture(p, 'item-650-lifetime-new-reloaded');
+    await close(p);
+    return applied;
+  }
+  for (const shape of [...shapes, 'very-wide-stacked']) for (const scheme of ['light', 'dark']) {
+    await check(`item 650 independent mode widths ${shape} ${scheme}: close reopen and reload defaults`, () => lifetimeProof(shape, scheme));
+  }
   for (const surface of surfaces) for (const state of ['refused with recovery', ...(surface === 'New message' ? ['error'] : []),
     'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
     'recovery discovery', 'authority recovery blocked', 'authority recovery ready']) for (const shape of surface === 'Wide Reader' ? ['stacked'] : shapes) for (const scheme of ['light', 'dark']) {
