@@ -1770,7 +1770,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
   // the head's row, which stays the title (item 471), and a press on that folded row shows it whole.
   const editReached = async (p, device, id) => {
     const shown = () => p.evaluate(`document.querySelector(${JSON.stringify(words(id))})?.getClientRects().length > 0`);
-    const folded = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id) + ' > .message-folded > .folded-author')})?.getClientRects().length)`);
+    const folded = () => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id) + ' > .message-folded > .folded-words')})?.getClientRects().length)`);
     if (!await shown()) {
       // Lit already (the Reader closing lights the message it showed), the next press on the row shows it whole.
       if (!(await lit(p)).includes(id)) await light(p, device, id);
@@ -1778,7 +1778,7 @@ export async function editChecks({ check, until, view, control, facts, shot = as
         await press(p, device, `${card(id)} .stack-who`);
         await until(async () => await shown() || await folded(), `${device}: a press on the head's row shows it, whole or as its folded row`);
       }
-      if (await folded()) await press(p, device, `${card(id)} > .message-folded > .folded-author`);
+      if (await folded()) await press(p, device, `${card(id)} > .message-folded > .folded-words`);
       await until(shown, `${device}: a press on the head's row shows it whole`);
     }
     await menuOf(p, device, id); await choose(p, device, 'Edit');

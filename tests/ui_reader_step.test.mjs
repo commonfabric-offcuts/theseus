@@ -24,6 +24,7 @@ function reader(t, { admits, writes }) {
   const kinds = { fable: 'agent', warp: 'agent', tony: 'human' };
   const acts = [], inserted = [];
   const r = Object.assign(Object.create(Reader.prototype), {
+    narrow: {matches: true}, // Data-only Reader fixture uses the phone's fixed layout.
     sessions: { reply, note }, mode: 'reply', presentation: {}, source: { source_ref: context.sourceRef, body: 'Quoted passage' },
     field: document.createElement('textarea'), $: id => elements[id],
     selectedPassage: () => 'Quoted passage', insertText: text => inserted.push(text), disarm() {},

@@ -22,12 +22,20 @@ before when the shell declines. It renames its own address through the shell.
 
 Each outcome has one row: its light, its name and the line that says where
 it stands, and the whole row is one thing to press, which opens the
-outcome's Conversation with its topics under it. When Core says the outcome
-has no Conversation, it opens the outcome's page instead. There is no fold
+outcome's Conversation with its topics under it. On a phone (item 654), a
+tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
+its scroll, the current page and every other outcome's fold stay as they were.
+A tap on an open outcome goes to its Conversation, with its topics still open.
+A topic tap goes straight to the topic. On a laptop a click still goes to the
+Conversation and toggles its topics; Return keeps its existing way. When Core
+says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
 triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
 unread counts, the work ring, Waiting on you and Ready for review, bold titles
-while something in them is unread, and Done (N) and Archived (N) below.
+while something in them is unread, and Done (N) and Archived (N) below. A
+press on a topic's unread count opens it at its oldest unread message, here
+and on the right rail's Build rows alike (item 613; docs/attention.md, "In the
+browser").
 
 - **Pencils.** A pencil means "new", the same glyph as New message and a new
   Notebook page (item 305). A quiet pencil beside an outcome's name starts a
@@ -110,8 +118,8 @@ rail.
   on the pencil opens the New topic line. ↑ from the first outcome lands on
   the Outcomes heading's pencil, where Return opens the New outcome line.
   ⌘Return starts a new message in the row's topic or the outcome's
-  Conversation. A click or a tap on a row opens it as Return does and leaves
-  the keys on it, wearing their ring (item 462). A "Keys" line under the
+  Conversation. A click or a tap on a row leaves the keys on it, wearing their ring (item 462), including a phone tap that
+  only expands a collapsed outcome (item 654). A "Keys" line under the
   outline lists them in plain words.
   The row the keys reach comes into view by the one rule for what the keys
   select (docs/interaction.md, "What the keys select comes into view"), in the
@@ -203,8 +211,11 @@ yet.
 
 - **Starred** is the reader's own stars, shown to no one else: this topic's
   (on a Conversation, this outcome's) first, then the rest under Elsewhere.
-  A press lands on the message, opening its stack; Unstar beside each takes
-  the star off (docs/reply-stacks.md).
+  A press opens the message in the composer, titled with its dossier's name;
+  pressing that title returns to the dossier, as when the message is opened
+  from the dossier itself (item 655; docs/reader.md). Another topic on screen
+  does not change its name or its way back. Unstar beside each takes the star
+  off (docs/reply-stacks.md).
 - **Pipeline** is what is live, and what is in Now (with its stage) and Next,
   from the `pipeline` view, and the outcome's Build topics, each once: under
   Now each topic a piece is being built in, one row for it however many
@@ -515,8 +526,9 @@ loads once and reads no build.
   Conversation and Pipeline rows) are still read by the page, hidden, since
   other parts of the page follow them.
 - Waits in outcomes the reader cannot list are not in the outline's totals.
-- ⌘→ opens another outcome's topics only from the keys; there is no
-  pointer's way to look without going there.
+- On a laptop, ⌘→ opens another outcome's topics only from the keys; there
+  is no pointer's way to look without going there. A phone's first tap can
+  look in the drawer (item 654).
 - A browser never unloads a module it has loaded, so each run's `app.mjs`,
   with what it held at the top level, stays in memory until the page loads
   again.

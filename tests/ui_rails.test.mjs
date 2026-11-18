@@ -696,3 +696,28 @@ test('the right rail\'s read of the Build topics brings Core\'s list of those be
   assert.deepEqual(read.building, building, 'the topics being built come with the page');
   assert.deepEqual(book.ids(scopeOf('w-order')), ['t1', 't-old'], 'and the reader\'s order of the outcome\'s topics is known to the page');
 });
+
+// Item 613: on the right rail's Build rows, as in the outline, a press on a topic's unread count opens the topic at
+// its oldest unread message, and the rest of the row opens it as before (docs/rails.md).
+test('a press on a Build row\'s unread count opens its topic at the oldest unread message; the rest of the row opens it as before', async t => {
+  const { ThingsRail } = await import('../web/things-rail.mjs');
+  const { paintMarks } = await import('../web/topic-navigation.mjs');
+  const { miniDocument } = await import('./fixtures/mini_dom.mjs');
+  const doc = miniDocument(), had = globalThis.document;
+  globalThis.document = doc; t.after(() => { globalThis.document = had; });
+  const opened = [], closed = [];
+  const rail = { doc, wide: { matches: false }, close: shut => closed.push(shut), handles: { open: (target, title) => opened.push([target, title]) } };
+  const row = (id, unread) => {
+    const link = ThingsRail.prototype.placeLink.call(rail, { kind: 'topic', id }, 'Beds ' + id);
+    paintMarks(link, { id, title: 'Beds ' + id, unread, addressed: 0 }, 'tony');
+    return [link, link.querySelector('.unread-count')];
+  };
+  const [link, count] = row('t-beds', 3);
+  assert.deepEqual([count.dataset.lands, count.title], ['unread', 'Show the oldest unread message']);
+  link.onclick({ button: 0, target: count, preventDefault() {} });
+  link.onclick({ button: 0, target: link, preventDefault() {} });
+  assert.deepEqual(opened, [[{ kind: 'topic', id: 't-beds', at: 'unread' }, 'Beds t-beds'], [{ kind: 'topic', id: 't-beds' }, 'Beds t-beds']]);
+  assert.deepEqual(closed, [false, false], 'on a phone the drawer closes either way');
+  const [, none] = row('t-calm', 0);
+  assert.equal(none, null, 'a topic with nothing unread shows no count');
+});

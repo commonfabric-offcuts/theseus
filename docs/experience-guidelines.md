@@ -109,12 +109,27 @@ and the writing. Focus stays visible and follows what the person did.
   right rail's Build topics follow the reader's own order …" (⌘↑/⌘↓ order, as
   the outline keeps it).
 - Touch: see "A phone by touch" below.
+- `tests/outcome_rail_native.mjs` (`native-rail`, `native-webkit-rail`): the
+  "rail item 654 …" cases tap a collapsed outcome and then the open one:
+  the first expands its topics with the drawer, page and scroll kept; the
+  second opens its Conversation. Topic taps and laptop clicks keep their way,
+  at 320, 375, 390 and 1280px, in light and dark.
 
 ## Dismiss without losing work
 
 A press outside a pop-up closes it and keeps unsent writing and images. A press
 outside, Escape and the close control all keep work the same way. A press that
 starts or ends inside the pop-up is not an outside press.
+
+- `tests/team_bar_native.mjs` (`native-colors`, `native-webkit-colors`):
+  "colors item 643 B1 drag endpoints keep picker open" and the empty,
+  refused, error and busy picker cases exercise drags from the Team label
+  into the name field or choices, and back out. The actual pointer release
+  decides whether it ended inside, even when the click targets their common
+  ancestor. Each runs at 320, 375, 390 and 1280px, light and dark.
+  `tests/ui_people.test.mjs`: "item 643 B1 Team dismissal uses both pointer
+  endpoints, not the common-ancestor click target" also checks captured,
+  cancelled and mismatched-pointer releases never close the picker.
 
 - `tests/links_native.mjs` (`native-header`): "header a press on the backdrop
   closes the Reader, keeping its writing, and a drag out of the writing or into
@@ -161,6 +176,13 @@ at the top of its outcome once, then stays until the reader moves it.
 "rail item 641" cases, check this at 320, 375, 390 and laptop widths, light
 and dark, including the reader’s own native reorder.
 
+Opening, using and closing a card composer keeps the page at its place
+(item 644). Quoting on a laptop opens a stacked reply wide (item 668);
+a phone stays stacked. `tests/notebook_pages_native.mjs` (`native-notebook`,
+`native-webkit-notebook`) and `tests/reader_compose_native.mjs` (`native-compose`,
+both engines), the cases named "item 644", hold these acts at 320, 375 and
+390 pixels and on a laptop, light and dark.
+
 A message arriving never moves what is being read or written, and nor does
 quoting from it, nor typing in the reply. A quote keeps its words in sight
 until you scroll the message yourself, however you scroll it, and keeps the
@@ -194,6 +216,27 @@ page shorter under what is being read.
   stacks a message arriving in an open dossier hides nothing being read: …",
   the newest seven counted when the dossier opened, so a reply arriving never
   puts the card or row being read behind the earlier-messages row.
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks one dossier whose fork sits above the loaded page is one
+  stack …": a dossier the loaded page cuts above its fork is one stack, its
+  name once, at 320, 375 and 390 and a laptop, and loading the older
+  messages, the fork and then its first message, shows every message once,
+  each where the button was, and leaves the stack its head and its name once
+  ([reply-stacks.md](reply-stacks.md), "One dossier, one stack").
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks Earlier messages shows every older message it loads where
+  the button was, those of a dossier whose stack sits higher up too …": the
+  older replies of a dossier drawn higher up show below the last card shown,
+  newest first, whole, and neither that card nor the stack higher up moves or
+  takes another head, at 320, 375 and 390 by a finger and a laptop.
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks a dossier whose first message is above the page stays as
+  the reader left it …" and "… a dossier the reader placed, its first
+  message above the page, keeps its place …": Earlier messages loading an
+  older reply to a dossier's first message, then that first message, leaves
+  the dossier open under its head with the seven it showed and its
+  earlier-messages row as it was, at 320, 375 and 390 and a laptop, and where
+  the reader placed it, through a reload too.
 - `tests/new_line_native.mjs` (`native-colors`, `native-webkit-new-line`):
   "the room after the Notebook keeps the card being read in place as the New
   line fades or moves up, and goes as the person scrolls up", at a phone's
@@ -206,16 +249,38 @@ page shorter under what is being read.
   claimed only after a pass of reads has run to its end
   ([scoped-updates-followups.md](scoped-updates-followups.md)).
 
+- `tests/notebook_sheet_native.mjs` (`native-notebook`,
+  `native-webkit-notebook`): the "notebook item 642" cases keep Text, Cards and
+  Draft in the same boxes while a card is written and its saving sign changes;
+  every status branch at 320, 375, 390 and laptop, light and dark, with the
+  status in a row of its own ([decks.md](decks.md#where-it-opens)).
+
 ## Actions are where you look for them
 
-An action sits on the surface where its work happens.
+An action sits on the surface where its work happens. A count leads to what
+it counts: a press on a topic's unread count shows the oldest message still
+unread, plainly on screen, however deep it is, and the count counts nothing a
+press cannot reach.
 
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading unread count one press lands on the oldest unread message deep in a
+  dossier behind its earlier row, on screen, and the count goes once it is
+  read", at a laptop's width and at 390, 375 and 320 on a phone, light and
+  dark; `tests/test_new_line.py` (`CountLeadsThereCase`): the count and the
+  message it leads to are one rule ([attention.md](attention.md)).
 - `tests/topic_header_native.mjs` (`native-header`): "header a topic Ready for
   review shows ✅ Done beside its state; a click marks it Done, into the Done
   group, and the button goes; an active topic shows none", "header ✅ Done is
   reached with Tab and pressed with Return or Space, and the focus lands on the
   subtitle saying Done".
 - Otherwise no automated check. Held by Tony's preview of every new surface.
+
+The topic's Team says "Team". + Add becomes Done while the possible agent
+pills and field show; Done or a click outside closes them without adding the
+filter's words. `tests/team_bar_native.mjs` (native-colors and
+native-webkit-colors), the "item 643" cases, holds this at 320, 375, 390 and
+laptop widths in light and dark, including empty, refused, error, busy and
+read-only states. `tests/ui_people.test.mjs` holds drag-out and focus behavior.
 
 ## Quiet, not button land
 
@@ -234,8 +299,15 @@ mark in a line beats a boxed button. Marks on a card sit in the card's own line.
   and dark, in Chrome and Safari's engine: each mark is in the card's line on
   the time's line, never a control, and a card with all three keeps a one-line
   author line; "head rows at …" checks a stack's head row keeps its reply count
-  whole beside them ([topic-reading.md](topic-reading.md), "What a card
-  carries").
+  whole beside them, and "picture-only head row at 390px …" that a selected
+  dossier's image mark and who began it stay whole beside its title bar's ⋯
+  ([topic-reading.md](topic-reading.md), "What a card carries");
+  `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): "reading
+  stacks hidden title bar glyphs reserve nothing …", at 320 by touch hidden
+  glyphs keep no width from a dossier's name, and "reading stacks the title
+  bar's ⋯ sits on the folder's face …", ⋯ stays inside the folder's right edge,
+  the tab giving back no more than ⋯ needs, at 320, 375 and 390 each way a
+  touch shows it and on a laptop, light and dark.
 - Gap: a page check that counts the boxed controls showing before the person
   acts is proposed and not built. Until then, Tony's preview holds this.
 
@@ -299,7 +371,8 @@ content needs: a title line is about a sentence wide, and a few sentences about
 ## No coloured left edges
 
 Nothing is marked by a coloured edge or bar down one side. A card's colour
-covers its whole face.
+covers its whole face, and a dossier's colour, its first poster's when that
+is an agent, covers its folder and its title bar, and nothing else (item 477).
 
 - Node units, `tests/ui_author_colors.test.mjs`: "nothing on the page wears a
   colored left edge or bar", "an agent's card is colored across its whole face,
@@ -307,6 +380,9 @@ covers its whole face.
 - `tests/reader_colors_native.mjs` (`native-colors`, `native-webkit-colors`):
   the hovered card is black on both sides, with no edge or bar, measured from
   screenshot pixels.
+- `tests/ui_folder_colour.test.mjs`: "the coloured folder covers a whole
+  face"; `tests/stack_native.mjs`, "reading stacks a dossier an agent began
+  wears its colour …", measures no edge on the folder or its tab.
 
 ## Colours come from the theme's tokens
 
@@ -403,6 +479,20 @@ and what was kept. It never shows an error code or an id.
 - `tests/topic_header_native.mjs` (`native-header`): "header a chip pressed
   after someone else changed where it stands, before the page has read it, is
   refused in plain words, and theirs stands".
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`):
+  "reading stacks star hold: …": Move below More on a dossier holding a
+  message the reader starred, from its menu and the Reader's archive button,
+  says why in plain words where it was pressed, at 320, 375 and 390 points
+  and a laptop, light and dark, and nothing moves on any frame
+  ([dossier-below-more.md](dossier-below-more.md), item 635); "reading
+  stacks star undo: …": Command-Z, or Undo in ⋯, after a Bring back on a
+  dossier starred since, says why by the message whose ⋯ it was when that is
+  the dossier's, else under the dossier's title bar, brought into view, and
+  never beside a message of another dossier, and nothing says it was put back;
+  "reading stacks star undo hidden: …": for a dossier the page does not draw
+  (Show agent coordination off), on the status line, showing nothing hidden;
+  "reading stacks star note over: …": pressed on a message at the bottom of
+  the window, the words show over it, inside the window.
 
 ## One link per area
 
@@ -411,3 +501,26 @@ tried. Tony tries a preview from the one link he is given.
 
 - No automated check. Held by the release and preview tools, which each hand out
   one address.
+
+## A starred reply keeps its dossier
+
+Opening a starred message shows its dossier name in the composer; pressing
+that title returns to that dossier. Opening the same message from its dossier
+agrees (item 655).
+
+- `tests/stack_native.mjs` (`native-reading`, `native-webkit-reading`): the
+  "reading item 655" cases use two differently named dossiers in one topic,
+  the starred reply in the second outside the loaded page, and another topic
+  on screen; at 320, 375, 390px and laptop, light and dark. The direct-link
+  cases isolate the title and return from rail navigation. A return changes
+  neither the star nor either dossier's position.
+- `tests/ui_starred_dossier.test.mjs`: a valid cross-topic Starred route and
+  a bounded return that preserves the paging gap, then merges an overlapping
+  older page without repeating messages.
+
+Item 655 review checks in `tests/stack_native.mjs` (`native-reading` and
+`native-webkit-reading`): "reading item 655 B1-root", "B1-reply", "single",
+"B2-fresh", "B3-position", "B3-root" and "B4-return" cover unnamed roots and
+replies, singleton fallback, remote rename/clear/join/split, each failed
+metadata lookup and settled Conversation return through Only new. Each
+state runs at 320, 375, 390 and laptop, with light/dark screenshots.
