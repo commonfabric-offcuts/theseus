@@ -126,3 +126,8 @@ new646 claim. The retired passive635 any-star title indicator row is replaced
 by646's first-message-only toggle row and current native matrix. No checker
 is weakened or edited. The live94-to-final handoff also finds an inherited
 899c03c Pipeline trailer error; immutable approved ancestry is not rewritten.
+
+The existing613 Node fixture also lacked `listAccessEpoch`, newly used by
+its extracted real landing function. Its single-file control failed5/7 with
+ReferenceError; supplying that existing application binding restored7/7.
+No613 behavior changed; broader neighbouring native coverage stays Later8139.
