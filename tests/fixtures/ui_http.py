@@ -594,6 +594,7 @@ def main():
                     mutations = {
                         "lost-pending": (b"const pending = refresh?.state === 'pending';", b"const pending = false;"),
                         "visible-text": ("local.error || (!pending && local.busy ? 'Requesting update…' : '')".encode(), "local.error || (pending ? 'Awaiting new cover' : local.busy ? 'Requesting update…' : '')".encode()),
+                        "keyboard-target": (b"control.className = 'cover-refresh-glyph';", b"control.tabIndex=-1; control.className = 'cover-refresh-glyph';"),
                         "small-target": (b"control.className = 'cover-refresh-glyph';", b"control.style.cssText='width:1px;min-height:1px;height:1px;padding:0'; control.className = 'cover-refresh-glyph';"),
                     }
                     old, new = mutations[phase]

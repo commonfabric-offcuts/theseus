@@ -32310,6 +32310,21 @@
     "native": "reading",
     "case": "item 738 singleton"
    }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab reaches the cover request in the Reader and activates its actual recorded link",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "control.className = 'cover-refresh-glyph';",
+     "control.tabIndex=-1; control.className = 'cover-refresh-glyph';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 applied source controls"
+   }
   }
  ]
 }

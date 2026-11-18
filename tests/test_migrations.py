@@ -169,6 +169,7 @@ def frozen(statements):
 
 
 SCHEMA_46 = (Path(__file__).parent / "fixtures" / "schema_46.sql").read_text().splitlines()
+SCHEMA_47 = (Path(__file__).parent / "fixtures" / "schema_47.sql").read_text().splitlines()
 
 
 def step_back_by_hand(path, version):
@@ -192,6 +193,9 @@ def step_back_by_hand(path, version):
         for statement in SCHEMA_46:
             if statement.startswith("CREATE INDEX ") and " ON message_acts(" in statement:
                 db.execute(statement)
+        if version == "47":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 47 keeps derived stable topic positions, independently checked below.
         db.execute("DROP TRIGGER topic_position_insert")
         db.execute("DROP TABLE topic_position_clock")
@@ -2055,7 +2059,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
                      (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_TOOLS, SCHEMA_BEFORE_TOOLS), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS),
-                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46))
+                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47))
 
 
 class Release19ChainCase(MigrationCase):
@@ -4068,11 +4072,11 @@ class InviteStepCase(MigrationCase):
 
     def test_the_step_follows_the_judgments_and_the_tools_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-6:-3], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION)])
+        self.assertEqual(steps[-7:-4], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
                          [(BEFORE_INVITES, INVITES_VERSION)], "one step leaves 42 and one reaches 43")
         self.assertEqual((BEFORE_INVITES, INVITES_VERSION), ("42", "43"))
-        self.assertEqual(steps[-3], (BEFORE_ENDS, ENDS_VERSION), "the ends' step follows the tools'")
+        self.assertEqual(steps[-4], (BEFORE_ENDS, ENDS_VERSION), "the ends' step follows the tools'")
 
     def test_a_store_release_81_left_at_42_gains_the_invitations_once_upgraded(self):
         # Release 81 (324 live) stores version 42 without agent_invitations: the upgrade must still create it, so a
@@ -4129,7 +4133,7 @@ class ToolsStepCase(MigrationCase):
 
     def test_the_step_follows_the_invitations_and_the_ends_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-5:-2], [(BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
+        self.assertEqual(steps[-6:-3], [(BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_TOOLS or step[1] == TOOLS_VERSION],
                          [(BEFORE_TOOLS, TOOLS_VERSION)], "one step leaves 43 and one reaches 44")
         self.assertEqual((BEFORE_TOOLS, TOOLS_VERSION), ("43", "44"))
@@ -4193,11 +4197,11 @@ class EndsStepCase(MigrationCase):
 
     def test_the_step_follows_the_tools_and_the_covers_step_follows_it(self):
         steps = [step[:2] for step in migrations.STEPS]
-        self.assertEqual(steps[-4:-2], [(BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
+        self.assertEqual(steps[-5:-3], [(BEFORE_TOOLS, TOOLS_VERSION), (BEFORE_ENDS, ENDS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_ENDS or step[1] == ENDS_VERSION],
                          [(BEFORE_ENDS, ENDS_VERSION)], "one step leaves 44 and one reaches 45")
         self.assertEqual((BEFORE_ENDS, ENDS_VERSION), ("44", "45"))
-        self.assertEqual(steps[-2], (BEFORE_COVERS, COVERS_VERSION), "the covers' step follows the ends'")
+        self.assertEqual(steps[-3], (BEFORE_COVERS, COVERS_VERSION), "the covers' step follows the ends'")
 
     def test_upgrade_keeps_every_row_reads_every_outcome_open_and_matches_a_fresh_instance(self):
         self.assertEqual((self.metadata()["schema_version"], schema(self.path)), (BEFORE_ENDS, frozen(SCHEMA_BEFORE_ENDS)))

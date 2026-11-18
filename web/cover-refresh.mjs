@@ -65,7 +65,7 @@ export function refreshControl(doc, cover, context) {
               expected: { cover_revision: cover.revision, authority: { authority_id, authority_epoch } }, args: {} };
             // Save before sending. Storage failure starts no network request.
             try { doc.defaultView.localStorage.setItem(key, JSON.stringify(local.request)); }
-            catch { local.request = null; throw Error('The cover request could not be kept on this device. Nothing was sent.'); }
+            catch (error) { local.request = null; throw Error('The cover request could not be kept on this device. Nothing was sent.', { cause: error }); }
           }
           const request = local.request;
           if (authorityKey(request.expected.authority) !== authorityKey(current.bootstrap.authority)) {
@@ -75,7 +75,7 @@ export function refreshControl(doc, cover, context) {
           try { receipt = await current.api.command(structuredClone(request)); }
           catch (error) {
             const why = notTaken({ error });
-            throw Error(`${why.why ?? NOT_TAKEN[why.kind] ?? 'The connection was interrupted'}. The request is not confirmed; press refresh to retry it.`);
+            throw Error(`${why.why ?? NOT_TAKEN[why.kind] ?? 'The connection was interrupted'}. The request is not confirmed; press refresh to retry it.`, { cause: error });
           }
           if (receipt?.instance_id !== request.instance_id || receipt.operation_id !== request.operation_id || receipt.kind !== request.kind) {
             throw Error('The cover request could not be confirmed. Press refresh to retry the same request.');

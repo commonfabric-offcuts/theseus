@@ -79,6 +79,58 @@
     "f125ef4075a6fb1e510b8eb935d4a4b347b48fb6ebff1c0a5b44e9fa34a73826": {
       "inputs": [],
       "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "08320cec49fc8b65d2ec92f17c2d15042a2814a91e33122d5e61ea2147010210": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.json"
+      ],
+      "scope": "repository"
+    },
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "77193d554ceea869e159b7241742e03bc54eb87361b809d79feac0d67139de31": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.json"
+      ],
+      "scope": "repository"
+    },
+    "77b58ba727e564d45cf419dc1ca4566abc20c706e161ce2691632251ea15279c:1": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "63fe43050051667c49d206143d97b76530b5974d51896df65f41123d024cbae2:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.tar.gz"
+      ],
+      "scope": "repository"
+    },
+    "ece4a566951eebe18d0a32bd62fca491276b791213c0aa23ef48c89d93e0e705:1": {
+      "inputs": [
+        "tests/fixtures/item_738_live_web.tar.gz"
+      ],
+      "scope": "repository"
     }
   },
   "tests/fixtures/ui_store.py": {
@@ -2416,6 +2468,12 @@
         "tests/fixtures/schema_46.sql"
       ],
       "scope": "repository"
+    },
+    "b156dfb45e99e96afb4834c9046f506a1dd8b167f3f5fa662e0f13bbf21b50ad": {
+      "inputs": [
+        "tests/fixtures/schema_47.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -4348,6 +4406,153 @@
     "605352516a64de35c57b5aeaeb3fc93fb44c2902ceede263440187678a319de7:2": {
       "inputs": [
         ".github/workflows/checks.yml"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/stack_native.mjs": {
+    "2ba241f8e91166a5413d09df27a24d34b3dd0a8a307efccbba5d410586fea867": {
+      "inputs": [
+        "tests/fixtures/item_645_original_web.json"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/test_cover_refresh.py": {
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "3f03a4aa2e895c9e8f466546754d34ea7f453306bf04932faaa47fe5a8a3d6f4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:6": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:7": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:8": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:9": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:10": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:11": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b17b365bfa3b7667f97176ea0d4fb120b1d4e2ff77355d8ab2797a13325b08b7": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b17b365bfa3b7667f97176ea0d4fb120b1d4e2ff77355d8ab2797a13325b08b7:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:12": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd21bccdd71c568182e960b4626a382109077f227f7448a7ae003a19fd434e1a:13": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_item_655_fixture.py": {
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "b1806f6be502a6ca4315a5a09c922e105ac26ec1c9b2b70d841944e8fc11117c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_folded_names.test.mjs": {
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [
+        "web/reply-stacks.mjs"
+      ],
+      "scope": "repository"
+    },
+    "66a02d4736568a6a1a82d2a26dd84821c31694b36bfae49e3edc7c0b8f8fffec": {
+      "inputs": [
+        "web/stack-look.css"
+      ],
+      "scope": "repository"
+    },
+    "5a63cfed37169284ee79c097693187334903b670b5ba16b9933258cdf7d1cd1c": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "inputs": [
+        "web/app.mjs"
+      ],
+      "scope": "repository"
+    }
+  },
+  "tests/ui_item_655_evidence.test.mjs": {
+    "6be7568042f3fd4493a6fee5275f2ec746527576f770f592e2c073030b0af976": {
+      "inputs": [
+        "tests/reader_persistence_native.mjs",
+        "tests/webkit_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "328a883acb0a67fe74a39f8596cbca262838c15d1394d582cfe90d582e0747e5": {
+      "inputs": [
+        "tests/topic_reading_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86": {
+      "inputs": [
+        "tests/stack_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "e5eaa9f54dd942c5737f19c3499116ef627d95411d33bb5935fe4e1deb220a86:1": {
+      "inputs": [
+        "tests/stack_native.mjs"
       ],
       "scope": "repository"
     }

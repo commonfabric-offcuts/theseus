@@ -405,11 +405,11 @@ try {
     };
     // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
     const reach = reachWith({ evaluate, point: selector => point(selector), until });
-    const key = async (name, modifiers = 0) => {
+    const key = async (name, modifiers = 0, { plainTab = false } = {}) => {
       const held = [[1, 'Alt'], [2, 'Control'], [4, 'Meta'], [8, 'Shift']].filter(([bit]) => modifiers & bit).map(([, word]) => word);
       // Safari's plain Tab reaches only fields unless "Press Tab to highlight each item" is on;
       // Option-Tab is its key for every item, so a check's Tab is pressed as that.
-      if (name === 'Tab' && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
+      if (name === 'Tab' && !plainTab && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
       await pw.keyboard.press([...held, name].join('+'));
     };
     const close = () => pw.close();

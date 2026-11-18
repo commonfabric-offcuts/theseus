@@ -92,3 +92,19 @@ The singleton refresh button receives its own first tap, like the pending
 request link. The card's first-tap selection handler exempts this refresh glyph;
 its native singleton cases caught the original swallowed tap in both engines.
 The shared waiting dots keep their existing reduced-motion behavior.
+
+The bounded correction keeps the same approved product behavior and preserves
+caught storage/transport errors as causes. Native Reader helpers reveal the
+actual reply through its dossier owner (head/folded/open) before activation.
+Keyboard receipts retain trusted key events, focus, rendered target facts and
+a failure image; a stalled WebKit Option-Tab is compared with native plain Tab
+on the same control. A source mutation removing its tab stop must fail, and
+exact source restoration must restore keyboard activation.
+
+The native cases save actual typed writing before requests and compare writing
+and To through request, reload, request-link navigation, refusal and recovery.
+Comparison captures settle real baseline read reports before holding subsequent
+reports to keep the same read state. Completed covers are brought into view.
+Actual animation-frame samples and human/no-op/owner-Done screenshots describe
+only the intervals they record; they are not a claim about unobserved frames.
+All new evidence remains pending until the allocated pool returns.
