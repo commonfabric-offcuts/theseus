@@ -228,7 +228,7 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const results = [], observations = [], hashes = {};
-for (const filename of [...(mode==='--reading'?['tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
+for (const filename of [...(mode==='--reading'?['tests/cover_refresh_native.mjs','tests/fixtures/item_738_live_web.json','tests/fixtures/item_738_live_web.tar.gz','web/cover-refresh.mjs','aim_next/cover_refresh.py','aim_next/covers.py','aim_next/migrations.py','aim_next/validation.py','tests/test_cover_refresh.py','docs/cover-refresh.md','tests/fixtures/item_645_original_web.json', 'tests/fixtures/item_645_original_web.tar.gz', 'web/dossier-cover.mjs', 'tests/stack_native.mjs', 'tests/topic_reading_native.mjs', 'tests/ui_folded_names.test.mjs', 'tests/fixtures/ui_http.py', 'tests/native-calls.mjs', 'tests/press-fell.mjs', 'web/reply-stacks.mjs', 'web/app.mjs', 'web/aim.css', 'web/stack-look.css', 'web/unanswered.mjs', 'web/outcome-conversation.mjs', 'web/read-through.mjs', 'web/stack-feed.mjs', 'web/stack-order.mjs', 'web/outcome-scope.mjs', 'tools/native.py', 'tools/release_check.py']:[]),...['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs','tests/notebook_sheet_native.mjs','tests/notebook_card_images_native.mjs','web/notebook-sheet.mjs',
   'web/notebook-page.mjs', 'web/notebook-writing.mjs', 'web/notebook-images.mjs', 'web/deck-page.mjs', 'web/deck.mjs', 'web/image-pick.mjs',
   'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/native-page-cleanup.mjs', 'web/arrow-reach.mjs', 'tests/device_native.mjs', 'tests/new_line_native.mjs', 'tests/topic_reading_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py', 'web/index.html', 'aim_next/web_build.py', 'web/boot.js', 'web/in-place-navigation.mjs', 'web/aim.css', 'web/app.mjs', 'web/app-session.mjs', 'web/press-hold.mjs', 'web/reader.mjs', 'web/phone-check.mjs', 'web/topic-views.mjs', 'web/read-through.mjs', 'web/unanswered.mjs', 'tests/outline_stars_native.mjs', 'tests/outline_stars_oracle.mjs', 'web/outline-dossiers.mjs', 'web/outline-rail.mjs', 'web/rails.css', 'aim_next/stacks.py', 'aim_next/validation.py',
   'web/message-menu.mjs', 'web/glyphs.mjs', 'tests/menu_glyphs.mjs', 'web/feed-passages.mjs', 'web/lit-field.mjs', 'web/message-format.mjs', 'web/reveal.mjs', 'web/reactions.mjs', 'web/card-reading.mjs', 'web/outcome-conversation.mjs', 'web/card-scroll.mjs', 'web/interaction-guide.mjs',
@@ -413,11 +413,11 @@ try {
     };
     // A control the composer or the ⋯ keeps out of sight is reached first, as a person does (compose-reach.mjs).
     const reach = reachWith({ evaluate, point: selector => point(selector), until });
-    const key = async (name, modifiers = 0) => {
+    const key = async (name, modifiers = 0, { plainTab = false } = {}) => {
       const held = [[1, 'Alt'], [2, 'Control'], [4, 'Meta'], [8, 'Shift']].filter(([bit]) => modifiers & bit).map(([, word]) => word);
       // Safari's plain Tab reaches only fields unless "Press Tab to highlight each item" is on;
       // Option-Tab is its key for every item, so a check's Tab is pressed as that.
-      if (name === 'Tab' && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
+      if (name === 'Tab' && !plainTab && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
       await pw.keyboard.press([...held, name].join('+'));
     };
     const close = () => pw.close();

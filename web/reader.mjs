@@ -1224,6 +1224,30 @@ export class Reader {
     if (event.isComposing || event.keyCode === 229) return;
     const target = event.target;
     if (event.key === 'Tab') {
+      // WebKit can leave native Tab on an expanded cover's summary even
+      // though its controls are visible and the event was not cancelled.
+      // Keep this boundary in the Reader's keyboard order in either engine;
+      // use actual eligible stops so a disabled or removed stop is skipped.
+      const coverStops = [...this.dialog.querySelectorAll('summary,button,textarea,select,input,a[href],[tabindex]')]
+        .filter(el => visible(el) && (el.tabIndex >= 0 || el.matches('summary:not([tabindex])')));
+      // A source tap focuses the article after the cover. Backward Tab must
+      // enter its preceding stop too, before the inside-cover order can help.
+      if (event.shiftKey && target === this.sourceBody) {
+        const previous = coverStops[coverStops.indexOf(target) - 1];
+        if (previous?.closest('#reader-cover')) {
+          event.preventDefault();
+          previous.focus();
+          return;
+        }
+      }
+      if (target.closest?.('#reader-cover')) {
+        const index = coverStops.indexOf(target);
+        if (index >= 0) {
+          event.preventDefault();
+          coverStops[(index + (event.shiftKey ? -1 : 1) + coverStops.length) % coverStops.length]?.focus();
+          return;
+        }
+      }
       const stops = [...this.dialog.querySelectorAll('button,textarea,select,input,a[href],[tabindex="0"]')].filter(visible);
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }

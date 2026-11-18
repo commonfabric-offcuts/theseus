@@ -5111,7 +5111,7 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb') && cardIn(entry).dataset.folded !== 'true') {",
+     "if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line, .image-thumb, .cover-refresh-glyph') && cardIn(entry).dataset.folded !== 'true') {",
      "if (false) {"
     ]
    ],
@@ -6930,8 +6930,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "const PLACING = ['root_id', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -13669,8 +13669,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision'];"
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "const PLACING = ['root_id', 'through', 'below', 'aside_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -20654,7 +20654,7 @@
     ],
     [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"47\"",
+     "SCHEMA_VERSION = \"48\"",
      "SCHEMA_VERSION = \"46\""
     ]
    ],
@@ -23136,8 +23136,8 @@
    "break": [
     [
      "web/app.mjs",
-     "freshness?.invalidate('acts', 0, true); freshness?.request();",
-     "freshness?.invalidate('acts', 0); freshness?.request();"
+     "reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }",
+     "reread: () => { freshness?.invalidate('acts', 0); freshness?.request(); }"
     ]
    ],
    "check": {
@@ -27743,8 +27743,8 @@
    "break": [
     [
      "aim_next/cli_covers.py",
-     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected",
-     "expected = found[\"cover_revision\"]"
+     "expected = found[\"cover_revision\"] if self.options.expected is None else self.options.expected\n        result = self.command(\"stack.cover\",",
+     "expected = found[\"cover_revision\"]\n        result = self.command(\"stack.cover\","
     ]
    ],
    "check": {
@@ -27757,8 +27757,8 @@
    "break": [
     [
      "web/stack-order.mjs",
-     "joined: 'join_revision', cover: 'cover_revision' }",
-     "joined: 'join_revision' }"
+     "joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision' }",
+     "joined: 'join_revision', cover_refresh: 'cover_refresh_revision' }"
     ]
    ],
    "check": {
@@ -27958,8 +27958,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision'];",
-     "'aside_revision', 'name_revision', 'place_revision'];"
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "'aside_revision', 'name_revision', 'place_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -31189,8 +31189,8 @@
    "break": [
     [
      "web/topic-views.mjs",
-     "'name_revision', 'place_revision', 'cover_revision'];",
-     "'name_revision', 'cover_revision'];"
+     "'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision'];",
+     "'name_revision', 'cover_revision', 'cover_refresh_revision'];"
     ]
    ],
    "check": {
@@ -32376,6 +32376,263 @@
    "check": {
     "native": "rail",
     "case": "rail item 715 available"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: wrong recipient",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "candidates = [writer[0] if writer else None, topic[\"coordinator_id\"]]",
+     "candidates = [topic[\"coordinator_id\"], writer[0] if writer else None]"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: duplicate prompt",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if pending and pending[\"state\"] == \"pending\":",
+     "if False and pending and pending[\"state\"] == \"pending\":"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or self._actor(db, actor)[\"kind\"] != \"agent\"",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: empty completes",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not (value[\"stands\"] or value[\"waiting\"] or value[\"payload\"])",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: no completion",
+   "break": [
+    [
+     "aim_next/covers.py",
+     "version = self._cover_refreshed(db, actor, message, before, value, current + 1, version)",
+     "# mutant removes completion in the cover transaction"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: stale refresh",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if envelope[\"expected\"][\"cover_revision\"] != current:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: private prompt leaks",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "private = message[\"private_to\"] is not None",
+     "private = False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: self delivery",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "if recipient == actor:",
+     "if False:"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: human is writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "row[\"kind\"] != \"agent\"",
+     "False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: disabled writer",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "or not row[\"enabled\"]",
+     "or False"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Cover refresh: missing writer backfill",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "FROM content WHERE previous IS NULL OR value<>previous",
+     "FROM content WHERE 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Pending cover refresh uses the existing sent-message dots without a visible pending label",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "status.textContent = local.error;",
+     "status.textContent = local.error || (pending ? 'Awaiting new cover' : 'Requesting update');"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738"
+   }
+  },
+  {
+   "item": 738,
+   "act": "The refresh request publication and pending intent roll back together",
+   "break": [
+    [
+     "aim_next/cover_refresh.py",
+     "version = self._record_act(db, \"cover_refresh\", message, \"\", actor, value, acts.get(\"cover_refresh_revision\", 0) + 1)",
+     "version = 0"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "A closed outcome cannot publish a cover refresh request",
+   "break": [
+    [
+     "aim_next/outcome_end.py",
+     "def _closed(self, db, workspace_id):",
+     "def _closed(self, db, workspace_id):\n        return None  # actual closed-outcome boundary removed"
+    ]
+   ],
+   "check": {
+    "python": "test_cover_refresh.py"
+   }
+  },
+  {
+   "item": 738,
+   "act": "One native tap on a singleton cover refresh glyph requests the rewrite instead of only lighting the card",
+   "break": [
+    [
+     "web/message-menu.mjs",
+     "!event.target.closest?.('a, .fold-line, .cover-refresh-glyph')",
+     "!event.target.closest?.('a, .fold-line')"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 singleton"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab reaches the cover request in the Reader and activates its actual recorded link",
+   "break": [
+    [
+     "web/cover-refresh.mjs",
+     "control.className = 'cover-refresh-glyph';",
+     "control.tabIndex=-1; control.className = 'cover-refresh-glyph';"
+    ]
+   ],
+   "check": {
+    "native": "reading",
+    "case": "item 738 applied source controls"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native Tab leaves the expanded Reader cover summary and reaches its refresh control in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (target.closest?.('#reader-cover')) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
+   }
+  },
+  {
+   "item": 738,
+   "act": "Native backward Tab enters the Reader cover from the natively tapped source article in WebKit",
+   "break": [
+    [
+     "web/reader.mjs",
+     "if (event.shiftKey && target === this.sourceBody) {",
+     "if (false) {"
+    ]
+   ],
+   "check": {
+    "native": "webkit-reading",
+    "case": "item 738 applied source controls"
    }
   }
  ]
