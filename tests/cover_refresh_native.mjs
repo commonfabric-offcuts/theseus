@@ -94,7 +94,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
     const reverse = await p.evaluate(`(()=>{const target=document.querySelector(${JSON.stringify(selector)}),active=document.activeElement;
       return !!target?.closest('dialog[open]') && !!(target.compareDocumentPosition(active)&Node.DOCUMENT_POSITION_FOLLOWING)})()`);
     const trace = [];
-    await p.evaluate('window.coverWatchKeys=true;window.coverKeys=[];window.coverFocus=[]');
+    await p.evaluate('(()=>{window.coverWatchKeys=true;window.coverKeys=[];window.coverFocus=[]})()');
     let plainTab = false;
     for (let n = 0; n < 120; n++) {
       if (await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(selector)})`)) break;
