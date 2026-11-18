@@ -144,6 +144,35 @@ def report_assignment(contents, prefix, selected):
               'continuation extra or missing native output')
 
 
+def source_hashes(report):
+    """Validate every declared claim; absent measurements stay absent."""
+    claims = {}
+    for field in ('hashes', 'sourceHashes'):
+        if field not in report:
+            continue
+        values = report[field]
+        b.require(isinstance(values, dict) and bool(values), 'continuation invalid source hashes')
+        for path, value in values.items():
+            b.safe_path(path); b.sha(value, 64)
+            b.require(path not in claims or claims[path] == value, 'continuation conflicting source hashes')
+            claims[path] = value
+    return claims
+
+
+def native_source_proof(report, partial, archived_bytes, input_bytes, head, tested):
+    claims = source_hashes(report)
+    if partial:
+        b.require(bool(claims), 'continuation missing source hashes')
+    for path, value in claims.items():
+        original_bytes = input_bytes(head, path)
+        b.require(b.digest(original_bytes) == value and original_bytes == input_bytes(tested, path),
+                  'continuation source hash differs')
+        if partial:
+            archived = archived_bytes(path)
+            b.require(b.digest(archived) == value and archived == original_bytes,
+                      'continuation source hash/archive differs')
+
+
 def manual_plan(workflow, authorized):
     """Only the frozen manual matrix convention; unknown YAML shapes refuse.
 
@@ -383,12 +412,11 @@ def validate(source, judgment, git, github, repository, head, merged_context):
                 # derived fact of the frozen workflow and complete reviewed rows.
                 b.require(folder in partials or check.ran_whole(step), 'continuation filtered native mode')
                 rows = ci.cases(step, out, inventory[name]); b.teardown(report)
-                b.require(isinstance(report.get('hashes'), dict) and bool(report['hashes']), 'continuation missing source hashes')
-                for path, value in report['hashes'].items():
-                    b.safe_path(path); b.sha(value, 64)
-                    archived = read_bytes(folder + '/native/' + native.name + '/source/' + path)
-                    b.require(b.digest(archived) == value and archived == input_bytes(head, path)
-                              and archived == input_bytes(tested, path), 'continuation source hash/archive differs')
+                # Only prefixes lack the exact clean ending/tool certificate
+                # already authenticated above for original/completion shards.
+                native_source_proof(report, folder in partials,
+                    lambda path: read_bytes(folder + '/native/' + native.name + '/source/' + path),
+                    input_bytes, head, tested)
                 counts, good = check.native_counts(native, out / 'native' / native.name, (out / (name + '.log')).read_text())
                 b.require(b.canonical(counts) == b.canonical(step['counts']) and good is step['passed'], 'continuation native log differs')
                 for row in rows:

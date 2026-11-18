@@ -23,6 +23,7 @@ class GenuinePoolReceipt(unittest.TestCase):
         if not folder:
             self.skipTest('named retained genuine receipt package required')
         self.folder = Path(folder)
+        self.assembly, self.tree = ASSEMBLY, TREE
         self.receipt = json.loads((self.folder / 'receipt.json').read_bytes())
         self.expected = [tuple(r) for r in json.loads((self.folder / 'expected.json').read_bytes())]
         self.binding = base_move.document(self.receipt['pool'])
@@ -45,7 +46,7 @@ class GenuinePoolReceipt(unittest.TestCase):
         return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
 
     def consume(self):
-        return base_move.own_receipt(self.receipt, self.git, self.api, REPOSITORY, ASSEMBLY, TREE, self.expected)
+        return base_move.own_receipt(self.receipt, self.git, self.api, REPOSITORY, self.assembly, self.tree, self.expected)
 
     def test_genuine_651_control(self):
         keys, facts = self.consume()

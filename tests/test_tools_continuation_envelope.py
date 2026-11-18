@@ -256,6 +256,108 @@ class Continuation(BaseMoveFixture):
         self.change_json('check-1', 'native/journal/native.json', lambda r: r.pop('hashes'))
         self.refuses('missing source hashes')
 
+    def test_complete_shards_allow_absent_optional_hashes_and_archives(self):
+        for folder in ('check-0', 'completion/check-0'):
+            members = self.payloads[folder]
+            for path, data in list(members.items()):
+                if path.startswith('native/') and path.endswith(('/native.json', '/results.json')):
+                    report = b.loads(data)
+                    report.pop('hashes', None)
+                    members[path] = b.canonical(report)
+                if '/source/' in path:
+                    del members[path]
+        self.freeze_envelope()
+        try:
+            observed = self.consume()
+        except b.Refused as error:
+            self.fail('clean complete shards refused optional absences: ' + str(error))
+        self.assertTrue(observed['complete'])
+        self.assertFalse(observed['passed'])
+        self.assertEqual(observed['red_count'], 1)
+
+    def test_complete_sourceHashes_validated_without_local_archives(self):
+        folder = 'completion/check-0'
+        path = 'native/light/native.json'
+        report = b.loads(self.payloads[folder][path])
+        report['sourceHashes'] = report.pop('hashes')
+        self.payloads[folder][path] = b.canonical(report)
+        del self.payloads[folder]['native/light/source/' + ci.NATIVE[self.missing].harness]
+        self.freeze_envelope()
+        try:
+            self.assertTrue(self.consume()['complete'])
+        except b.Refused as error:
+            self.fail('clean sourceHashes report refused: ' + str(error))
+        self.change_json(folder, path, lambda r: r['sourceHashes'].update({ci.NATIVE[self.missing].harness: '0' * 64}))
+        self.refuses('source hash')
+
+    def test_both_hash_spellings_refuse_malformed_and_wrong_complete_claims(self):
+        folder, path = 'completion/check-0', 'native/light/native.json'
+        original = self.payloads[folder][path]
+        harness = ci.NATIVE[self.missing].harness
+        for field in ('hashes', 'sourceHashes'):
+            for value in (None, [], {}, {harness: False}, {harness: 'bad'}, {'../unsafe': 'a' * 64}, {harness: '0' * 64}):
+                with self.subTest(field=field, value=value):
+                    report = b.loads(original)
+                    report.pop('hashes')
+                    report[field] = value
+                    self.payloads[folder][path] = b.canonical(report)
+                    self.freeze_envelope()
+                    self.refuses('source hashes|object digest|unsafe source|source hash')
+        self.payloads[folder][path] = original
+
+    def test_hash_spellings_cannot_hide_conflicts_or_malformed_secondary_map(self):
+        folder, path = 'completion/check-0', 'native/light/native.json'
+        original = self.payloads[folder][path]
+        harness = ci.NATIVE[self.missing].harness
+        report = b.loads(original)
+        report['sourceHashes'] = dict(report['hashes'])
+        self.payloads[folder][path] = b.canonical(report)
+        self.freeze_envelope()
+        self.assertTrue(self.consume()['complete'])
+        for first, second in (('hashes', 'sourceHashes'), ('sourceHashes', 'hashes')):
+            for bad in (None, {}, {harness: '0' * 64}):
+                with self.subTest(first=first, bad=bad):
+                    report = b.loads(original)
+                    good = report.pop('hashes')
+                    report[first], report[second] = good, bad
+                    self.payloads[folder][path] = b.canonical(report)
+                    self.freeze_envelope()
+                    self.refuses('source hashes')
+
+    def test_partial_sourceHashes_still_requires_exact_local_archive(self):
+        folder, path = 'check-1', 'native/journal/native.json'
+        self.change_json(folder, path, lambda r: r.update(sourceHashes=r.pop('hashes')))
+        try:
+            self.assertTrue(self.consume()['complete'])
+        except b.Refused as error:
+            self.fail('measured archived partial sourceHashes refused: ' + str(error))
+        del self.payloads[folder]['native/journal/source/' + ci.NATIVE[self.finished].harness]
+        self.freeze_envelope()
+        self.refuses('missing source artifact')
+
+    def test_complete_certificate_guards_remain_required(self):
+        folder = 'completion/check-0'
+        original = self.payloads[folder]['summary.json']
+        receipt = self.payloads[folder]['run.json']
+        variants = [lambda r: r.update(tree_unchanged=False),
+                    lambda r: r.update(tree_after={'head': self.head, 'changes': ' M web/app.mjs'}),
+                    lambda r: r.update(tree_after={'head': self.wrapper, 'changes': ''}),
+                    lambda r: r.update(tools={}),
+                    lambda r: r['tools']['harnesses'].pop(ci.NATIVE[self.missing].harness)]
+        for change in variants:
+            raw = b.loads(original); change(raw)
+            self.payloads[folder]['summary.json'] = b.canonical(raw)
+            run = b.loads(receipt)
+            run['summary_sha256'] = digest(self.payloads[folder]['summary.json'])
+            self.payloads[folder]['run.json'] = b.canonical(run)
+            self.freeze_envelope()
+            self.refuses('dirty or partial summary|release-check hash|harness hash')
+        self.payloads[folder]['summary.json'] = original
+        self.payloads[folder]['run.json'] = receipt
+        run = b.loads(receipt); run['summary_sha256'] = None
+        self.payloads[folder]['run.json'] = b.canonical(run)
+        self.freeze_envelope(); self.refuses('receipt binding')
+
     def test_missing_archived_source_refuses(self):
         del self.payloads['check-1']['native/journal/source/' + ci.NATIVE[self.finished].harness]
         self.freeze_envelope(); self.refuses('missing source artifact')

@@ -39,12 +39,24 @@ ZIP bytes count; no locally repackaged or rewritten source archive counts.
 
 Original provenance and plan remain authoritative. Complete original shards
 keep exact assignment and summary digest, clean ending, tool and harness OIDs.
+Completion shards require the same complete-source proof, at their recorded
+checked source rather than their workflow API head. For these authenticated
+complete shards, runtime hashes and step-local source archives are optional:
+absent measurements/files stay absent. Every actual `hashes` and `sourceHashes`
+claim is validated against exact source and equal tested-tree bytes. A present
+map must be nonempty and well formed; unsafe paths, malformed digests,
+conflicting claims (including between spellings) and wrong source refuse.
+Neither spelling overrides or hides the other. No other mode's archive is used.
+
 A cut native shard has no summary and a null summary digest. Its completed
 prefix comes from the authenticated original aggregate's recovered job-log
 records, bound to the original job and assignment. Each completed mode must
 have its whole raw reviewed case inventory, normal browser/fixture cleanup,
 ordered log, nonempty source hashes and archived source bytes matching Git at
 both source and tested merge. No whole-shard clean-tree certificate is inferred.
+Both hash spellings are recognized under this stricter prefix proof too; every
+claimed file needs its own step-local exact archive member. A complete-shard
+exception is selected only after its existing clean summary/provenance checks.
 No incomplete unit/replay partition is admitted.
 
 Python file partitions are the sole deduplication authority: complete indexed

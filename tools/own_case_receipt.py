@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Read the known genuine Pool schema without executing candidate source.
+"""Read exact reviewed Pool compose schemas without executing candidate source.
 
 Only exact reviewed source bytes authorize interpretation. Raw originals remain
 Refs; command and neutral identities are explicitly derived, never raw fields.
@@ -19,7 +19,8 @@ from tools import base_move as b, ci_known_reds as ci
 WORKFLOW = '.github/workflows/pool.yml'
 SPEC = '.github/pool-run.json'
 # Reviewed original code at c4af1c6, not the installed validator or a manifest
-# override. Any other command/harness convention needs a new reviewed adapter.
+# override. The explicitly narrow 652 fallback below retains this 651 profile.
+# Any other command/harness convention needs a new reviewed adapter.
 SOURCES = {
     WORKFLOW: 'f5cfaa27bccf2348d7024a5bbfdf00e4a724b281cd7680ea16ddd0a226fd9faa',
     'tools/native.py': '2aa3f4ea33eefd5e2e9c9bf81c112078f95d90817ad25a52d6224db36f5ea73e',
@@ -27,6 +28,11 @@ SOURCES = {
     'tests/thumbnail_open_native.mjs': '77c7e28ae2288811115c191906ca20e253974c0098dae83a69bf2331169e5fa0',
     'tests/reader_compose_native.mjs': '5c2a6b88fb9068fe32adc4a199101a2ecd4e4bc622dcdf738bbf3c6457589cac',
 }
+COMPOSE = 'tests/reader_compose_native.mjs'
+# Reviewed at 10c4ca6ecfa8e77e0986b0b16838c60a5a9cacc4. These constants,
+# never a spec/receipt claim, authorize the additional exact filter.
+COMPOSE_652 = 'ee64a06f2626d5cd7c2893b65727168d03a240e87eb06b13a5094be5ea1f76ee'
+HELPER_652 = {'tests/card_editor_652.mjs': '11b2e0570b7c6be12515a0551f75a49af593cd2c95cb84211e26b186f31716a6'}
 MEMBERS = ('cases.json', 'c1.log', 'c1/native-compose.log', 'c1/evidence/native.json')
 JOB_STEPS = ['Set up job', 'Run actions/checkout@v4', 'Run actions/setup-node@v4',
              "Chrome for Testing and Playwright's WebKit", 'The cases', 'Keep the evidence',
@@ -108,15 +114,21 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
     b.require(changed == {WORKFLOW, SPEC} and WORKFLOW not in before and SPEC not in before
               and all(after[p].startswith('100644 blob ') for p in changed), 'Pool wrapper tree differs')
     sources = source_bytes(git, wrapper, list(SOURCES) + [SPEC])
-    for path, expected_digest in SOURCES.items():
+    authorized = dict(SOURCES)
+    case_filter = 'item 651'
+    if b.digest(sources[COMPOSE]) == COMPOSE_652:
+        authorized[COMPOSE] = COMPOSE_652
+        authorized.update(HELPER_652)
+        sources.update(source_bytes(git, wrapper, list(HELPER_652)))
+        case_filter = 'item 652'
+    for path, expected_digest in authorized.items():
         b.require(b.digest(sources[path]) == expected_digest, 'Pool executed source/command differs: ' + path)
     spec = b.fields(b.loads(sources[SPEC]), 'step cases label snapshot')
     b.require(spec['snapshot'] == assembly and b.tree(git, assembly) == assembly_tree, 'Pool spec snapshot differs')
     b.require(spec['step'] == 'compose' and isinstance(spec['cases'], list) and len(spec['cases']) == 1
-              and spec['cases'][0] == 'item 651'
+              and spec['cases'][0] == case_filter
               and isinstance(spec['label'], str) and re.fullmatch(r'[A-Za-z0-9._-]{1,80}', spec['label']),
               'Pool spec step/filter differs')
-    case_filter = spec['cases'][0]
     b.require(run['head_branch'] == 'pool/%s-%s' % (spec['label'], assembly[:10]), 'Pool spec branch differs')
     record = b.fields(b.document(binding['record']),
                       'run branch pool_commit snapshot changed pushed_at run_created jobs')
@@ -201,19 +213,21 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
         b.require(match is not None, 'Pool unknown engine prefix')
         engine, name = match.groups()
         b.require(any(part in row['name'] for part in case_filter.split('|')), 'Pool case filter differs')
+        if case_filter == 'item 652':
+            b.require(name == case_filter or name.startswith(case_filter + ' '), 'Pool case filter boundary differs')
         keys.append(('native-compose', name, None, engine))
     b.require(len(keys) == len(set(keys)), 'duplicate Pool case identity')
     by_engine = {e: {k[1] for k in keys if k[3] == e} for e in ('chromium', 'webkit')}
     b.require(bool(by_engine['chromium']) and by_engine['chromium'] == by_engine['webkit'], 'Pool incomplete engine identities')
     selected = [k for k in expected if k[0] == 'native-compose']
     b.require(Counter(keys) == Counter(selected), 'Pool own-case obligations differ')
-    inputs = {p: b.ask(git, 'rev-parse', '--verify', assembly + ':' + p).strip() for p in SOURCES if p != WORKFLOW}
+    inputs = {p: b.ask(git, 'rev-parse', '--verify', assembly + ':' + p).strip() for p in authorized if p != WORKFLOW}
     return keys, {'run': run_id, 'attempt': attempt, 'wrapper': wrapper, 'job': job['id'],
                   'artifact': binding['artifact'], 'api': binding['api'], 'record': binding['record'],
                   'originals': {k: receipt[k] for k in ('snapshot', 'step', 'report', 'log', 'pool')},
                   'raw': step,
                   'derived': {'schema': 'pool-compose-prefix-v1', 'snapshot': {'head': assembly, 'tree': assembly_tree, 'inputs': inputs},
-                              'source_sha256': dict(SOURCES),
+                              'source_sha256': authorized,
                               'command': {'driver': 'tools/native.py', 'step': 'compose', 'filter': case_filter,
                                           'harness': 'tests/reader_compose_native.mjs', 'flags': [],
                                           'dynamic_paths': 'node/chrome/playwright from workflow environment; output RUNNER_TEMP/pool/c1'},
