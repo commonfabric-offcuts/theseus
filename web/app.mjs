@@ -831,7 +831,7 @@ function paintNewAbove() {
     if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
-    newAboveButton = button('New above', () => {
+    newAboveButton = button('New above ↑', () => {
       const entry = entries(list).find(card => newAbove.has(card.dataset.id));
       if (!entry) return;
       reveal(entry);
@@ -839,7 +839,7 @@ function paintNewAbove() {
       opened(entry).focus({ preventScroll: true });
       rememberListAnchor();
     });
-    newAboveButton.className = 'unread-count new-above';
+    newAboveButton.className = 'new-above';
     newAboveButton.setAttribute('aria-label', 'Read new messages above');
     $('main').append(newAboveButton);
   }

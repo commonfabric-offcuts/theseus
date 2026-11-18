@@ -614,8 +614,9 @@ covers later changes of height: a picture finishing loading, a cover being
 drawn, or a stack folding or unfolding without the reader acting. Repaints
 and changes heard by the layout observers use that one hold.
 
-A message arriving above the window leaves a small "New above" pill at its
-top edge. Pressing it scrolls to the new message. The pill goes away once the
+A message arriving above the window leaves a solid, shadowed "New above ↑"
+pill centred over the message column, 12px below the window's top edge.
+Pressing it scrolls to the new message. The pill goes away once the
 reader reaches it, or scrolls up past it. It offers arrivals from others,
 not the reader's own sends or older messages loaded with More. Opening a
 message, sending, New, More and the keys still move the view as the reader
