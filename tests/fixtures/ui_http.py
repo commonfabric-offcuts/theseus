@@ -21,6 +21,8 @@ from aim_next import Store, initialize
 from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 from aim_next.stacks import KINDS as STACK_KINDS, current_acts
+from item_735_runtime import Item735Runtime
+from item_646_runtime import Item646Runtime
 
 
 class FreshnessControls:
@@ -121,7 +123,14 @@ class FreshnessControls:
                 with controls.lock:
                     controls.http_commands += 1
                     controls.http_delivery_acks += int(envelope.get("kind") == "delivery.ack")
-                return self.base.command(actor, envelope)
+                if envelope.get("kind") == "message.star":
+                    controls.event("star-command-enter", "message.star", envelope=envelope, actor=actor)
+                    controls.wait_hold("command:message.star", "callback")
+                receipt = self.base.command(actor, envelope)
+                if envelope.get("kind") == "message.star":
+                    controls.event("star-command-answer", "message.star", envelope=envelope, receipt=receipt)
+                    controls.wait_hold("answer:message.star", "callback")
+                return receipt
 
             def publish_media(self, *args, **kwargs):
                 with controls.lock:
@@ -508,6 +517,9 @@ def main():
             server.store_factory = lambda: GatedStore(factory(), gate)
             return server
         server = serve()
+        item735_runtime = Item735Runtime(server, root, instance, actor)
+        item646_runtime = Item646Runtime(server, root, instance, actor)
+        item646_blocker = None
         # Item 645: source-bound page comparisons inside one filtered native run.
         # This private stdin control swaps immutable public Build bytes only;
         # Core, records, origin and authority remain the same isolated fixture.
@@ -686,6 +698,25 @@ def main():
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
                     elif request["method"] == "item_645_runtime":
                         answer = item645_runtime(request["phase"])
+                    elif request["method"] == "item_735_runtime":
+                        answer = item735_runtime.select(request["phase"])
+                    elif request["method"] == "item_646_runtime":
+                        answer = item646_runtime.select(request["phase"])
+                    elif request["method"] == "item_646_lock":
+                        if request["held"]:
+                            assert item646_blocker is None
+                            item646_blocker = sqlite3.connect(str(path), isolation_level=None)
+                            item646_blocker.execute("BEGIN IMMEDIATE")
+                        else:
+                            assert item646_blocker is not None
+                            item646_blocker.rollback()
+                            item646_blocker.close()
+                            item646_blocker = None
+                        answer = {"held": item646_blocker is not None}
+                    elif request["method"] == "item_646_operations":
+                        with sqlite3.connect(str(path)) as db:
+                            answer = {"rows": [dict(operation_id=row[0], outcome=json.loads(row[1])) for row in db.execute(
+                                "SELECT id,outcome FROM operations WHERE actor_id=? AND kind='message.star' ORDER BY rowid", (actor,))]}
                     elif request["method"] == "counts":
                         with sqlite3.connect(str(path)) as db:
                             answer = {"media": db.execute("SELECT count(*) FROM media_intents").fetchone()[0]}
@@ -1390,6 +1421,9 @@ def main():
                 except Exception as error:
                     print(json.dumps({"id": request["id"], "failure": str(error)}), flush=True)
         finally:
+            if item646_blocker is not None:
+                item646_blocker.rollback()
+                item646_blocker.close()
             item645_unrestored = item645_original is not None and server is not None and server.build is not item645_candidate
             if item645_unrestored:
                 server.build = item645_candidate

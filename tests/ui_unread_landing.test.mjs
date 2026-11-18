@@ -30,7 +30,7 @@ function fixture({ renewed = false } = {}) {
     messages: new Map([['old', { id: 'old', seq: 1, stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2 }]]), runOf: () => 'run', sighted() {} },
     loadUntil: async wanted => { transient = true; actions.noteRead(); if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
     entries: () => [entry, later], $: id => id === 'main' ? main : {}, reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
-    topic: { id: 'beds' }, topicUnavailable: false, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
+    topic: { id: 'beds' }, listAccessEpoch: 0, topicUnavailable: false, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
     readThrough: { seen: (topic, from, through) => { readReports.push([from, through]); return Promise.resolve(null); } },
     halfShown: new Set([1, 2]), atMiddle: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
     revealSelection() {}, marks, registry: { get disposed() { return !current; } }, document: doc,

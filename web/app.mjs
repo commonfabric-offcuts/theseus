@@ -991,6 +991,14 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: item => !cardRead(item) || stillOwed(item), unread: item => !cardRead(item), nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), moreChanged: paintMoreMessages, arranged: stacksRedrawn,
+    loadMessage: async id => {
+      const accessEpoch = listAccessEpoch, page = views, topicId = topic.id;
+      const current = () => !registry.disposed && !topicUnavailable && !authorityReviewPending() &&
+        accessEpoch === listAccessEpoch && page === views && topicId === topic.id;
+      if (!current()) return null;
+      await loadUntil(() => current() ? { id } : null);
+      return current() ? views.messages.get(id) ?? null : null;
+    },
     hold: paint => keepListAnchor(paint), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyMessage(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
@@ -1758,7 +1766,7 @@ async function loadUntil(wanted) {
 // The New line's "More new below": the line's message read in; then it takes
 // the focus, with the line in its place below it.
 async function loadToUnread() {
-  return landUnreadMessage(views.line);
+  return landReadingMessage(views.line);
 }
 // What a topic's unread count leads to (item 613, docs/attention.md): the
 // oldest message still unread for the reader, as Core finds it by the rule
@@ -1771,25 +1779,34 @@ async function loadToUnread() {
 async function landOnUnread() {
   // Pressed in the phone's drawer, the drawer gets out of the way as a move would close it (rail-drawer.mjs).
   if (shell.drawer?.isOpen()) shell.drawer.close();
-  return landUnreadMessage(views.oldestUnread);
+  return landReadingMessage(views.oldestUnread);
 }
 let unreadLanding = 0, unreadLandingBusy = false;
-// Both explicit ways to read the oldest unread message earn the same view
+// Unread counts and a dossier's title star earn the same view (613, 735)
 // and the same revision-fenced mark clear. Capture before any page loads:
 // another device renewing the mark while they run must keep its newer mark.
-async function landUnreadMessage(wanted) {
+async function landReadingMessage(wanted, { rootId = null, starred = false } = {}) {
   const request = ++unreadLanding, act = wanted && marks.capture(wanted.id);
-  const current = () => request === unreadLanding && !registry.disposed;
+  const accessEpoch = listAccessEpoch;
+  const current = () => request === unreadLanding && !registry.disposed &&
+    accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending();
+  const available = () => {
+    const item = wanted && views.messages.get(wanted.id);
+    return item && (!rootId || item.stack_position?.root_id === rootId) &&
+      (!starred || stackFeed.actsOf(item.id, item).starred);
+  };
+  const unavailable = () => { if (starred) status('The starred message is unavailable or changed. Nothing was opened.'); };
   // Pagination can briefly put another unread card on screen on the way to
   // this one. Those transient positions are not a person's reading place.
   unreadLandingBusy = true;
   try {
-    const found = await loadUntil(() => wanted);
+    const found = await loadUntil(() => current() ? wanted : null);
     if (!current()) return;
-    if (!found) return;
+    if (!found || !available()) { unavailable(); return; }
     const id = found.dataset.id, root = views.messages.get(id)?.stack_position?.root_id ?? null;
-    if (root) await loadUntil(() => ({ id: root }));
+    if (root) await loadUntil(() => current() ? { id: root } : null);
     if (!current()) return;
+    if (!available() || (rootId && !views.messages.has(rootId))) { unavailable(); return; }
     const entry = entries($('messages')).find(child => child.dataset.id === id);
     if (!entry) return;
     reveal(entry, { full: true, open: true });

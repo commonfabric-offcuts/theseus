@@ -1,0 +1,110 @@
+[
+  {
+    "name": "privacy",
+    "file": "aim_next/stacks.py",
+    "before_sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6",
+    "after_sha256": "1102077edd3bab2d2660ad908178a19b9c9df7f1cb506e227f91295fc4d719f1",
+    "intended": "test_partial_page_carries_actual_root",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/privacy-red.log",
+      "cache": "/private/tmp/646-privacy-red-87ab89f5ebd04367887e0b43dc3f9857"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/privacy-restored.log",
+      "cache": "/private/tmp/646-privacy-restored-d1a384e3d0774649bf0940210c792751",
+      "sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6"
+    }
+  },
+  {
+    "name": "reach",
+    "file": "aim_next/stacks.py",
+    "before_sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6",
+    "after_sha256": "bd6480af254e21c683d6fb6531a7fb3695e774493ece66795d01d35f2301f159",
+    "intended": "test_partial_page_carries_actual_root",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/reach-red.log",
+      "cache": "/private/tmp/646-reach-red-8973f227af7a4ff790e68b84e5353d2a"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/reach-restored.log",
+      "cache": "/private/tmp/646-reach-restored-96e04cf079b848399a79734aa1ed31bb",
+      "sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6"
+    }
+  },
+  {
+    "name": "identity",
+    "file": "aim_next/stacks.py",
+    "before_sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6",
+    "after_sha256": "5c37e4dab7388ec7cb7eeabf156341a89986e3caf740a1fd8d9f6bce6e527086",
+    "intended": "test_partial_page_carries_actual_root",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/identity-red.log",
+      "cache": "/private/tmp/646-identity-red-edc3cb3ed4bb4aeb95c65c5ce2a9b9ae"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/identity-restored.log",
+      "cache": "/private/tmp/646-identity-restored-faea6a8b698a4209b3e77dd7d5b40e58",
+      "sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6"
+    }
+  },
+  {
+    "name": "response",
+    "file": "aim_next/stacks.py",
+    "before_sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6",
+    "after_sha256": "d854bfcca07dde43c1893b873ef08142add87a1fdb68960e9aa862455143d948",
+    "intended": "test_exact_response_operation_and_persistence",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/response-red.log",
+      "cache": "/private/tmp/646-response-red-75d4a97ec52f459181cb8759212f419f"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/response-restored.log",
+      "cache": "/private/tmp/646-response-restored-ad2c2e8bd64a4c248bf4e9ad2273b1e0",
+      "sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6"
+    }
+  },
+  {
+    "name": "persistence",
+    "file": "aim_next/stacks.py",
+    "before_sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6",
+    "after_sha256": "78b9615e8aa724fa89a205404f36116f58a231f22e4ab64129edcec5aade8bd1",
+    "intended": "test_exact_response_operation_and_persistence",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/persistence-red.log",
+      "cache": "/private/tmp/646-persistence-red-4ad9568cae83450a9c545f0491f7d8c8"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/persistence-restored.log",
+      "cache": "/private/tmp/646-persistence-restored-4a83063d384944aeb4509b2bbac52e1f",
+      "sha256": "80ed518a72bd26e08ed51c4a6a8642c155c50deed49876cafb3c4cd823ac7ba6"
+    }
+  },
+  {
+    "name": "operation",
+    "file": "aim_next/store.py",
+    "before_sha256": "3e77198527735168d19b55966c912990895b84ba35ba5bef7ca433742dc60c87",
+    "after_sha256": "b780a6e80474dc3dfd1bbad34895f3228d8a8554057a74a2cb9071eaa98e52dc",
+    "intended": "test_exact_response_operation_and_persistence",
+    "red": {
+      "exit": 1,
+      "log": "evidence/646/operation-red.log",
+      "cache": "/private/tmp/646-operation-red-d33df795294d4ca2bbfd36a7d75d5761"
+    },
+    "restored": {
+      "exit": 0,
+      "log": "evidence/646/operation-restored.log",
+      "cache": "/private/tmp/646-operation-restored-53026d79114a48ab91809d66e831f0ac",
+      "sha256": "3e77198527735168d19b55966c912990895b84ba35ba5bef7ca433742dc60c87"
+    }
+  }
+]

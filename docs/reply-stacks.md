@@ -411,15 +411,20 @@ their acts.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack and the marks of what that message carries (an image,
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
-  the message itself is new, ★ if the reader starred any message of the
-  dossier, not only its first (item 635: a later reply, or one the page has
-  not loaded, which the dossier's position names), how many replied and who, and how many replies are new. The tab is two
+  the message itself is new, an always-visible star control (646 below), lit
+  only if the reader starred the dossier's actual first message, how many
+  replied and who, and how many replies are new. The star stays in this
+  second line, in the old mark's appearance. Pressing it toggles that first
+  message's star for this reader, without navigation, reveal or a focus jump.
+  A starred reply still holds the dossier against Move below More (635),
+  independently of the first-message toggle.
+  The tab is two
   lines high: the short name, then the rest on one line that never wraps to
   a third (`stack-look.css`). When that line is short of room, who replied
   and what is new give way first, then the marks, whole glyphs dropped from
   the end, then who began it, cut short with its whole name in its tooltip;
   a minted name's "Named by", after the marks, keeps its width ahead of them,
-  and "New", ★ and the count always show. The short name is the
+  and "New", the star control and the count always show. The short name is the
   one someone typed for the dossier, or minted for it (Minted names, above),
   or else the first message's line (One line of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.
@@ -430,6 +435,7 @@ their acts.
   A message that stops
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
+
 - **Replying.** Use Reply on the message's bar, or Return on the selected
   message, to open the Reader with its reply composer. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does:
@@ -519,6 +525,55 @@ finds a card finds it alone, and the star acts on the card it sits in. It is
 put back each time the author line is painted again (a mark from another
 device, the time's words changing).
 
+### Header star preview (646; Tony8575 / warp8576)
+
+One always-visible control sits in the second line under the dossier title,
+where live94's passive `★ Starred` mark sat, before the reply count. It uses
+that mark's font, colour and middle-dot separator. Filled, its visible text
+is still `★ Starred`; unlit, it uses the existing message star's outline `☆`.
+There is no separate title-line button or overlay target. The same second
+line is present on an agent-only dossier's quiet header. Coarse pointers get
+one real box at least 44px square, with room in the second line rather than
+an overlapping target. Its accessible labels/tooltips follow the existing
+message convention: "Star for me" / "Unstar", with `aria-pressed`, Tab,
+Return and Space, and a visible keyboard focus ring.
+
+Both states invoke the one `star` callback and `StackFeed.starDossier`.
+The state represents this reader's star on Core's actual first message,
+not any starred reply. Loaded root acts override position metadata; an
+unloaded root is lit only if Core's accessible own-star list names that root.
+A tap stars or unstars that actual message through the existing message-star
+authority, revision, retry and item 635 Bring back path. It does not navigate,
+reveal, change the dossier's expansion, or claim the keys for a message.
+Pointer activation keeps focus where it was; keyboard activation stays on
+the control. Writing is not edited or replaced. The message and overflow
+star actions remain.
+
+If unloaded, the existing `loadUntil` / topic-message pagination loads the
+exact first identity from `dossierOf`, never the first loaded reply. Access,
+runtime, page, topic and root identity must still agree after loading. No
+revision is invented. An unavailable or changed root says so and sends
+nothing. Loading/sending is guarded per root, with an explicit waiting
+notice. An unresolved result reuses its original operation and notice rather
+than issuing another toggle. The header path draws no optimistic star or
+Bring back and announces success only after Core commits. Existing refusal,
+busy, unknown-result and recovery handling remains.
+
+Tony8575 explicitly supersedes warp8413/Tony8436/warp8529's unlit-star /
+lit-reveal / unstar-only-on-message default. The 646 control no longer has a
+`starred` reveal callback or a `showStarred` landing adapter. The preserved
+735 selector and reading-landing implementation are not reworked. The old
+contract is recorded in [title-star.md](title-star.md) and parent history.
+Only-new, standalone-message and temporary rename surfaces retain their
+existing behavior.
+
+This revision is source-only: zero tests authored/run, syntax/compile checks,
+units, native/browser/pool work, reviews or servers. The coordinator replaces
+the source in the same existing copied preview at port 5247, reports the
+change under Tony8575, and waits for Tony's actual new word before tests.
+735 stays parked: its 320px floating bar covers the own-message star; the
+hidden-reply root fixture and no-scroll proof remain incomplete. Inherited
+tests/evidence are historical source, not passing evidence for this revision.
 ## Doing it
 
 On a message (its card focused, never in writing), these keys work:

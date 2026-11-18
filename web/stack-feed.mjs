@@ -160,8 +160,9 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     refreshPositions = async () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, clock = () => Date.now(), doc = document }) {
+    loadMessage = async () => null, colorOf = () => null, clock = () => Date.now(), doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, refreshPositions, moreChanged, arranged, hold, press, thumb, redrawn, home, reply, menu, colorOf, clock, doc });
+    this.loadMessage = loadMessage; this.headerStars = new Set();
     home?.addEventListener('close', () => this.arrange());
     this.undos = []; this.chain = Promise.resolve(); this.newestSeen = null;
     // A stand-in for each message the page has not loaded that an act is on (a
@@ -261,6 +262,8 @@ export class StackFeed {
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(),
+      // One first-message toggle, in either state; no reveal callback (646).
+      star: stack => this.starDossier(stack),
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),
@@ -353,9 +356,9 @@ export class StackFeed {
   // Answered, refused or not settled, it is no longer drawn over what Core
   // holds: one not settled shows once Core says it is recorded. also: what
   // else it shows at once, as [message id, acts] (Option's fold, on several).
-  act(kind, item, args, also = []) {
+  act(kind, item, args, also = [], { optimistic = true } = {}) {
     const shown = shownAct(kind, args, this.viewer, this.clock());
-    const shows = [[item.id, shown], ...also];
+    const shows = optimistic ? [[item.id, shown], ...also] : [];
     for (const [id, mark] of shows) this.pending.set(id, [...this.pending.get(id) ?? [], mark]);
     this.made.set(shown, ++this.makes);
     const sent = this.chain.then(() => this.send(kind, item, args)).finally(() => {
@@ -515,12 +518,50 @@ export class StackFeed {
   // A star keeps a message in view: starring a folded message unfolds it too,
   // and starring one in a dossier the reader moved below More brings the
   // dossier back above More, shown at once as Core does it (item 635).
-  star(item) {
+  star(item, { confirmed = false } = {}) {
     const on = !this.actsOf(item.id, item).starred;
     const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-    this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : []);
-    if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
-    this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
+    const sent = this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null }]] : [], { optimistic: !confirmed });
+    const finish = () => {
+      if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
+      this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
+    };
+    if (confirmed) return sent.then(result => { if (!this.gone) finish(); return result; });
+    finish(); return sent;
+  }
+  // Core names the actual first message, even when this stack starts on a
+  // reply. Reuse the page's bounded loader and the existing star act; never
+  // infer a first message/revision from the loaded slice. Both star and
+  // unstar use the reader's actual acts and the same confirmed command path.
+  async starDossier(stack) {
+    const root = dossierOf(stack), anchor = stack.head.id;
+    if (this.gone) return;
+    if ([...this.doubts.values()].some(act => act.kind === 'message.star' && act.item.id === root)) {
+      this.paintNotice(); return;
+    }
+    const waiting = 'The star change is still waiting for Theseus.';
+    if (this.headerStars.has(root) || this.pending.get(root)?.some(mark => 'starred' in mark)) {
+      this.status(waiting); return;
+    }
+    this.headerStars.add(root);
+    this.status(waiting);
+    try {
+      const item = await this.loadMessage(root);
+      if (this.gone) return;
+      const current = stackOf(this.list, this.entryFor(anchor))?.stack;
+      if (!item || item.id !== root || !current || dossierOf(current) !== root ||
+          item.topic_id !== stack.head.topic_id || item.stack_position?.root_id !== root) {
+        this.status('This dossier’s first message is unavailable or its dossier changed. No star was changed.'); return;
+      }
+      await this.star(item, { confirmed: true });
+    } catch (error) {
+      // Act failures already have the existing exact-operation recovery and
+      // visible refused/busy/unknown notice; a failed load has made no act.
+      if (!(error instanceof ActFailure)) this.status(error);
+    } finally {
+      this.headerStars.delete(root);
+      if (this.line()?.textContent === waiting) { this.status(''); this.paintNotice(); }
+    }
   }
   // The right rail's Unstar, for a message here or in another place: one this
   // page shows takes the star off its card too.

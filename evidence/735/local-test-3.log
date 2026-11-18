@@ -1,0 +1,7 @@
+test_core_destination_is_earliest_own_available_message_even_on_partial_page (test_item_735.Item735Case) ... ok
+test_exact_base_real_mutants_and_all_byte_restoration_wrapper (test_item_735.Item735Case) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.243s
+
+OK
