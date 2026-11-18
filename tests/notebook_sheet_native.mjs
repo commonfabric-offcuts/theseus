@@ -450,7 +450,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     assert.equal(await p.evaluate("document.querySelector('#page-here').hidden"), true, 'nothing opens in place below the list');
     assert.deepEqual(p.errors, []);
     await p.close();
-    // At a phone's width, by touch, in light and in dark: the head takes two lines and one card fills the rest.
+    // At a phone's width, by touch, in light and dark: the shared laptop card list (item 652).
     for (const scheme of ['light', 'dark']) {
       p = await page(`notebook-sheet-phone-${scheme}`, null, true, phone);
       await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
@@ -459,12 +459,12 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
       await tap(p, card(notes));
       await opened(p, 'Sheet notes', ['First', 'Second']);
       await settle(p);
-      const fit = await p.evaluate(`(()=>{const d=document.querySelector(${JSON.stringify(SHEET)}),r=s=>d.querySelector(s).getBoundingClientRect(),picked=d.querySelector('.notebook-sheet-page:not([hidden]) .deck-card[aria-current=true]').getBoundingClientRect();
+      const fit = await p.evaluate(`(()=>{const GEOMETRY_PX=2;const d=document.querySelector(${JSON.stringify(SHEET)}),r=s=>d.querySelector(s).getBoundingClientRect(),picked=d.querySelector('.notebook-sheet-page:not([hidden]) .deck-card[aria-current=true]').getBoundingClientRect();
         const small=[...d.querySelectorAll('.notebook-sheet-close,.notebook-sheet-full,.notebook-sheet-views button,.notebook-sheet-page:not([hidden]) .notebook-images>button,.notebook-sheet-page:not([hidden]) .deck-bar button')]
           .filter(b=>b.getClientRects().length).map(b=>[b.getAttribute('aria-label')||b.textContent,Math.round(b.getBoundingClientRect().width),Math.round(b.getBoundingClientRect().height)]).filter(([,w,h])=>w<44||h<44);
         return {sideways:document.documentElement.scrollWidth>innerWidth||d.scrollWidth>d.clientWidth,wraps:r('.notebook-sheet-views').top>=r('.notebook-sheet-title').bottom-1,
-          small,fills:picked.height>=innerHeight*0.4&&picked.left>=0&&picked.right<=innerWidth}})()`);
-      assert.deepEqual(fit, { sideways: false, wraps: true, small: [], fills: true }, `${scheme}: the sheet at a phone's width`);
+          small,list:getComputedStyle(d.querySelector('.deck-cards')).display==='grid',fits:picked.left>=-GEOMETRY_PX&&picked.right<=innerWidth+GEOMETRY_PX}})()`);
+      assert.deepEqual(fit, { sideways: false, wraps: true, small: [], list: true, fits: true }, `${scheme}: the sheet at a phone's width`);
       await shot(p, `notebook-sheet-phone-${scheme}`);
       await tap(p, `${SHEET} .notebook-sheet-close`);
       await closed(p);
@@ -744,7 +744,8 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     await p.close();
   });
 
-  await check('notebook in the composer: on a phone a finger dragged on the sheet\'s head or a card moves nothing behind it, a swipe still goes through the cards, and ✕ puts the feed back where it was read however it moved', async () => {
+  await check('notebook in the composer: on a phone a finger dragged on the sheet\'s head or a card moves nothing behind it, a horizontal swipe keeps the shared card list, and ✕ puts the feed back where it was read however it moved', async () => {
+    const SCROLL_PX = 2; // Engine rounding after native scrollend; a 200px move still fails.
     const id = await topicPage('Sheet finger', cardsBody);
     const p = await page('notebook-sheet-finger', null, true, phone);
     // WebKit's harness taps but has no finger drag (webkit_native.mjs): the drags are Chrome's.
@@ -771,7 +772,7 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
     const at = await rested(p);
     await tap(p, card(id));
     await opened(p, 'Sheet finger', ['Plan', 'Steps', 'Notes']);
-    const still = async said => { assert.equal(await rested(p), at, said); assert.equal((await state(p)).open, true, `${said}, and the sheet stays open`); };
+    const still = async said => { assert.ok(Math.abs((await rested(p)) - at) <= SCROLL_PX, `${said} (SCROLL_PX=2)`); assert.equal((await state(p)).open, true, `${said}, and the sheet stays open`); };
     await still('opening the page moves nothing behind');
     // Down and up on each part of the head, and on the card that fills the sheet, which has nowhere to go that way.
     for (const [where, selector] of [['the title', `${SHEET} .notebook-sheet-title`], ['the Text and Cards chips', `${SHEET} .notebook-sheet-views button:first-child`],
@@ -782,19 +783,20 @@ export async function notebookSheetChecks({ check, page, until, control, view, f
       await drag(from, 0, 150); await still(`a finger drawn down on ${where} moves nothing behind`);
       await drag(from, 0, -Math.min(150, from.y - 2)); await still(`a finger drawn up on ${where} moves nothing behind`);
     }
-    // A box in the sheet that scrolls that way keeps the finger: a swipe goes on to the next card.
+    // Item 652: cards share the laptop list, so a horizontal swipe cannot page it.
+    const HORIZONTAL_PX = 2;
     const cards = `${PAGE} .deck-cards`, swiped = () => p.evaluate(`document.querySelector(${JSON.stringify(cards)}).scrollLeft`);
     const b = await p.box(`${PAGE} .deck-card[aria-current=true]`), left = await swiped();
-    await drag({ x: Math.round(b.x + b.width - 30), y: Math.round(b.y + Math.min(b.height / 2, 120)) }, -240, 0);
-    await until(async () => (await swiped()) > left, 'a swipe across the card goes on through the cards');
-    await still('a swipe through the cards moves nothing behind');
+    await drag({ x: Math.round(b.x + b.width - 30), y: Math.round(b.y + Math.min(b.height / 2, 30)) }, -240, 0);
+    assert.ok(Math.abs((await swiped()) - left) <= HORIZONTAL_PX, 'the list never pages sideways (HORIZONTAL_PX=2)');
+    await still('a horizontal swipe of the list moves nothing behind');
     // However the feed moved while the sheet was up (its scrollbar dragged, which no harness here sends, stands
     // as a scroll by the page), ✕ puts it back where it was read.
     await p.evaluate(`(()=>{scrollTo({top:${at - 200},behavior:'instant'});return true})()`);
-    assert.equal(await rested(p), at - 200, 'the feed moved behind the sheet');
+    assert.ok(Math.abs((await rested(p)) - (at - 200)) <= SCROLL_PX, 'the feed moved behind the sheet (SCROLL_PX=2)');
     await tap(p, `${SHEET} .notebook-sheet-close`);
     await closed(p);
-    assert.equal(await rested(p), at, '✕ puts the feed back where it was read');
+    assert.ok(Math.abs((await rested(p)) - at) <= SCROLL_PX, '✕ puts the feed back where it was read (SCROLL_PX=2)');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

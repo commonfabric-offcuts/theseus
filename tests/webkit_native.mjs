@@ -62,7 +62,7 @@ const SKIPPED = {
     'rail a topic the page can no longer read leaves the right rail at once: its pictures and their bytes go before anything is read again': HELD,
     'rail back and forward across outcomes while the page before is still reading: both rails always show the address as a fresh load does': HELD,
     'rail a quick second back, a back before the page is up, and a place chosen meanwhile all move in place, with no load': HELD,
-    'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture opens its message in place': HELD,
+    'rail a move made while the right rail\'s pictures are still being read shows every picture on the page reached, and again on coming back; a picture link Return opens its message in place': HELD,
     'rail after moves in place the window and the document hear what a fresh load of the same place hears, after the same acts': 'reads the window\'s and the document\'s listeners through Chrome DevTools (DOMDebugger.getEventListeners) and picks a file through its chooser, which this harness does not offer',
     'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
   },

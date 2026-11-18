@@ -453,7 +453,7 @@ export async function cardImageChecks({ check, page, until, control, view, facts
         await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
         await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       };
-      // The card of that title, by its index; on a phone, one card shows at a time, so it is swiped to by its dot.
+      // The card of that title, by its index; item 652 uses the same vertical list at every width.
       const cardOf = async (p, title) => {
         const index = await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(SHEET + ' .deck-card')})].find(r=>r.querySelector('.deck-title')?.textContent===${JSON.stringify(title)})?.dataset.index ?? null`);
         assert.notEqual(index, null, `the card ${title} shows`);

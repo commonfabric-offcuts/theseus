@@ -135,6 +135,29 @@ export async function item715Checks({check, page, until, control, view, facts, s
             if(width!==1280) await press(p,'#rail-open',width);
             await press(p,row(seed.unloaded.root),width);
             await until(()=>p.evaluate(`document.getElementById('topic-navigation-status').textContent.includes('not confirmed saved')`),'cross-topic navigation is refused by the real writing guard');
+            const originalRowState = `(()=>{
+              const rail=document.getElementById('rail'), parent=document.querySelector('#outline a[data-topic-id="${seed.topic}"]'),
+                group=document.querySelector('#outline .ol-dossiers[data-parent-topic-id="${seed.topic}"]'),
+                original=group?.querySelector('.ol-dossier[data-dossier-id="${seed.roots[0]}"]');
+              const visible=e=>Boolean(e && e.getClientRects().length && !e.closest('[inert]') && getComputedStyle(e).visibility==='visible');
+              const actual={drawerOpen:rail?.classList.contains('open')??false,topic:new URL(location.href).searchParams.get('topic'),
+                parentPresent:Boolean(parent),parentVisible:visible(parent),groupPresent:Boolean(group),
+                parentTopic:group?.previousElementSibling?.dataset.topicId??null,loaded:group?.dataset.loaded??null,busy:group?.getAttribute('aria-busy')??null,
+                rowPresent:Boolean(original),rowVisible:visible(original),dossier:original?.dataset.dossierId??null,
+                href:original?.getAttribute('href')??null,notice:group?.textContent??null};
+              actual.ready=actual.topic===${JSON.stringify(seed.topic)} && actual.parentVisible && actual.parentTopic===${JSON.stringify(seed.topic)} &&
+                actual.loaded==='true' && actual.busy==='false' && actual.rowVisible && actual.dossier===${JSON.stringify(seed.roots[0])};
+              return actual;
+            })()`;
+            const captureOriginalRow = async (phase, error = null) => {
+              const actual=await p.evaluate(originalRowState);
+              await writeFile(path.join(evidencePath,label+'-'+phase+'-navigation-state.json'),JSON.stringify({actual,
+                expected:{topic:seed.topic,dossier:seed.roots[0]},error:error?.stack??null},null,2));
+              observations.push({name:'item715 guarded original row readiness',label,phase,actual});
+              await shot(p,label+'-'+phase+'-navigation');
+              return actual;
+            };
+            await captureOriginalRow('cross-topic-refused');
             const refused=await capture(p,label+'-cross-topic-refused');
             assert.equal(new URL(refused.url).searchParams.get('topic'),seed.topic,'refusal keeps the original topic');
             assert.equal(refused.open,false,'refusal opens no Reader in the other topic');
@@ -144,6 +167,18 @@ export async function item715Checks({check, page, until, control, view, facts, s
             assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'),false,'pressing a title sends no writing');
             const restored=await control({method:'item715_save_fault',enabled:false});
             assert.ok(restored.refused>fault.refused,'the guard encountered an actual failed save');
+            const afterRestoration=await captureOriginalRow('fault-restored');
+            // A refused link press also closes the phone drawer and removes its children.
+            if(width!==1280 && !afterRestoration.drawerOpen) await press(p,'#rail-open',width);
+            try {
+              await until(async()=> (await p.evaluate(originalRowState)).ready,
+                'the original topic has its loaded, nonbusy, visible original dossier row after native drawer reopening');
+            } catch(error) {
+              const actual=await captureOriginalRow('unsupported-original-row',error);
+              throw Error('Unsupported original row readiness: '+JSON.stringify(actual)+'; '+error.message);
+            }
+            const ready=await captureOriginalRow('original-row-ready');
+            assert.equal(ready.ready,true,'Unsupported original row readiness: '+JSON.stringify(ready));
             await press(p,row(seed.roots[0]),width);
             const kept=await opened(p,seed.roots[0],seed.topic,label+'-writing-kept');
             assert.equal(kept.writing,writing,'the original reply remains readable after the guard');

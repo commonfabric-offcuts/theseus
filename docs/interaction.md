@@ -163,7 +163,9 @@ the pointer's way, the keys' and the phone's.
   listed or linked as it stands; ✕, Escape (a second one while a card is
   written) or a press outside closes it, keeping a card half written, and puts
   the feed and the focus back. While it shows the keys and the wheel are its
-  own and never move the feed. (docs/decks.md, "Where it opens")
+  own and never move the feed. Cards uses the same list and in-place editor
+  on phones as on laptops by default, for now (item 652); Edit and Done are
+  available by touch. (docs/decks.md, "Where it opens")
 - **👍** means read and understood, never "do it"; pressing it again takes it
   back. It marks that message read at once, even one marked unread, and only
   that one: its card, the counts and the New line follow, here and on every
@@ -570,7 +572,9 @@ page painted. Its checks, by rule:
   message while the lit card's read ahead is slow …" holds that read ahead in
   the server and needs the whole message shown.
 - ?: "reading ? and the rail's "? Pointer, keys and taps" open the guide …".
-- Images: "reading #img in the topic's composer and in the Reader …" picks
+- Images: a displayed thumbnail opens its image in a new tab by click, tap
+  or Return (item 651, `tests/thumbnail_open_native.mjs`, `native-compose`);
+  the containing picker row's words still choose it. "reading #img in the topic's composer and in the Reader …" picks
   with ↓ and Return and with a tap, narrows by name, shows each thumbnail and
   takes the #img words out as one edit ⌘Z puts back; "reading Paste image: …"
   opens + and reads the button there, presses it, presses Choose file beside it
