@@ -261,6 +261,14 @@ export class StackFeed {
       folded: (stack, was) => this.remember(() => { setLevel(this.state, stack, was); this.arrange(); }),
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message shows' : `${count} earlier messages show`} as rows, for this visit`),
       arranged: () => this.arranged(),
+      // 646: only the unlit header stars, through the existing message act.
+      // 735 supplies the independent `starred` reveal callback on composition.
+      star: stack => {
+        if (this.heldByStar(stack)) return;
+        const item = this.messages().get(dossierOf(stack));
+        if (!item) { this.say('Load earlier messages to star this dossier’s first message'); return; }
+        this.star(item);
+      },
       // A title bar's glyphs (item 473): its first message's Reply and menu, and Move below More or Bring back.
       reply: stack => { const head = this.entryFor(stack.id); if (head) this.reply(stack.id, cardIn(head)); },
       aside: (stack, below) => this.setAside(stack, below),

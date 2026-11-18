@@ -411,7 +411,7 @@ their acts.
 - **The head.** The first message is one compact row: its short name, ✎,
   who began the stack and the marks of what that message carries (an image,
   the reader's own note and saved reply, docs/topic-reading.md), "New" when
-  the message itself is new, ★ if the reader starred any message of the
+  the message itself is new, an always-visible ☆/★ control (646 below), lit if the reader starred any message of the
   dossier, not only its first (item 635: a later reply, or one the page has
   not loaded, which the dossier's position names), how many replied and who, and how many replies are new. The tab is two
   lines high: the short name, then the rest on one line that never wraps to
@@ -419,7 +419,7 @@ their acts.
   and what is new give way first, then the marks, whole glyphs dropped from
   the end, then who began it, cut short with its whole name in its tooltip;
   a minted name's "Named by", after the marks, keeps its width ahead of them,
-  and "New", ★ and the count always show. The short name is the
+  and "New", the star control and the count always show. The short name is the
   one someone typed for the dossier, or minted for it (Minted names, above),
   or else the first message's line (One line of a message, below). A page that holds only some of a dossier's replies
   shows the name too, and a rename typed there names the whole dossier.
@@ -430,6 +430,7 @@ their acts.
   A message that stops
   heading a stack, joined into another or left with no replies, loses the
   row at once and reads as a card.
+
 - **Replying.** Use Reply on the message's bar, or Return on the selected
   message, to open the Reader with its reply composer. Return on a selected
   dossier (its header or chevron) edits its title instead, as ✎ does:
@@ -519,6 +520,42 @@ finds a card finds it alone, and the star acts on the card it sits in. It is
 put back each time the author line is painted again (a mark from another
 device, the time's words changing).
 
+### Header star preview (646; composition with 735 pending)
+
+The named default under warp8399/8412/8413, confirmed by Tony8436,
+replaces the title bar's passive star indicator with one always-visible
+star control. It stays visible without hover or selection, including an
+agent-only dossier's quiet header. It is one hit target, with an outlined
+☆ and the accessible label and tooltip "Star this dossier" when none of
+this reader's messages in the dossier is starred. Pressing it stars the
+dossier's actual first message through the existing message-star authority,
+revision, retry and item 635 Bring back path. The overflow star action remains.
+
+A filled ★ has the accessible label and tooltip "Starred" when any readable
+message of the dossier is starred by this reader, including one named by
+Core's position but not loaded. Pressing it calls
+`state.on?.starred?.(stack)` (action name `starred`); 735 independently owns
+revealing that message and loading it as needed, including a hidden first
+message. Unstarring stays on the message itself. This supersedes the earlier
+header toggle wording; Tony's original item 5 requested a first-message
+star/unstar toggle after 635 (warp #6826).
+
+646 supplies the `star` callback for the unlit control and reuses
+`StackFeed.star` on the loaded first message identified by `dossierOf`.
+When that first message is outside the loaded page, base94 asks the reader
+to load earlier messages before starring; it never stars a substitute reply
+or guesses an unloaded message's star revision. No loader is added here.
+The header star occupies its own reserved space in the tab, with a 44px
+target under a finger and keyboard activation by Return or Space. A surface
+without a dossier header (Only new or a standalone message), and the title
+temporarily replaced by its rename field, retain their existing behavior.
+
+This is source-only preview work: no tests written or run, no browser,
+units, pool or review. Base94 alone has no lit-reveal callback. The
+coordinator must compose 735's frozen return and resolve the shared
+`paintHead` before hosting the preview on a copy. Tony's actual preview
+approval is required before tests start; the eventual 18-start budget is
+unspent and unallocated.
 ## Doing it
 
 On a message (its card focused, never in writing), these keys work:

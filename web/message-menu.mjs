@@ -145,8 +145,8 @@ export class MessageMenu {
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
       if (this.touch && entry !== this.before && !event.target.closest?.('a, .fold-line') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);
-        // The reply arrow answers its own first tap with its words (card-reading.mjs).
-        if (event.target.closest?.('.replied-mark')) return;
+        // The reply arrow and always-visible dossier star answer their own first tap.
+        if (event.target.closest?.('.replied-mark, .stack-star')) return;
         event.preventDefault(); event.stopPropagation();
       }
     }, true);

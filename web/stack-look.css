@@ -70,6 +70,7 @@
   --stack-name-lh:1.5rem; --stack-meta-lh:1.3rem;
   --stack-tab-pad:.45rem .85rem .4rem;
   --stack-toggle-size:1.75rem; --stack-toggle-inset:.3rem;
+  --stack-header-star-size:1.75rem;
   --stack-tab-h:calc(.85rem + var(--stack-name-lh) + var(--stack-meta-lh));
   --stack-pad:.5rem;                      /* folder edge to sheet */
   --stack-sheet-gap:.45rem;
@@ -152,7 +153,7 @@
   display:flex;flex-wrap:wrap;align-items:baseline;align-content:center;column-gap:.5rem;margin:0;padding:var(--stack-tab-pad);
   border-radius:var(--stack-r-tab) var(--stack-r-tab) 0 0;background:var(--stack-folder);color:var(--stack-folder-ink);
   font-size:.78rem;font-weight:400;line-height:var(--stack-meta-lh);text-align:left;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.reply-stack:not(.only-new *) .stack-head-card>.stack-head{padding-left:calc(var(--stack-toggle-size) + 2 * var(--stack-toggle-inset))}
+.reply-stack:not(.only-new *) .stack-head-card>.stack-head{padding-left:calc(var(--stack-toggle-size) + 2 * var(--stack-toggle-inset));padding-right:calc(.85rem + var(--stack-header-star-size))}
 /* One compact control beside the name replaces the repeated fold bars.
    It is a sibling of the head's message button, never a nested button. */
 .reply-stack:not(.only-new *)>.stack-toggle{position:absolute;z-index:1;left:var(--stack-toggle-inset);top:calc(-1 * var(--stack-tab-h) + var(--stack-toggle-inset));
@@ -242,8 +243,8 @@
 /* A touch screen has no pointer to show the pen: the name itself is the handle. */
 @media(hover:none){.stack-pen{display:none}}
 /* The second line, one quiet run joined by "·": who started it, the marks of what the first message carries (item 127),
-   a minted name's Named by (item 479), New, the star, then the count, who replied and what is new. It never wraps to a
-   third: New, the star and the count keep their width, and the parts that can give way start from no width, so the line holds them all, and take
+   a minted name's Named by (item 479), New, then the count, who replied and what is new. The header star has its own
+   reserved space (646). The line never wraps to a third: New and the count keep their width, and the parts that can give way start from no width, so the line holds them all, and take
    the room left in turn, by their weights: who began it first, then the marks, then who replied and what is new. On a
    narrow tab who replied and what is new give way first, then the marks, whole glyphs dropped from the end (a mark
    that does not fit wraps below the first line and is clipped; the empty first item holds that line at the run's
@@ -260,10 +261,17 @@
    the parts that give way, so short of room who began it, the marks and who replied give way first; only a name too
    long for the tab is shortened by its ellipsis. The count, New and the star keep theirs. */
 .stack-named{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink);font-style:italic}
-.stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta){margin-left:calc(.3em - .5rem)}
-.stack-head>:is(.stack-named,.stack-new,.stack-star,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
+.stack-head>:is(.stack-named,.stack-new,.stack-meta){margin-left:calc(.3em - .5rem)}
+.stack-head>:is(.stack-named,.stack-new,.stack-meta)::before{content:'·';margin-right:.3em;color:var(--stack-meta-ink);font-weight:400;font-style:normal}
 .stack-new{flex:none;color:var(--stack-new);font-size:.72rem;font-weight:700}
-.stack-star{flex:none;color:var(--stack-star)}
+/* 646: one visible header control, in reserved space clear of the name and
+   metadata, independent of the hover-only title bar tools. */
+.stack-head>.stack-star{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);display:grid;place-items:center;
+  box-sizing:border-box;width:var(--stack-header-star-size);height:var(--stack-header-star-size);margin:0;padding:0;
+  color:var(--stack-star);border-radius:.35rem;cursor:pointer;font-size:1.1rem;line-height:1}
+.stack-star:hover{background:var(--stack-folder-deep)}
+.stack-star:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+@media(pointer:coarse){.reply-stack{--stack-header-star-size:2.75rem}}
 .stack-meta{flex:1 1 0;min-width:0;max-width:max-content;overflow:hidden;text-overflow:ellipsis;color:var(--stack-meta-ink)}
 /* On the tab (a compact row keeps .stack-meta whole, above), the count keeps its width and who replied and what is
    new give way, each a part of the line. */
@@ -416,7 +424,7 @@
 .reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{position:relative;top:0;width:100%;max-width:100%;height:2.75rem;flex-wrap:nowrap;align-items:center;padding-block:.25rem;border-radius:.55rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card{height:2.75rem;scroll-margin-top:4px}
-.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta){display:none}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta,.stack-star){display:none}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head::after,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::before,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::after{display:none}
@@ -425,7 +433,8 @@
 .reply-stack[data-compact=true] .stack-repliers{display:none}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-toggle{top:.5rem}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-tools{top:0;right:0;height:2.75rem}
-.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:max(.7rem,var(--stack-tools-room))}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{padding-right:calc(max(.7rem,var(--stack-tools-room)) + var(--stack-header-star-size))}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head>.stack-star{right:max(.35rem,var(--stack-tools-room))}
 .reply-stack[data-compact=true]:not(.only-new *)>.stack-placed-line{display:none}
 #messages[data-show-coordination=false]>[data-coordination=agents]{display:none}
 #agent-coordination-show:has(~ #messages[hidden]){display:none}
