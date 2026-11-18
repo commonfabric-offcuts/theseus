@@ -4351,5 +4351,40 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/dossier_promises_native.mjs": {
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "03c709be8e8f459174fa0202cba6888ea482930c60160ec20f4d752cd77eee8a:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "3b853582b35313e7fc85e7d9361e589257d4a82d107a0e57a95f4588a9894ea1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "tests/dossier_promises_native.mjs",
+        "web/dossier-cover.mjs",
+        "web/reader.mjs",
+        "web/stack-look.css",
+        "aim_next/cover_promises.py",
+        "aim_next/cover_values.py",
+        "aim_next/covers.py",
+        "aim_next/cli_covers.py"
+      ],
+      "scope": "repository"
+    },
+    "d9f0ed58e72b5bc63cd57f1ddbf55b04046283e93d8f9f1762c66c09ed2e77c1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }

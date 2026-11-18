@@ -61,6 +61,42 @@ function waitsLabel(doc, owner, context) {
   return label;
 }
 
+// Core's recorded clock label is stable across devices and later timezone rule changes.
+function promiseTime(doc, due) {
+  if (!due) return element(doc, 'span', 'promise-time', 'No time given');
+  const node = element(doc, 'time', 'promise-time', due.label);
+  node.dateTime = new Date(due.at_ms).toISOString();
+  node.title = due.label;
+  return node;
+}
+
+function promiseSource(doc, promise, context) {
+  const node = cite(doc, context.topicId, promise.message_id, promise.seq,
+    `Promise by ${context.nameOf(promise.source_author)} · source revision ${promise.source_revision}`);
+  node.setAttribute('aria-label', `Promise source #${promise.seq}, revision ${promise.source_revision}, by ${context.nameOf(promise.source_author)}`);
+  return node;
+}
+
+function promiseRow(doc, promise, context) {
+  const row = element(doc, 'div', 'cover-line cover-promise');
+  row.dataset.state = promise.state;
+  const current = element(doc, 'span', 'cover-note promise-current');
+  row.append(element(doc, 'span', 'cover-label', 'Promise'), ' ', element(doc, 'span', 'cover-words promise-words', promise.text), ' ',
+    promiseSource(doc, promise, context), current);
+  current.append(promiseTime(doc, promise.due), ' · ', element(doc, 'span', 'promise-state', promise.state));
+  for (const prior of promise.history ?? []) {
+    const old = element(doc, 'div', 'cover-note promise-history');
+    old.append(element(doc, 'span', 'promise-words', prior.text), ' · ');
+    const changedTime = JSON.stringify(prior.due) !== JSON.stringify(promise.due);
+    const time = changedTime ? element(doc, 's', 'promise-prior') : element(doc, 'span', 'promise-prior-same');
+    time.append(promiseTime(doc, prior.due));
+    old.append(time, ` · ${prior.state} · `, promiseSource(doc, prior, context),
+      ` · recorded by ${context.nameOf(prior.by)}`, ' at ', timeNode(prior.at_ms, doc));
+    row.append(old);
+  }
+  return row;
+}
+
 // The cover as its sheet: where it stands; the payload, with its label, words,
 // link and pill and the message it came from; then each thing waiting on the
 // outcome's owner, with its default. context: { viewer, nameOf, topicId }.
@@ -90,6 +126,7 @@ export function coverSheet(doc, cover, context) {
     const row = line('cover-wait');
     row.append(waitsLabel(doc, cover.owner, ctx), ' ', element(doc, 'span', 'cover-words', wait.text), element(doc, 'span', 'cover-note', `Default: ${wait.default}.`));
   }
+  for (const promise of cover.promises ?? []) sheet.append(promiseRow(doc, promise, ctx));
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   return sheet;
 }
@@ -107,13 +144,19 @@ export function coverPills(doc, cover, context) {
     pill.title = cover.waiting.map(wait => `${wait.text} Default: ${wait.default}.`).join('\n');
     pills.append(pill);
   }
+  for (const promise of cover.promises ?? []) {
+    const pill = element(doc, 'span', 'row-pill pill-promise'); pill.dataset.state = promise.state;
+    pill.append(element(doc, 'span', 'pill-words', `${promise.text} · ${promise.due?.label ?? 'No time given'} · ${promise.state}`));
+    pill.title = `Promise · ${context.nameOf(promise.source_author)} · #${promise.seq}, revision ${promise.source_revision}`;
+    pills.append(pill);
+  }
   if (!pills.children.length) return null;
   if (cover.stands) pills.title = cover.stands;
   return pills;
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.owner, context.viewer, context.topicId]) : '');
+export const coverKey = (cover, context) => (cover ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.promises, cover.owner, context.viewer, context.topicId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its
