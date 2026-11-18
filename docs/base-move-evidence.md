@@ -251,3 +251,34 @@ frozen 652 source and stubbed API answers. These are not authenticated hosted
 receipts or native behavior evidence. The genuine 651 package remains a separate
 control. Actual final-base 652 acceptance requires its original Pool return and
 live API comparison; a local parser control cannot establish that acceptance.
+
+### Bounded reading/rail fallback for both 717 and 715 (8607)
+
+This is the named **717-and-715 narrow fallback**, not an arbitrary-source
+adapter. The shared Pool authentication/archive/snapshot reader also accepts
+`reading` and `webkit-reading` with exactly `item 717`, and `rail` and
+`webkit-rail` with exactly `item 715`. Each execution is one engine, at the
+step recorded by the producer; obligations retain those separate step names.
+No dual-engine prefix or phase is invented for these reports.
+
+Schema authority is independent of receipt claims: the complete `tests` Git
+subtree must equal frozen producer f31e319994ecc96c5565828a53fde75c01bd3386
+(717) or 5903d8b8fac63b8b4e6d191dbc8d59db5094d9b0 (715). Named reporters,
+helpers and cleanup code have additional exact SHA-256 pins. The original
+workflow/native/release pins still apply. This intentionally conservative
+subtree binding also covers imports and fixture code without executing it.
+Unknown source or conventions refuse. Future assembled 717/715 sources with
+changed harness imports, or any changed tests subtree, need an explicit
+independent schema binding. Candidate self-hashes cannot authorize them.
+
+Chromium's rows have only name/passed; its log has ordered start/result pairs
+with matching ISO timestamps. Its original phases.json is required in the ZIP,
+with every case's action and cleanup complete before reporting. WebKit's rows
+carry engine=webkit and nonnegative integer ms, and its ordered log contains
+exactly those rows. Both retain null phase; names must begin `reading item 717 `
+or `rail item 715 ` (the item alone is also permitted after the mode prefix).
+Counts, normal exit, fixture/browser cleanup, exact independent identities and
+all claimed source hashes are checked. No failed raw row is accepted, including
+the historical 717 intended-assertion/restore red and four WebKit Tab reds, or
+715's twelve phone drawer reds. Synthesized controls are parser evidence only;
+no final-base 717/715 receipt exists or is implied by this change.
