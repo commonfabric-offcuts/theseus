@@ -1,0 +1,142 @@
+{
+  "id": "compose-99a88fa8329eb01ec513",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "99a88fa8329eb01ec513853f06283ae637bcf23f67ed462497189ed93be48be0",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark save error",
+      "case_id": "c944b9dcdfe370f7d1931e7517cf9afe1c9d892c49789f9b2028320b82a23ab6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark read error",
+      "case_id": "83d473a2ec59b32d66191ee7c52d019232058e0425db73c2e5125bc47b8d6a01",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark conflict mine",
+      "case_id": "3092d7cca2e270d3d04b71cb3a66c5b52dacb18f2ab87e51d7ba37bc381914d5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark conflict saved",
+      "case_id": "fd4d1e675dc5dc0ba04fc50c302b0cc57627aa8b9ddcb42cf9f09d8ac9d0c9cb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark authority refusal",
+      "case_id": "84805015ab8c0d47e0ca2bba9ad513830bc3bb032be15e29e2aacf7c274c3625",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark device error",
+      "case_id": "cef89b4c5cd2b08ebb579d7a5cd06a1a620f6fa24d573551d8754a63857c76a0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 applied carousel mutant and restored control",
+      "case_id": "c02ff85a910e736c99d46e82ef73fec0b50506847dc3597b35385f949826507f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 applied separate editor mutant and restored control",
+      "case_id": "e6e7d0c2d48f0f66524ba264eb0f94d991740eab1ab36b28c48668454b05d80a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 applied small chevron mutant and restored control",
+      "case_id": "4db4dd24438e4c3732a049545cab240d153818aac8d805a70b480b5ed8705198",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: topic and dossier thumbnails open their exact image, never the Reader",
+      "case_id": "965acf905bbc7856e8707bf5f6028f995b5a6b3089a5b36db1b91b779335f375",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: Notebook cards thumbnail opens without editing or changing words",
+      "case_id": "07fa513de563175d42d17aff53f07c90fac84212fd8569eddd7bcd2d89481ad7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "f887d45fdd8c07a1e0d25892a3fedb4c78605ebd50c30b9fd7f94e86308756fe",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "5c8ab36de5436c849269f0226fb163b748669e628fcc5142e79151c91acfa2e1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: rail thumbnail opens its image and keeps the topic",
+      "case_id": "71dd7e87c0b207db622750eb494273b3d6943c09a5c378c6fb384c02ee05ee3a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

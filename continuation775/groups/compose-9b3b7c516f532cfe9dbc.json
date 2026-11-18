@@ -1,0 +1,46 @@
+{
+  "id": "compose-9b3b7c516f532cfe9dbc",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "9b3b7c516f532cfe9dbc833444ec18fb7c88e452b133193bcb9dc302b22d9377",
+  "cases": [
+    {
+      "phase": "runSending",
+      "engine": "chromium",
+      "name": "chromium stacked: in the Reader, Send pressed with a name typed in To and not named sends nothing, says so and opens To on it; with To cleared the whisper reaches its one agent alone",
+      "case_id": "8a107b594047a419bc0290f66c8183bdc5632f96c263381ed6c71c97876774d1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "runSending",
+      "engine": "chromium",
+      "name": "chromium stacked: in the New message composer, Send pressed with a name typed in To and not named sends nothing, says so and opens To on it",
+      "case_id": "f49a95da248a80bab74d5db5dde9ac8bf1774b81f4ee1db7b3a25fd088ff1b7e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "runSending",
+  "engine": "chromium",
+  "case_budget_seconds": 600,
+  "phase_seconds": 900,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

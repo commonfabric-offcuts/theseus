@@ -1,463 +1,329 @@
-# The release check, run on GitHub's runners for every pull request and every
-# push to a release branch. It runs the same steps as tools/release_check.py on
-# the Mac, split across runners: the native browser modes in shards, the units
-# in measured whole-file shards, Node and deploy refusals separately, and the
-# wake replay alone, since it is a
-# timing measurement that a second run beside it would skew.
-#
-# The shard list is computed from tools/release_check.py itself (the plan job),
-# so a mode added there is checked here without editing this file. Each shard
-# runs `release_check.py --only`, so each summary speaks for its own steps, and
-# the combine job folds them into the one whole-run summary the deploy reads
-# (docs/tools.md), published as the release-check artifact.
-#
-# A red shard is a red check. The one exception is the quarantine (item 549,
-# docs/ci-known-reds.md): a browser case live fails too, quarantined in the
-# policy at the event's base (.github/check-baseline.json there, never this
-# commit's copy), still runs and still fails in the evidence, but a step whose
-# only failures are quarantined cases failing where they were quarantined does
-# not fail its shard or the whole run. Every other red stays red.
-#
-# This workflow is the producer, and nothing more: it runs the candidate's own
-# code, from the merge commit's copy of this file, and publishes the evidence.
-# It cannot be trusted with the verdict, since a pull request can edit it. The
-# verdict comes from the Verdict workflow on the default branch, which runs
-# when this one completes, reads these artifacts as untrusted data, checks them
-# against GitHub's record of this run, and runs the validator and the baseline
-# from the pull request's base. The candidate's code runs here, so the token is
-# read-only.
 name: Checks
-
 on:
-  pull_request:
-  push:
-    branches:
-      - 'release/**'
-      - codex/aim-next
   workflow_dispatch:
-
+    inputs:
+      source_head:
+        description: Exact approved train49 product source
+        required: true
+        type: string
 permissions:
   contents: read
-
-# A pull request's newer push supersedes its older head, so its run is cancelled. Every push to a release branch
-# is a merged train's head: its run is that head's judgment and the next train's control, so it runs to the end,
-# grouped by its ref and commit together, since one commit can be pushed to two branches (each needs its own verdict).
-concurrency:
-  group: checks-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
-
 env:
-  # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Item740: initial bins only; whole-step capacity may require more. Unknown steps run alone; observed oversize is explicit.
-  # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
-  BROWSER_SHARDS: 4
-
 jobs:
-  plan:
-    name: plan the shards
-    runs-on: ubuntu-latest
-    outputs:
-      shards: ${{ steps.plan.outputs.shards }}
-      scoped: ${{ steps.plan.outputs.scoped }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '26'
-      - id: plan
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -I tools/unit_shards.py --plan --github-output >> "$GITHUB_OUTPUT"
-
-  check:
-    name: ${{ matrix.name }}
-    needs: plan
+  compose:
+    name: Train49 ${{ matrix.name }}
     runs-on: macos-26
-    # Warp9266: browser capacity 120m, 5m setup/upload reserve, 1.25x
-    # retained step maximum; unknown/long steps alone. Capacity is not ETA.
-    # Each Python partition runs alone with a 49m job capacity.
-    timeout-minutes: ${{ matrix.timeout_minutes }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.shards) }}
+        include:
+          - name: compose-3ba3430b1f5bf93bffee
+            group_file: groups/compose-3ba3430b1f5bf93bffee.json
+          - name: compose-66afc5bd85aedc8cc0c6
+            group_file: groups/compose-66afc5bd85aedc8cc0c6.json
+          - name: compose-7a34a384cc4079e9fe9a
+            group_file: groups/compose-7a34a384cc4079e9fe9a.json
+          - name: compose-f2d47c2e4f03d723295a
+            group_file: groups/compose-f2d47c2e4f03d723295a.json
+          - name: compose-f152a4eb679fc85791b7
+            group_file: groups/compose-f152a4eb679fc85791b7.json
+          - name: compose-fc2098af1fb1ae142a65
+            group_file: groups/compose-fc2098af1fb1ae142a65.json
+          - name: compose-0d3a5b214b59fa54bb69
+            group_file: groups/compose-0d3a5b214b59fa54bb69.json
+          - name: compose-19a87b6d7c37edf9b7be
+            group_file: groups/compose-19a87b6d7c37edf9b7be.json
+          - name: compose-9c58c0976029a0aef866
+            group_file: groups/compose-9c58c0976029a0aef866.json
+          - name: compose-efb6b2b08e39b5374186
+            group_file: groups/compose-efb6b2b08e39b5374186.json
+          - name: compose-13b75f8c3215b0c1a22b
+            group_file: groups/compose-13b75f8c3215b0c1a22b.json
+          - name: compose-9d3fe7fb79d30ab10345
+            group_file: groups/compose-9d3fe7fb79d30ab10345.json
+          - name: compose-0730d9c24e82e3371e8f
+            group_file: groups/compose-0730d9c24e82e3371e8f.json
+          - name: compose-d464130507ceeefae968
+            group_file: groups/compose-d464130507ceeefae968.json
+          - name: compose-4888231aa7ef0bf8223e
+            group_file: groups/compose-4888231aa7ef0bf8223e.json
+          - name: compose-32c6b08434c5bb730634
+            group_file: groups/compose-32c6b08434c5bb730634.json
+          - name: compose-0a4c2de50a20cb054c4f
+            group_file: groups/compose-0a4c2de50a20cb054c4f.json
+          - name: compose-cb4c522b00dd31ad6f02
+            group_file: groups/compose-cb4c522b00dd31ad6f02.json
+          - name: compose-be9a3cc80b6d4ef2988a
+            group_file: groups/compose-be9a3cc80b6d4ef2988a.json
+          - name: compose-02c5ebde0adb4bdfb7c5
+            group_file: groups/compose-02c5ebde0adb4bdfb7c5.json
+          - name: compose-f3ed5fa79dc9ca1a967a
+            group_file: groups/compose-f3ed5fa79dc9ca1a967a.json
+          - name: compose-21e6df119c7ceba56dad
+            group_file: groups/compose-21e6df119c7ceba56dad.json
+          - name: compose-1c359c0edc81c81532d8
+            group_file: groups/compose-1c359c0edc81c81532d8.json
+          - name: compose-22217a19919be27d352c
+            group_file: groups/compose-22217a19919be27d352c.json
+          - name: compose-92c04b37b5bf945f961a
+            group_file: groups/compose-92c04b37b5bf945f961a.json
+          - name: compose-12b6176b8c882e5b3a42
+            group_file: groups/compose-12b6176b8c882e5b3a42.json
+          - name: compose-1acd9bc1ca7c0c20525b
+            group_file: groups/compose-1acd9bc1ca7c0c20525b.json
+          - name: compose-2fbfe61be83e066db317
+            group_file: groups/compose-2fbfe61be83e066db317.json
+          - name: compose-b22c4faba698cc407141
+            group_file: groups/compose-b22c4faba698cc407141.json
+          - name: compose-a0d3566820b103d7ca8c
+            group_file: groups/compose-a0d3566820b103d7ca8c.json
+          - name: compose-c15d7cc8f5f65d612150
+            group_file: groups/compose-c15d7cc8f5f65d612150.json
+          - name: compose-b88abd1056af912222d3
+            group_file: groups/compose-b88abd1056af912222d3.json
+          - name: compose-c7977904b3fc76ad7bd4
+            group_file: groups/compose-c7977904b3fc76ad7bd4.json
+          - name: compose-b24b6636af425e05307f
+            group_file: groups/compose-b24b6636af425e05307f.json
+          - name: compose-e7e453eea77f798c00ac
+            group_file: groups/compose-e7e453eea77f798c00ac.json
+          - name: compose-e9d7bf51ddad2eccad7c
+            group_file: groups/compose-e9d7bf51ddad2eccad7c.json
+          - name: compose-783c980bfae67cef43b9
+            group_file: groups/compose-783c980bfae67cef43b9.json
+          - name: compose-61298f01add67384ad31
+            group_file: groups/compose-61298f01add67384ad31.json
+          - name: compose-2f886d8b824f21dde073
+            group_file: groups/compose-2f886d8b824f21dde073.json
+          - name: compose-59767f785558a1a2384b
+            group_file: groups/compose-59767f785558a1a2384b.json
+          - name: compose-75355786d92c9291f304
+            group_file: groups/compose-75355786d92c9291f304.json
+          - name: compose-043b27eebe2da0d7b3bb
+            group_file: groups/compose-043b27eebe2da0d7b3bb.json
+          - name: compose-ddaf93d191d65d0ee7ee
+            group_file: groups/compose-ddaf93d191d65d0ee7ee.json
+          - name: compose-092ffb9cb15ae02294c6
+            group_file: groups/compose-092ffb9cb15ae02294c6.json
+          - name: compose-548795b5a9a1678ff257
+            group_file: groups/compose-548795b5a9a1678ff257.json
+          - name: compose-ae71d428f39012689b31
+            group_file: groups/compose-ae71d428f39012689b31.json
+          - name: compose-fa9a5af4fdcd8063b215
+            group_file: groups/compose-fa9a5af4fdcd8063b215.json
+          - name: compose-95830e7a4ff356213e46
+            group_file: groups/compose-95830e7a4ff356213e46.json
+          - name: compose-5e2fc9aef00344cc60cb
+            group_file: groups/compose-5e2fc9aef00344cc60cb.json
+          - name: compose-861105d6b72f88526f1e
+            group_file: groups/compose-861105d6b72f88526f1e.json
+          - name: compose-962b6af626e4c3a90c4d
+            group_file: groups/compose-962b6af626e4c3a90c4d.json
+          - name: compose-fedb3a7e3476aff2273c
+            group_file: groups/compose-fedb3a7e3476aff2273c.json
+          - name: compose-53d5764b874626994f56
+            group_file: groups/compose-53d5764b874626994f56.json
+          - name: compose-b7172623625b0a6fd90c
+            group_file: groups/compose-b7172623625b0a6fd90c.json
+          - name: compose-9e6aa6258a69c9fce186
+            group_file: groups/compose-9e6aa6258a69c9fce186.json
+          - name: compose-e1ea00aa9b6c9269bba0
+            group_file: groups/compose-e1ea00aa9b6c9269bba0.json
+          - name: compose-4069e2d0c174f461bdec
+            group_file: groups/compose-4069e2d0c174f461bdec.json
+          - name: compose-99a88fa8329eb01ec513
+            group_file: groups/compose-99a88fa8329eb01ec513.json
+          - name: compose-fe2cfb9e3430c2eb7aea
+            group_file: groups/compose-fe2cfb9e3430c2eb7aea.json
+          - name: compose-5b458592917d69730c28
+            group_file: groups/compose-5b458592917d69730c28.json
+          - name: compose-e318995c43a5fc1a7a37
+            group_file: groups/compose-e318995c43a5fc1a7a37.json
+          - name: compose-48837bd14578a7fa2a4c
+            group_file: groups/compose-48837bd14578a7fa2a4c.json
+          - name: compose-30dcce820fa23eefabb1
+            group_file: groups/compose-30dcce820fa23eefabb1.json
+          - name: compose-e8015ca6a8c637fe36df
+            group_file: groups/compose-e8015ca6a8c637fe36df.json
+          - name: compose-b17e81e3966574bd5b43
+            group_file: groups/compose-b17e81e3966574bd5b43.json
+          - name: compose-6827b222f4b9e837c434
+            group_file: groups/compose-6827b222f4b9e837c434.json
+          - name: compose-5feeae15049247ea6c44
+            group_file: groups/compose-5feeae15049247ea6c44.json
+          - name: compose-a5d4818d69c2dabc0531
+            group_file: groups/compose-a5d4818d69c2dabc0531.json
+          - name: compose-a850d2dbf19041637357
+            group_file: groups/compose-a850d2dbf19041637357.json
+          - name: compose-22d81964ab1383186755
+            group_file: groups/compose-22d81964ab1383186755.json
+          - name: compose-062a0420f4064786bd4f
+            group_file: groups/compose-062a0420f4064786bd4f.json
+          - name: compose-7bf554d1f322108772d3
+            group_file: groups/compose-7bf554d1f322108772d3.json
+          - name: compose-748b26f61526cf378717
+            group_file: groups/compose-748b26f61526cf378717.json
+          - name: compose-2fda6eebbea98eb323e1
+            group_file: groups/compose-2fda6eebbea98eb323e1.json
+          - name: compose-8fb3528e8f8f3ad0bf6f
+            group_file: groups/compose-8fb3528e8f8f3ad0bf6f.json
+          - name: compose-6becffee9fd631b52528
+            group_file: groups/compose-6becffee9fd631b52528.json
+          - name: compose-2c282bde931448550929
+            group_file: groups/compose-2c282bde931448550929.json
+          - name: compose-c66eca345cfc9afb5ff8
+            group_file: groups/compose-c66eca345cfc9afb5ff8.json
+          - name: compose-6378ed60e91bc26933e5
+            group_file: groups/compose-6378ed60e91bc26933e5.json
+          - name: compose-e2847966ee846d5bd75d
+            group_file: groups/compose-e2847966ee846d5bd75d.json
+          - name: compose-cc016b4ee7368eba2fd1
+            group_file: groups/compose-cc016b4ee7368eba2fd1.json
+          - name: compose-5e547345f94d80c32716
+            group_file: groups/compose-5e547345f94d80c32716.json
+          - name: compose-e36c6ae2e945e6f68898
+            group_file: groups/compose-e36c6ae2e945e6f68898.json
+          - name: compose-5b161adb7d15535ae371
+            group_file: groups/compose-5b161adb7d15535ae371.json
+          - name: compose-6eaa4835b6a3d500c63a
+            group_file: groups/compose-6eaa4835b6a3d500c63a.json
+          - name: compose-5f6bdf7eaaff5fec06f6
+            group_file: groups/compose-5f6bdf7eaaff5fec06f6.json
+          - name: compose-363c5063e8b965596fc9
+            group_file: groups/compose-363c5063e8b965596fc9.json
+          - name: compose-b8b34da811ad001b5abe
+            group_file: groups/compose-b8b34da811ad001b5abe.json
+          - name: compose-5792908c981b946cb746
+            group_file: groups/compose-5792908c981b946cb746.json
+          - name: compose-94b3628ae0ee8d0e7be0
+            group_file: groups/compose-94b3628ae0ee8d0e7be0.json
+          - name: compose-09293e3056316f27b0b9
+            group_file: groups/compose-09293e3056316f27b0b9.json
+          - name: compose-b020d69636bfb6cc8650
+            group_file: groups/compose-b020d69636bfb6cc8650.json
+          - name: compose-76b65543cc3092ecac79
+            group_file: groups/compose-76b65543cc3092ecac79.json
+          - name: compose-a1a3c309a312dab1cd07
+            group_file: groups/compose-a1a3c309a312dab1cd07.json
+          - name: compose-469037e8d802bef83b3a
+            group_file: groups/compose-469037e8d802bef83b3a.json
+          - name: compose-3223a06583e63aeaaf0c
+            group_file: groups/compose-3223a06583e63aeaaf0c.json
+          - name: compose-7405b3a79b7b0ed7236a
+            group_file: groups/compose-7405b3a79b7b0ed7236a.json
+          - name: compose-e98fcee96de1e40c6921
+            group_file: groups/compose-e98fcee96de1e40c6921.json
+          - name: compose-fb5ea4782d675f8b6cda
+            group_file: groups/compose-fb5ea4782d675f8b6cda.json
+          - name: compose-d509f7ef964ae56b633e
+            group_file: groups/compose-d509f7ef964ae56b633e.json
+          - name: compose-e45b927887fb1f81ba4b
+            group_file: groups/compose-e45b927887fb1f81ba4b.json
+          - name: compose-63115dd05f4b10249ce2
+            group_file: groups/compose-63115dd05f4b10249ce2.json
+          - name: compose-c9430e19a6f5ab8df102
+            group_file: groups/compose-c9430e19a6f5ab8df102.json
+          - name: compose-769485427bb402e673c1
+            group_file: groups/compose-769485427bb402e673c1.json
+          - name: compose-6adddd742fa7895a43e8
+            group_file: groups/compose-6adddd742fa7895a43e8.json
+          - name: compose-a6ca0c3a01efd2b4243f
+            group_file: groups/compose-a6ca0c3a01efd2b4243f.json
+          - name: compose-0f0aeedf3dfb3f03ef86
+            group_file: groups/compose-0f0aeedf3dfb3f03ef86.json
+          - name: compose-0d9b2ceb2a2ebb7553aa
+            group_file: groups/compose-0d9b2ceb2a2ebb7553aa.json
+          - name: compose-48e6e8d5b90b0cc65563
+            group_file: groups/compose-48e6e8d5b90b0cc65563.json
+          - name: compose-0b50bf0cbcedc71ebd73
+            group_file: groups/compose-0b50bf0cbcedc71ebd73.json
+          - name: compose-fa2a3b68fa14ff6338f2
+            group_file: groups/compose-fa2a3b68fa14ff6338f2.json
+          - name: compose-7001ff5da969e29102e8
+            group_file: groups/compose-7001ff5da969e29102e8.json
+          - name: compose-beb1e908087b6fa2299c
+            group_file: groups/compose-beb1e908087b6fa2299c.json
+          - name: compose-8e8f2c99fcd99afb5264
+            group_file: groups/compose-8e8f2c99fcd99afb5264.json
+          - name: compose-2fa578c003e4228edc01
+            group_file: groups/compose-2fa578c003e4228edc01.json
+          - name: compose-00598b0f19fc23a4a1a4
+            group_file: groups/compose-00598b0f19fc23a4a1a4.json
+          - name: compose-61559829b9e46cf3011f
+            group_file: groups/compose-61559829b9e46cf3011f.json
+          - name: compose-6691c8c293e53b55d0b7
+            group_file: groups/compose-6691c8c293e53b55d0b7.json
+          - name: compose-a6d5989589e23a589f49
+            group_file: groups/compose-a6d5989589e23a589f49.json
+          - name: compose-99c176c8a4def5ebc668
+            group_file: groups/compose-99c176c8a4def5ebc668.json
+          - name: compose-e8f3d47a3a31ecd13255
+            group_file: groups/compose-e8f3d47a3a31ecd13255.json
+          - name: compose-30b8c35b9fb5f06cc184
+            group_file: groups/compose-30b8c35b9fb5f06cc184.json
+          - name: compose-58cc1e2b52d6e3523c9d
+            group_file: groups/compose-58cc1e2b52d6e3523c9d.json
+          - name: compose-c48782dcfd6e85ad5767
+            group_file: groups/compose-c48782dcfd6e85ad5767.json
+          - name: compose-9b3b7c516f532cfe9dbc
+            group_file: groups/compose-9b3b7c516f532cfe9dbc.json
+          - name: compose-2fa61906d0e64b9b2700
+            group_file: groups/compose-2fa61906d0e64b9b2700.json
     steps:
       - uses: actions/checkout@v4
         with:
-          # The navigation step's shipped-editor case reads an older commit with git ls-tree, so the whole history.
+          ref: ${{ github.sha }}
+          path: wrapper
           fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_head }}
+          path: product
+          fetch-depth: 0
+      - name: Bind immutable source and approved packet
+        env:
+          SOURCE_HEAD: ${{ inputs.source_head }}
+          GROUP_FILE: ${{ matrix.group_file }}
+        run: |
+          /usr/bin/python3 -I wrapper/continuation775/bind-job.py before
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
-      - name: The interpreters the check expects
-        shell: bash
-        run: |
-          set -euo pipefail
-          /usr/bin/python3 --version
-          node --version
-      # Every job installs them: the check resolves Chrome and Playwright before it
-      # reads --only, and refuses a run that cannot name them (tools/release_check.py).
-      - name: Chrome for Testing and Playwright's WebKit
+      - name: Chrome for Testing and Playwright WebKit
         shell: bash
         run: |
           set -euo pipefail
           browsers="$RUNNER_TEMP/browsers"
           mkdir -p "$browsers/playwright"
-          # The same layout the Mac keeps under ~/Library/Caches/aim-chrome-for-testing (tools/release_check.py).
           npx --yes @puppeteer/browsers install "chrome@${CHROME_VERSION}" --path "$browsers"
           chrome="$browsers/chrome/mac_arm-${CHROME_VERSION}/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
           test -x "$chrome"
-          (cd "$browsers/playwright" \
-            && npm init -y >/dev/null \
-            && npm install --no-audit --no-fund "playwright-core@${PLAYWRIGHT_VERSION}" "playwright@${PLAYWRIGHT_VERSION}" >/dev/null \
-            && npx playwright install webkit)
+          (cd "$browsers/playwright" && npm init -y >/dev/null && npm install --no-audit --no-fund "playwright-core@${PLAYWRIGHT_VERSION}" "playwright@${PLAYWRIGHT_VERSION}" >/dev/null && npx playwright install webkit)
           echo "AIM_CHROME_FOR_TESTING=$chrome" >> "$GITHUB_ENV"
           echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
-      - name: Release check, ${{ matrix.steps }}
+      - name: One exact bounded group with its own disposable checkout
         shell: bash
         env:
-          COMPOSE_GROUP: ${{ toJSON(matrix.compose_group) }}
+          GROUP_FILE: ${{ matrix.group_file }}
         run: |
           set -euo pipefail
-          if [[ "$COMPOSE_GROUP" != "null" && -n "$COMPOSE_GROUP" ]]; then
-            printf '%s' "$COMPOSE_GROUP" > "$RUNNER_TEMP/compose-group.json"
-            /usr/bin/python3 tools/run_compose_group.py --root "$GITHUB_WORKSPACE" --group "$RUNNER_TEMP/compose-group.json" \
-              --evidence "$RUNNER_TEMP/check/native/compose" --chrome "$AIM_CHROME_FOR_TESTING" \
-              --playwright "$AIM_PLAYWRIGHT_CORE" --node "$(command -v node)" --release-out "$RUNNER_TEMP/check"
-            exit $?
-          fi
-          # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
-          /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
-            --quarantine-at event ${{ matrix.python_shard && format('--python-shard {0}', matrix.python_shard) || '' }}
-      - name: Write this shard's receipt
+          wrapper="$GITHUB_WORKSPACE/wrapper/continuation775"
+          export PYTHONPATH="$wrapper"
+          export PYTHONPYCACHEPREFIX="$RUNNER_TEMP/producer-pyc"
+          /usr/bin/python3 "$wrapper/tools/run_compose_group.py" --root "$GITHUB_WORKSPACE/product" --group "$wrapper/$GROUP_FILE" --evidence "$RUNNER_TEMP/check" --chrome "$AIM_CHROME_FOR_TESTING" --playwright "$AIM_PLAYWRIGHT_CORE" --node "$(command -v node)"
+      - name: Record genuine job identity and all result hashes
         if: always()
-        shell: bash
         env:
-          BASE_REF: ${{ github.base_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SHARD_NAME: ${{ matrix.name }}
-          SHARD_STEPS: ${{ matrix.steps }}
+          SOURCE_HEAD: ${{ inputs.source_head }}
+          GROUP_FILE: ${{ matrix.group_file }}
         run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/check"
-          # The receipt a validator binds this shard to: written here, by the job that ran it, so a shard repackaged from
-          # another run or attempt cannot pass as this one. The profile says what the cases ran on.
-          /usr/bin/python3 -I - "$RUNNER_TEMP/check/run.json" <<'PY'
-          import hashlib, json, os, platform, re, subprocess, sys
-          env = os.environ
-          def out(*argv):
-              try:
-                  return subprocess.run(argv, capture_output=True, text=True).stdout.strip()
-              except OSError:
-                  return None
-          def digest(path):
-              try:
-                  return hashlib.sha256(open(path, "rb").read()).hexdigest()
-              except OSError:
-                  return None
-          receipt = {
-              "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "job": env.get("GITHUB_JOB"), "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
-                      # The commit this workflow file was read from: the proof of whose workflow judged the run.
-                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
-              "shard": {"name": env.get("SHARD_NAME"), "steps": (env.get("SHARD_STEPS") or "").split(",")},
-              "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
-              "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              # The commit the check ran, read from the checkout. On a pull request it is the merge commit: its first
-              # parent is the base GitHub merged onto, which can be newer than the event's base, and its second is the
-              # pull request's head; on a push it has one parent and the second reads as none.
-              "merge": {"sha": out("git", "rev-parse", "HEAD"), "tree": out("git", "rev-parse", "HEAD^{tree}"),
-                        "first_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^1") or None,
-                        "second_parent": out("git", "rev-parse", "--verify", "-q", "HEAD^2") or None},
-              # The summary this receipt vouches for, so a summary swapped in beside a genuine receipt does not count.
-              "summary_sha256": digest(os.path.join(os.path.dirname(sys.argv[1]), "summary.json")),
-              "profile": {"runner_os": env.get("RUNNER_OS"), "runner_arch": env.get("RUNNER_ARCH"), "image_os": env.get("ImageOS"),
-                          "image_version": env.get("ImageVersion"), "platform": platform.platform(), "python": sys.version.split()[0],
-                          "node": out("node", "--version"), "chrome": env.get("CHROME_VERSION"), "playwright": env.get("PLAYWRIGHT_VERSION"),
-                          "chrome_path": env.get("AIM_CHROME_FOR_TESTING"), "playwright_core": env.get("AIM_PLAYWRIGHT_CORE"),
-                          # The settings the cases turned out to depend on: how scroll bars show, whether motion is reduced,
-                          # and how loaded the machine was, which a Mac at a desk never varies.
-                          "scroll_bars": out("defaults", "read", "-g", "AppleShowScrollBars") or "default",
-                          "reduce_motion": out("defaults", "read", "com.apple.universalaccess", "reduceMotion") or "default",
-                          "cpus": out("sysctl", "-n", "hw.ncpu"),
-                          "load_after": out("sysctl", "-n", "vm.loadavg")},
-          }
-          # Preserve the event's base above. This is the base Git actually used to build the tested merge.
-          if env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", receipt["merge"]["first_parent"] or ""):
-              sys.exit("the PR checkout has no Git first-parent commit id")
-          receipt["base_at_run"] = ({"ref": env.get("BASE_REF"), "sha": receipt["merge"]["first_parent"]}
-                                    if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
-          json.dump(receipt, open(sys.argv[1], "w"), indent=1)
-          PY
-      - name: Keep the evidence
+          /usr/bin/python3 -I wrapper/continuation775/bind-job.py after
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: check-${{ strategy.job-index }}
+          name: ${{ matrix.name }}
           path: ${{ runner.temp }}/check
-          if-no-files-found: ignore
-
-  combine:
-    name: the whole run's summary
-    needs: [plan, check]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: check-*
-          path: shards
-      - name: Recover cancelled browser jobs
-        uses: actions/github-script@v7
-        env:
-          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = JSON.parse(process.env.PLAN_SHARDS || '[]');
-            const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
-            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
-              ...context.repo, run_id: context.runId, attempt_number: attempt, per_page: 100
-            });
-            const cancelled = [];
-            for (const job of jobs) {
-              if (!['cancelled', 'timed_out'].includes(job.conclusion) ||
-                  !plan.some(s => s.name === job.name && s.name.startsWith('browser '))) continue;
-              const eventHead = context.payload.pull_request?.head.sha || context.sha;
-              if (Number(job.run_id) !== context.runId || job.head_sha !== eventHead) {
-                throw new Error('cancelled job does not name this run and commit');
-              }
-              const record = {id: job.id, run_id: String(job.run_id), attempt: String(attempt),
-                head_sha: job.head_sha, commit: context.sha, name: job.name, conclusion: job.conclusion,
-                started_at: job.started_at, completed_at: job.completed_at, log: ''};
-              try {
-                const response = await github.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', {
-                  ...context.repo, job_id: job.id
-                });
-                const text = typeof response.data === 'string' ? response.data : Buffer.from(response.data).toString('utf8');
-                // Keep only the producer's completed-step records and cancellation line, never a runtime profile.
-                record.log = text.split(/\r?\n/).filter(line =>
-                  /\S+ \{"name": .*"exit":/.test(line) || line.includes('##[error]The operation was canceled.')).join('\n') + '\n';
-              } catch (error) {
-                record.log_error = 'job logs unavailable';
-                core.warning(`Could not recover job ${job.id}; its unrecovered steps stay missing`);
-              }
-              cancelled.push(record);
-            }
-            fs.mkdirSync('shards', {recursive: true});
-            fs.writeFileSync('shards/cancelled.json', JSON.stringify(cancelled));
-      - name: Fold the shards' summaries into one
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
-          PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}
-        run: |
-          set -euo pipefail
-          mkdir -p release-check
-          python3 - shards release-check/summary.json <<'PY'
-          import glob, hashlib, json, os, re, sys
-          sys.path.insert(0, '.')
-          from tools import release_check as check
-          shards_dir, out = sys.argv[1], sys.argv[2]
-          paths = sorted(glob.glob(os.path.join(shards_dir, "check-*", "summary.json")))
-          docs = [json.load(open(p)) for p in paths]
-          # Every shard must carry the receipt its own job wrote, for this run and this attempt, naming this summary;
-          # a shard from another run or attempt, however identical its commit and cases, does not count.
-          env = os.environ
-          receipts = []
-          for p in paths:
-              receipt_path = os.path.join(os.path.dirname(p), "run.json")
-              try:
-                  receipt = json.load(open(receipt_path))
-              except (OSError, ValueError) as error:
-                  sys.exit("no readable receipt beside %s: %s" % (p, error))
-              run = receipt.get("run") or {}
-              if (run.get("id"), run.get("attempt")) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")):
-                  sys.exit("%s was produced by run %s attempt %s, not this run %s attempt %s" % (
-                      receipt_path, run.get("id"), run.get("attempt"), env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT")))
-              if receipt.get("summary_sha256") != hashlib.sha256(open(p, "rb").read()).hexdigest():
-                  sys.exit("%s is not the summary %s vouches for" % (p, receipt_path))
-              receipts.append(receipt)
-          # The merge commit, its tree and its parents come from the receipts, each written by a shard with the whole
-          # history; this job's own checkout is shallow and sees no parents. The shards must agree, and name this run's commit.
-          merges = {json.dumps(r.get("merge"), sort_keys=True) for r in receipts}
-          if len(merges) > 1:
-              sys.exit("the shards name different merges: %s" % sorted(merges))
-          # With no receipts, retain only the event commit for diagnostics. No checkout, tree or PR parent is proven.
-          merge = (receipts[0].get("merge") or {}) if receipts else {"sha": env.get("GITHUB_SHA")}
-          if merge.get("sha") != env.get("GITHUB_SHA"):
-              sys.exit("the shards checked %s, not this run's commit %s" % (merge.get("sha"), env.get("GITHUB_SHA")))
-          if receipts and env.get("GITHUB_EVENT_NAME") == "pull_request" and not re.fullmatch(r"[0-9a-f]{40}", merge.get("first_parent") or ""):
-              sys.exit("the PR merge has no Git first-parent commit id")
-          formats = {"base_at_run" in r for r in receipts}
-          if len(formats) > 1:
-              sys.exit("the shards mix legacy and base_at_run receipt formats")
-          observed = True in formats
-          if observed:
-              bases_at_run = {json.dumps(r["base_at_run"], sort_keys=True) for r in receipts}
-              if len(bases_at_run) != 1:
-                  sys.exit("the shards name different git-read bases")
-              base_at_run = receipts[0]["base_at_run"]
-              expected_base_at_run = ({"ref": env.get("BASE_REF"), "sha": merge["first_parent"]}
-                                      if env.get("GITHUB_EVENT_NAME") == "pull_request" else None)
-              if base_at_run != expected_base_at_run:
-                  sys.exit("the shard's git-read base differs from the tested merge's first parent")
-          # A job refused before running wrote a summary with no steps and no times; it still counts, as missing steps.
-          timed = [d for d in docs if d.get("started_at") and d.get("finished_at")]
-          # Recovery and the missing-step inventory must not depend on any sibling finishing.
-          commits = {d.get("commit") for d in docs if d.get("steps") or not d.get("refused")}
-          if len(commits) > 1:
-              sys.exit("the shards checked different commits: %s" % sorted(map(str, commits)))
-          plan = json.loads(env.get('PLAN_SHARDS') or '[]')
-          try:
-              steps, required, jobs, missing_jobs, missing = check.combine_unit_results(docs, plan, receipts)
-          except check.Refused as error:
-              sys.exit(str(error))
-          # A timed-out job may never upload its summary. Its job log still holds completed run_step records.
-          # These are diagnostic evidence, not a substitute for a finished shard or its checked-out-tree proof.
-          cancel_path = os.path.join(shards_dir, "cancelled.json")
-          cancelled = json.load(open(cancel_path)) if os.path.exists(cancel_path) else []
-          plan_by_name = {s.get("name", s["steps"]): s["steps"].split(",") for s in json.loads(env.get("PLAN_SHARDS") or "[]")}
-          cancelled_shards = []
-          stamp = r"(\d{4}-\d\d-\d\dT\S+Z) "
-          for job in cancelled:
-              if ((str(job.get("run_id")), str(job.get("attempt"))) != (env.get("GITHUB_RUN_ID"), env.get("GITHUB_RUN_ATTEMPT"))
-                      or job.get("commit") != env.get("GITHUB_SHA") or job.get("name") not in plan_by_name
-                      or job.get("conclusion") not in ("cancelled", "timed_out")):
-                  sys.exit("cancelled job does not belong to this run, attempt and plan")
-              cancel_times = re.findall(stamp + r"##\[error\]The operation was canceled\.", job.get("log") or "")
-              cancelled_at = cancel_times[0] if cancel_times else job["completed_at"]
-              recovered = []
-              for line in (job.get("log") or "").splitlines():
-                  match = re.fullmatch(stamp + r"(\{.*\})", line)
-                  if not match:
-                      continue
-                  try:
-                      result = json.loads(match[2])
-                  except ValueError:
-                      continue
-                  if (set(result) != {"name", "exit", "passed", "counts"} or result["name"] not in plan_by_name[job["name"]]
-                          or type(result["passed"]) is not bool or type(result["exit"]) is not int):
-                      continue
-                  if result["name"] in recovered:
-                      sys.exit("a cancelled job logged a step twice")
-                  recovered.append(result["name"])
-                  present = [s for s in steps if s["name"] == result["name"]]
-                  if present:
-                      if any(s.get(k) != v for s in present for k, v in result.items()):
-                          sys.exit("cancelled job log differs from its uploaded result")
-                      step = present[0]
-                  else:
-                      step = result
-                      steps.append(step)
-                  step.update(shard=job["name"], cancelled_at=cancelled_at, result_source="github-job-log",
-                              github_job=job["id"], logged_at=match[1])
-              cancelled_shards.append({"shard": job["name"], "job": job["id"], "cancelled_at": cancelled_at,
-                                       "conclusion": job["conclusion"], "recovered": recovered, "log_error": job.get("log_error")})
-          names = [step["name"] for step in steps]
-          if len(names) != len(set(names)):
-              sys.exit("a step ran in two shards: %s" % sorted(n for n in set(names) if names.count(n) > 1))
-          # Keep the full required inventory, but only omitted browser modes
-          # are covered by the plan's explicit scope. Units and replay remain required.
-          scoped = json.loads(env.get("PLAN_SCOPE") or "null")
-          covered = set()
-          if scoped is not None:
-              required = sorted(set(required) | set(check.REQUIRED))
-              native = {name for name in required if name.startswith("native-")}
-              if (env.get("GITHUB_EVENT_NAME") != "pull_request" or not isinstance(scoped, dict)
-                      or scoped.get("live") != env.get("BASE_SHA") or not isinstance(scoped.get("steps"), list)
-                      or not set(scoped["steps"]) <= native):
-                  sys.exit("invalid scoped shard plan")
-              covered = native - set(scoped["steps"])
-              if set(scoped.get("not_run") or []) != covered or covered.intersection(names):
-                  sys.exit("scoped plan disagrees with its omitted browser steps")
-          missing = [name for name in missing if name not in names and name not in covered]
-          first = timed[0] if timed else {'tool': check.TOOL, 'commit': env.get('GITHUB_SHA')}
-          # The shape tools/release_check.py writes, so tools/release_check.judge_summary reads it as one run of this
-          # commit: no `only`, every required step present, the tree unchanged in every shard.
-          combined = {key: first[key] for key in ("tool", "commit", "checkout", "chrome", "playwright", "tools", "required") if key in first}
-          combined.update({
-              "required": required,
-              "started_at": min([d["started_at"] for d in timed] + [j["started_at"] for j in cancelled], default=None),
-              "finished_at": max([d["finished_at"] for d in timed] + [j["cancelled_at"] for j in cancelled_shards], default=None),
-              "steps": steps,
-              "jobs": jobs, "missing_jobs": missing_jobs, "missing": missing,
-              "tree_unchanged": bool(timed) and not cancelled_shards and all(d.get("tree_unchanged") is True for d in docs),
-              "tree_after": first.get("tree_after"),
-              "skipped": None,
-              "passed": bool(timed) and all(step["passed"] for step in steps) and not missing and not cancelled_shards and not missing_jobs and all(d.get("tree_unchanged") is True for d in docs),
-              "cancelled_shards": cancelled_shards,
-              "failed": sorted(step["name"] for step in steps if not step["passed"]) + missing,
-              "combined_from": [os.path.relpath(p, shards_dir) for p in paths],
-          })
-          if scoped is not None:
-              combined["scoped"] = scoped
-          # The quarantine (item 549): raw verdicts above stay as the shards ran them. A step that failed is green only when
-          # its quarantine record is green, not refused, holds exactly its failed cases (at least one) and names no case it
-          # does not hold; and the run is green only when every required step is present (a shard cancelled at its limit or
-          # refused before running leaves its steps missing), every shard's checkout was unchanged and all read one event base.
-          def held(step):
-              record = step.get("quarantine") or {}
-              failed = (step.get("counts") or {}).get("failed") or []
-              return (record.get("green") is True and not record.get("unheld") and not record.get("refused")
-                      and bool(failed) and sorted(record.get("held") or []) == sorted(failed))
-          bases = {json.dumps((d.get("quarantine") or {}).get("at")) for d in timed}
-          combined["quarantine"] = {
-              # The event base each shard read its quarantine at: one, or the run is not green.
-              "at": [json.loads(b) for b in sorted(bases)],
-              "held": [{"step": step["name"], "case": case} for step in steps for case in (step.get("quarantine") or {}).get("held") or []],
-              "green": (not missing and not missing_jobs and combined["tree_unchanged"] and len(bases) == 1
-                        and all(step["passed"] is True or held(step) for step in steps)),
-          }
-          json.dump(combined, open(out, "w"), indent=1)
-          if cancelled:
-              json.dump(cancelled, open(os.path.join(os.path.dirname(out), "cancelled-jobs.json"), "w"), indent=1)
-          # Beside the summary, what a validator binds to: this run and attempt, the event's base and head, the merge
-          # commit and its tree, each shard's own source identity and steps, and the plan the shards were dealt from.
-          profiles = [r.get("profile") for r in receipts]
-          provenance = {
-              "profiles": profiles if len({json.dumps(x, sort_keys=True) for x in profiles}) > 1 else profiles[:1],
-              "run": {"id": env.get("GITHUB_RUN_ID"), "attempt": env.get("GITHUB_RUN_ATTEMPT"), "workflow": env.get("GITHUB_WORKFLOW"),
-                      "event": env.get("GITHUB_EVENT_NAME"), "repository": env.get("GITHUB_REPOSITORY"),
-                      "workflow_sha": env.get("GITHUB_WORKFLOW_SHA"), "workflow_ref": env.get("GITHUB_WORKFLOW_REF")},
-              "base": {"ref": env.get("BASE_REF") or None, "sha": env.get("BASE_SHA") or None},
-              "head": {"ref": env.get("HEAD_REF") or env.get("GITHUB_REF"), "sha": env.get("HEAD_SHA") or env.get("GITHUB_SHA")},
-              "merge": {key: merge.get(key) for key in ("sha", "tree", "first_parent", "second_parent")},
-              "checked": {"commit": combined["commit"], "tree_unchanged": combined["tree_unchanged"]},
-              "required": required,
-              "plan": plan,
-              "cancelled_shards": cancelled_shards,
-              "shards": [{"artifact": os.path.relpath(p, shards_dir).split(os.sep)[0], "commit": d.get("commit"), "tree_unchanged": d.get("tree_unchanged"),
-                          "tools": d.get("tools"), "steps": [step["name"] for step in d.get("steps", [])], "refused": d.get("refused"),
-                          "receipt": r}
-                         for p, d, r in zip(paths, docs, receipts)],
-          }
-          if observed:
-              provenance["base_at_run"] = base_at_run
-          json.dump(provenance, open(os.path.join(os.path.dirname(out), "provenance.json"), "w"), indent=1)
-          print(json.dumps({"commit": combined["commit"], "steps": len(steps), "missing": missing, "failed": combined["failed"], "passed": combined["passed"],
-                            "quarantined": combined["quarantine"]["held"], "green": combined["quarantine"]["green"]}))
-          sys.exit(0 if combined["passed"] or combined["quarantine"]["green"] else 1)
-          PY
-      - name: Keep the whole run's summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-check
-          path: release-check
-          if-no-files-found: ignore
+          if-no-files-found: error

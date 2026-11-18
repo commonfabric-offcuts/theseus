@@ -1,0 +1,142 @@
+{
+  "id": "compose-4888231aa7ef0bf8223e",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "4888231aa7ef0bf8223eebf5de4f621c2e234b8cd534e2e62fd29ecb1b135a79",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery stacked dark",
+      "case_id": "172320ac8e23497fa4fff4a34dc5b0c5f19dc24f9f91669eb1b641d1c6383d39",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-320 light",
+      "case_id": "5e71e3c1ff4e075463991eb96a7707de81d125fa7095a559487004831711d0d0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-320 dark",
+      "case_id": "deb0f443fec6aec593a785f0b2abed8a56ef5dfe36d213b22cb39c7bb364372e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-375 light",
+      "case_id": "cc91e3d103231f1de56e23d1aacae725ccd3c559e12394222dbeedafcc2c11d9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-375 dark",
+      "case_id": "5db4321fedf2002a38bf655fbf33bc19c70c1610bc47bb9e1f8b076a5074a137",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-390 light",
+      "case_id": "423b88ffe1bc4ef5ec39be96a395cd77d00f2fb0ddf265c0e9f62a963ac96208",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable phone-390 dark",
+      "case_id": "2554c71fcf5ca7c69de620a7f8ed02d4520f6fd4d3e9eff7c13beb295af94ce2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable stacked light",
+      "case_id": "a8f41d0e822bff545284bf45008aa407307891f719a78854875df6f2f03fe5ff",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader permission unavailable stacked dark",
+      "case_id": "ed7e96ca712e5cc43c7f924f91014c8c967bca0dac1c274e6e191bed89ec41b6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader access unconfirmed phone-320 light",
+      "case_id": "228b744ed5ff1da2583f650a1919fd6be26fb7c6ab68d687282ae5404a0da3c9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader access unconfirmed phone-320 dark",
+      "case_id": "998ae154a9a48e3e384114f1e655e1d0f44a737d23928c3daa4ebd4a779d477d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader access unconfirmed phone-375 light",
+      "case_id": "5fb5cd6dd044a995f9a5bfa3e8512fe10bcfcc99ab6fcc51375a9c83f878a2ae",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader access unconfirmed phone-375 dark",
+      "case_id": "cc22a611c6d207c5818da4bcb551cdb1c031a4409ab8c0ef4be4638b26ddf0e0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader access unconfirmed phone-390 light",
+      "case_id": "82c503d48125140dd38c13d26467123315baffeb5a0880b6dc9ad335f3b61f88",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

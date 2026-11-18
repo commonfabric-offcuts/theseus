@@ -1,0 +1,142 @@
+{
+  "id": "compose-2f886d8b824f21dde073",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "2f886d8b824f21dde073fc0072cdb24b630366e00fb403b55e98e906c59cf07b",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: in the Reader, what Send says about a name typed in To and not named goes as soon as it is no longer true: Return names them, a click on them names them, or To is cleared",
+      "case_id": "38f69c984a88eff0599135ee1826191d92b6d74d9bb4ecd0e04a66c941da473a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: in the New message sheet, what Send says about a name typed in To and not named goes as soon as it is no longer true: Return names them, a click on them names them, or To is cleared",
+      "case_id": "6a6ce04be5a7a1a5efbd5a4b2b98c07230f9d59d215b6c5a00a1159f8c3f8ded",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked, keys alone: a name typed in To for one message's reply stays with it; stepping to another message with the who panel open names no one there, and coming back finds it typed",
+      "case_id": "0c682a8caf226620d921358ede3ab7a3fd8bafa65c8f3995ccf91b605efa0952",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: New message at the top of the topic opens the composer on its own, ready to type, and Escape puts it back with the writing kept",
+      "case_id": "4b8fd594e2cdbc545b19e4467341ba8129a6fa5d6dc8a536f183777eaa458f0e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: New message at the top of the topic opens the composer on its own, ready to type, and Escape puts it back with the writing kept",
+      "case_id": "f34d340a63929db37545176be6ac7dea75cf4a03736cceaf730b28a4e25ba99c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 320×568, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "3a67696fc44e26893898fa79c4ab0ac732c000b7120046d2a031760270a00c60",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 320×568, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "3b370bcc37cb86b5d5fc221138a2d7f05b5a7af9f1c53a6c9be7d09cbfb46a4a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 320×568, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "a165e8723d25dab054151470ecbe5ff50d25cdd82a20c260e8ff551b2fb93ad0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 320×568, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "d1b4d19cfa1ce2afaf3e2ad08e781ead3e338ccbfea1030f792a11101d215085",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 375×667, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "559b976117651cc2760cf6275ceb7d9e6e3b723026be0d6995f524eeb6660caf",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 375×667, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "10bdb3396703e1e24b3d7fab9a2358a21dbe58996283674b4103aab25c76f6f9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 375×667, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "38500f86a201a25e6c5401a4bd9651104577af32d6c702277c19b908bcc40970",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 375×667, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "9ea1dc84a7fdea4d51a904de773a9d6b71d19d9cd111405e894197b738432000",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size phone 390×844, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "984b875d791d55ab203fba7da075d29a520b39bb1cc93c75e539b4bb97ffe5ba",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

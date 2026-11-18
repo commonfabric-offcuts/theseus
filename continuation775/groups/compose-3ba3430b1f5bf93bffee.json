@@ -1,0 +1,350 @@
+{
+  "id": "compose-3ba3430b1f5bf93bffee",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "3ba3430b1f5bf93bffeef69661293de51e0d824495ad09b962f465ef7755f90a",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 704 composer source-rest: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "50536f6923c18f7b11bcdd36da76de7f69ca5681193945d94f1d821cd61ea7c1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 704 composer source-keyboard: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "c42c24d876810cffc51cfd17e6643ba3b15ee99943220da34860fca818eb967d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 704 composer quoted: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "32284b70a0f364cdc324a83cb2feea2351455db2c5ac163a1c5c6823fc09481a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 704 composer saving: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "a3538e8f1e7fa505ad7d730a1021f86764ee2831d077b902d840300e96d32d81",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 704 composer refused: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "af2c668cdb1685a77ccea70754d02ab337222c959a4709d60cb9d31f80461f50",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-320 light",
+      "case_id": "edc81c78a836ab613791149d184f26c3d8de8aecbfb5c52b74934fb3c4117263",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-320 light",
+      "case_id": "da5ffc7a42bec61f38f4ef5d58650d24ef591d06aceab348b54e8030bb5063b9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-320 dark",
+      "case_id": "369ed79ef0926efcd61ff1b01059591f287d20fc7cf5a5a7bda72dd2cb53cd19",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-320 dark",
+      "case_id": "2a030b393443464c7fd15a53620ce092c665961489df179f8269be05fb629e8b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-375 light",
+      "case_id": "859393bd45eaafd9344671201066175c8dd2f4a7bb36e1a3d5bbd779e950df2f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-375 light",
+      "case_id": "fe57dd8d677dae18dc2ba43cfd9634c4b11a4b69ff9d6e1411ad97fb8be661ca",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-375 dark",
+      "case_id": "8bef4fa3f920dd28f96a959d328756e4735dba9018a612fdf3b2dab6cfe8ca5e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-375 dark",
+      "case_id": "34cba286994c1088b4d09275407482624943d5135d859c1c058cf0be7a3a3a85",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-390 light",
+      "case_id": "ff864b11a353179865aef9eb0b8565f13a8758de9082cef6e23c70b7bb132c64",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-390 light",
+      "case_id": "cdf4ff4d72cdd3dabd64423c240671934a7b821039554c6aa98d0d103af60fdc",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full phone-390 dark",
+      "case_id": "2cc9f1220b11185558884e2c45e08c80fd431391acdfc212ebceba8133b7141e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet phone-390 dark",
+      "case_id": "31c0062d2efb3b9822432691bd10dc6c509d1db9d51fe24aedf368407b04a45f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full stacked light",
+      "case_id": "411a79bf6389a9bd925adf1de909f5ef0de16777cba1de8061f9ed1e12384fba",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet stacked light",
+      "case_id": "5bbd130ffd7f54d39b6f201e12ed01f6d417d3b92ebd2b70c1df2eb22f7e2626",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit full stacked dark",
+      "case_id": "37afefc947f1323304686da647e24b5a0a22b36f6475afde1fe80d426571dd54",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 unchanged parent Edit sheet stacked dark",
+      "case_id": "c598c472ea8d77a8f3265fcbaa78d4a51f3d43c0e1f2c8a1dc349c075d5b2d1e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 B1 applied whole-body padding mutant and restored controls",
+      "case_id": "50ba4a2ee6fd9a0eef59ddd7597a32e6841a4bc986e22c34f17c2cbb1a4f4660",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light normal",
+      "case_id": "cbac2e3adc06f12ac6f44f18ff8ef87573b6ce8a7ce55575ce1259e1e73dae73",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light writing",
+      "case_id": "c54764e70617a738df943a670b6228fc715a17f510a0ca472c2f2ec26e6b2de6",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light empty",
+      "case_id": "270a32635f92640a1878158716a55191efd58a468325046eb45f94cd31a40e33",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light busy",
+      "case_id": "cae8d34740c81adbaad6d11e46580f524be513a13faf8cc7772ea74cc17289f7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light refused retry",
+      "case_id": "725d93e9ca88a1fa8e71dddd464cc9e7e9a1d9908d8098a5c8877e4f0c7c8249",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light refused discard",
+      "case_id": "cf07add36ebba32af287c2dcd0279330aa1513a4362eee9927517e4225feacbc",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light read only",
+      "case_id": "164b61d5be7cc11249c4d4b57bcc98c8c8dc9c12947f3e2dfb5e64e50253ef8d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light save error",
+      "case_id": "0d518af95d741130b097c80427ef2fc0d59e5170f3cca2a64afd54830da3dae4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light read error",
+      "case_id": "fbb7e7de79b442e1a43f7d7e17e3516cff427d469432351dbd36f9d71969b549",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light conflict mine",
+      "case_id": "0273e256b4a6dc772e739f0d25f51e3f98a5a5c7f0f3c4663531f73dd562c2af",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light conflict saved",
+      "case_id": "fd8e3cb95eb4b711cdac5cea5eda0ee1d75a54c6e55e3e9f3b37839c2e93c9aa",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light authority refusal",
+      "case_id": "15656519b697c0d3cc83445924017614cdfc6901a98def699472542faec969eb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-320 light device error",
+      "case_id": "eb0929579dd7acbb7246c3527442bd1c92532aba5927a6a1d63e01540ee0fc5a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-320 light normal",
+      "case_id": "008259a2e2d83ea9dacd68f4dd3925d409d7445737ad012caa6330b662c8ef87",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-320 light writing",
+      "case_id": "2979aad8f592718c31c6e23edbe25cc58106c6acf799181121f7ec007f55d5da",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-320 light empty",
+      "case_id": "debd374bec7546b792aaf703fc845b563620ac24eb3d2670fb35821fbab0ea91",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-320 light busy",
+      "case_id": "1e6333f05356c083f024e3325e3871b1082cc4092e95efdf329b7208fb192b97",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-320 light refused retry",
+      "case_id": "403562f80c1e0fd2d1e8f2b27098fbfd6081b3d8d6afc4aeacb4a29a72926712",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4360,
+  "phase_seconds": 4660,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

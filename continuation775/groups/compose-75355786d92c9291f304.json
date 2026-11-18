@@ -1,0 +1,70 @@
+{
+  "id": "compose-75355786d92c9291f304",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "75355786d92c9291f304330dd78ebe705cc1934973397f5cd90a38a38cd08204",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size laptop 1440×960, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "6f92a9bd4057df1b4c9af0307106688649a3ef4325be4616b5f9a655be48bda9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size very wide 2560×1440, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "cea1fc6687cdf392ca0c275986304a8f16bfc313cb7c48de50813a2309bc8e71",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size very wide 2560×1440, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "d2fd302c1487e96c474bcaf134b6875c3e7fdbaf95a49071a84724183f21548e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size very wide 2560×1440, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "70406e3c66807cb13df6993742b59d7d7c1203340b8788d4b093587050dc47df",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium size very wide 2560×1440, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "5342cf1bf07dbea6757efac7908d250be0c12f8f0f17aae48f8f3c3bbc953785",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 1500,
+  "phase_seconds": 1800,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

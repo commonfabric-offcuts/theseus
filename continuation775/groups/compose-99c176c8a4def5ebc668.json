@@ -1,0 +1,142 @@
+{
+  "id": "compose-99c176c8a4def5ebc668",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "99c176c8a4def5ebc6681306eac0909fb02c90e67867b71ae1b17691b7333968",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: in the New message sheet, Escape pressed with focus outside the open who panel puts it away and names what was typed in To, and the chip says so",
+      "case_id": "e2a6d36056eebb7525fc5faffe734e4d5a5a910b366588db4c9431d6b8be4728",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on +, outside the open who panel, puts it away and names what was typed in To, by the keys alone",
+      "case_id": "011fded2ba450b3bc6c7050be0017b2c77ff02e876e4092168ed44c42b6fe76c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on Send, outside the open who panel, puts it away and names what was typed in To, by the keys alone",
+      "case_id": "07ebc1b3e93efcc7e999015b28ac66d3f2b441faa6925088d1aabbfaa23a84e6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a Reader closed by ⌘⇧Return with its who panel open takes the panel with it, and the topic page's composer then puts its own who panel away by Escape, naming what waits in To, by the keys alone",
+      "case_id": "be85273787ec5ed0c0b4d83ffbf138ad2462cf0afb69513c79947c5cd5348ac9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a Reader closed by ⌘⇧Return with its + panel open takes the panel with it, and the topic page's composer then puts its own who panel away by Escape, naming what waits in To, by the keys alone",
+      "case_id": "caa4983494fab2b8e167f950952ef28dcff3f331ba87a735d3d31df04d592b30",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: in the Reader, what Send says about a name typed in To and not named goes as soon as it is no longer true: Return names them, a click on them names them, or To is cleared",
+      "case_id": "026b6f7927b8df6952226648107a2572a27b62b205724b80d3c93b9a39d5ad77",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: in the New message sheet, what Send says about a name typed in To and not named goes as soon as it is no longer true: Return names them, a click on them names them, or To is cleared",
+      "case_id": "7cbb9ec7ce3da89ef4058397d62ee30ace58add53d4b30f726cc05049eb5f9e0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked, keys alone: a name typed in To for one message's reply stays with it; stepping to another message with the who panel open names no one there, and coming back finds it typed",
+      "case_id": "357066e50390ba2a9d68ff3d7e76cf0b8e23d68c5b523cbeffff1621d950bd83",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: New message at the top of the topic opens the composer on its own, ready to type, and Escape puts it back with the writing kept",
+      "case_id": "4a57a56a43f7dda3525fedff2fe0703707d3d60690afd6c74c6066d2eccc13c4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: New message at the top of the topic opens the composer on its own, ready to type, and Escape puts it back with the writing kept",
+      "case_id": "3cf8a20afa486885d53992abd66f0ff9a8d5d13387af60ec0cbec6fdff803a31",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size phone 320×568, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "40b2c9d5a16bd14ae42518d016de5ee9cff8a8359bc21733317fbed7da69070e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size phone 320×568, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "82f7e1c32cdbf7e8fc908ebc179ae50ea6a6691a10795825265b59c0a5ce1752",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size phone 320×568, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "03d9f53b521e8d0491b283b53425b6183900ba8da3c233381565031074212ec2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size phone 320×568, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "1173f670dcfe07d963165c017a4518322183ba554c1bda3e520f29cdd01ce783",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

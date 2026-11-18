@@ -1,0 +1,88 @@
+--- product-bed0a0d/tests/reader_compose_native.mjs
++++ explicit-instrument/tests/reader_compose_native.mjs
+@@ -1,3 +1,5 @@
++import {readFileSync as readFileSync775} from 'node:fs';
++import {ComposeDeadline as ComposeDeadline775} from "file:///Users/commonfabric/.local/share/theseus/fable-tools/checks/775-compose9480/prepared49/tools/compose_deadline_775.mjs";
+ // The Reader's composer (docs/reader.md) in Chrome for Testing and Safari's
+ // engine (Playwright's WebKit), against the isolated fixture: how much of the
+ // message shows while reading and while writing, that nothing boxed sits under
+@@ -35,7 +37,8 @@
+ import { cardEditor652 } from './card_editor_652.mjs';
+ 
+ const root = fileURLToPath(new URL('..', import.meta.url));
+-const [chrome, evidence, filter = ''] = process.argv.slice(2);
++const [chrome, evidence] = process.argv.slice(2);
++const filter = ''; // exact selection is inside check; all helper setup retained
+ assert.ok(chrome && path.isAbsolute(chrome), 'an absolute Chrome for Testing');
+ assert.ok(evidence && path.isAbsolute(evidence), 'an absolute evidence directory');
+ const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
+@@ -236,7 +239,7 @@
+ // The case that ended with the drafts not reset, so the next case resets them
+ // before it runs.
+ let unreset = null;
+-async function check(name, action) {
++async function originalCheck775(name, action) {
+   const full = `${engine} ${name}`;
+   if (filter && !filter.split('|').some(part => full.includes(part))) return;
+   const failures = [], say = error => error.stack ?? String(error);
+@@ -2540,26 +2543,52 @@
+   await item721Compose({ check, page, press, until, picture, close, control, facts, engine, measured, contexts, evidence });
+ }
+ const PHASES = [[runItem721], [run], [runAnswering, () => control({ method: 'coordinator', operation_id: 'compose-coordinator', coordinator: agent, team: ANSWERING })], [runSending]];
+-const plannedPhases = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`)), completedPhases = [];
++
++let activePhase775;
++const group775 = JSON.parse(readFileSync775(process.env.AIM_COMPOSE_GROUP, 'utf8'));
++const runtime775 = [];
++const selected775 = new Set(group775.cases.map(r=>r.name));
++const bounded775 = new ComposeDeadline775({group:group775,evidence,
++ snapshot:()=>({results:results.slice(),browserClosed,harnessCompleted:false,groupCompleted775:harnessCompleted,completedPhases:completedPhases.slice()}),
++ retire:async()=>{
++   fixture.stdin.end(); shortFixture.stdin.end();
++   const closed=browser ? await browser.close().then(()=>true,()=>false) : true;
++   const exits=await Promise.all([fixtureExit,shortExit]);
++   return {browserClosed:closed,fixtures:exits};
++ }});
++async function check(name, action) {
++ const full=`${engine} ${name}`;
++ if(!selected775.has(full))return;
++ const row=group775.cases.find(r=>r.name===full);
++ if(row.phase!==activePhase775 || row.engine!==engine)throw Error('compose phase/engine differs');
++ await bounded775.check(row,()=>originalCheck775(name,action));
++}
++const originalPlannedPhases775 = PHASES.flatMap(([phase]) => ENGINES.map(name => `${phase.name}:${name}`));
++const plannedPhases = [group775.phase + ':' + group775.engine + '/group:' + group775.id], completedPhases = [];
+ let browserClosed = true, harnessCompleted = false;
+ try {
+-  await seed();
++  await bounded775.guard({stage:'seed'}, group775.seed_seconds, () => seed());
+   for (const [phase, before] of PHASES) {
+-    if (before) await before();
++    if (phase.name !== group775.phase) continue;
++    activePhase775 = phase.name;
++    if (phase.name === 'runSending') { const prerequisite = PHASES.find(([p]) => p.name === 'runAnswering')?.[1]; if (prerequisite) await bounded775.guard({stage:'inherited-answering-coordinator'}, group775.seed_seconds, prerequisite); }
++    if (before) await bounded775.guard({stage:'phase-before'}, group775.seed_seconds, before);
+     for (engine of ENGINES) {
++      if (engine !== group775.engine) continue;
+       browserClosed = false;
+-      browser = engine === 'chromium' ? await playwright.chromium.launch({ executablePath: chrome, headless: true }) : await playwright.webkit.launch({ headless: true });
+-      try { await phase(); } finally { await browser.close(); browserClosed = true; }
+-      completedPhases.push(`${phase.name}:${engine}`);
++      browser = await bounded775.guard({stage:'launch'}, group775.launch_seconds, () => engine === 'chromium' ? playwright.chromium.launch({ executablePath: chrome, headless: true }) : playwright.webkit.launch({ headless: true })); runtime775.push({engine,version:browser.version(),node:process.version,platform:process.platform,arch:process.arch});
++      try { await bounded775.guard({stage:'phase-setup-and-cases'}, group775.phase_seconds, () => phase()); } finally { await bounded775.guard({stage:'browser-close'}, group775.final_seconds, () => browser.close()); browserClosed = true; }
++      completedPhases.push(`${phase.name}:${engine}/group:${group775.id}`);
+       await writeFile(path.join(evidence, 'phase-progress.json'), JSON.stringify({ plannedPhases, completedPhases, browserClosed, harnessCompleted: false }, null, 2));
+     }
+   }
++  bounded775.finish();
+   harnessCompleted = true;
+ } finally {
+   fixture.stdin.end(); shortFixture.stdin.end();
+-  const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await Promise.all([fixtureExit, shortExit]);
++  const [{ code: fixtureExitCode, signal: fixtureExitSignal }, { code: shortExitCode, signal: shortExitSignal }] = await bounded775.guard({stage:'fixture-exit'}, group775.final_seconds, () => Promise.all([fixtureExit, shortExit]));
+   await mkdir(evidence, { recursive: true });
+-  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted, plannedPhases, completedPhases,
++  await writeFile(path.join(evidence, 'native.json'), JSON.stringify({ hashes, results, browserClosed, harnessCompleted: false, scope775: { runtime: runtime775, group: group775.id, source: group775.source, cases_sha256: group775.cases_sha256, completedCases: bounded775.completed.slice(), groupCompleted: harnessCompleted, originalWholeCompleted: false }, originalPlannedPhases: originalPlannedPhases775, plannedPhases, completedPhases,
+     fixtureExitCode, fixtureExitSignal, fixtureErrors: fixtureErrors(), shortFixture: { exitCode: shortExitCode, exitSignal: shortExitSignal, errors: shortErrors() }, measured, shots }, null, 2));
+   const failed = results.filter(r => !r.passed);
+   console.log(`${results.length - failed.length} passed, ${failed.length} failed`);

@@ -1,0 +1,350 @@
+{
+  "id": "compose-b88abd1056af912222d3",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "b88abd1056af912222d35a95eba3c52e33dd18e5899c5490c49a5275bd207996",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review stacked dark",
+      "case_id": "84e72b22825408af5188cebc211bfc0c1840afefc5b4e810c1470195cb8f9d15",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-320 light",
+      "case_id": "d2114c08ea8753d415f7a2a2f4f5b6cc3497cedafe0a47260dc47f839f5e38c1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-320 dark",
+      "case_id": "121071cfa8fc2ce19a0fafaaf11f53f5fa446c292c81b19deb9026a5d3c8ebcd",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-375 light",
+      "case_id": "45abec1c6087ecf10e1bfb6fc764c251812304864c7c48792ac6f06519929a5e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-375 dark",
+      "case_id": "5ad17784aa10882847a4e70bd06c1cf2550185be240b6aa8d115f9cb209df6ac",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-390 light",
+      "case_id": "30cb709e6a29a4129b1e8d66992aceb0652c391ac56ddc4a8f36b9a7cb783a73",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused phone-390 dark",
+      "case_id": "76a6647f221154f907f61785d3a72b93af0c4d4bee8ec322ad5fd65d7605dded",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused stacked light",
+      "case_id": "d3d7a2b092ec752f0f6b95e46bce9e7cee77400e09ff7c8849231616f97d1774",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message composition refused stacked dark",
+      "case_id": "e763cb2d97f6cff0ade2b8fd2ed745e2dc244b8e5052eda4359cd7f976bef696",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-320 light",
+      "case_id": "13c44507c8211398d4d1da4df7d08dbcaf420b1b9981ffe5bb6e01e473ce8c2c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-320 dark",
+      "case_id": "2386389edc93a155e7d9014c7522bd71c4bd3d3140b371469eab5b8cb960dc58",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-375 light",
+      "case_id": "7312fc373a20f8ef88c814b91e8538461e123ca9f791775ad901925dda52b301",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-375 dark",
+      "case_id": "c031c6abbbccbafc770a7353c2825236c582c4aa652c8d3ed1cae9663cac82b7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-390 light",
+      "case_id": "16562ad808c633c858b7064529f8f6d0d5288da5258eb4545459f065ac5a596a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery phone-390 dark",
+      "case_id": "2a61dd0980be08f56d24c733390cd8fa51e7e1889399c1febef2f0854498673d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery stacked light",
+      "case_id": "d96e1b989cd51faae521cfa155f884c51e639131c29e8ec061b024ddc73f6601",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message recovery discovery stacked dark",
+      "case_id": "0903211f2fdf66b2300b7f33b4363fc144e11def1fc73c394d3ff5acf56b2ac0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-320 light",
+      "case_id": "1e1c91ec2e3761d50f8808b59496b3091d8fdc23b53a38059293bbf242d65be1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-320 dark",
+      "case_id": "df54363571f8ab13afa9af385990776243bb53e5d8b908ce0c9f87c85782a856",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-375 light",
+      "case_id": "85d5f7ea44a201d97c94c7b163f63bdf904664a913a4d22724e71960efc344d3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-375 dark",
+      "case_id": "bd308ffc651873c6f2c086941715b845af5df2da29ca12c0b0fbf1ccff617f60",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-390 light",
+      "case_id": "a898cb171f05a0cb2c53cef8869ac59e032d60ae968915539d4270c8d9d7155f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked phone-390 dark",
+      "case_id": "f9af4ff9ef35da666b7a936650f7cff423df3c80ba1ec33549f6999113c33abc",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked stacked light",
+      "case_id": "c67426a64de6cfce99324d3153d4a44996a53c3fea56627b1cc3099ceeaeb104",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery blocked stacked dark",
+      "case_id": "c1a5362eb8283a51e81a4907f1361f5cad289f642288f41ed03aa92c2dd836b0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-320 light",
+      "case_id": "16402b6a384b39e22ef54e82032cd2909b64a97addec49fb8e17fadc44724a2f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-320 dark",
+      "case_id": "d58160e0865c5349853ef454203bd89831937c849b3e93be05340790e1260113",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-375 light",
+      "case_id": "89db15b881f281f36c9697297c8f0f735b55f86b8eb3031d450dddb7f6060faf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-375 dark",
+      "case_id": "8f8883ce629bcb5c4f36c0802e12ee4706537d3e99ca0d9f483e37f594726a41",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-390 light",
+      "case_id": "c70dbc62522b7f24f90be2326ed96af9fb8eb608346ce30fd65ac52504186e55",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready phone-390 dark",
+      "case_id": "28e47c9461c904bfdcc6e2d631cf203096539e21d31d438bd1465403e2d36650",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready stacked light",
+      "case_id": "234e35807bbf573ed4777ed73f510083adc1c4c6db9bf7684d845cc8a265041e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message authority recovery ready stacked dark",
+      "case_id": "7d1b5813cbe6b0b93fdf52d7eafe646d9591f509d9df33ff3748689e63487d1a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader empty stacked light",
+      "case_id": "292369171084d0ddbf9ed0ae8e9d24c7ba3573bc599ae1207bcb13032d5741c0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader empty stacked dark",
+      "case_id": "f6c4f2af680ea3223c3819bad74b19b073434afb78e35fe74aa529d8db8aa9e2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader writing stacked light",
+      "case_id": "1d119c66831e4e959df03983f5a28c1d8933ef07b74d60fe5b98d1f6570cf9b4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader writing stacked dark",
+      "case_id": "99fec419e94f88f2a57cb9a9783f3e4c2294b97d649093d5707dba54b1225fad",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader saving stacked light",
+      "case_id": "5b9780d9737a903531eaadcd1808871149d4f7c96f2c02967f6c5128ab2db567",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader saving stacked dark",
+      "case_id": "e8038e3d402bb6a70a807ede239fa7026be81c68c172de59b279889f5d2f77af",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader busy stacked light",
+      "case_id": "67e308122f85650df0b543f98696be0c16ec4bd9db8ed97a7f8e11b02096ad60",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4360,
+  "phase_seconds": 4660,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

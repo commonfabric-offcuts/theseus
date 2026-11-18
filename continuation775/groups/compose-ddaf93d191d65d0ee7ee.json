@@ -1,0 +1,142 @@
+{
+  "id": "compose-ddaf93d191d65d0ee7ee",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "ddaf93d191d65d0ee7eea01542883ffd39106842aff0d6167aa6904225c11d65",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-390 light",
+      "case_id": "0567eb64f5715124c165e99b4f1edb51ff39ba42ba3f52a8e09266d68ec4bf38",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-390 dark",
+      "case_id": "b01968dff0eed7c4de99ffa37e431588076d650e59aa4411e84b32a6f44963a1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-390 dark",
+      "case_id": "303ec35a90d65676719860a4671fc0be5a76acff3605b08f93a06d207dac7353",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full stacked light",
+      "case_id": "38ca05699e06a46208e941bd8a4f38ff9ffc1df86187874fe72d54974e7df6ad",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet stacked light",
+      "case_id": "8ff986fdf2f63f2a69e8010e846d87980a4aa203ead5110aba8f3fb1d5d18ec3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full stacked dark",
+      "case_id": "9e49918faea82880623ce6eda088a87079e1867deb61b1f17c1ca68e213409a2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet stacked dark",
+      "case_id": "5e42269d2d3ec94e69af41febfaeb0dc376de49d9824a5bfc814fd234b03ee3d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 applied whole-body padding mutant and restored controls",
+      "case_id": "b799956895aeda3ac5478446c535b7b9a4d475fa21d5597f84086bf2da734fd2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light normal",
+      "case_id": "ab7a6659655d3bced13c1cb14e45e73543ba364b7e0e38f175d62cc9343e7a2d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light writing",
+      "case_id": "c5860919813b69606e81ff67496ac7b8666e21146e8897f052c79eb49f2d80e9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light empty",
+      "case_id": "2b814c3087d762392a8e7c3ee30a7ae3e59c14e5f12b31261f3a66fc32ecc3d1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light busy",
+      "case_id": "7ba7888bfb3cc3d5a27e689b65cb8471a290097c9569978d3e2279a4606ae8fe",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light refused retry",
+      "case_id": "cfee4f139bde28fea07c8dc0ed8c83a17f61e517c7a3a52006225665c93d214f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-320 light refused discard",
+      "case_id": "603b98e4096ff5bf8cc198b53065e3bf95208fb2da93a0238031b258423705e9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-02c5ebde0adb4bdfb7c5",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "02c5ebde0adb4bdfb7c5a56135e2b05acf587c1a3da9ed0aaa1b1db1045d177a",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message refused with recovery phone-390 dark",
+      "case_id": "403ddfb5f4880b186666477eacea633fdcdcda0107d1a102a8149a3142c12ea3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message refused with recovery stacked light",
+      "case_id": "68612de5fdf09afb36ed0071ae94f6d2ee36ed09c70899a7c86fc741dab3c6c0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message refused with recovery stacked dark",
+      "case_id": "d903e169782f248b647e9c41f784d3f40bac26018ee1d73b21edd236394ac6ca",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-320 light",
+      "case_id": "bc3e01b65dd8461cec84950d7ac09834d26174bb8a2eec28e53b235e86014bf6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-320 dark",
+      "case_id": "bbbe75843ba7c0af6e344616d3f80f8424ae9b67461e9f136abfd09718d7622d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-375 light",
+      "case_id": "1e0b3f2bb6c8ec1a746863088cfccdd2e4a4cf8875c7f5a59fea1dd12fbb597b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-375 dark",
+      "case_id": "4cf8d72596d6d361c1c3ef9ce0121513d6ac20d3008d219dc79b100b43150674",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-390 light",
+      "case_id": "e4098de20094b1426cb82d9e220b0c410775ce163bae7a54c857616620665ad1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error phone-390 dark",
+      "case_id": "6825f8b6f5cb248574c58b22d35e0a64426bc0ad00e935b5e067bfba781d5ba1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error stacked light",
+      "case_id": "6f3013aa85e48ddfbc25b1dbe6a4c7e0e8c642285f953b1873c39605224c5d6e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message error stacked dark",
+      "case_id": "646dcafd7e3a188d4d5974c8b8ff4f591a48e97afba2e6a772b392637a2e812d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message permission unavailable phone-320 light",
+      "case_id": "2e4f1dfb772900275ac8c18bd89050ac0feb027c540500bd1f60965e841272ba",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message permission unavailable phone-320 dark",
+      "case_id": "4d9031c1343dea6daf80d6df8c1f5bdac4c358270e0085caf837d0d2923c8fe6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof New message permission unavailable phone-375 light",
+      "case_id": "0a44fa2e741d8add3f1237b123904bf0a1c883ab391c03fa0027f94a6975749b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

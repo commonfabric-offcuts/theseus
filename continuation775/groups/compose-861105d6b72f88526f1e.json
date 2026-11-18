@@ -1,0 +1,142 @@
+{
+  "id": "compose-861105d6b72f88526f1e",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "861105d6b72f88526f1e7d47620029416ef1632af00c29545d8cb3ce64cff7eb",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full phone-375 dark device error",
+      "case_id": "86720a59fce48f979e53e3e092095ad9f7094d79910f1e28475ed017b2d6f905",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark normal",
+      "case_id": "922da9e521adc402513c1ad929e72398d67ad258aceb0ad136496fd4ecfb2467",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark writing",
+      "case_id": "74752061fca609ea595276ebbc3242a622ef3c527090959034e054488082da2f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark empty",
+      "case_id": "a032a3552c2cf0b97dbc201ee8af35b33fbb4ec5e2bbcc9f15a953215b715ba8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark busy",
+      "case_id": "0e0d2c2af74e0445c13746a2d3f378ab7337b20cb05a9ed2ad5b96c4878aaafc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark refused retry",
+      "case_id": "b5fb5f0a903fe4594a1115133a83fd76c7f7d250ad7caefa0a2503271b6776de",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark refused discard",
+      "case_id": "3ceef4221f920bf0046112620ba3b5591c74c63aa7cd91faf669fbc6c98ecc9d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark read only",
+      "case_id": "433d6403f9cb5fbc0acf1414abdc2e29890299abb7c1632dc3137143d2b00724",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark save error",
+      "case_id": "fc3a74b85acee82b6408fce46f496e5293e5174b7b78d0a233acdff6b4c51409",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark read error",
+      "case_id": "e5c98d113eb06cfcc9e360278348e29a507d0c87d27f443371b615fee4dfe967",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark conflict mine",
+      "case_id": "7839afebae9f5c41409fb1b93cad557b64cb6eebb7dcc2d055b067e65a412ceb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark conflict saved",
+      "case_id": "f67d56f159e6cca28cbbfb74e675c17cf1611ff2247349d7e19d9690a2487db3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark authority refusal",
+      "case_id": "a1664f771dbb5e01f1dfc12f886f479f2eb608656c03277ac558d89bc0f6fb02",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet phone-375 dark device error",
+      "case_id": "d3352276bcfd90cf603e0dc566de39ed8d4a0e65d7294adb808427dc09ca02a5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

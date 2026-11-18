@@ -1,0 +1,222 @@
+{
+  "id": "compose-12b6176b8c882e5b3a42",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "12b6176b8c882e5b3a42516075bf44bc93910da4af47aedebead43ea691cf9ec",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader conflict review stacked dark",
+      "case_id": "53db90a25ad70a4dd1c4fd9a50ec93c2c399616c48e37cbc9823242c44427a04",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader composition refused stacked light",
+      "case_id": "ac74fe07794147de75d3313051fbf308d24a0b713321b1d4b8937b33491d1655",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader composition refused stacked dark",
+      "case_id": "05476c17ffecee1665964e8092383bac95ea10fc65ccf9a52f84da0ab3544991",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader recovery discovery stacked light",
+      "case_id": "e98d57983f288f147a0073e6a6a396d9938a5a4ab0b7dc2f6ec93ceb9f42ddba",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader recovery discovery stacked dark",
+      "case_id": "579f63a44ae72a019d5ff99d9d1ac6ad4b17a3161e7bb0aace0a2aba38e750f1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader authority recovery blocked stacked light",
+      "case_id": "ac8c6ff22bf90bfa0e1e826803d7f51faf5d80e1aa6f7c2986e32f1314777d2a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader authority recovery blocked stacked dark",
+      "case_id": "ecfcd98448b5b4dae51362b7e4bed38e776828f4e9eef72a575e552d30b97c45",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader authority recovery ready stacked light",
+      "case_id": "454a39c9e11b935b1a6439b7fd552b6e6ed86046f5c6f902fb7a3ad54526c18c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Wide Reader authority recovery ready stacked dark",
+      "case_id": "1c6032f2aff945c90060fce417ef2c5c3040d56a8ee777c4bbdeb7b5018d1a00",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-320 light",
+      "case_id": "f2a4ca8085a3207f41764d6b9d81113bbf06212f5d28ace7f2282b7128043a8c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-320 dark",
+      "case_id": "73f8d42a74bf0fe38cc4e9e9151bde95647764e5525b4d218311cde6edf5d7e5",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-375 light",
+      "case_id": "9c1688bb11e5de606a0302dc7a944b3ae4ce5b4ce681c6610e6fffc2bc3b50f0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-375 dark",
+      "case_id": "ab4867a365f49328e2a3b3696d5431b0e4bd606eedb352a7ae72b92e89526823",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-390 light",
+      "case_id": "1e63c3c3ee2958aa16fcd2efe4a8aba166e939c64e332880cef66fc448537e92",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty phone-390 dark",
+      "case_id": "2f7c59c0b097cce10fa3e055b13319bd91202107136aad6c79660f20b08bacd3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty stacked light",
+      "case_id": "992c228ab16f897028ece37605e754e49f23d61486f2bd8addde596d1dcfad51",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader empty stacked dark",
+      "case_id": "4340e0fe146cff24bdc2f6fda423baf04ccb9c87472a03dcf9cfdd8866c11500",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-320 light",
+      "case_id": "897066d0b90e81fc53c0057b2d3493a62d702a488b58d7fd5d6815ea7f2e6489",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-320 dark",
+      "case_id": "0ce302abb005db6cfad82618ac3f514b2ea9c6ee3fbeeeb806fb12cc2963fad7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-375 light",
+      "case_id": "694f3a8c28a9f22e32ec17d380cb1dbf097720ea51bcc96e9fbba5d73cb72878",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-375 dark",
+      "case_id": "6c991f6bec427f4b16d4e126084a827d98b9ed525788e61f6b9b56484845859d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-390 light",
+      "case_id": "a4e515a8186a9811c659d534ed5e90b833355ee7523f43c4de4207827cefdfc9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing phone-390 dark",
+      "case_id": "cec0ea2412b77a027a786b586395825fc3308e3414c59cac81eaeceadcd460a7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Reader writing stacked light",
+      "case_id": "bbe964c84f4990fe79c9dc73fcfacee85ac92fc4272084b3e7519f782c53dfce",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4335,
+  "phase_seconds": 4635,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

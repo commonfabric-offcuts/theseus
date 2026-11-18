@@ -1,0 +1,142 @@
+{
+  "id": "compose-beb1e908087b6fa2299c",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "beb1e908087b6fa2299caee0b0a7e46b821f50377f863b5c10972fbb0731ed86",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant writing-lost and restored control",
+      "case_id": "bfdd96d50db9aed75937197725b7c3ef29f187ea7539fe9926aeffb50ea264d6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant return-origin-discarded and restored control",
+      "case_id": "dce3cf96246ac509b4cbcee49417cd974d61f6e12974d4ff8b4e33fdaf98971f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant return-drift and restored control",
+      "case_id": "70c98f4ac2b53fd19b5213011812945708e57d596eb9c9410bf3deb9bdc44b55",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant tab-unreachable and restored control",
+      "case_id": "6f71d7249b3ec1db30675c13f74927bb489491844aee5ec224f085041dbee0c7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-permission-unavailable-inert and restored control",
+      "case_id": "577adf7bc40637cabebd293e8ad38f8d1dbc9fefaa369f2c32720b894ba75aa6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-access-unconfirmed-inert and restored control",
+      "case_id": "79f7b2cd2384a6fd9b93d964d55c3064bd0cb8884d64e12b9c5f72e783244bad",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-access-checking-inert and restored control",
+      "case_id": "3a8da856a9c6b27ce8e5085acc07b256924af445d9c3a4cfdbd704b27200526d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-conflict-review-inert and restored control",
+      "case_id": "d3077cb235c7259fff60e22c8cb3ec2f01f4f4b86967bed8c1513c42bf2c2a91",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-composition-refused-inert and restored control",
+      "case_id": "5d7b0961948d63a0e2fe44f4f564c4182b9e45db9ff771448f1f2dda5c36af80",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-recovery-discovery-inert and restored control",
+      "case_id": "60e0a22217d56464a00bd4656ca39ade8cb05c68121d8a71edb87f3c67cad078",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-authority-recovery-blocked-inert and restored control",
+      "case_id": "fdcb6360afcca5bf6bd033e6fe57d344130557d80faee126a49aefafe673a17e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant Reader-authority-recovery-ready-inert and restored control",
+      "case_id": "e2ccd8f4b30771fdbd65d7eead03545ac0f48eb08c3d75a8dc2f3ff1ebe17140",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-permission-unavailable-inert and restored control",
+      "case_id": "58aa366ebdd774775cc216687e81608295947059b8ec96af85e6e975c21b0d8a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-access-unconfirmed-inert and restored control",
+      "case_id": "0bb4b671f923377d354003b30686438d5597f1d0b46091004098b7469e9ae3d2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

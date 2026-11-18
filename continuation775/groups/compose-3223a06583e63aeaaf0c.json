@@ -1,0 +1,142 @@
+{
+  "id": "compose-3223a06583e63aeaaf0c",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "3223a06583e63aeaaf0c5f53a044a1b577fc5540ab5803ef41d1c3f55233c832",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-320 light",
+      "case_id": "173ded9a59539b95ae2f09e3a8137628c1e86664c5e6cc5995ceb14ed2bf8167",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-320 dark",
+      "case_id": "284af7d8457ec4935c33a9b35a1fcb49bf88170aef6cd4bb826759aba4ce4e21",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-375 light",
+      "case_id": "a3d0bf38c8f34255324c0a709c54fc94ca277fc0da9f015d861488ff7e09d57c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-375 dark",
+      "case_id": "cc716793aea30e5d158085340bee84c2b50aa3d3a080f04d080f8d80a13a18bc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-390 light",
+      "case_id": "731e084c03bb2ae20951eab289db5de7aacec12cd0e38bcfd6aee0ab8f03e975",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error phone-390 dark",
+      "case_id": "33f975b2e03bef303d5b15a9277cd4b70bd7e7fb0ab52305447934a6f23da3f8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error stacked light",
+      "case_id": "5514a242a99af7e17abb5b8bc7199c342ab751f20369530b2a93896c225822ce",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader error stacked dark",
+      "case_id": "7030c970f1a1498c1033572aba211afe700b260126a8e5f5cf04c66f4415b76b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-320 light",
+      "case_id": "6dafd265ea70ef196994ecb057d2c00a8e39e1fe361d398c2b4946d671355983",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-320 dark",
+      "case_id": "db6619463090d4c26822d5f3ba85d90132923b613910b64478da5099cd7ed3b4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-375 light",
+      "case_id": "bca62c2eaa1ecaf5bdfd230f480892d055dfdbee236de712fd39932266800ae5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-375 dark",
+      "case_id": "25d5e7934c6079e6cbee7e1163274bc2471a01598af242b1c812f0539c77559c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-390 light",
+      "case_id": "2ef3ae036503822405f0ad0c9aae4d6caa0920ad4c84331727367aeecce1481b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader permission unavailable phone-390 dark",
+      "case_id": "be0d5b4ccbda363796fc9790b46ad8dc490ad2d7f22db8afc1a49f4f8ef2bedc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

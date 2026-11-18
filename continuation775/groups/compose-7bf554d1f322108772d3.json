@@ -1,0 +1,142 @@
+{
+  "id": "compose-7bf554d1f322108772d3",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "7bf554d1f322108772d35a012bd563da6cc07798096c3cd565ef548a3a7f8664",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "d8a4430238ab6a001e7fa4cfb9204c6bccd6879922afa0f079489704d5a53150",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "c61032305a0663aa790c96c5ef52a902dc949e7028c35b7c257553628a6ba88e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: rail thumbnail opens its image and keeps the topic",
+      "case_id": "e06b21ad84442c76c3c03f5966faa511ab6d4f1c2aff4d2f58f41fed9647a9e0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "be2aaffd6605f5eaed19266cb32ee3e5fc5dc321d23dcc7ecb73637fed228a00",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "a0b8177b364db1572dbb18c4dd1d685e55a2488c1d6a57f7ecdf06e665c9410c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "1e10c277dbacba93cb6e8810509d998983260b1aaf9f8e798fe2c6a6d62e457c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer ready thumbnail preserves writing and recovery",
+      "case_id": "c7d538098756eb080876781a4ccb496ad3397621c98ba47cda77873cf2b90808",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "fc8d537b51232cd7fa793dfcba5edee1623979679adaab1e7917f64b2c713c46",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "a44b8446a56af03be656a3c22fc751d02fb74200dae6d650ef409f729e4b3fc4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "5a3055ed849f68810ddb25677965a7cc99c9bae5972092aee575ed8d94ed6213",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer retry thumbnail preserves writing and recovery",
+      "case_id": "8ee0f6950b5781bc9fdf377ec554544ae22c43d0d8b7e6484c41c4fa1479fa04",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer download thumbnail preserves writing and recovery",
+      "case_id": "38a7865d453988ee6971dd41165904b5691d6190cce60f68abf929ae82248daa",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "83d5e1c28d37d6990a77ee8df69f0826f1bd17c965755cc90d7a9ed5a1f7ba47",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored phone-375 light: composer empty thumbnail preserves writing and recovery",
+      "case_id": "5d74835b77a3169b0be9fb9e70af3e08b5ed2df5c5a1454f2442b2cb7f9c873c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-fe2cfb9e3430c2eb7aea",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "fe2cfb9e3430c2eb7aea8c400fd464ed6943ff7f6766d60298a5c5beabd44a98",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "ba730a612b2d7c5a12b00f72e111b5386e483a6140387bc9cea9405abefa4ab8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "b6e2a1642da3a4a5937a49c3c3c32b145c863e21fceed4747680b579108d0883",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "3cedf57553791491e6b7850e3e92a765689bdbbcef78752b8c18f22b7f02c867",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer ready thumbnail preserves writing and recovery",
+      "case_id": "4c47331daa0e0c1e45086914dd3bdde67dcc3241866a1affbb4dc1e188231634",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "388ca79b5ebc5ac8ee4a537d80e592a2883ac9676de0e6044824011f150cd470",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "445dde91bd92723e6a15e3609d740ce4da67449e4e887ad7f2f1763bd90b20bd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "f2b681a321ea4e05a2519062a5c6004d8e94bb3aa75c379aeb0f7771e664a5ca",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer retry thumbnail preserves writing and recovery",
+      "case_id": "36c36556e32817cbef6cb364408cd71e91e8fe6493183cfb851fa8092173da28",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer download thumbnail preserves writing and recovery",
+      "case_id": "afc75eff1e3866132454732757c27af58deb5f8188b0c81b696da1589864c99b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "60b2d408645a7b55665de02a630c00ad565b2b7652a0f81f4c4316962c64eca6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer empty thumbnail preserves writing and recovery",
+      "case_id": "d26f2955ce7df707bba34e251b9c1c1e36b4de42303c9bc4a977cd5dce3cd382",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer read-refused thumbnail preserves writing and recovery",
+      "case_id": "1237c7e6a727325158a7fda692b131cfd22eb14e95e551e6e83daeae7741049a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 light: composer read-error thumbnail preserves writing and recovery",
+      "case_id": "224b2b286ab101de615d0cdbd1b0ec912da123605a5997a5f54e4a11d80d09ad",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 phone-320 dark: topic and dossier thumbnails open their exact image, never the Reader",
+      "case_id": "c935fa2b3936394d0a574f6dba3fc1ccc6a7d1cd9d619f23f9ae081ae745b14e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

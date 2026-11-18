@@ -1,0 +1,142 @@
+{
+  "id": "compose-4069e2d0c174f461bdec",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "4069e2d0c174f461bdecd3af813a386a600c7cc2f73d2fa46d619e6d1fb7a5e6",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark read only",
+      "case_id": "021b8539dfa27d5753077fd11a003fa2e9a0442765f2ee065ae5e24f76e8ac34",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark save error",
+      "case_id": "0d67ae257c302685bd2c9983a07f96aa0c38b7b096f39b83d0f1cf5b31211b49",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark read error",
+      "case_id": "90eea358eee76b0b04c8904a6c9dff1ce55b27a227a8c6dc47d0df723aff06b2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark conflict mine",
+      "case_id": "0f5063c01cab784ca8a2aef533bc5a080a933a0b9cf9a556719452cf78fa01a5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark conflict saved",
+      "case_id": "ad32b6d9598a20592de8f9405ebe7de78e217d76b12571a6e7e15f09b9f4293f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark authority refusal",
+      "case_id": "8846bec37fc4d8567f011467af13ede9feb577b8465521ce9abc36c7dd5fab38",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark device error",
+      "case_id": "d57e716bc8b823a9c2393b9772de09fd1719f2720606e7e21b29daca6c8779ea",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark normal",
+      "case_id": "986ebccb022c6f82b51fbf64bd5843cf76b82e5dc1d237462a3280b53e20e3b2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark writing",
+      "case_id": "1cd09b8a777fe180161ca78553e6e53abf4b5ca021e6a300abe975d32e7a1f28",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark empty",
+      "case_id": "5fe7848318b14fc730d7838605af5813ab0814dbad5b9b1ba9173e74c1227156",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark busy",
+      "case_id": "5d78da4e18b960891e7e720f8cf6921bb0a57b791f6b1f86558a2c9e430b1adc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark refused retry",
+      "case_id": "cd49e87154920ac6e1fbfa00cbc0fe22f70fda3925a104b149cf013babbe26f0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark refused discard",
+      "case_id": "7c33c238338a3ebb6d8fa4ecc4b129c84e3a2cff5d16517a45d7ede93dc547db",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked dark read only",
+      "case_id": "6131e193e94c4c12bd5520eacaae7659b4b77bb7294ce08563a036c2e8beea7c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-2fa578c003e4228edc01",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "2fa578c003e4228edc01f598824ef1b3f4131d75d03ad771a43fa6869a2a2fd8",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-390 light: opening, using and closing the card composer holds the page",
+      "case_id": "767ee11ea383059e74c0e374a284f56b68b6ffa5d88582257af72ede07cae39f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-390 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "6f7ccb6bf2639198c2674582d706d1b6e7eae44a1860ad27955f9426d3dd18ca",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-390 dark: opening, using and closing the card composer holds the page",
+      "case_id": "7e2d31749b0e52c089e296ae3e3f058d80129e15c790613fb84fe7ef5d3a5ac3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-390 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "d1fdeac587e5cd1e0b1146f3ffa974826371e79cfa4359849cb5992d41cb3080",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 stacked light: opening, using and closing the card composer holds the page",
+      "case_id": "7a70a2f75b7a5a17da1226ef589e90df358c8c8e47cb2261f970f98cd1e7ca51",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote stacked light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "ae3b9fe5f4be17b3e629ebc3453033a2b28b415acc31686f3eb34f855a125af3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote stacked light wide: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "7237ad0c1fe61dd240f791efb7e54b30b096f41ea8b1c7a3e56078a96194e909",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 stacked dark: opening, using and closing the card composer holds the page",
+      "case_id": "48c14acd7245dc950d6d47c2fafa63a2833e76c81162ee45de0efad8db52c3a4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote stacked dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "aafd9146e71d8108c548859831ec9416907daa2af70b2bf213db27a47b877f25",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote stacked dark wide: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "9fd9c9750b1651905b481f676be2638fa6f73983b89faf5fdb86b67228f71400",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit menus phone-320: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "6ab89bc3c950cb48493ca59c3fcae97ed0aca69b3da2364d7be51e48c23bef43",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit menus phone-375: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "baaeb347590324413d0b6dfefcd09691e857f3daefcda07c6a3dcddc9cc11b5e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit menus phone-390: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "82357b13cabef5ac084fe51da3fc59d6917e7a7b393923eabd1e28c49763e852",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit menus stacked: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, Wide layout and Stacked layout, light and dark",
+      "case_id": "7662ab35787ba03476fe10012613888e6e5a2984f2b0fc547c74932988b8b82c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

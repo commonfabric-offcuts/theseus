@@ -1,0 +1,350 @@
+{
+  "id": "compose-f152a4eb679fc85791b7",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "f152a4eb679fc85791b7ebd9fdb9a117dc19197ff392ff0eb65d4d4e193d1f57",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-390 dark read error",
+      "case_id": "fcf55f868e25f1971934ddc5bc1efab598b3d552013eb51b83b461b0f04a7b22",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-390 dark conflict mine",
+      "case_id": "8a74c8e67b43c59a5da497725e88199e9b64732aec19cc0552313ed3d8cdfbdf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-390 dark conflict saved",
+      "case_id": "fc3a21f3d1ef6016fac455a0ec4019af6619cd8bc4d5a39bbd718a6db396479a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-390 dark authority refusal",
+      "case_id": "2130f4203a57c7c62d29587613b9027970ae16ad363e25f9bc281321b84abfc3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full phone-390 dark device error",
+      "case_id": "0fe241396f0bf9b54aee6790c5200fb9ee9f5dbb4f1978ea74bf7efa53b207ab",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark normal",
+      "case_id": "1f168f507a0e3edbcd121e0d98471a38f633f440510b6737b6f19ab13dbffa6f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark writing",
+      "case_id": "d94a19cabcc880b85a6117b9e4b82e9e0b3ed66fbbda2a1477ca6594739496b0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark empty",
+      "case_id": "efb96d17323745ad671a52464c8f55ed1b0e85726605933c427c8c917b09d313",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark busy",
+      "case_id": "ec9ca00d1c595dbad81360cea9cf2f67e94b89267312a7c6ff9a3e17ccb8f5b0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark refused retry",
+      "case_id": "488bad524750ca2101c4a7e77621926593896a470c5ec7485c9736a0e3ca97f9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark refused discard",
+      "case_id": "fe0214282ac22bb81d2ca82b749b155f4131c67b85da2ae6e23cdbe3d3372e1a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark read only",
+      "case_id": "f8e12331f4b12fdd2ad0466aee93c41f9205d789d1ea5fe29486b94bddfa53c3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark save error",
+      "case_id": "02803c6aafdc4eb4d79249da9431cd06da931fb70497c81d84e7f1bac08d6cad",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark read error",
+      "case_id": "40e0af9515548eb05ff765b087b1f77db4fce611427e5486a00e069e11b70367",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark conflict mine",
+      "case_id": "c614b2ac381a18065461b2984057a32fb2b6156bd902b1d0e6080bfb09b34084",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark conflict saved",
+      "case_id": "bec980d2b3564e7698cb1cdf30eee2e9943055d9eba0d9822d18c49206bfd5d0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark authority refusal",
+      "case_id": "105cf3e6a54a8056f0a4ef2b2422151daf62abe46563e34d574a941a92a686f8",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet phone-390 dark device error",
+      "case_id": "fc5fea6362dd67313100b4d09e292c8e633fe814cfe2f3b975664f4758731f20",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light normal",
+      "case_id": "6dba3039597ae33ad331f04adec3b8d33504a60a759a27dfa326117708491afb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light writing",
+      "case_id": "4523bdead448170eb024fa394af439e462e93be4a2c02efefebeda9c6fec7d0d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light empty",
+      "case_id": "1c9cc81b92bf383f1006d254ecc29fd4f930d925cebf0e0dcedfeeaf9f358bc0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light busy",
+      "case_id": "f2e7704e4a98cdc689fed2b4856b97e4fd5b6db4e40dcde0ed0360528fbbdb0f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light refused retry",
+      "case_id": "4a9eca9d3f8fed6833fbf115b4e5e26668f11ff39e5e1374fc307170352c5249",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light refused discard",
+      "case_id": "a48f0ceb269bf8448b4169a04aa67131b717f0c519fcaad277a9acda8aedf72b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light read only",
+      "case_id": "211873c179b034dcb81befc607b639514203193348a2f4a3be0e5bc251a541f2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light save error",
+      "case_id": "b3dc73ef0c156871af9e3ed3dcfb533abccc16508e9b49254e86faa6423fe5ad",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light read error",
+      "case_id": "f80cee2db483f9407138ba5c7c039e03d96e1392ad7fb47a2e25ffe254452ccd",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light conflict mine",
+      "case_id": "c6b9be94f70bad041339954e68bc33f9c74cf4ae29a1ea424edec622152b2753",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light conflict saved",
+      "case_id": "3954f30004a24998460f68b0820776378ce05734d52175c3b604bbab8e5552fe",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light authority refusal",
+      "case_id": "bf4a1d859becc607fca00209ffbe49cc491cbea0065ea810179c6f26b31a0466",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked light device error",
+      "case_id": "1e09062417b0b4a77ceac2a002a67b6c8d4f49b6213a0b4ddb9b3618ef68155f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light normal",
+      "case_id": "9f52522f2a4dcfa91be61d58d93fe407e3b3d1396ff604e46fd339e1219cb8b5",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light writing",
+      "case_id": "5f609822bd8e4cf989ba539705a193c50cdb1711b68c04b4f9d7e27e040ea4cf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light empty",
+      "case_id": "de1a46725c9a61c2f003243be22c4869af9a01dd0f5452f8e3ccaa00349d88da",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light busy",
+      "case_id": "76fc82c083f6935868d4ae2dcfdb5549c16642e261ec78d40efa12f914ee96fa",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light refused retry",
+      "case_id": "aa68e0a875904729557136da67eb31cf0ffe4a77c1ff519c5e7252b141504fdd",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light refused discard",
+      "case_id": "99640a487632d7877af30b6dd96831dfa5bf2dd8c93c2fcd33fe017ffd3bfd3a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light read only",
+      "case_id": "37dd04b204c0c445c516b71fcc4822cc858f1d6ff3145ed71c30cab8e761087b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light save error",
+      "case_id": "588d08b6a41e448a3c60fa65a6796ba13aa842aa60b0d39db41d4c56dd7ab952",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light read error",
+      "case_id": "3bc36c4b9cb0d135bbea4f737cc8e90496f7f3159d0f5c6743104efc188bff14",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4360,
+  "phase_seconds": 4660,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

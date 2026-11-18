@@ -1,0 +1,350 @@
+{
+  "id": "compose-c15d7cc8f5f65d612150",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "c15d7cc8f5f65d612150f42dec6cdf6403da87a754cf289594ecfdd7dde0fb2b",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message read-only stacked dark",
+      "case_id": "dbf38b3177c476ab4a1769b7f58fa8991b1d455af0bba6677e9bf203ab92c0f2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-320 light",
+      "case_id": "ee49855d8843f0ea4c1ce75250bad277dbc31cbc52543ad1665c2a4d604f2502",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-320 dark",
+      "case_id": "40fe188f874ba99fec83977611d336e2f7956fd3c17ecf066b50f916fdf4906a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-375 light",
+      "case_id": "fbf74d08156713e2bb4ca5448f8bf2839e8031431b54fd9c3c6da219ddbfebde",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-375 dark",
+      "case_id": "e299d94425eeb19747cced7d1bd0620ee803c191f35c1bc69d86f9f4f27da958",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-390 light",
+      "case_id": "3afab0772881f3c4becad3d4c5fb96d3e14404479c65cf8dfa7e7c3f8fd92ab9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error phone-390 dark",
+      "case_id": "7c39673527bf7bdcd397ebfcbf7989555852149ccf5bf9d9147f49c9157f1bab",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error stacked light",
+      "case_id": "cb5d3963235f089a511ab232979576c738f29260f787b9d8371ff80afcee380d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message error stacked dark",
+      "case_id": "b5767b9ebb0511094582d52f8010deaabc286795d8c98e336317bea1c8de3e2f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-320 light",
+      "case_id": "8c52c1dc6d4e46c6c1bae5a1c3de131fa0e10138f36a2411a9f03e3e63de4e81",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-320 dark",
+      "case_id": "cf3956d879694379f94a45cc5551a3482a0a45e7fb2ac16d940cd3b5a0980c74",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-375 light",
+      "case_id": "1a86e4ca4cae5f095df8e9c196fc84585ddaeb9606579216e32b3ce439c2246d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-375 dark",
+      "case_id": "4bb17cea70aecfb856671a32d538b821b034444fa2f5488ab84acac8002c2af4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-390 light",
+      "case_id": "0335dc22a4e63533770417fa6fcc82767e6375ca50d8c1721dbf70a509b7c413",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable phone-390 dark",
+      "case_id": "c150eb8a4ac884d4d05ec1b021f9c1e66391e83de23c96a2de06856996698364",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable stacked light",
+      "case_id": "225e8e64b9cc2a90441c2c7cb9f8ec3cb0e7d15752cdb35e08f3d8a31a909780",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message permission unavailable stacked dark",
+      "case_id": "b210d436e912d246b39e752989e6195f83454382160cf47a5b79bba4b8621297",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-320 light",
+      "case_id": "c16de3119cc67cfe6befc219bb604b5d48cc50f5e52df4c63b178e3846be988b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-320 dark",
+      "case_id": "99c096a1daa7ea4dca072c8f43082cad6deae1c4064b01d52c95b0a58baa6c00",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-375 light",
+      "case_id": "e23b128f49c64d832ecf62230e649129e0c8024daa7944a36f3c179122467f5d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-375 dark",
+      "case_id": "9bf71bb9a05d17b785550bb9abab87824e9b773645fde39da0c7d3dbc0318b98",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-390 light",
+      "case_id": "35656341a369ddee408478ac2681be30495391fd0d6ae0628331b01ad1df4a24",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed phone-390 dark",
+      "case_id": "fcaf942114d1948f22fe57908819bc453510ee81ab49d092b1b16b4a1455d0bc",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed stacked light",
+      "case_id": "661d7bd307d326a2d4b352cea8948b1d9ee932b6dba7da89f8dd3fb57916c63a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access unconfirmed stacked dark",
+      "case_id": "a83caa469452a1f3bbe42c5f92cd8f1389c64d4327306bf238537846af2c0bd6",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-320 light",
+      "case_id": "b22d18e9e3d046570cd6d2d6abf9dc9a5dc87b2681ee460c94e90f52905cd2d2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-320 dark",
+      "case_id": "c7e4e84c1ef47b295a4124bc97f77ee8ed71b5696cb6734cad963ff86a4f9592",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-375 light",
+      "case_id": "4cb02ec2730cc76a03bcf7779f5ced2df5efea9d1a20c1952be12d715c5ee87c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-375 dark",
+      "case_id": "833eb4d6b8699a14207b50a7fd0ba5ab0804007f5667bbaf2badc01c02f7526e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-390 light",
+      "case_id": "50d6c6622ca8410bcc0e3432ca339fd0b624e9ea5caa3c1f3d724199910030a9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking phone-390 dark",
+      "case_id": "b21a1a9afae81c3949a35d842434a4a95b0a368603683bc20d68648b874ef8a4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking stacked light",
+      "case_id": "41675a3d0d2457ae18816eb31cb688d20e4a463d8f188ad72cf865bcec4894c4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message access checking stacked dark",
+      "case_id": "1c4ccf846cb0014d695340a8522bfa26dba81f9a128420027c42042dc9aacb5c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-320 light",
+      "case_id": "61e8a00587f5169359ef41d99241d5ea7666553cc9de65b03f0208d3300eade8",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-320 dark",
+      "case_id": "91a7e5e359c857628263d643120cbf375953eb1e61cbb7faf22d84164cd7432c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-375 light",
+      "case_id": "7d16a6bf3ae85cde07b0384d09c1abe369096a1287160310ea523d6c4b71b53d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-375 dark",
+      "case_id": "01836e3db90f789c38425c26e3ce3638d0e50baa1b7b812b64ee7349ab2f7d4c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-390 light",
+      "case_id": "2d84377fbf5bd7ee157724af89483e590216466425be3429244e248b24014bd2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review phone-390 dark",
+      "case_id": "29a09f4d23cd7f75ae171cd8dce59ddc79e8544240f060703b41daddff006c13",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 New message conflict review stacked light",
+      "case_id": "c95bf86081a93a5bc8a7e0de702ca6c6dd2e2849c37f04882fbf739d53e60f9d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4360,
+  "phase_seconds": 4660,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-00598b0f19fc23a4a1a4",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "00598b0f19fc23a4a1a4e58d0b05643ba4de530674f42ff039b88da5314cdcf5",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+      "case_id": "0a09867e9dad17275deedc478b54d90fd9bbfc23dd1c679665ab52f88a8b4a70",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit header light: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room",
+      "case_id": "7aa5fab3156c3a9c3cc9200acce0de351383f349747b4a8b9f6f48a695c30de1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+      "case_id": "0230642fff3ddac927482a00945dd8bd4df508a2eca9f96c554820292f0140f1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit laptop wide light: the message fills the Reader while reading and writing",
+      "case_id": "9127ced56106b7eddece788e5b26dc9784d2657b023139ab08ff103eed7cb6d2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+      "case_id": "1c7e6515ca4d93262be0c247a98f58382f92f57f558bc94208a2f649a96cf8de",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit header dark: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room",
+      "case_id": "f9acb3301a86f3a5a649e3d631cde3244839798016bbdb6c4e0b1a9f4ab3833b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+      "case_id": "666264d76aaafe25174f2721abced7c9416bd26adf999407c4c79c46d757e616",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit laptop wide dark: the message fills the Reader while reading and writing",
+      "case_id": "8817ece9ce5924e1597f45dbd2035917d1c648505d1fef12f81224e41d28f256",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit access notice being checked: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access waiting at 44px; on a laptop its room as before, light and dark",
+      "case_id": "fb62053b1b51690baf09b8aa5c9796a92e50037a60838c8d8772c2c80d343635",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit access notice unconfirmed after a retry: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "6f6595033c2c71068e81b48186f48d0b1eed1e57e27a8c526cb37e158c8f16a6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit access notice unavailable: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "6a7d977bd53fe45df1b914e1dcd937b6c3e8884aa80365cfd51f2b3d78149bc5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit access notice available, topic updates paused: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, no Retry access; on a laptop its room as before, light and dark",
+      "case_id": "9a920f9fc4e0cfae23eec81ca0704aa4355d6b3e5db781798f99f5cda1296848",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit access notice unavailable, topic updates paused: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "ecbc79c169969dece990d1cd0f462c239ac29c08cdd68a1666a47cec7203c0d0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper",
+      "case_id": "d47f43225317bc3de1f90b4a9be3154943bb56a76c94604382ca2fc0e0c9734f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

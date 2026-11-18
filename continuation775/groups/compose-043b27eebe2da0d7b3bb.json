@@ -1,0 +1,142 @@
+{
+  "id": "compose-043b27eebe2da0d7b3bb",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "043b27eebe2da0d7b3bb516c94a4fd5f37934a4c452e1ab4cafb02fe8654c62b",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 704 composer source-rest: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "54576e119afe65fa9ce8642fee25576f19b957de80bdf366d63a2bc87104b4ee",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 704 composer source-keyboard: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "1ac80a18ddf9f90f1f46a25f5b30cf8d71cca7a8a6f19984c55994f862d45a6b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 704 composer quoted: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "296f58e39a4d831358a7d250c303606d5f41240da1cc6896b9fa409ffeda9c49",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 704 composer saving: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "32c2ed1face2a642e9bdcc4311c11cc3fac84779f01964ec0b10eef99b33d2e7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 704 composer refused: dotted whisper source and quote at 320 375 390 and laptop, light and dark",
+      "case_id": "03b267bdf22f5726100f0eef0f14ec9c7406eb74fa9d020fb7e0ce44feb26af4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-320 light",
+      "case_id": "72633210d9dfbcc0e3f405cb2c01d0d87928bc363248b3e28ade61eaee71f639",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-320 light",
+      "case_id": "fe07edcd96edc547462536e4849596392948e1004b4d90c289e0498ac52c35fe",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-320 dark",
+      "case_id": "3b9fcfb2f52d90f052cd7119b56e991ba10b40563710ecdfb50326faf4ba700a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-320 dark",
+      "case_id": "f1c0baa64666ce2874bc27749f8bb7e67abd85395679d7403ea97d17531886f9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-375 light",
+      "case_id": "b14b08793b793e89373c60cdc8849fa56e5ce9a0db4003d9bd5ff7483796db28",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-375 light",
+      "case_id": "3f1ab385586ec6478e8fb3ed9b7ad1a95fa6497db9ed0e083278069d9ae2f53a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-375 dark",
+      "case_id": "0bab45c3a2ff5b0e95b63678f9a95d50c89ae4f743135c0476ef50f441e9232f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit sheet phone-375 dark",
+      "case_id": "11dd995076b58f55851b67f40a28a7f013e9506d19b1468cf8b452469e6b9723",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 B1 unchanged parent Edit full phone-390 light",
+      "case_id": "2f1381dc4e48e9a1125161c59697858d11f65ec3e1cbedcef4a7ace70f1871ea",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

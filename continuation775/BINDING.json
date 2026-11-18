@@ -1,0 +1,56 @@
+{
+  "product": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "product_harness_sha256": "58dec7469900491c3cf24380dd48938af06e13db2c8b8fb36dbd2acae79d418a",
+  "prepared_instrumented_harness_sha256": "9679ed874c6c0787a73053258b288fce61befe1c92172e335e49664af3d99219",
+  "delta_sha256": "192c587d1573806e6d290ce6bb4244016db40a9b00554ca9bfcab4cc237be0ae",
+  "original_full_run": 44330945466,
+  "retained_partial_run": 44348397828,
+  "retained_wrapper": "ab75c16692e20309e676b62d9fd77ed23882c531",
+  "original_dispatch": {
+    "version": 1,
+    "requested_source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "checked_source": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "checked_tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ],
+    "original_source": "177a72fc2e8d85c9bc03b592b86c2605434a957d",
+    "original_run": 44330945466,
+    "original_attempt": 1,
+    "release_base": "3187c1bc851bdb256c272928a00dce974e2c8e48",
+    "workflow_api_head": "ab75c16692e20309e676b62d9fd77ed23882c531",
+    "workflow_sha": "ab75c16692e20309e676b62d9fd77ed23882c531",
+    "workflow_ref": "commonfabric-offcuts/theseus/.github/workflows/checks.yml@refs/heads/fable/train49-browser4-9235",
+    "run": "44348397828",
+    "attempt": "1",
+    "event": "workflow_dispatch",
+    "source_changes": "tests/ui_reread_messages.test.mjs",
+    "authority": [
+      9130,
+      9135,
+      9136,
+      9138,
+      9157,
+      9223,
+      9235
+    ]
+  },
+  "actual_runtime": null,
+  "new_run": null,
+  "admitted": false,
+  "guard": "cfcb163d1e411bc354cc970f682e9937ddcb05c4",
+  "limits": {
+    "retained_max_success_seconds": 39.146,
+    "successful_case_limit_seconds": 109,
+    "unknown_case_seconds": 300,
+    "case_sum_ceiling_seconds": 4400,
+    "qualification": "ms is successful action only; failed/unfinished cases unknown; no completed group timing"
+  },
+  "evidence_only": true
+}

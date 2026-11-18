@@ -1,0 +1,350 @@
+{
+  "id": "compose-fc2098af1fb1ae142a65",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "fc2098af1fb1ae142a653d00786417f59164690453b3545a82856dd22c96b346",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light conflict mine",
+      "case_id": "b088fbc5e1944f27b29862b92ae22509d5dcdcf040f6cca7792d426eb68f8f29",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light conflict saved",
+      "case_id": "27cb08ae1a2bbb4d9e8e79b7dd519549cfe05c91ebb51f163889b94132e39418",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light authority refusal",
+      "case_id": "f719030ad295dd20da3cbe24d64cfb8bbb8d58bc609c5f26d456a01144632474",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked light device error",
+      "case_id": "ccfed8f1d8f9070c9970d412ad0775425c941cf60c28866d077aaea071408c27",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark normal",
+      "case_id": "df70e7780b1c25f779b7ffe11552909c12e8af1b89226eb54c6689e256dd0ca4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark writing",
+      "case_id": "1893b78ecd690bea8a77d0672e1400e314d5712ff789396b600a494474e26ea0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark empty",
+      "case_id": "8f1f68b88237d3dcb17b74be31e377ece49d183a1a69a5dd73e044ed1c8739ce",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark busy",
+      "case_id": "5f03ac53613494d9e0fe5725ec27a5d0cbd6079d8012ab647c7387644bf2bcf4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark refused retry",
+      "case_id": "fe49aac951d82558056d4e9b41a07e09bbb56b6ca140c950c1387d857c3f4539",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark refused discard",
+      "case_id": "105832ba8d25bb0d3b25669e46c456569eac81a3f39bf5573486adfee70297b8",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark read only",
+      "case_id": "42afa25055e1da96872a49c4298665131b9f5cb14293e07360f6b9db9c624507",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark save error",
+      "case_id": "889d09b125bb0ef56ecd9c9517ce8cfca92d8b62b6631544937d6005f659408a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark read error",
+      "case_id": "8db5b01d43a55ee6a66d7b1ae4a15c92c80a7adcd327816e1fde5a1b11f88876",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark conflict mine",
+      "case_id": "77a64f0ced903f0f76176027bac1718e9f013bae544a786ddf2042734b856350",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark conflict saved",
+      "case_id": "8dad704d6f0fd0f84155dab25615812637fd68e28be0a6578aaa3855621a2e53",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark authority refusal",
+      "case_id": "089960d4be734aa5b2836119b13ccd727c93d3e6ba44661f8d2c1c82f5fcb7f2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 full stacked dark device error",
+      "case_id": "55e29ebe5e3ded8ee29666a6ae11ac14051c2fe737d680aadf13508979ff64e6",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark normal",
+      "case_id": "b5838cd6b4540671a19d93cd6cde062e3fe03275564b09fccbab156758cb22fa",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark writing",
+      "case_id": "7af340af8b78c5b9b165426b01886d667f835b37ca6f6d4a8432fe4013a23395",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark empty",
+      "case_id": "6b98f707d057cea5bf2913f8346f21b1188f950c36abd4176a0722e98c99459c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark busy",
+      "case_id": "198eb2aca9f87887ee50e7319135579dc39f691549611176a96a0474c6093f80",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark refused retry",
+      "case_id": "730a886a5111675ed8fb9034a2d508fe185fbb3658f3b3076db4d23081dd86bf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark refused discard",
+      "case_id": "4d81436eb3798551f5766d0683d52445015acc9c0031804639ba4f08b07b1de1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark read only",
+      "case_id": "0e0133ebb6dce4c5c155f9f173a0e3abc7e02b3a95d8f7979e1572983c97d007",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark save error",
+      "case_id": "c708992f93067379958226cfa6972f2c3d6a215320a365bdc928662443549546",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark read error",
+      "case_id": "f8cc3a626ceffc5903e02f9be6d21e979429d265a7f2d394fdc6a17b0f6ea8b3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark conflict mine",
+      "case_id": "cd0ace377e3b997bacc0c694720b2a246b3dd9bf344d4059b2be22e6c2e57ec8",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark conflict saved",
+      "case_id": "e570b652098ebc1d6c437fac40c984fc9e29b71df70dcaefdded5c9ecae7003c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark authority refusal",
+      "case_id": "6cc33f228059951c17ac956f17385e7bd06feaf872b232df2dc37032935c1a9f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 sheet stacked dark device error",
+      "case_id": "e569f27f9c8faee2ae064e2d0a3a23e3d03c037b4eb5ba9972073ecaac3c44de",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 applied carousel mutant and restored control",
+      "case_id": "89a8a1bc70876a41a7ddcf03c8cbd0e91281c2d28ce7b256b500d145501f82c7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 applied separate editor mutant and restored control",
+      "case_id": "ad43200ad4f23dd76e594b9e3c31f75a323577f56ad095d3a8be0f60ed6c503b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 652 applied small chevron mutant and restored control",
+      "case_id": "42710d032d993f6706a10564ffa12b1617410b51d841a114a2a7015d887df027",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: topic and dossier thumbnails open their exact image, never the Reader",
+      "case_id": "6f1fc7db25126234f4e3565230b3e781487ee3057d3ecdf06912279ef6f6228e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: Notebook cards thumbnail opens without editing or changing words",
+      "case_id": "898002c8d473acf12a6fba65f138c70a65ae79344b684053826399ce022ab2d9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "96a791e01b589e012e4a4ba28c151df9b28ed6f02283598f6ccd9dd4bb4de950",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "b0adc04161eb1b65140376a40a211effbcd069d568aca627ed150917a806331e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: rail thumbnail opens its image and keeps the topic",
+      "case_id": "e552fd9bc631cc179ae6722c5fdcad6843d3659431ebac613d2c7d3408cc4ce1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "65d8307a0cec6f16759229a0e480a11af35ea1cdc76bc541f6cb22457323230f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 phone-320 light: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "e2ea200fd40b9f3318085568ac130e8c061a03059ad457786d222c4ae5949ebf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4360,
+  "phase_seconds": 4660,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

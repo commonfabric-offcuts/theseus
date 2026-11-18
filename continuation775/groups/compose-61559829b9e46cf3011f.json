@@ -1,0 +1,142 @@
+{
+  "id": "compose-61559829b9e46cf3011f",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "61559829b9e46cf3011f1041ae566f18ea0b1845749537ea5b04b5459d9d5796",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: the ⋯ holds Copy Link, Mark unread, Start a topic from this and Add to pipeline, as a sheet from the bottom, and nothing of them sits under the message",
+      "case_id": "4fc9652210776fe43cbf5ac4f20c325cc1f6cad9237e5c9bf2936b47ce0272bc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone: + holds Add image, the note and Quote; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks",
+      "case_id": "20cc40e0744d262c0218609f28819a2b4836482872f3c887113ac9cf3558f3c8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: Quote selection in the ⋯ quotes what was chosen before it was pressed, after select; with nothing chosen it is not offered",
+      "case_id": "4cb3abba41d5a5421f123cbde920f1691f4583b6bf2e4a26aa92acbf53dbe428",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: Quote selection in the + quotes what was chosen before it was pressed, after select; with nothing chosen it is not offered",
+      "case_id": "49413ef8ba40a955995911281017b475e5229d9b1c8d47a06c90519a0c6e6cc2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: a reply whose sending is in doubt shows a Review chip on its line, named whole for a screen reader",
+      "case_id": "00ea48116b9966c9b0d3ae2b3136f6d130f6c293ac93b00358cfdd32e72f243e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: an image that needs a choice is named where Saved sits and dims Send; pressing Send says why and opens that image's choices",
+      "case_id": "09261670b8bdc943ec0d28863f734b962ca6755d9d48fa18ae6a6bfb52a3cc4c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: a reply begun on one message is kept when the Reader moves to another, says so, and is there on coming back",
+      "case_id": "44573c1544584dc8139eb70270ad9ff440c68d180febe7b99138b7c9d1c5bdcd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: a reply sent to the outcome's conversation says so on the who chip and above the field, and choosing In keeps the composer, its panel and the focus where they were",
+      "case_id": "c9e3c757a8946faca9ffb20e82988ebb1be1f3553cb4c552b96e4b09251497f6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: with nothing written 👍 stands beside the dimmed Send after words typed, moved to the outcome's conversation and taken back with Backspace, and on a new page there",
+      "case_id": "5d1d924b19511d0262a3ecc758eb54e4c320373e5f2f15a33ff29dcf3e293e62",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: with nothing written 👍 stands beside the dimmed Send with Ask chosen first, then In: Conversation",
+      "case_id": "c9fc64ac4b6d770d47140f2dbdd9bddf6cab8616fc1eb021fc1e3dd9ec9d3f61",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: with nothing written 👍 stands beside the dimmed Send with someone named",
+      "case_id": "88e37d423bb22643856ecc93f80bb6caabe97be92c4b025e98e256a86be7082f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: Escape and presses outside put a panel or the Reader away and keep the writing",
+      "case_id": "5b24a38d787dcf1cc0c6ac84cd68ff792f2ea3fa90235d737219f397644ca608",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper",
+      "case_id": "c0c02020bac7933373596be9371f7cfcd726e36488d3cccf0a507637a600e2f8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: the ⋯ holds Copy Link, Mark unread, Start a topic from this and Add to pipeline, and nothing of them sits under the message",
+      "case_id": "ee0da137f93ebd067d8579907f53e6e445b5cb5c247dcc27ddb5a8e8a89835bc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,46 @@
+{
+  "id": "compose-58cc1e2b52d6e3523c9d",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "58cc1e2b52d6e3523c9d734b29dcc1b99c09a80d457ff414c6686bc8d5c23af4",
+  "cases": [
+    {
+      "phase": "runAnswering",
+      "engine": "chromium",
+      "name": "chromium phone: on the outcome's conversation page, Answered by with a big team: the naming sheet keeps the field above the keyboard, and the last of them can be scrolled to and tapped",
+      "case_id": "1bbec33b10ad9784862d850c1a86ea8ae382fcfb2ae4f65e9ca8d5766e54fae2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "runAnswering",
+      "engine": "chromium",
+      "name": "chromium phone: a Reader reply sent to the conversation, Answered by with a big team: the naming sheet keeps the field above the keyboard, and the last of them can be scrolled to and tapped",
+      "case_id": "0d60240aa2f44b8a84c0fa6f75671266fff7661d8d404c87e3fcc97721ce15e2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "runAnswering",
+  "engine": "chromium",
+  "case_budget_seconds": 600,
+  "phase_seconds": 900,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

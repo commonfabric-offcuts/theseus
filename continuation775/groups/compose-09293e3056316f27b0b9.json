@@ -1,0 +1,142 @@
+{
+  "id": "compose-09293e3056316f27b0b9",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "09293e3056316f27b0b9772d24c95c37932c4291ad9a7b35282aa251df9ab42c",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof New message authority recovery ready phone-390 light",
+      "case_id": "3dc593798d3b62eae030fb7503cdf2f1616b5c9419f1072a2f73a622f7b6a2ab",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof New message authority recovery ready phone-390 dark",
+      "case_id": "8913b52b41e36d8971888ea804e64a3cd01e63ebfd5a991e95d1760c7d195f9d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof New message authority recovery ready stacked light",
+      "case_id": "c3495245f453f5a85fbf628390574c52489b460356bd40869b2d13e438a8238e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof New message authority recovery ready stacked dark",
+      "case_id": "3555378635ff34254abcc9fdcc72f570e9ac744279681708eb7aa7d3b3ef5dbf",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader refused with recovery stacked light",
+      "case_id": "04167f7dc7dbd49e265e581d6969115b1a13580a35810350accb51f5fd02b455",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader refused with recovery stacked dark",
+      "case_id": "2a7325b5f53268cee34003fe37600bc1e237cbd0f29a2ef10da6a5c850366435",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader permission unavailable stacked light",
+      "case_id": "fd84a2c1da26abb16972d45f38b6bff6b5533a1e23d5961d84c238ce12ddc2f7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader permission unavailable stacked dark",
+      "case_id": "2ce6df251c124015e7bde98dc549ebf025d3f617eae606d82543f96be181084e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader access unconfirmed stacked light",
+      "case_id": "783033496a351fcc4b37ad3f76ab1c86a1a2e548fdce0a94d5f9019b2fb76ce0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader access unconfirmed stacked dark",
+      "case_id": "737c8eb1f857525583ff3f65ebbf12bab13cbd629cc569e063a7df84f070e1a7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader access checking stacked light",
+      "case_id": "36e176f562ef5112e74d7565f975aa85d25132343c0a519e442802a976465d2f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader access checking stacked dark",
+      "case_id": "064f750950d0ffa856e5eca79ec621f892186858fcd02449e5831c2668853f42",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader conflict review stacked light",
+      "case_id": "66f71f8cd52c3db773e26ff1196bca6331537a238a36471a3bbfa5af2f25ce17",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 base reproof Wide Reader conflict review stacked dark",
+      "case_id": "da651dc31b02f24db05ff4815f2cb7d374a449b5540625a3de3011bb4266d154",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-fb5ea4782d675f8b6cda",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "fb5ea4782d675f8b6cda09a816c30079117ce248d6e36e75ab55516db1b122df",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused phone-375 light",
+      "case_id": "9c790259e716f3501c42fb673affcd6cd05ef58ce433ac835e06a722b88f8740",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused phone-375 dark",
+      "case_id": "4e7c4a743300656d810ec19074d5d27bccb8c3f88d487029318009b70c935682",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused phone-390 light",
+      "case_id": "5f8159ff36a1a177ad30771d0795e802c6171cc9f19d7b9ecd4140cc98e385f4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused phone-390 dark",
+      "case_id": "88f103e7df3393794714e13b971792dc873bf13e1957270900c0bcf997db0a52",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused stacked light",
+      "case_id": "a2a234439fb4906f9c984480f2d7a52cad7ec8cae9537e049c2a3a5ab2ff4b7a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader composition refused stacked dark",
+      "case_id": "b881c0dff60bda1042a292cb3ed95594b70f0ce70f16970fcd5ccbd7bd5aa5ba",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-320 light",
+      "case_id": "62d3eab58f66f2aa75780227a0b8e67cdbf5820fdf57dedfddcf558130cce911",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-320 dark",
+      "case_id": "4d9ba3217a0dc389702b16cc7e0ad93fec1963b09ab68a7eaa5dc5f06f27fd67",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-375 light",
+      "case_id": "324aed065932add1d2fab8f1e2b1100386ec5f13cdcbdb395103a7c64c4153fc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-375 dark",
+      "case_id": "fdfab062513cc4ba9f8acd3bd3b2807305edb91ef4f6a951be5e44f11a8da444",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-390 light",
+      "case_id": "efd674122fc2e520aa1309fe108311297def1e0befd692ba76137fa7e7cbf850",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery phone-390 dark",
+      "case_id": "e78032378a91d965a9e226f19a6cfda35d0a0c69d7d44bf81fad1041fb20af17",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery stacked light",
+      "case_id": "fe7dc338d7b6041640ba58d3bca1cd0b4023da8320727114f3b5650bf7d81a50",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader recovery discovery stacked dark",
+      "case_id": "cfd0cae2de607a011ec53d705be2f6eeebde29e5c1c7b9957309546528862bc6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-e45b927887fb1f81ba4b",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "e45b927887fb1f81ba4b51424d9053b9014afa7fcb9bb0aef7d761556a639af7",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader authority recovery ready stacked light",
+      "case_id": "8b11ba80a494388a0772b6fc331c87e8af0b28b86958781def3bcda07471d0a8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader authority recovery ready stacked dark",
+      "case_id": "8ac0c05840c9bab0f4ee0e1fcaf747b27298b4d2cbbbc4c78957ab17e10425c3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-320 light",
+      "case_id": "41bb5961fc2b7fccbe0ec1734e87c163824563ca720762dabfb4735a6e0e8ffc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-320 dark",
+      "case_id": "8183d08c707f3f0c6fdfd41305229f874f457acaf785f66caae6fb2a737bda6d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-375 light",
+      "case_id": "90154d6c31a1a951538b57c99bd4e1526bf8f03ec06b36893a311372b4de4622",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-375 dark",
+      "case_id": "40c8577bd0309f049d13392b19db294fed6a10c6e5f91ca4eac431c8a28ca992",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-390 light",
+      "case_id": "7554f49148d8cbb972e0cecd3852d3626257856fde57fc5ec8f291dcdb21c778",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note phone-390 dark",
+      "case_id": "48a5a7a925e79cfc7884164a3586c889af6db718f8b1ee003ee931b5826913a4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note stacked light",
+      "case_id": "2f843564fcab10d405b47129ea5408504d83b417400a620c05eb85bd3ada724b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Reader private note stacked dark",
+      "case_id": "5cd708789863d77da103e8a5bb52e4f2639a53e03610b102ade3290d8d8f9b29",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message empty phone-320 light",
+      "case_id": "648bfa5995e3b04a0abcab983358edca86ea77661c7188d3353c389a124b0c42",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message empty phone-320 dark",
+      "case_id": "044781867f391f49950afc292ce13ab7a93561f3602854b97de3496048c7b1cb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message empty phone-375 light",
+      "case_id": "4b21739598246b7e6509e7e5da13e99d2005d5ba00db28000807eff9625ccfe4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message empty phone-375 dark",
+      "case_id": "4c2398259a8652007103b4410e630cb4c726f537c2084e6a238122b61631dc80",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

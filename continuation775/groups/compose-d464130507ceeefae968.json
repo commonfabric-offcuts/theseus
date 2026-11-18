@@ -1,0 +1,246 @@
+{
+  "id": "compose-d464130507ceeefae968",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "d464130507ceeefae968dc7dae31ad63a9caa8ab18a6490b6acf73ca66588340",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "01fe5fe5c280788f3e6c6a7e50397e6634e27239efce75e7c9ab233c2b7f8174",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "4bfff4ef55de94243db0d8b8d07f06f22f66dc45357052499e04bca116303748",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer retry thumbnail preserves writing and recovery",
+      "case_id": "f7335cee9a02164c5f8e727d4f2053d31cb683ebe70da87507848ae4fed2d55b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer download thumbnail preserves writing and recovery",
+      "case_id": "c1f96688948a1c823dc605e1e22681f76ed705a3cfa68f604f7e2f8bcd1ca47d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "8ad06bedf891203a0eae423cbbbec2d508c557c7b18b1100ca3c22783f1e650e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer empty thumbnail preserves writing and recovery",
+      "case_id": "7156c15850296390d4c8fd1b95f5310efd8868ca64d7170ca97a19a0b689cbfb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer read-refused thumbnail preserves writing and recovery",
+      "case_id": "2b65990a2734b004444c3fd14ddba6e2195a728a7997305d54755b056848dc31",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored stacked dark: composer read-error thumbnail preserves writing and recovery",
+      "case_id": "8b7e9616a37a577d233c0fe863d8b870afe8d1ffb8713b38b389e2350ae8e99b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-320 light: close reopen and reload defaults",
+      "case_id": "aae4369cdf5c35d0b300a48e28cbd5da6c819f144a3162566cd877c5cab50587",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-320 dark: close reopen and reload defaults",
+      "case_id": "d28b0d38aba2a943c8f09c2af8a5b6c5612e6618f59abb3c01db238085e365b0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-375 light: close reopen and reload defaults",
+      "case_id": "0da15381ff977fffd9d1b52ebf7245c49d9ef4fc8c7d8fad6cabe797a2bec417",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-375 dark: close reopen and reload defaults",
+      "case_id": "946b3d5c3fba6b4ce883e5eacc8ee23f36a6e56583a7df0cf9a4999d5e65adb0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-390 light: close reopen and reload defaults",
+      "case_id": "5c893483b9d76e9514754cc710ef3ea0c323fc553d37543935955aaa5c31c6f0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths phone-390 dark: close reopen and reload defaults",
+      "case_id": "a8c531bf93d5299c031e9cb585ae38779a917ae9d224634fcf8048804e510faf",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths stacked light: close reopen and reload defaults",
+      "case_id": "373b2d14e4dc5f88d8c57f12bf1c4f2967ff0b9437c4d8bda02e1c7b31008900",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths stacked dark: close reopen and reload defaults",
+      "case_id": "86633c6e13f9f90775820b90744f9d346e5e3ce86bf9408c25096596c6f95ff0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths very-wide-stacked light: close reopen and reload defaults",
+      "case_id": "3c4d1dea0fc2af5f712aeae930c44c6ea7885e8c9e0c6313c460e4d2762cfe23",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 independent mode widths very-wide-stacked dark: close reopen and reload defaults",
+      "case_id": "74e059158c296433a23793710f047abe7cd547db27198444732f9c27ab876f41",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant wrong-mode and restored mode widths",
+      "case_id": "c7e05239a2be1b2e227dbba02d4d2610869a830a4cb9e34258c3de905a5f14f7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant undersize and restored mode widths",
+      "case_id": "dd09f7c4e0dc0c3dcb7e163a3b30d11efad99098326386fad42f9c2c193f4ef9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-320 light",
+      "case_id": "8d78705c3707a21798eff4f7dbd6008e9911667b804c516a19c60160afd77e70",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-320 dark",
+      "case_id": "b2fb7059b9094d98513f876cc67e70d74ad7661490fada714035584720eaa42c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-375 light",
+      "case_id": "d788e5a2e416a152c9f8865e41bc384a47d93a0b7d689a866ea9b04ad3d3054c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-375 dark",
+      "case_id": "9570ec05b4ffcba9f5e71a445324030ca573d36976da16ab42ddfff0a58561a5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-390 light",
+      "case_id": "d3503591c72e0ffdcb6a66cf32abf85fe3de01f4b7f3b335e1db8a7894c92f98",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery phone-390 dark",
+      "case_id": "a3d80f6b8c2c982e6476ee40cd910d6b77a4fd583b641d1c4760020389d3030f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 base reproof Reader refused with recovery stacked light",
+      "case_id": "4085348d51bc10621e0c447a0e348c058e314134aa56d5e93f7f6507a40800ff",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4280,
+  "phase_seconds": 4580,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

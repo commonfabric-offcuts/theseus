@@ -1,0 +1,110 @@
+{
+  "id": "compose-30b8c35b9fb5f06cc184",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "30b8c35b9fb5f06cc184b3e42eee4a05033c7272cda7d29413d4afeff0e205df",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size narrow window 480×300, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "c3ba2ff0fb2d98d0ee2f0de6d13bbd221a2d7c40ab9b7d1dd80f1e5cbda3e2d8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size narrow window 480×300, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "ddb2e7c85fc611118fe98f6d163be9a9465298f5a864931ff3a5926f53b94312",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size laptop 1440×960, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "ff226f5536461e30fc0fc5ebb653a5d26ef837575fee7e035c5385bc81d0cae5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size laptop 1440×960, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "0961eb80f5cba0bb1f8cf6d7ea30e62cf57dab3857173c0ba95feb04f7db977d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size laptop 1440×960, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "834f0333ef65b52e369a7843035b8405bceecd9331bd07d979b61812ceed0287",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size laptop 1440×960, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "8bb61d5bc6cda721e4162e9d9dd8ad130025a14882360a8498d6a96cbc195b44",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size very wide 2560×1440, empty: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "8f4ced12f9d5c2d9df7a89883150aca52e6fabe7717771da4cfab8f9b91f3398",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size very wide 2560×1440, a long draft: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "dd3563588aa2a31a53912461fdde7c6cd9455e18d5baaee9987c3409c995785a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size very wide 2560×1440, an image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "ee3a319691c0f4bd55820f1e209087269a7f16fba5d587e6a1e8f321cc26ffa6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit size very wide 2560×1440, a refused image: the composer is as tall as what shows of the window and as wide as it allows up to its maximum, with the message beside it and alone, and nothing reaches past the screen",
+      "case_id": "6cb0a5c4c131005c4430f37e630b05eef9a8490feb2eb0124da602c557e0c404",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 3000,
+  "phase_seconds": 3300,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

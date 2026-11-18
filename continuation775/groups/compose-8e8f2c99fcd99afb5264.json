@@ -1,0 +1,142 @@
+{
+  "id": "compose-8e8f2c99fcd99afb5264",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "8e8f2c99fcd99afb52640950ff513032bcb08832721d294aca6c90ecc0733ded",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-access-checking-inert and restored control",
+      "case_id": "613d14b31fdce6e73f52401d8b809b5735567a39b56dbd2e96f68374a4d29b12",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-conflict-review-inert and restored control",
+      "case_id": "172ea0fc4b24ec7386500da5987967aacefb09f5e48a81f73f2224e218300cf2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-composition-refused-inert and restored control",
+      "case_id": "b1fc60731ddd01135e56b630a32cb7f24234b1a815514e46c1eb144ae930e4b3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-recovery-discovery-inert and restored control",
+      "case_id": "d4d044474f172961a0fff92d726b4069403a80df47cc55552d73f9180d027213",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-authority-recovery-blocked-inert and restored control",
+      "case_id": "c288031c874b6a1b1a3776245db01e020778e5cfc5f9ac1a3267f2f3d812b2b7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant New-message-authority-recovery-ready-inert and restored control",
+      "case_id": "048711ba74a0b2fb73e3be454ca8a16554c85b85906fb467e32471f644dbb4ad",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-320 light: opening, using and closing the card composer holds the page",
+      "case_id": "f2ed50f4a41320c32941dada4c66e8a5d2c98882672813e796b1c90fd800084f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-320 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "27ae4c0ebd6fd23ec75edaeb72f20ee3d10c25c70d4e01ab80f550b132b4dac0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-320 dark: opening, using and closing the card composer holds the page",
+      "case_id": "98be2de8bba428f86700a17b4a1dcba38eca1bd7a517a5f83d72ed2ce9492c25",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-320 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "b078b3a3363bbf98d41c8d502e359dcc2afa2e0e6169d46a2038596e2aa45277",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-375 light: opening, using and closing the card composer holds the page",
+      "case_id": "c5752530cc6322296a8f46011b736569f1917e39da1117682799239d5d09f8e4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-375 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "f5961c88d198ef8e7806bc8c25da1a9ada47d558cf2372820c682b8b5a55b0b2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone-375 dark: opening, using and closing the card composer holds the page",
+      "case_id": "b6535dd4d108738ba4d9ac88f9116c04b11306088714c9401fb90cb4547982cb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 quote phone-375 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "c3d769fd20a16e6f1e2735bc2584a7da5633adb5cd0b2e69a3930204f6c5f3a1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,5 @@
+One isolated fresh checkout of bed0a0d46970fa48e200d68008a2f85de4ebcca9 per group; no shared source or fixture origin.
+Using the frozen wrapper package (not product-source tools):
+PYTHONPATH=<frozen-wrapper> PYTHONPYCACHEPREFIX=<unique-owned-cache> /usr/bin/python3 <frozen-wrapper>/tools/run_compose_group.py --root <isolated-source> --group <frozen-wrapper>/groups/<exact-group-id>.json --evidence <new-evidence> --chrome <actual-Chrome-for-Testing> --playwright <actual-playwright-core> --node <actual-node>
+No production defaults. Omit --release-out for train49: original source release-check is not replaced.
+Actual runtime receipt and artifact authentication remain future obligations; guard admission is NOT supplied.

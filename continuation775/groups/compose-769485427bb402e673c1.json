@@ -1,0 +1,142 @@
+{
+  "id": "compose-769485427bb402e673c1",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "769485427bb402e673c1e91fc6698d806f8712852a749e897335d2a0fe5c51fd",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-320 light",
+      "case_id": "8b9badbc2c65850a734179e722a4a074ea100ae18f626ea9dfc06b398cc900f9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-320 dark",
+      "case_id": "f8e0348259ad86e1b17f85f064818e9484f1ec3b4a7afc31c26652b4c9ef2eec",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-375 light",
+      "case_id": "2561fabe945bb9f47fd9cf780612c677ae7d76776185005278ad4e90485d0fac",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-375 dark",
+      "case_id": "f4da4cbf9f83a7789df18f4ed363e677af0f07fcdf105ebd1f9278fe8cda8352",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-390 light",
+      "case_id": "4f527f6df75fa4fef31a1deec9e7da626ed2e960caaa81f0e76d9e9b826c0269",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery phone-390 dark",
+      "case_id": "ab7f1f9cc5252ad3f30ed6ef20b19c5a6562f8ffe70b3fa69ac23daf71626d6a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery stacked light",
+      "case_id": "5debc73aefc7dac953986155645141780602d8ee13eb498db6ddaa14bb4278ec",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message refused with recovery stacked dark",
+      "case_id": "ee1c5b78b7c65767352dd5a1ff526861ec91c0ed7fed7867bb78837a94ce5ac5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-320 light",
+      "case_id": "81748582b9fcb5fa27f4cf28ef7de1b90afa325be7a79e96f5d6b354fd20baaa",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-320 dark",
+      "case_id": "9ad2c9690c68fc8ad8dbf00957fe7632eee1899962af4254a99bf3eda5e082c2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-375 light",
+      "case_id": "ec18048b79b552689683b037ba8f71975366ff3f17c3640885861d8950a3c4b7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-375 dark",
+      "case_id": "8e64a1268a194fda059b3420e47d984d2513bf2ca19e091d65a1aadc95b5ebe0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-390 light",
+      "case_id": "927e04387f70b9223141c2c9bcc62b8e11acb6630fb5b2c7894e2920adff9997",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message read-only phone-390 dark",
+      "case_id": "881f4b96f136d3f1ec41d2074c232e191a6fbb0e87806424803c5e739fd9a268",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,334 @@
+{
+  "id": "compose-efb6b2b08e39b5374186",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "efb6b2b08e39b53741860091bb7d127356f3bc258792959b767d2f534523c1c3",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: Notebook cards thumbnail opens without editing or changing words",
+      "case_id": "9e098c73e555c7b83cb6f5830cf52bfcd6cf1ce8eb83487669a109dd056b51ad",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "d31a815ceba7d8b25adb211b5d8a47860a94ffffc6ed25dd8ec3467b808d762d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "396391f321ee0de885d772beef1cc8d552a1211ad9b5ec9a09be9995f1f639c7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: rail thumbnail opens its image and keeps the topic",
+      "case_id": "12e7d010b05d4dbbcb7c74aafc409709c6fb50550fc9c05b9f15168ad43a79f4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "8bb963fe2269d1af47a4cca3e83e043cdc1912926f8630841b467a3ba95d3172",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "6f712fd8dca3bb232604e6e64ea9b7fa1bbf89cf14cb6fcc120ff552ef185e2f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "87ffb345dbe5c2ac07fd61758eae77eb1c32ceba5bb6230a781479ebe1d08e0b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer ready thumbnail preserves writing and recovery",
+      "case_id": "37a40154fddacf18cedee0199d7485ad6796f5b73bb543757cc25e8bd3cc6193",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "15759a9ec1f3b6bb06d54f18254225af4a69ad1bf8192a6a0e52755c59700712",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "89119e452a89d2cde02c99d12149d8338a6db91b6b0120580fa20f2db6fb1321",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "4c1fd1fbe29a7e2a65117b3220447c4294ce98e0f4915affb4e1ebe391e2598b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer retry thumbnail preserves writing and recovery",
+      "case_id": "df31ee9aaf82a9283490beca19202894c2be272b29e7c7af1b876a8f1d7affec",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer download thumbnail preserves writing and recovery",
+      "case_id": "e9ab43e920fa83bde0b5f80a132901cdf0fb1ec6bc45b508c028d0aa0a609755",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "ca47cedb809e85269491bb372c311754f01d36e0ca1b42b65a0dc6667f5b77fd",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer empty thumbnail preserves writing and recovery",
+      "case_id": "117c760c57cfd60c3102eac37253b1a5e28c6ccc0d58ff4e5b05f6929a24f581",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer read-refused thumbnail preserves writing and recovery",
+      "case_id": "18c22b26d4ba466478d50f14e40efad61692a695fbc1f4497f011e1f848493f7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 stacked dark: composer read-error thumbnail preserves writing and recovery",
+      "case_id": "9aa3bf1b2d3b0aef75541c3b36c08ea63fe2f5acf5b84a0fdf19ebff9180e899",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 applied mutant no-new-tab and restored source",
+      "case_id": "aebd0373932ff28b28f13e84c8b50e9a14689ce1084a2a74c95ed13fd59b9ff2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 applied mutant strip-not-forwarded and restored source",
+      "case_id": "6a46fc6ab662e321cddba7936b52aa35296574c9bc0aab9fee906b39c2da6fc9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 applied mutant no-keyboard-open and restored source",
+      "case_id": "dfbd8928a1466ca5ad0520a3543e203c05ece330ae488155a0ce3609eede7a65",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 applied mutant first-touch-intercepted-mutant and restored source",
+      "case_id": "62da6f7be624a28bd78d16921a4c13f2e020e9b6f09075753c7e0b8211a61ce6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 applied mutant thumbnail-edits-card and restored source",
+      "case_id": "be1b4da54f8917ab6016fcd7ddf4bf722a5103ea7e66c967d81f14a4b8c553f4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: topic and dossier thumbnails open their exact image, never the Reader",
+      "case_id": "c9922a63e125e6b168138c6b3002fc35c69d3bbc5c6c42166541913bf2f55a6a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: Notebook cards thumbnail opens without editing or changing words",
+      "case_id": "b46a75a671912ace4d32b4807af33d3c5aa4ee0e9837300823e42d1c53b2a0b4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "97c644c744a0fac602be1306ae563b7de4639c60399703a522007bf6194994d4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "dba66be619bd26db92d0e16702b0998727c07e6e5eca8d9ea116b1174dae6200",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: rail thumbnail opens its image and keeps the topic",
+      "case_id": "a7cf0423562a33799a2b693d1cf094318f1025b145bb8eecd386304485ea391e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "1545d774c563e55b2138dbdba9b26eb595c21b563b1af1e410a8557c896e4d81",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "4a8b1e768ab347dbb1afcf448666313ce549b6c5b9f17e5299bc28602315bfc4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "a341460602533c3a049c8de93aa18bab45e28797de0bc16ba70b51afd03fdcc9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer ready thumbnail preserves writing and recovery",
+      "case_id": "f93cdac938e12c40e1b8bbf040848f2d633d6f4aae67ff9d6d04d0958a935928",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "76581958f83716349439063f32ea29e4c473aef4b37c21a23687479e188033ec",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "bafcdab4c2ce015c3182a047618ae783181a232cd85498f5ecbaf5b2283a1a85",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "20c9ba512a8fcdd863def4eb7da2d946b2a476ee7b48a30d9106606d73cb3830",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer retry thumbnail preserves writing and recovery",
+      "case_id": "a74e6f5d54ddfba779e3db57182d0f61f2c47b8eeb74125d05b8af19f7e2b421",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer download thumbnail preserves writing and recovery",
+      "case_id": "88432ffc4ade1f56186d9a9400710f51ede11fb3778a10850d4bb3dcbf475beb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "6556bc01dabe0cb5f51e86be4d520338c4c09cbd3179f7a33157452c6a4d9558",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 651 restored phone-320 light: composer empty thumbnail preserves writing and recovery",
+      "case_id": "19386defab1e5ee49d1235419e5f2f2f00990c21effc2aa31c0a37377707a208",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4333,
+  "phase_seconds": 4633,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

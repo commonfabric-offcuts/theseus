@@ -1,0 +1,142 @@
+{
+  "id": "compose-e9d7bf51ddad2eccad7c",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "e9d7bf51ddad2eccad7c4e8b46af34c575b1f36a96c1e75f015d34d554ea7c73",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: an image that needs a choice is named where Saved sits and dims Send; pressing Send says why and opens that image's choices",
+      "case_id": "d5fe851bd6f93e15f94a4db92b4874b6d9573835bbfa009ae9a2446866c61086",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: a reply begun on one message is kept when the Reader moves to another, says so, and is there on coming back",
+      "case_id": "e66dcfe57ea26be215e18d9d039a657dc8fb5fd6dd147c26721165d4240a4f75",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: a reply sent to the outcome's conversation says so on the who chip and above the field, and choosing In keeps the composer, its panel and the focus where they were",
+      "case_id": "2b45a4b521163ed9f32fcd82354baa0a28e3629bfaabfb51bf88072286722f23",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: with nothing written 👍 stands beside the dimmed Send after words typed, moved to the outcome's conversation and taken back with Backspace, and on a new page there",
+      "case_id": "7feeb2a91f7588f27231efcd3efc91675188118d8b7e89b2342d3cb3b3dc81b3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: with nothing written 👍 stands beside the dimmed Send with Ask chosen first, then In: Conversation",
+      "case_id": "9e363ee2b2b5cdedaa94dbe81db6167ca1ed62483a885b399ab33fe3f539cce3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: with nothing written 👍 stands beside the dimmed Send with someone named",
+      "case_id": "6e03b2823b2b4bf752b979402da33a038aec10ab88fc4958245c6a0d8c38e910",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: Escape and presses outside put a panel or the Reader away and keep the writing",
+      "case_id": "595bca3dbf9611d1bbd36ac4cef3f96a7d45b230202d8465e6df562251da4ce8",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper",
+      "case_id": "7e4c34808837b6aad1cebd990bf3a06bad888c9844ab148521ca3eaa200aaba4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: the ⋯ holds Copy Link, Mark unread, Start a topic from this and Add to pipeline, and nothing of them sits under the message",
+      "case_id": "448dbf436aa1be679ba1e82b3685043590b3c6a7c8ca96d55570cd83670ee4fc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 stacked: + holds Add image, the note and Quote, and Add image says Paste image when the clipboard holds one; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks",
+      "case_id": "68e97b21e9827059db4d562bc69f6e2f78c6c2f92e1f69b59fe5a38a5e25478b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: Quote selection in the ⋯ quotes what was chosen before it was pressed, after drag, press, keys; with nothing chosen it is not offered",
+      "case_id": "9222bb80351add31c6be8a219936ec895c28df605e8deecac130375244bab30c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: Quote selection in the + quotes what was chosen before it was pressed, after drag, press, keys; with nothing chosen it is not offered",
+      "case_id": "cdc9d66e14d1997c7f10e6e9485dd0d08f4fb178de2f8e96ceb450ab31290a17",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a reply whose sending is in doubt shows a Review chip on its line, named whole for a screen reader",
+      "case_id": "bb10f0189eaf50aeb8828b395a41c3922f088cfe29468e796df967dc4cf787e9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: an image that needs a choice is named where Saved sits and dims Send; pressing Send says why and opens that image's choices",
+      "case_id": "7dd70c7d8fe1a750abf857b82f9bcae0fb7f0d3348c93f3c959a4e5c9482cb4f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

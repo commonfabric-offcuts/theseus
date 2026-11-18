@@ -1,0 +1,142 @@
+{
+  "id": "compose-e1ea00aa9b6c9269bba0",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "e1ea00aa9b6c9269bba02bbd442f78943197cd496d64f7147d3cf975f2aa0eff",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light refused discard",
+      "case_id": "b2f1112be70b217fd300eb630ed1009f79f77bb2ef6786d80806b6c9b1dba001",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light read only",
+      "case_id": "8139d6ff7b45e73ba927f3525e313ad8bbf55ed4ad3d4374781a0d7822029826",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light save error",
+      "case_id": "2fd0802a5065719645fe63bc66734f4f46087421201c73a1a2f70cc5ac0d1331",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light read error",
+      "case_id": "2b0387d027bafbb414d644c787de9393460e13056bab457190ce97738df4960f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light conflict mine",
+      "case_id": "138b814fdee1ae51056e6f601571d2f81a680187759e236c5245c45329d9f353",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light conflict saved",
+      "case_id": "139118a2c0ba10c955c35191d2b475dfcd0fed2aa364ba53e98a894eee11bc9e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light authority refusal",
+      "case_id": "8ab02c71bc22a681d1289881b697df4f13de5bb87e7c981fb57958024c0f167a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 sheet stacked light device error",
+      "case_id": "c529cad61fac1141e57617f399ed2ac7e3a5b56b6de4df9b6809421061aa6e20",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark normal",
+      "case_id": "8465d60a1fb7863867bf78bd9e9b6f30997da7d030ccab6b5c1322bd19671bbc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark writing",
+      "case_id": "8b581f170db49d380f94938541cb38cfcb8a4b659c2f808371bb382df675c3ee",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark empty",
+      "case_id": "aa190100d8ff4f54d52bc193379c54a3d78058c30764355c70366acc852f5828",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark busy",
+      "case_id": "643b302220b8bc38f609e896ab4be9b3aa9aa7721a81bb3bcfbc80ce985081a4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark refused retry",
+      "case_id": "0b59f5bf82b45f924d500b7788a77e932027066b081fc8850fe4fcdfa200cb60",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 652 full stacked dark refused discard",
+      "case_id": "49a15c9715c6ba72b703d520b66fb602794d577139327c1a31e8ec679948b53d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

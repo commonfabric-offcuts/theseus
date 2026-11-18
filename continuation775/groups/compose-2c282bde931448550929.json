@@ -1,0 +1,142 @@
+{
+  "id": "compose-2c282bde931448550929",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "2c282bde9314485509292acac30a5fd06759dc23e88b85c04b32736f9de8d5d0",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: topic and dossier thumbnails open their exact image, never the Reader",
+      "case_id": "b22fc77414021a53e41e35396223bf9683242712c0f92df2e9f3d757b871d8b3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: Notebook cards thumbnail opens without editing or changing words",
+      "case_id": "5a13154efb11c88a240ac3f35af2e491ddeb6ae27fa6ba27b76c82a6c3785c34",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: Notebook read thumbnail opens without editing or changing words",
+      "case_id": "9dd1f547790a6fc3e8e8e72c540668daf009aa4bf76a61436f9a82ebec07d396",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: Notebook Reader thumbnail opens without editing or changing words",
+      "case_id": "cd3adefa2fba24c76aaa1c37b3d02a85d5581f853c287354df9d1952073b202f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: rail thumbnail opens its image and keeps the topic",
+      "case_id": "35c5298b5742678a772ee9b35ef93721cc5491d95de067591bd89bd46472eb17",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "b57909f446e2b3a5c36cd9d551680c7a86d3d1dfc4175c8ab73c5666d69d9363",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "3925b69cd1f27120d9d8f9e4d713ac989d52e1c4e006a9abe3ff39964e6c32db",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "c1d8f3ba56aab789eb09897c6f9cd45ffd6bcd7af88f9fe3e544b51bfb54a159",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer ready thumbnail preserves writing and recovery",
+      "case_id": "472f9f3514dc6d4d65eb87de612cb5e7e7545d298b4f06d323ec95173da5a3be",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "6526d1b4999f6ba358290eaf78942cf07119f5677067289ca6fc7295081bfac2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "c33410fe1ae0ae591ce6a3ca8c07f609444002e0594e2f8d727658000fe60d32",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "02ac6dc4adbd753a2cbc325c579525917b5dcc0920183d73f0a8b39a455c23a3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer retry thumbnail preserves writing and recovery",
+      "case_id": "e95e524b2756ced52f43781e6ed655f8a449b56d2c68b3f3ec502ab0076e9019",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 restored stacked light: composer download thumbnail preserves writing and recovery",
+      "case_id": "451ea9c6b8ab3be02c551e67b5ce925552ada706a81a437810e6f68a5856d72a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,166 @@
+{
+  "id": "compose-e7e453eea77f798c00ac",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "e7e453eea77f798c00acb2851c327ff1443231ed31ad851b7e184474d53b6cab",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium laptop stacked light: the message fills the Reader while reading and writing, at least 17 lines while writing",
+      "case_id": "16a66472de6fd6e7936f4cb582f5716b8556247b7a5ce819d8d47ed55526daf7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium laptop wide light: the message fills the Reader while reading and writing",
+      "case_id": "e6a75225d28ec9719b3591c8d9a0aa0fd30775bbbbe36e987f8cc6d1fb968f90",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone dark: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+      "case_id": "9b9f7595c2fa8f65c34aaa43340541ead7f89461be2c62c0de71a94cc1fbfae6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium header dark: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room",
+      "case_id": "8e7f2e0c20b2277233afa9a9502772e14a2125368f110ea5662c0f896f17c499",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium laptop stacked dark: the message fills the Reader while reading and writing, at least 17 lines while writing",
+      "case_id": "48a44edb76fb7cd0b78bb0bcff189c512dbc94ba0f865c26a6b52b7a2b0bb1ef",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium laptop wide dark: the message fills the Reader while reading and writing",
+      "case_id": "4d297dee6355f6ac551d3e66446ea61ecceb39cc382534b3c9daaf7440d2c7f1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium access notice being checked: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access waiting at 44px; on a laptop its room as before, light and dark",
+      "case_id": "d47fadc17c7c161af2e749fcf01901db115969a1d1248e3b2aa0ceaf6a81f26b",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium access notice unconfirmed after a retry: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "6168bd5e154159fabee3a5b811e25ebddb048c8c0ab5fc1fc69f10bdbcbae513",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium access notice unavailable: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "c7da3c390430b8d73d244b263f3198cf8015f877b9f3bf358e965fc3b5678bad",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium access notice available, topic updates paused: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, no Retry access; on a laptop its room as before, light and dark",
+      "case_id": "da9d41f1faababe21c5277ec793f16987c4f928c040a43068f4e7db8b1cf5b7f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium access notice unavailable, topic updates paused: on a phone at 320, 375 and 390 the notice keeps the room under the Reader's two-row header, over neither the header nor the message, Retry access at 44px; on a laptop its room as before, light and dark",
+      "case_id": "d11398fe65b3f598f5c5f1f1f607452ee963410becb87307f493a22955f32075",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: the who chip says in words what Send does and who sees it, as the panel's sentence does; a reply starts as a Tell, and a whisper chosen is dashed and Send says Whisper",
+      "case_id": "1189bf7308c495f417b612021d580ec32cfdbd2255599bd49bb1a36ab9b4a71d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: the ⋯ holds Copy Link, Mark unread, Start a topic from this and Add to pipeline, as a sheet from the bottom, and nothing of them sits under the message",
+      "case_id": "0a8dde04d45202ce14af10de06cf030f19fcad08e4fb2dc7de9a30e854fef5ac",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone: + holds Add image, the note and Quote, and Add image says Paste image when the clipboard holds one; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks",
+      "case_id": "c5ac2fb69bef55c2bff23716faeeafc9ca25a1eb8275665072f06f9cbe5d4895",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: Quote selection in the ⋯ quotes what was chosen before it was pressed, after select; with nothing chosen it is not offered",
+      "case_id": "fec3bca14dd90c1459b7c6760a05be8bb3e56cb6a3067e1c4736addcc3195bfd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: Quote selection in the + quotes what was chosen before it was pressed, after select; with nothing chosen it is not offered",
+      "case_id": "c51ae34baa2ba05e87242165faac17a9e81864e748a89ed2a3adce6b788dbfb0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: a reply whose sending is in doubt shows a Review chip on its line, named whole for a screen reader",
+      "case_id": "ba403f6f8b5edd93d5fd0ea6b65d507654d17de761a7901545efdab9db140389",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4145,
+  "phase_seconds": 4445,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

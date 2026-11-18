@@ -1,0 +1,142 @@
+{
+  "id": "compose-783c980bfae67cef43b9",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "783c980bfae67cef43b9e1c0372e323c8a6139ccf3248255fbd850d7e762d657",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a reply begun on one message is kept when the Reader moves to another, says so, and is there on coming back",
+      "case_id": "9ba8e9adf423b01cb3f4cd1cedb066b63347a38c4015fb8f3e2e5db027f6772c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a reply sent to the outcome's conversation says so on the who chip and above the field, and choosing In keeps the composer, its panel and the focus where they were",
+      "case_id": "9c1a40caac891151b432e6b95098460e740b7ec6b2816e898c156276dcf7ed80",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: with nothing written 👍 stands beside the dimmed Send after words typed, moved to the outcome's conversation and taken back with Backspace, and on a new page there",
+      "case_id": "558e932411be2c7fda733030e4c8fedab5d6a7449a57af4744022cabe625601f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: with nothing written 👍 stands beside the dimmed Send with Ask chosen first, then In: Conversation",
+      "case_id": "e625aa22f6a0ff981dac14bc51dd8bf52d554f21a9a285a1252b5ea5440326bb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: with nothing written 👍 stands beside the dimmed Send with someone named",
+      "case_id": "6445a7ec40c58ac1ebb0c94187647034ee7a850f6b078e01d406ce32beda8fbd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: Escape and presses outside put a panel or the Reader away and keep the writing",
+      "case_id": "7e2f70126c12fc559a36c90170da7ccb6c4076c417c8732310387f666655f5d5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing",
+      "case_id": "f9fef081650d1c4416aadfec2682f297c98dc80ec6fa09e87d8c5d4604f7defd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 wide: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing",
+      "case_id": "ac9ae840c42f921ab2a3aa1afa187d07548904d9d36687b1b3ffcab4878923e7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way",
+      "case_id": "09b3a17fca0fe9e3cc8c35a986e0393f6efc33280e0b0cc24f71c256d6e72c9b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 wide: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way",
+      "case_id": "a61602dfff7e556e7a6a111c408c04a8d62e17c778e2b49ec0e072940dce11e6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 stacked chosen again after quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar's drag among them, lets them go",
+      "case_id": "4f2da3f695988e37e5ebb67f13dafded8fe84cbbf882ea932910aab4ebf99d8a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: quoting at the end of a message: the keyboard going down and coming up again keeps the quoted words in sight",
+      "case_id": "0f481a40beae15aef438dd604ce89e37d32ab34db9fdd2362f2e1e1fff47ee48",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: typing in the reply leaves a message scrolled to its end at its end",
+      "case_id": "8209ee00c5866b2379969819738fac68c038955a40b9ac0c32b8a7026ba472b0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence's line",
+      "case_id": "9867c67f9d6bf7556a0ffdbe2833627ed7f2090df541a01748f1b27e6991501b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

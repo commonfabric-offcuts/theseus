@@ -1,0 +1,142 @@
+{
+  "id": "compose-a6d5989589e23a589f49",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "a6d5989589e23a589f49f8bd94ae09f2ff028c7493204eccc4a2e5383091354e",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 wide: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way",
+      "case_id": "9b318d5214f22efcf4b89fcae9c262a8688f45c49baac1b179788be57e1e65e5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 stacked chosen again after quoting: one who has not scrolled keeps the quoted words in sight as the reply grows, and a scroll the person makes, a scrollbar's drag among them, lets them go",
+      "case_id": "7c847e15f9bcd06b6e4c7ed928327331c42f2580a796cb206d5e6e98ffd769b4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: quoting at the end of a message: the keyboard going down and coming up again keeps the quoted words in sight",
+      "case_id": "e7e571f60cdcd2691c595f8cf2b6aa294672b32ac30ffc1c396bbabcf5583010",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: typing in the reply leaves a message scrolled to its end at its end",
+      "case_id": "5dafc44fdd2470dd190125cafd54500ddd78296233383f0671a215e62dc29b08",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone: quoting: words chosen to the very start of the next sentence end just above the reply, not on that sentence's line",
+      "case_id": "5523308f01a1f7c6474944c8582fee0114dc4ec497d73e3ba4181badb94de29c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit wide: quoting: once the lines wrap anew, the message shows the words quoted, not where they were before",
+      "case_id": "94332b3775d6240b1ecb0f763bc226cd6e62fa9d417a36d0d5b693e7771ecee5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: every control of the Reader and its composer is reached by keyboard alone, and Escape from each panel returns to its opener",
+      "case_id": "07e034f3cdfcf93146d62a8ff99e9c3d4b8923e5bd300189fbe3e47fc335f911",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: in the Reader, naming someone is two steps: the who panel shows who is named and + Someone, never the team, so the message keeps at least 7 lines; + Someone opens a sheet over the whole screen, titled, with the team, the name field above the keyboard, and every target a finger's size; Done, Escape and ← each come back to + Someone with the writing and the place kept",
+      "case_id": "2be475a5692777700c624f04bbc2538419e3f6984c78e4770f6a769f5d8a1cb2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: in the New message sheet, naming someone is two steps: the who panel shows who is named and + Someone, never the team; + Someone opens a sheet over the whole screen, titled, with the team, the name field above the keyboard, and every target a finger's size; Done, Escape and ← each come back to + Someone with the writing and the place kept",
+      "case_id": "7cc554b601a0a2125e07e506f34ad6ab00a6a0342de79624a92ad45914e04e1f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: naming someone works from the keys alone: the who chip, + Someone, the sheet's people, field, ← and Done, Tab staying in the sheet, and Escape and ← back to + Someone",
+      "case_id": "d26bf01c2fa94c255311db32977310ed894ed9aaf9fc592421f86a8ab0fd35cc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: in the Reader, a name typed in the naming sheet is named by Done, ← and Escape, and the who chip says so",
+      "case_id": "de89edc0afcf8e71d2d110332ed29ba8bded98333c66acd06d574000cf9d2eee",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit phone: in the New message sheet, a name typed in the naming sheet is named by Done, ← and Escape, and the who chip says so",
+      "case_id": "4d944e7058ffe4a2c4318e1776fe72582ed4cc38f8e003768fa05dc0d1b5e6c2",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a name typed in the who panel's To field is named when the panel closes by Done or Escape; a press on the message closes it naming no one, and the name waits in To",
+      "case_id": "97ec6e5204ff23dd4277ae8315d70ebdece5cb5f3050daf7f0c172425773b2ea",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: in the Reader, Escape pressed with focus outside the open who panel puts it away and names what was typed in To, and the chip says so",
+      "case_id": "687afb0230926ff153d4787393dddb61583341035699e650aac33cdea6b398d7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

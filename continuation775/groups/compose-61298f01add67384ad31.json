@@ -1,0 +1,142 @@
+{
+  "id": "compose-61298f01add67384ad31",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "61298f01add67384ad31a2c1a2cae1850f4fb45576c5f40c8e7f4147e2102cab",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium wide: quoting: once the lines wrap anew, the message shows the words quoted, not where they were before",
+      "case_id": "051e4d969636085ceed1415c6c7487276f9c15405e0f48291a220dc8aeb8b57b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: every control of the Reader and its composer is reached by keyboard alone, and Escape from each panel returns to its opener",
+      "case_id": "3794c87b6b34515f64ef106f0e1539651e104ac17d9c79a6b0ca79b7168c9a67",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: in the Reader, naming someone is two steps: the who panel shows who is named and + Someone, never the team, so the message keeps at least 7 lines; + Someone opens a sheet over the whole screen, titled, with the team, the name field above the keyboard, and every target a finger's size; Done, Escape and ← each come back to + Someone with the writing and the place kept",
+      "case_id": "81e6531a7fe84009d6a2d8c256020491e38e8cf3a4fbf9cdb317094b6708f5cb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: in the New message sheet, naming someone is two steps: the who panel shows who is named and + Someone, never the team; + Someone opens a sheet over the whole screen, titled, with the team, the name field above the keyboard, and every target a finger's size; Done, Escape and ← each come back to + Someone with the writing and the place kept",
+      "case_id": "8f6cfc8ba9cb69b570ed3e435e93c42108aeb586c2472d420637b62c63d9e1f5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: naming someone works from the keys alone: the who chip, + Someone, the sheet's people, field, ← and Done, Tab staying in the sheet, and Escape and ← back to + Someone",
+      "case_id": "9a0168f4993988b0a70c6b4762db7c52c0c0331af3faf5e029393b9af0cc07e7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: in the Reader, a name typed in the naming sheet is named by Done, ← and Escape, and the who chip says so",
+      "case_id": "8fe721a01a72ac519369c21a14ed156666b1d75e24358258a1619fb38d4c949c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone: in the New message sheet, a name typed in the naming sheet is named by Done, ← and Escape, and the who chip says so",
+      "case_id": "a7d120b1bff624a0ac089f043536d2844433e1a13ea1d03d9f9ca70180f3d536",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a name typed in the who panel's To field is named when the panel closes by Done or Escape; a press on the message closes it naming no one, and the name waits in To",
+      "case_id": "77b5d37e79dd82c0fda0da74b07a4391effca3ead2af686be2069fca5d739b61",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: in the Reader, Escape pressed with focus outside the open who panel puts it away and names what was typed in To, and the chip says so",
+      "case_id": "531c95b87e185bdbbcdd6d77a1d27d56ecb5dcfe04ca0fc15f91c9fba2f012b0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: in the New message sheet, Escape pressed with focus outside the open who panel puts it away and names what was typed in To, and the chip says so",
+      "case_id": "cfc59f974551b168495f024f4b18829f5ae2dae692715ccb3b5c5de67e6d9e26",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on +, outside the open who panel, puts it away and names what was typed in To, by the keys alone",
+      "case_id": "0d58091d229f998c137d507502701ce752fa6a6747d2fc4cbc0eb23ed9e33756",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: the New message composer resting in the topic page's feed, in no dialog: Escape with focus on Send, outside the open who panel, puts it away and names what was typed in To, by the keys alone",
+      "case_id": "dc638b23712af41de821039d259e019eb92370fb70b8aa40eacfb7316c94c847",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a Reader closed by ⌘⇧Return with its who panel open takes the panel with it, and the topic page's composer then puts its own who panel away by Escape, naming what waits in To, by the keys alone",
+      "case_id": "bd744d04ab179ac364c3483c42433c532109ccef929430c70bf871041d8ae13c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium stacked: a Reader closed by ⌘⇧Return with its + panel open takes the panel with it, and the topic page's composer then puts its own who panel away by Escape, naming what waits in To, by the keys alone",
+      "case_id": "592a0d05a281e39fb15577af9d7446d98d16de087df261107eac2b9c596aeddc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

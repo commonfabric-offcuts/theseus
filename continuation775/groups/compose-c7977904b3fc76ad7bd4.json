@@ -1,0 +1,334 @@
+{
+  "id": "compose-c7977904b3fc76ad7bd4",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "c7977904b3fc76ad7bd41336c03e4354a9f516a5cb15e321d84c81627dd0cf6f",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader busy stacked dark",
+      "case_id": "d33488187c632c6206ef883a72e3adc72c438be35e409338f1abc19bc0431b37",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader refused with recovery stacked light",
+      "case_id": "cf63e41e16b580cc1e9a2de4a5a95cbd8e098cfb1f4ea142f87fe325248e8420",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader refused with recovery stacked dark",
+      "case_id": "d063ae17957f2fe9c652c512d57f0a85629b3103e0878be50d2f526fab8ce5a8",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader read-only stacked light",
+      "case_id": "95f552b50d5e11ba155d733d3057f2680bbd98b247d0b3dac47bd037f1fdcefb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader read-only stacked dark",
+      "case_id": "03eeaaaca29316ca4ff543469a7d001ec4809a3cdc032f5d0e7bf655f0d81d53",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader error stacked light",
+      "case_id": "ef3279b936fd40c40900436712064584248c3085cb1c9271dec225a70eff05db",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader error stacked dark",
+      "case_id": "bd2ce681ef551c20f0ebb1ec41628a9f5bab92c05d3cd99317db0ea08dfd9a05",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader permission unavailable stacked light",
+      "case_id": "9b3671d56355b926e78792b5e3183be7a39da5305422783ab38b7cb647193134",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader permission unavailable stacked dark",
+      "case_id": "c0cb41545ffe31eefd5511f81e8b2d7704fe325201e44ffac66fdf6bdc0112b3",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader access unconfirmed stacked light",
+      "case_id": "1b19a9ddc18d33ae91a576d19db5776d80b972375d5c84b2e4f38c76c0d31325",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader access unconfirmed stacked dark",
+      "case_id": "b4c8deb37ceff651e45a4bfe438d25f88dd67be75aaab30d6b189fd615c16c3d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader access checking stacked light",
+      "case_id": "0d66913304ec09c1ee42dcb879e1e8f8861f3d704f9139559b87276b651505e4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader access checking stacked dark",
+      "case_id": "94d040a3ff17d412d21b54dea1dc5c2f94b461ad031e0ac3f972a9ce029962b7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader conflict review stacked light",
+      "case_id": "5238185283fcc45f3fea54fad24743876f7dead1a7ccd5b0051296475668ad4a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader conflict review stacked dark",
+      "case_id": "ff419db5951c181f67f82b0efb05d94e7af3f212089f20af837dd755b5533ca7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader composition refused stacked light",
+      "case_id": "2697a33506deeea34c0cb0b463413c02c6879cc0262a8d6059ea845a950313e9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader composition refused stacked dark",
+      "case_id": "9dcd9c8e5fad6368d7b1bdcdfa3a87430863076d2486a23e5b70a4760d371b3e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader recovery discovery stacked light",
+      "case_id": "d9088f849e8ccb9ef06451cf0f1890eb02ed24ae0174ba17f496f0a0db9981fa",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader recovery discovery stacked dark",
+      "case_id": "0664db478865628c36319de07cdfd3971d4794719819f7617e40db18b470e8d2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader authority recovery blocked stacked light",
+      "case_id": "4609d3e2fbeb95fd3a81c84e88ba8bd1584093f56249bac5f3665583b83beb4f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader authority recovery blocked stacked dark",
+      "case_id": "d19f91557b3d87e34e08560eda7394d74ca2492cc5d1e06b69faa0c618782df0",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader authority recovery ready stacked light",
+      "case_id": "dc7545c56d42d4540f937d72af29398b6fbcd50cb274543208e6c43f23bc5dfe",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader authority recovery ready stacked dark",
+      "case_id": "c832d6e9cb1e7d9a8dd6a58aae7a2fe59fecad33bfc670234e72160aa5fbcb0f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader private note stacked light",
+      "case_id": "af1d8a30aeb781ac4e4f017657d4c7d9331d619707b247e6cffcb852b30bdfb7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 Wide Reader private note stacked dark",
+      "case_id": "c2bdd8b60667979f84ffb883937f2f19ec68fb777f63c485951cedcbba3a6ed1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant left-inert and restored control",
+      "case_id": "537162d300402f6fcea62788c5a00cf5ab94c903007be32b2a9aa669ff4ef0f4",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant right-inert and restored control",
+      "case_id": "bf41b46293b8cd06ca68edb5609dea2cf8f61a98984f07c20190620b15ba0e1d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant asymmetric and restored control",
+      "case_id": "6ed1c3f137ae1f05c4f0ce5e3f346d24392f37aeaa989b10e7ba56321040284a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant not-centred and restored control",
+      "case_id": "b4b590ac1fb1b58601e3c9546c3d84e8051e4182c03648fa3276c479a91e68e1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant vertical-resize and restored control",
+      "case_id": "5d2b8b3b8e08f3b9c0b3243aa0cdc033d926a1ab615957256ed0617a1f192dcb",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant keyboard-inert and restored control",
+      "case_id": "be73d8505958cae21bf06e7e8b5dc4818e3d0c16c6c041c25ef47503b32997c7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant writing-lost and restored control",
+      "case_id": "86178e8b6cec02fd248f6f67793b8e2a442168dcecbcf2dfaae12de152bbddb6",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant return-origin-discarded and restored control",
+      "case_id": "1d060966002220ca4ae5c685f6b142239ecaa5943ea3d8ccaad9a719e03e81ff",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant return-drift and restored control",
+      "case_id": "6f3789c951fa1ed3454b0c84b91d556ec65c99ccf700275bb0e9c2d9167290a7",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant tab-unreachable and restored control",
+      "case_id": "e7255c436b1c10e2e6292c6f960d4693082b0202250876c4a1d2acc9f37e25fc",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-permission-unavailable-inert and restored control",
+      "case_id": "7366229e0e9592113b6bedf3e06a008e666b9df3d0f4a2a97b5794d62ce687d5",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-access-unconfirmed-inert and restored control",
+      "case_id": "2177ffe70a1a1fc017e1b7df04c03e17bf38313447a10af132f69fbb6197906a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-access-checking-inert and restored control",
+      "case_id": "f63958d3acbd7a96e5259fd1f043a224a3d61e323a0af10eb2310e1add9539b1",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4333,
+  "phase_seconds": 4633,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-6691c8c293e53b55d0b7",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "6691c8c293e53b55d0b74913413c38660a980e5f34b6637801f99d7f10e33a31",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 stacked: + holds Add image, the note and Quote; Quote only while words are selected, and a quote of a passage out of sight brings it just above the reply, where it then stays as the reply shrinks",
+      "case_id": "f8c59ce283ef30fb8740844f48233dad239f4822b476c2ed96fd160889200487",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: Quote selection in the ⋯ quotes what was chosen before it was pressed, after drag, press, keys; with nothing chosen it is not offered",
+      "case_id": "5ddc40670afe9c93aad22da3236a4ecc7cbd6971f549cdca64dcd1b7152d526e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: Quote selection in the + quotes what was chosen before it was pressed, after drag, press, keys; with nothing chosen it is not offered",
+      "case_id": "6fdfcae5b4f89b9cbab3f6154dce8789aecc3bcaaab05befadc0a20ce903f29b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a reply whose sending is in doubt shows a Review chip on its line, named whole for a screen reader",
+      "case_id": "8c89fe01a10d9503ae42a555fa322cdc7cbbf033848f3f89906c51244eda662d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: an image that needs a choice is named where Saved sits and dims Send; pressing Send says why and opens that image's choices",
+      "case_id": "71ddac91a82ef84dccd96bfe8b8626cbd65220ee875d21a44e7b88923656e74a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a reply begun on one message is kept when the Reader moves to another, says so, and is there on coming back",
+      "case_id": "16e10a43310a6823eb67c0b1fd8d4d92d83ab2099f95ee04bfa06b6eafdcb5ac",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: a reply sent to the outcome's conversation says so on the who chip and above the field, and choosing In keeps the composer, its panel and the focus where they were",
+      "case_id": "1d6e9fd46b642d682ae31182160c6853dc9b87d0fcc2c001aa549736f614c7cb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: with nothing written 👍 stands beside the dimmed Send after words typed, moved to the outcome's conversation and taken back with Backspace, and on a new page there",
+      "case_id": "b3591e3546ae4bd99f31cab8b8bcd0a7864e1586d92b211dcb1bdd9f1ca3b64c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: with nothing written 👍 stands beside the dimmed Send with Ask chosen first, then In: Conversation",
+      "case_id": "8e14d0464670c339696b356637c8cb1a8c639abaa5cb296453ec0394da44555e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: with nothing written 👍 stands beside the dimmed Send with someone named",
+      "case_id": "1cfc01fe41b658f8f75ffb82779c9609333304fc13420b461185cc90f902330a",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit stacked: Escape and presses outside put a panel or the Reader away and keep the writing",
+      "case_id": "6151d01dd8b92efa4ce2ee7daa8b44023a9134c9b7a0a91a3f943e7070638c4b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing",
+      "case_id": "2ba59f8abf111272a307adfdf52fb9383377de19c6f601d42b4f5145619b2709",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 wide: quoting keeps your place: the quoted passage stays where it was on screen, the topic page behind it too, the quote lands after the writing with the cursor after it, and Return with nothing chosen quotes nothing",
+      "case_id": "4a1c213c3917a57f10f4d2361ba1c3c099da7a6acc1d0409871a9700baaf0eba",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 644 phone: quoting from a passage taller than what shows keeps the words quoted where they were, and words quoted from above what shows come into sight the least way",
+      "case_id": "81d6ad5068320486105df2a5722482d6573160be75a1ce630caac43dd973234f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

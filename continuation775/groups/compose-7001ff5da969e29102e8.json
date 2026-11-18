@@ -1,0 +1,142 @@
+{
+  "id": "compose-7001ff5da969e29102e8",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "7001ff5da969e29102e8d66873bd908e763e2db1cbb4d61b86c1f7c33f4ddc5c",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader recovery discovery stacked light",
+      "case_id": "a2fb575a5f8521754e4c3190319ea41583917ac7c38f7b148fa837ed62e23227",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader recovery discovery stacked dark",
+      "case_id": "cb7ce9b6cae879de1f76e52fc1fba091a20132066fb3654134d99cc6cc463a33",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader authority recovery blocked stacked light",
+      "case_id": "6b3acbde1ede70a4130384d8adbbce918ee6411e08cf7b82f239223620e91381",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader authority recovery blocked stacked dark",
+      "case_id": "bfaa0002b53a1e1aeab124eaa109f0fc172a7a036c7b913023994d3738727757",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader authority recovery ready stacked light",
+      "case_id": "2861f6f3964fad8ab9e2fd7bd70dd333f32cd1cc42e89e3fd5ee16a1b5e41e2f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader authority recovery ready stacked dark",
+      "case_id": "14dcee14354a08712e1992359e9c4b50d275d8b673629738a7706edc0c65cbf1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader private note stacked light",
+      "case_id": "c4ac9f1746222589d12e6c83b753d32d8989d25587861ec8755468a22ab71aa4",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader private note stacked dark",
+      "case_id": "5189b4b3458e8c24d6f859d4c2e8ca2f46fd999a35c619e8701a70d6058cb568",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant left-inert and restored control",
+      "case_id": "f19155df89bad6401f5b27eecdb0f114f7b8c08ca3eb3307408404e5a255c985",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant right-inert and restored control",
+      "case_id": "e8b3a6936d0c5ea1fb3512337c6165377eca204ab3a0a8fabd37b4302d09a672",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant asymmetric and restored control",
+      "case_id": "26a501a6b5da5ab8c0c1fb2d91854cc6b9791030cc996b3b79aa2abe28c7886b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant not-centred and restored control",
+      "case_id": "2a8c4afa8cf6b79c3d54c1a0cf750d0e4c5ed4c434f2c84599a59b8354dfaa0d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant vertical-resize and restored control",
+      "case_id": "d913743336489a05e177f42a68b9acc4440a5c971b5c6181aabfe847acdf2d21",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 applied mutant keyboard-inert and restored control",
+      "case_id": "01c58bb91b84fc3e5d4a5c712ee76b3ca0b6d924712ec041bea6ca9811d108cd",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

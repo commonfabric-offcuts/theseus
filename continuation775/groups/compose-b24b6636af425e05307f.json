@@ -1,0 +1,326 @@
+{
+  "id": "compose-b24b6636af425e05307f",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "b24b6636af425e05307f749823786c61fbad1de1587c2a7a714e5c1cdce87692",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-conflict-review-inert and restored control",
+      "case_id": "1a45671dd81a2d5a3da3be3d8ba1d7f7c8e356da916c8775f65c6dd00b160302",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-composition-refused-inert and restored control",
+      "case_id": "46a0f41d604ac0c724fd1d4a02330a7e3175c73f6bd6f1682b5ffa28c1142266",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-recovery-discovery-inert and restored control",
+      "case_id": "ca749efaa2a69b3762d2fd00da0a22264f6a0e80481ffa86068849fc3d32a6b5",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-authority-recovery-blocked-inert and restored control",
+      "case_id": "ea2051db16f250dcf09adf7cd654131566fdb515e6bfb9ca951a0bdfe1a74385",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant Reader-authority-recovery-ready-inert and restored control",
+      "case_id": "401c48873ade4ee7b35655d0f47ba0998ac6844bb8b839683ad9b74e3241ab32",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-permission-unavailable-inert and restored control",
+      "case_id": "262833c57235b963f7ad07b716fb14d737f0a69f89bc86a2ff19101328ded173",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-access-unconfirmed-inert and restored control",
+      "case_id": "dfc96ca3e551b233f46fc5ca01c865a0b91a8bd957c9b669ce3640907049df06",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-access-checking-inert and restored control",
+      "case_id": "b644b14024439bb909da3e099f1a8be6e59b1872b140bd8773a5916c77f0c8ef",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-conflict-review-inert and restored control",
+      "case_id": "611b97cdbbb44d613a202d8a051ea04041fa999082c9e1a9dffd634b59845c5c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-composition-refused-inert and restored control",
+      "case_id": "62a9539d9ea1ecae32a80ece086632997a216887babbd9659e29bef4c0787f20",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-recovery-discovery-inert and restored control",
+      "case_id": "76db70477463a1f0d0a6709d7b5cf5022ae3c0a7960d04cf30d10dd57a26cb38",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-authority-recovery-blocked-inert and restored control",
+      "case_id": "3bf70f12db9b7e379d58677cf259dd3351395a01342c5ef69549832a49cc0cca",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 650 applied mutant New-message-authority-recovery-ready-inert and restored control",
+      "case_id": "da8415df693d1fe93dd9f7eeb96fdbf81217f32155d8f03f69fdee5e29fae654",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-320 light: opening, using and closing the card composer holds the page",
+      "case_id": "9fdff77008cf6e05e2e47980e5a59e62c40d2bb15b00a4dd0cd64dfe29173ee2",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-320 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "a13526eee3a5033b8dc8b61de43e81a8b127e4baaecaee63ae1467e57cdaf054",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-320 dark: opening, using and closing the card composer holds the page",
+      "case_id": "5bdbc150d046149643693469eb5fc261c4913e88e63e7789df26f7a3695980d9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-320 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "047c65b5c9beaee764343edbe562e7f522adaf9139e29a4af446d4818268218c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-375 light: opening, using and closing the card composer holds the page",
+      "case_id": "6e75408e3a025894348f4b0ebba1a580b1a539f3ea6f5f337baa9abb63cfd808",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-375 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "36e570ebdaf5bcabd0110578f520f204a7e817f284da0aa368f05749a16de94c",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-375 dark: opening, using and closing the card composer holds the page",
+      "case_id": "163d51c93b2e606c1962c73c43b95e6122d7b98b910c373888ab9dceba4d581e",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-375 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "00f08eecd219c9f6de39ccf338beaf5055e8ab09942cbe1d4916fc45e68c6b8d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-390 light: opening, using and closing the card composer holds the page",
+      "case_id": "9904e214cfc4e629f9ba9067e75d059de2d44650777e2d3d3eebb96c3643d314",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-390 light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "649b4b6eb47b76ef5ea82aa184e7f0e8378e034166439ca21faef507f5f97593",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 phone-390 dark: opening, using and closing the card composer holds the page",
+      "case_id": "e85d28daa1bf4c0e5f2310db526410317143d6c09d68995081f0c04949d98984",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote phone-390 dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "9006b75c7d256f1533d5667e0ca88bfa3c566a0bb69d2450e4282a7d66e08223",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 stacked light: opening, using and closing the card composer holds the page",
+      "case_id": "8b9e2b1a5e766f5cf749caf1b626cdad1272e801e8a6bbb8520f4b4cfb9b9c65",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote stacked light stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "3c75a34f6dd55d61f1e4ebc82427ce032ce1f8e25a11b9caae30a838be9a0be9",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote stacked light wide: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "d2e7afbb4defebec008733092d9352f9796bd3306b598735e60762d27c965228",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 stacked dark: opening, using and closing the card composer holds the page",
+      "case_id": "826550a6216de4d7bc3c275150e85f54e47d04296e8084672c52263272a9d121",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote stacked dark stacked: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "aa3f2fff4eb2475d496968a4f504ab55eb01494593e37800b36aca0ea691141f",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium item 644 quote stacked dark wide: quoting opens a laptop reply wide and keeps a phone stacked",
+      "case_id": "21454deb73c9e62c529ad5a99197a1ab505201decf07bf6151230d1573341d69",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium menus phone-320: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "c00585b405f53b7352c582a970517f9c1219452fb3c22cbd2b8d6a3a6b34d398",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium menus phone-375: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "6ebb05961b40955f88bc16d33850f2dd70719f8d7e3a92bb56d84b06ac520d8d",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium menus phone-390: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, light and dark",
+      "case_id": "d2edc93534b31590fb2681c277cf35f2afdf7330a42f91aaa7f60656742249fa",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium menus stacked: every item of the Reader's ⋯ carries its glyph before its words, 18px and on their middle, in each state: Copy Link, Mark unread and Mark read, Fold message and Unfold message, Start a topic from this, Add to pipeline, Quote selection, Edit, Wide layout and Stacked layout, light and dark",
+      "case_id": "3bc5fd4e9543dc6a2bfc35918900a4d14df44831f82df847532904fd47276d8a",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium phone light: reading shows at least 18 lines of the message, writing with the keyboard up at least 7, nothing boxed sits under it while reading but the one quiet line, the panels take the keyboard's place, and every control is 44px",
+      "case_id": "d1f31b3541d7f14c49292bcddbdeed4ffc173e23461f2dc19a17cea32ad8e7e6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "chromium",
+      "name": "chromium header light: on a phone at 320, 375 and 390 the Reader's title is whole on the header's second row, every control 44px and none over another, the two rows no taller than their targets and the message right under them, its end keeping its room; a laptop's header, stacked and wide, keeps one row and its room",
+      "case_id": "39ae536592f04c9d96a24570f27d70800039b1bf2ee831a4b4f94dd17a2f08e5",
+      "limit_seconds": 109,
+      "limit_basis": "retained-success-MAX-times-1.25-plus-60s-ending-reserve"
+    }
+  ],
+  "phase": "run",
+  "engine": "chromium",
+  "case_budget_seconds": 4224,
+  "phase_seconds": 4524,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

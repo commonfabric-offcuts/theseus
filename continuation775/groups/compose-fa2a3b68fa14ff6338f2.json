@@ -1,0 +1,142 @@
+{
+  "id": "compose-fa2a3b68fa14ff6338f2",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "fa2a3b68fa14ff6338f22af0076f63bec01d9c7d1655fd7c86731eb06de983f8",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader read-only stacked light",
+      "case_id": "758ae05288f38226c673053e1d01d79192042fe8a5957c1a56b4e45652d947f9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader read-only stacked dark",
+      "case_id": "5b2c198e011e9757e5885281d6928e7ca54823406600ae8b4223051f02da8e93",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader error stacked light",
+      "case_id": "78701df2ea85763ea63be437512bd4eb066e5d5166a29dcc5a4f1480ebcd6084",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader error stacked dark",
+      "case_id": "ef049c7f6e8b7931b57727693d6b57968b23c08e57fb76ec384cfc8c81ec9478",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader permission unavailable stacked light",
+      "case_id": "c1645171a1992277de0a77f2750909fdc876d77e43e962f258e101460e4d064c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader permission unavailable stacked dark",
+      "case_id": "1c848942c201f5f9e1fc69b35af745825ca6a231bef6f16431c3798d51dd2bee",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader access unconfirmed stacked light",
+      "case_id": "bd55f5723278f5bf1ed4385015fda46a582c9658eefde456c8bcc70dd9e7bd9c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader access unconfirmed stacked dark",
+      "case_id": "b2e35e57aaa6b3785199f4e9ca0f6bbe66872607236e8aea14231ea2617d5e64",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader access checking stacked light",
+      "case_id": "1fecb8cf610df69dee375a50b03a870753a17a1948e054bc36e5be0d136073c3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader access checking stacked dark",
+      "case_id": "3f98d056073f8224fd96a30b5f3f0457fe1d6e65b0c91a593211049fe414e2c3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader conflict review stacked light",
+      "case_id": "b08e46a4dc2aa572d109711d129ca85094d2540bf92d45721702f168d5df1947",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader conflict review stacked dark",
+      "case_id": "0baa45ce0e2b035b6be38fc827fe1a3f9fefbc42887e5a379c9b5dcbb15a274f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader composition refused stacked light",
+      "case_id": "845cb4e4a649353d098846fd986a0e4a851a83ad2c701883da325c5f147b1b4c",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 Wide Reader composition refused stacked dark",
+      "case_id": "134dc38f1820bd1de148b22587e0be158e77b316efa0c4fee8d21298cef1fdda",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

@@ -1,0 +1,142 @@
+{
+  "id": "compose-a5d4818d69c2dabc0531",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "a5d4818d69c2dabc0531cbbfbf875bd5c057b5d889c94555e9d59409cb503a14",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: Reader chosen thumbnail keeps exact writing and destination",
+      "case_id": "43cd76eb5ff2bfa72365bfb51a1b6fbda82595231dd466a8156ca93c0c67a77e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: New message chosen thumbnail keeps exact writing and destination",
+      "case_id": "a0f99bfece14b7497c8d7849e63dd400c74ef69721bdfc57a5e32cdf8cb18275",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: picker thumbnail opens without choosing, text still chooses",
+      "case_id": "a98edf08f578b26bcdca35fae08e405cc57e7ca667cd592b5ee9850128568689",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer ready thumbnail preserves writing and recovery",
+      "case_id": "558ef787fdd891f7716be6f5d906c00d9d1661537006a56e5e762142248e5edb",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer uploading thumbnail preserves writing and recovery",
+      "case_id": "f5cc0908a0d8112e110f3f10a80a3311b380e34c53b665561b29a5a585ca848f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer device-refused thumbnail preserves writing and recovery",
+      "case_id": "32cff715812ede660e0265e6fd99225cca7ee0ac158960c346fafc70747ce568",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer confirmation thumbnail preserves writing and recovery",
+      "case_id": "c02f6e43b111a44f0aeec6319b9d526b094c48aa03b16314bc5858027a672a52",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer retry thumbnail preserves writing and recovery",
+      "case_id": "2e6401f3060360e8962b5e5033f4875ad06a19c662f9329cddd5f3fa67be6494",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer download thumbnail preserves writing and recovery",
+      "case_id": "df7b46fdc2ca0f084c927cd9eb72081a46f941123d8d60abc26154dea5190092",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer read-only thumbnail preserves writing and recovery",
+      "case_id": "d5230b080b383aa6f5806d79b9e7f682541867ed0150ca15670f7b2117c20d1e",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer empty thumbnail preserves writing and recovery",
+      "case_id": "4894cbcbadc89bd53daae10b14b269155d4be51e68e843ba35fb50fe5fbdf603",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer read-refused thumbnail preserves writing and recovery",
+      "case_id": "7f076cb67be3440c2983a7d1d438b086e99ff7f83d79d8a2a5fb7e1795bb9f8d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 stacked dark: composer read-error thumbnail preserves writing and recovery",
+      "case_id": "08b52b5f2c037b85581963296dadc684448c1737eb7a47b4eb577bf567a0bb22",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 651 applied mutant no-new-tab and restored source",
+      "case_id": "51447a7d76e0778cd32e8743bec72db24b8cfa7eae7f7edf9e8ee035b16e108d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}

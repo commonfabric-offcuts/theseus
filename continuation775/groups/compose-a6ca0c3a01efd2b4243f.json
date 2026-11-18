@@ -1,0 +1,142 @@
+{
+  "id": "compose-a6ca0c3a01efd2b4243f",
+  "source": {
+    "head": "bed0a0d46970fa48e200d68008a2f85de4ebcca9",
+    "tree": "68d67de20982995f950564579c5b4bf0e3e31f47",
+    "parents": [
+      "f737efd627edc2befb2076b6709567a7ae1cd746"
+    ]
+  },
+  "inventory_sha256": "ff597a915ab48e7686a2d17b754d6a7273f438cccd243e19baf6dcb0e954336f",
+  "cases_sha256": "a6ca0c3a01efd2b4243fd4348182736c0e16481ad1a3d467c523892cc31934a5",
+  "cases": [
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message permission unavailable phone-390 light",
+      "case_id": "84b86ab36db3322bd9a740e8d62b3d8ce86403b82ffc614741206a504890d385",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message permission unavailable phone-390 dark",
+      "case_id": "59a72e7b3e526f67580d19a2584b28802fbb6152253002b16f538489c8e4d0ec",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message permission unavailable stacked light",
+      "case_id": "fc4c63a8aef21bb1d669e8edfb1cc2b98b367fb45b158645a3d8966c813a55b1",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message permission unavailable stacked dark",
+      "case_id": "fc98b48def42303159948747d9bf13582993777b5cb94bc24a2642ed70721a4b",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-320 light",
+      "case_id": "7f823e5cfb0fd2d81091d01197e5546f34be4ede837c2611c85e4716951737c9",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-320 dark",
+      "case_id": "7463c93b74573e99925f200bb6fd110323125988c483730471b952babf5501a0",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-375 light",
+      "case_id": "c139a30ca08b26f635230524d0ddf9f0a7378b8bebbd2070b67da54cc2f65d52",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-375 dark",
+      "case_id": "80fd8de76b5d11bcb9b2e5e66d76cd9aa58a27248cee7e9fcbea1e2484a86e22",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-390 light",
+      "case_id": "da65d795914a2b962983b427a3b7920fa55ff313258ff44801884dfa53ed25d7",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed phone-390 dark",
+      "case_id": "a9047866af914c3dd2447e0961bf52d72b2326fb67e6c53e19e34fc8694cbcb5",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed stacked light",
+      "case_id": "88e157cef50e47a33eea0768cebf54c6a7b3ce8a55257283060b3ba344890c0f",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access unconfirmed stacked dark",
+      "case_id": "1765bfdc21738b80a9b743187594c2a3dcb632aaacb4a261370d36429f5e34d3",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access checking phone-320 light",
+      "case_id": "e1d5d1d031be595641047c1c315a4c5f5d0f793ad6258842c93ff293ecdd082d",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    },
+    {
+      "phase": "run",
+      "engine": "webkit",
+      "name": "webkit item 650 New message access checking phone-320 dark",
+      "case_id": "67bb1b92c1cb1f1c3ff53bb6653196c2252bb7f8d349bfe77ce5ccec645ddbf6",
+      "limit_seconds": 300,
+      "limit_basis": "unknown-300s-policy-not-measurement"
+    }
+  ],
+  "phase": "run",
+  "engine": "webkit",
+  "case_budget_seconds": 4200,
+  "phase_seconds": 4500,
+  "seed_seconds": 300,
+  "launch_seconds": 120,
+  "final_seconds": 120,
+  "wall_seconds": 5400,
+  "terminal_cleanup_seconds": 60,
+  "watchdog_grace_seconds": 5,
+  "worker_exit_seconds": 5,
+  "timeout_minutes": 120,
+  "minutes": null,
+  "budget_minutes": null,
+  "timing_basis": "unknown-first-group-run",
+  "overlap": "common seed and full helper setup; answering coordinator also seeded for sending; no case replay within union"
+}
