@@ -18,6 +18,18 @@ shell as it starts, and tells the shell when it is up or that it could not
 start. Its guard hands a confirmed move to the shell, and loads the page as
 before when the shell declines. It renames its own address through the shell.
 
+On a topic or Conversation, plain Return follows what is visibly outlined:
+a message or dossier showing its strong outline, selected or genuinely
+hovered with the outline drawn, gets its reply (the dossier's first message,
+as its Reply does). With nothing outlined it opens the pencil's New message
+sheet in the current place, without navigating. Hovering a rail topic is not
+selecting it; hidden or unringed focus cannot take Return. Writing keeps its
+own Return, and a button or link showing its actual focus ring keeps its
+activation. A rail's ring suppressed while a message is lit is not visible
+ownership: Return answers that outlined message. The row-activation rules
+below apply when the row shows its focus ring. Arrows, clicks and taps keep
+their existing navigation (`web/pane-keys.mjs`, `web/message-menu.mjs`, item 784).
+
 ## The outline
 
 Each outcome has one row: its light, its name and the line that says where
@@ -27,7 +39,7 @@ tap on a collapsed outcome instead opens its topics in the drawer: the drawer,
 its scroll, the current page and every other outcome's fold stay as they were.
 A tap on an open outcome goes to its Conversation, with its topics still open.
 A topic tap goes straight to the topic. On a laptop a click still goes to the
-Conversation and toggles its topics; Return keeps its existing way. When Core
+Conversation and toggles its topics; Return on its ringed row opens it. When Core
 says the outcome has no Conversation, it opens the outcome's page instead. There is no fold
 triangle: the name has the rail's width. Under an open outcome are its
 topics. They look as they do today:
@@ -112,7 +124,7 @@ rail.
   order. A topic new to the reader appears at the top once and stays there
   until the reader moves it. There is no "Not in an outcome" group.
 - **Keys.** The outline is one tree with one Tab stop: ↑ and ↓ move through
-  its rows, Return opens one, → and ← take the tree's steps and then move to
+  its rows, Return opens one showing its focus ring, → and ← take the tree's steps and then move to
   the messages: → on a folded outcome opens it and shows its topics, the next
   lands on its pencil (ringed), and the next goes on into the messages; Return
   on the pencil opens the New topic line. ↑ from the first outcome lands on

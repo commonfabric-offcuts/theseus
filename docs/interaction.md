@@ -30,7 +30,8 @@ the pointer's way, the keys' and the phone's.
   and their bar, or focusing another pane, clears the feed's light. Its last
   message is still remembered for returning with the keys. A rail's old DOM
   focus never draws a second ring while the pointer selects a message;
-  using the rail keys gives the light back to that rail. A click on a lit message opens
+  using its arrows gives the light back to that rail; Return follows the
+  outline already drawn. A click on a lit message opens
   it in the Reader.
   On a lit message the passage under the pointer lights too, as in the Reader,
   on a topic's card and a dossier's alike: a sentence of a paragraph, or a
@@ -91,16 +92,23 @@ the pointer's way, the keys' and the phone's.
   are not the keys moving a selection, such as a page opening at a message or
   the phone's drawer opening on the topic being read, keep their own ways.
   (`web/reveal.mjs`, `shownSelected` in `web/reply-stacks.mjs`)
-- **Return** opens the Reader on the lit message with the cursor in the reply:
+- **Return** follows the visible strong outline on a message or dossier,
+  selected with the keys or a tap, or under a pointer with its outline drawn.
+  It opens that message's reply (a dossier's head, as its Reply does), never
+  renames the dossier. On a lit message it opens the Reader with the cursor in the reply:
   with the words selected on its card, or else its lit passages, quoted, as
   Return quotes them in the Reader, and nothing quoted when neither (a message
   the keys lit). **Reply** on the bar (a phone's way; its glyph is an arrow
   turning back, named Reply (Return), docs/reply-stacks.md, "The title bar and
   the message bar") quotes nothing; to quote
-  part of the message there, select that part in the Reader and press Return. Return on a selected
-  dossier (its header or chevron) edits its title instead, as ✎ does: Return
-  saves it and Escape cancels; Space folds and opens the dossier. Return in
-  writing, on a folded line or on another control does what it does there.
+  part of the message there, select that part in the Reader and press Return.
+  With nothing visibly outlined, Return opens the pencil's New message sheet
+  on the current page, without navigating. A pointer resting on a rail topic
+  is not selection; hidden or unringed focus cannot take Return. A button or
+  link showing its actual focus ring keeps its activation, and writing keeps
+  its own Return. A rail ring suppressed while a message is lit does not own
+  Return: the outlined message does. Click a dossier's name or ✎ to rename;
+  Return in that title field saves and Escape cancels. Space still folds and opens it.
 - **⌘C** (Ctrl-C off a Mac, as ⌘A is, `web/writing-input.mjs`) with no words
   selected copies the lit message's words as written: the message the pointer
   or the keys lit last, the one Return answers, and a cut-off message whole.
@@ -240,7 +248,7 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   open, and More; past an open outcome's last row comes the next outcome,
   since the outline lists no Notebook (its pages are the right rail's). Home
   and End go to the first and last; ↑ from the first outcome lands on the
-  heading's pencil. Return opens the row in place: a topic, or an outcome's
+  heading's pencil. Return on a row showing its focus ring opens it in place: a topic, or an outcome's
   Conversation with its topics, folding every other outcome; on a pencil it
   opens its title line (docs/rails.md, "The outline"). A click or a tap on a
   row opens it too, and leaves the keys on it with their ring, so ↑ ↓ and →
@@ -269,7 +277,9 @@ stop, a ring on the row the keys are on, and the words a screen reader needs
   the outline: → opens a folded section or goes to its first row, ← folds an
   open one and goes from a row to its section, and ← on a folded section
   goes back to the messages. ⌘→ and ⌘← open and fold a section too, and
-  Return opens a row. Each pane
+  Return opens a row showing its focus ring. Hovering a rail row is not
+  selection: without a visible message/dossier outline or control ring,
+  Return opens New message on the current page, without navigating. Each pane
   keeps its place, so going there and back never loses it; after a move in
   place the outline keeps its place and the messages' is the new page's.
   Escape in the Reader gives the focus back to the message, so the arrows
@@ -495,8 +505,12 @@ page painted. Its checks, by rule:
   under keys moving a still pointer, or by touch: "reading stacks a
   click or a tap in a message moves the keys' place there …" and "reading
   stacks the pointer moving onto a message or a dossier gives it the keys'
-  place …"; Return on a dossier: "reading stacks Return on a selected dossier
-  edits its title …";
+  place …". Item 784 supersedes the old native case "reading stacks Return
+  on a selected dossier edits its title …" and the hovered-dossier rename
+  expectation: dossier Return now replies. Its focused local routing check
+  is `tests/ui_visible_return.test.mjs`. Native selected/hovered outline,
+  ringless rail, sheet-in-place and control/writing cases remain UNRUN;
+  the source-phase SPEC records the exact next own-case plan and tolerances.
   Tab through the bar and the ⋯ menu: `tests/links_native.mjs` ("header Tab
   reaches a message's ⋯ …", "header a message's ⋯ copies its link …").
 - A cut-off message: "reading a cut-off message scrolls in place …", and a

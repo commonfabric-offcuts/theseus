@@ -23,7 +23,7 @@ import { feedControl, feedFence } from './feed-fence-copy.mjs';
 // the cards themselves (buttons, folded into quiet lines between others) keep
 // their shape. The bar never covers the reply arrow beside a card's time.
 import { cardIn } from './fold.mjs';
-import { pageItself, writing } from './pane-keys.mjs';
+import { pageItself, writing, plainReturn, returnIntent } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
 import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
@@ -32,7 +32,8 @@ import { showGlyph } from './glyphs.mjs';
 import { FeedPassages } from './feed-passages.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
-import { listen } from './in-place-navigation.mjs';
+import { listen, shell } from './in-place-navigation.mjs';
+import { panes } from './panes.mjs';
 
 // How the page's last press was made, kept for the whole page past its moves
 // (in-place-navigation.mjs): the light a move makes afresh knows that a
@@ -91,8 +92,11 @@ export class MessageMenu {
   // clipped(card, item): whether the card cuts its message off; showFull(card, item): shows it whole there, as ⋯'s
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
   constructor({ host, item, viewer, kind, reply, quote = (id, card) => reply(id, card), thumb, answer, more, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, mac, doc });
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {},
+    // The right rail's existing write act leaves its covering panel first;
+    // shell.write(null) does the same for the left drawer, then the pencil.
+    write = () => { panes.things?.leave?.(); return shell.write(null); }, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, quote, thumb, answer, more, expand, copy, clipped, showFull, foldState, fold, write, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -183,9 +187,11 @@ export class MessageMenu {
       }
     });
     doc.addEventListener('keyup', event => { if (event.key === 'Tab') reverseTab = null; });
-    // Pointer selection need not move DOM focus. When the person uses keys
-    // again, the focused pane owns the light before its key handler runs.
+    // Return follows the outline already drawn, before a stale focused pane
+    // can restore its light or a hidden focused control can activate. Other
+    // pane keys still restore the focused pane's light as before.
     doc.addEventListener('keydown', event => {
+      if (plainReturn(event)) { this.returnKey(event); return; }
       if (event.isComposing || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', ' '].includes(event.key)) return;
       reverseTab = event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.metaKey ? event : null;
       const at = doc.activeElement, entry = this.entryOf(at);
@@ -397,33 +403,37 @@ export class MessageMenu {
     if (name === 'thumb' && mayThumb(item, this.viewer)) return this.thumb(item, !thumbed(item, this.viewer));
     if ((name === 'yes' || name === 'no') && mayAnswer(item, this.viewer, this.kind) && name in ANSWER_WORDS) return this.answer(item, name);
   }
-  // ↑ ↓ move the light and Return replies to the lit message, anywhere on the page
-  // but in writing, in a pop-up, or on another control.
+  // Captured before target handlers (including a dossier's chevron). Consuming
+  // the key prevents both hidden native activation and a second bubble reply.
+  returnKey(event) {
+    if (open) return false;
+    const intent = returnIntent(event, this.doc, this.host);
+    if (!intent) return false;
+    event.preventDefault(); event.stopPropagation();
+    const entry = intent.entry, item = entry && this.item(entry.dataset.id);
+    if (!entry) this.write();
+    else if (item) {
+      const card = cardIn(entry), chosen = this.passages.chosen(entry);
+      if (chosen) this.quote(item.id, card, chosen); else this.reply(item.id, card);
+    }
+    return true;
+  }
+  // ↑ ↓ move the light, anywhere on the page but in writing, a pop-up or
+  // another control. Plain Return is resolved on capture by returnKey.
   key(event) {
     if (this.copies(event)) return;
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || (event.altKey && event.key !== 'Tab')) return;
     if (event.key === 'Tab') return this.tab(event);
     // Nor under a drawer or sheet open over the page, which makes the page inert.
-    if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || this.doc.querySelector('dialog[open]') || this.host.closest('[inert]')) return;
     const at = this.doc.activeElement;
     if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return;
-    // The bar's own buttons, and every control in the list but a card itself (a
-    // folded line, a link in the words, a reaction, the reply arrow, a stack's
-    // line), answer Return themselves. On the bar ↑ and ↓ go on from its message.
-    const onBar = this.bar.contains(at) && event.key !== 'Enter' && this.lit?.isConnected;
+    // On the bar ↑ and ↓ go on from its message. Return's visible control
+    // ownership is resolved separately on capture.
+    const onBar = this.bar.contains(at) && this.lit?.isConnected;
     const inList = at && this.host.contains(at), onPage = pageItself(at, this.doc) || inList || onBar;
     const entry = inList && this.entryOf(at);
-    if (!onPage || inList && event.key === 'Enter' && !(entry && at === cardIn(entry))) return;
-    if (event.key === 'Enter') {
-      if (event.shiftKey || !this.lit?.isConnected) return;
-      event.preventDefault();
-      // Words selected in the lit message, or a passage of it lit, are quoted
-      // as the Reader opens on it; with none, Return replies as Reply does.
-      const chosen = this.passages.chosen(this.lit), item = this.item(this.lit.dataset.id);
-      if (chosen && item) this.quote(item.id, cardIn(this.lit), chosen);
-      else this.act('reply');
-      return;
-    }
+    if (!onPage) return;
     const entries = this.entries();
     if (!entries.length) return;
     // A dossier's chevron holding the focus is where the keys are, whether it
@@ -476,14 +486,12 @@ export class MessageMenu {
     if (words) this.copy(item, words); else this.copy(item);
     return true;
   }
-  // Whether Return, pressed now, would answer the lit message (key): the
-  // focus on the page itself or on a card, not in writing, a rail, a pop-up
-  // or another control, which take Return themselves.
+  // The passage light makes the same promise as captured Return. Reading
+  // current DOM/style here also respects suppressed focus rings and writing.
   returns(at = this.doc.activeElement) {
-    if (this.doc.querySelector('dialog[open]') || this.host.closest('[inert]') || open) return false;
-    if (at?.matches?.(EDITABLE) || at?.closest?.('.rail')) return false;
-    const inList = at && this.host.contains(at), entry = inList && this.entryOf(at);
-    return inList ? Boolean(entry && at === cardIn(entry)) : pageItself(at, this.doc);
+    if (open) return false;
+    const intent = returnIntent({ key: 'Enter', target: at }, this.doc, this.host);
+    return Boolean(intent?.entry && intent.entry === this.lit);
   }
   // The bar sits at the end of the page, so the keys reach it from its card:
   // Tab from the lit card goes to the bar's first button, as the card's own ⋯

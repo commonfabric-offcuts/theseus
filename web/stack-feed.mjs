@@ -924,7 +924,6 @@ export class StackFeed {
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
   key(event) {
-    if (this.renameKey(event)) return;
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]')) return;
     const at = this.doc.activeElement;
@@ -959,22 +958,9 @@ export class StackFeed {
     if (acts.starred && !acts.folded) { this.say('Starred messages stay open'); return; }
     this.setFold(item, !acts.folded);
   }
-  // Return on a dossier as a whole, its chevron or its compact header (the
-  // head's row standing for the dossier), edits its title as Rename in ⋯ does
-  // (item 385); Return saves it and Escape cancels, as there. Return on a
-  // message, a head shown whole included, still replies.
-  renameKey(event) {
-    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || this.doc.querySelector('dialog[open]')) return false;
-    const at = this.doc.activeElement, section = at && this.list.contains(at) ? at.closest('.reply-stack') : null;
-    const head = section && this.entryFor(section.dataset.stack);
-    if (!head) return false;
-    const whole = at.classList.contains('stack-toggle') || (section.dataset.headOpen === 'false' && at === cardIn(head));
-    const found = whole && stackOf(this.list, head);
-    if (!found?.head || !found.stack.replies.length) return false;
-    event.preventDefault();
-    this.startRename(found.stack);
-    return true;
-  }
+  // Plain Return on the visible dossier outline replies through MessageMenu's
+  // capture route. Name/pen presses and Rename in ⋯ still edit its title;
+  // that field keeps Return to save and Escape to cancel.
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same and each item's glyph (glyphs.mjs, items 602 and 601); on a phone,
   // the stack's moves and joins sit behind "Move or join…".
