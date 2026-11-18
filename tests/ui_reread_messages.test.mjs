@@ -36,7 +36,7 @@ test('only the approved cover rewrite strings may say refresh; other pages rerea
     "cover-refresh.mjs: cover-refresh-status",
     "dossier-cover.mjs: ./cover-refresh.mjs",
     "freshness.mjs: Refreshing this topic after a history change.",
-    "message-menu.mjs: a, .fold-line, .cover-refresh-glyph"
+    "message-menu.mjs: a, .fold-line, .image-thumb, .cover-refresh-glyph"
   ]);
   assert.doesNotMatch(source('index.html').replace(/<[^>]*>/g, ' '), /\brefresh/i, 'no Refresh in the page\'s own text');
   // The words that took Refresh's place are there.
