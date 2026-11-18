@@ -7,10 +7,11 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { staticResponseCache } from './static_response_cache.mjs';
 
 export async function composerWidthCases(h) {
   const { check, page, open, press, until, picture, close, control, root, evidence, engine, second, HEIC } = h;
-  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/app-session.mjs', 'web/session.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py'];
+  const inputs = ['web/reader.mjs', 'web/inline-composer.mjs', 'web/composer-width.mjs', 'web/aim.css', 'web/writing-helpers.mjs', 'web/compose-bar.mjs', 'web/app.mjs', 'web/app-session.mjs', 'web/session.mjs', 'web/index.html', 'tests/reader_compose_native.mjs', 'tests/composer_width_native.mjs', 'tests/static_response_cache.mjs', 'tests/ui_static_response_cache.test.mjs', 'tests/ui_composer_width.test.mjs', 'tests/fixtures/ui_http.py'];
   const hashes = {};
   for (const name of inputs) {
     let bytes;
@@ -34,9 +35,9 @@ export async function composerWidthCases(h) {
   // Playwright routing disables the browser's HTTP cache. Reuse only exact
   // immutable static responses fetched from this fixture at this source;
   // APIs and specialized source/mutant routes below still go to the server.
-  const staticResponses = new Map();
+  const staticResponses = staticResponseCache();
   const cacheReceipt = async () => writeFile(path.join(evidence, `item-650-static-cache-${engine}.json`), JSON.stringify(
-    [...staticResponses].map(([url, value]) => ({ path: new URL(url).pathname, sha256: createHash('sha256').update(value.body).digest('hex'), bytes: value.body.length, hits: value.hits })), null, 2));
+    [...staticResponses.entries].map(([url, value]) => ({ path: new URL(url).pathname, sha256: createHash('sha256').update(value.body).digest('hex'), bytes: value.body.length, hits: value.hits })), null, 2));
   const surfaces = ['Reader', 'New message', 'Wide Reader'];
   const states = ['empty', 'writing', 'saving', 'busy', 'refused with recovery', 'read-only', 'error',
     'permission unavailable', 'access unconfirmed', 'access checking', 'conflict review', 'composition refused',
@@ -81,15 +82,8 @@ export async function composerWidthCases(h) {
     const prepare = async p => {
       await p.route(/\/[^/?]+\.(?:mjs|css)(?:\?.*)?$/, async route => {
         const url = route.request().url();
-        let value = staticResponses.get(url);
-        if (!value) {
-          const response = await route.fetch();
-          assert.equal(response.status(), 200, 'static cache stores a successful fixture response only');
-          value = { body: await response.body(), headers: response.headers(), hits: 0 };
-          staticResponses.set(url, value);
-        }
-        value.hits++;
-        await route.fulfill({ status: 200, headers: value.headers, body: value.body });
+        const value = await staticResponses.response(url, () => route.fetch());
+        await route.fulfill({ status: value.status, headers: value.headers, body: value.body });
       });
       await instrument(p, baseline);
       // Observe the actual registry change path: Reader's Review button is
