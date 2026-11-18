@@ -24,10 +24,10 @@ function fakeLocks() {
     query: async () => ({ held: [...held.values()] }),
   };
 }
-function fakeIndexedDB() {
+function fakeIndexedDB(transaction = () => { throw Error('no store in this check'); }) {
   return { open() {
     const request = {};
-    queueMicrotask(() => { request.result = { close() {}, transaction() { throw Error('no store in this check'); } }; request.onsuccess(); });
+    queueMicrotask(() => { request.result = { close() {}, transaction }; request.onsuccess(); });
     return request;
   } };
 }
@@ -53,4 +53,25 @@ test('a page hidden before its start registers anything lets its writer lock go'
   await new Promise(resolve => setImmediate(resolve));
   assert.equal((await navigator.locks.query()).held.some(lock => lock.name === name), false,
     'once the page is hidden, another tab finds the writer free');
+});
+
+test('item 721 recovery retains the originating request error before transaction abort supplies one', async t => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: fakeLocks() } });
+  const failure = new DOMException('The selected file could not be stored', 'UnknownError');
+  let puts = 0;
+  globalThis.indexedDB = fakeIndexedDB(() => {
+    const tx = { durability: 'strict', error: null, objectStore: () => ({
+      get() { const request = {}; queueMicrotask(() => request.onsuccess({ target: { result: undefined } })); return request; },
+      put() { puts++; queueMicrotask(() => tx.onerror({ target: { error: failure } })); },
+    }) };
+    return tx;
+  });
+  t.after(() => { Object.defineProperty(globalThis, 'navigator', saved); delete globalThis.indexedDB; });
+  const { openJournal } = await import('../web/journal.mjs'), { editorKey } = await import('../web/editor.mjs');
+  const journal = await openJournal({ instanceId: 'i1', actor: 'person', win: fakeWindow() });
+  t.after(() => journal.close());
+  const context = { instanceId: 'i1', actor: 'person', kind: 'reply', sourceRef: { kind: 'message', id: 'source' }, topicId: 'topic' };
+  await assert.rejects(journal.save({ context, key: editorKey(context) }), error => error === failure, 'the exact originating storage error is retained');
+  assert.equal(puts, 1, 'the real journal reached the failed storage boundary');
 });

@@ -241,7 +241,7 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
     const store = tx.objectStore('editors');
     let result, failure;
     tx.oncomplete = () => resolve(result ?? null);
-    tx.onerror = () => reject(failure ?? tx.error ?? new Error('Recovery storage failed.'));
+    tx.onerror = event => reject(failure ?? event?.target?.error ?? tx.error ?? new Error('Recovery storage failed.'));
     tx.onabort = () => reject(failure ?? tx.error ?? new Error('Recovery storage was interrupted.'));
     const fail = error => { failure = error; try { tx.abort(); } catch { reject(error); } };
     // Close ends every lock this document holds, so a write transaction made

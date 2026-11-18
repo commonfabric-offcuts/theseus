@@ -54,7 +54,8 @@ export async function item721Compose(h) {
       new MutationObserver(() => record('render')).observe(document.querySelector('#reader'), { subtree: true, childList: true, characterData: true, attributes: true });
       for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'click']) document.addEventListener(type, event => {
         window.__item721Trail.push({ kind: type, trusted: event.isTrusted, pointerType: event.pointerType, x: event.clientX, y: event.clientY,
-          target: event.target.id || event.target.className, selected: getSelection().toString() });
+          target: { tag: event.target.tagName, id: event.target.id, classes: event.target.getAttribute('class'), card: event.target.closest('.message-card')?.dataset.id,
+            preview: !!event.target.closest('.message-preview'), act: event.target.closest('[data-act]')?.dataset.act }, selected: getSelection().toString() });
       }, true);
       record('initial');
     });
@@ -82,6 +83,7 @@ export async function item721Compose(h) {
   let serial = 0;
   const card = id => `#messages .message-card[data-id="${id}"]`;
   const entry = id => `#messages [data-id="${id}"]`;
+  let sourcePhase = 'restored';
   const opened = p => until(p, () => document.querySelector('#reader').open, 'the real Reader opens');
   const shut = p => until(p, () => !document.querySelector('#reader').open, 'the reply closes after keeping writing');
   const snapshot = (p, id) => p.evaluate(([id, tolerance, long]) => {
@@ -143,6 +145,7 @@ export async function item721Compose(h) {
       await p.keyboard.press('Enter');
     } else await press(p, '.message-bar [data-act="reply"]');
     await opened(p);
+    if (!['baseline', 'dock'].includes(sourcePhase)) await until(p, id => document.querySelector('#reader').parentElement.dataset.id === id, 'the requested source owns the actual reply bar', id);
   }
   async function coordinationOpen(p, id) {
     const toggle = `#messages .reply-stack[data-stack="${id}"] > .stack-toggle`;
@@ -157,15 +160,26 @@ export async function item721Compose(h) {
   async function dragSource(p, id) {
     const target = p.locator(card(id) + ' > .message-preview > .md-block').first();
     await target.scrollIntoViewIfNeeded();
-    const b = await target.boundingBox();
-    await p.mouse.move(b.x + 3, b.y + 9); await p.mouse.down();
-    await p.mouse.move(b.x + Math.min(180, b.width - 3), b.y + 9, { steps: 12 }); await p.mouse.up();
+    await target.hover();
+    const points = await target.evaluate(el => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), node = walker.nextNode();
+      const point = offset => {
+        const range = document.createRange(); range.setStart(node, offset); range.setEnd(node, offset + 1);
+        const r = range.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+        return { x, y, onWords: el.contains(document.elementFromPoint(x, y)) };
+      };
+      return { start: point(1), end: point(20) };
+    });
+    assert.ok(points.start.onWords && points.end.onWords, 'both native drag endpoints hit actual rendered source characters');
+    await p.mouse.move(points.start.x, points.start.y); await p.mouse.down();
+    await p.mouse.move(points.end.x, points.end.y, { steps: 12 }); await p.mouse.up();
     await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await receipt(p);
     return p.evaluate(() => getSelection().toString());
   }
   async function runtime(phase, action) {
     const receipt = await control({ method: 'item_721_runtime', phase });
+    sourcePhase = phase;
     measured.push({ engine, item: 721, kind: 'source-runtime', ...receipt });
     try { return await action(receipt); }
     catch (error) { await preserveFailure(error, phase); }
@@ -173,6 +187,7 @@ export async function item721Compose(h) {
       const endings = await Promise.allSettled([...contexts].map(context => context.close()));
       contexts.clear();
       const restored = await control({ method: 'item_721_runtime', phase: 'restored' });
+      sourcePhase = 'restored';
       assert.equal(restored.restored, true);
       assert.deepEqual(restored.hashes, receipt.candidate_hashes, 'exact candidate source restoration');
       measured.push({ engine, item: 721, kind: 'source-restore', ...restored });
