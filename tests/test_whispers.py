@@ -995,7 +995,9 @@ MESSAGE_READS = {
     "aim_next/covers.py": ("a cover's payload message, read under VISIBLE as its writer reads it, then refused as a whisper unless the "
                            "dossier is a whisper between the same two people; the owner's reply a payload names as done_by, read under "
                            "VISIBLE as its writer reads it, refused as DONE_BY_OWNER otherwise, so no refusal names a whisper; and a "
-                           "cover's root, read under VISIBLE as the owner reads it before the owner's 👍 settles Done (item 624)", 3),
+                           "cover's root, read under VISIBLE as the owner reads it before the owner's 👍 settles Done (item 624); and the "
+                           "indexed current waiting cover's first message, counted only under VISIBLE for its current outcome owner "
+                           "in an unarchived topic (item 756)", 4),
     "aim_next/cover_values.py": ("the owner's own reply to a payload's message, by its author: one the owner wrote, which they always "
                                  "read, its writer's reach checked by covers.py; its id is shown only to a reader the next read finds it "
                                  "VISIBLE to (item 624)", 2),

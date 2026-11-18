@@ -849,6 +849,33 @@ def main():
                         with controls.lock:
                             controls.item715_refuse_saves = request["enabled"]
                             answer = {"enabled": controls.item715_refuse_saves, "refused": controls.item715_refused_saves}
+                    elif request["method"] == "item756_seed":
+                        prefix = request["operation_id"]
+                        workspace = prefix + "-w"
+                        other = prefix + "-other"
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT INTO actors(id,kind,name) VALUES (?, 'human', 'Isolated other reader')", (other,))
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Cover waits fixture", "team": ["fixture-notebook-agent", other]})
+                        roots, topics = [], []
+                        for n in range(2):
+                            tid, opening = prefix + "-t%d" % n, prefix + "-o%d" % n
+                            command("opening.save", opening + "-save", {"workspace_id": workspace, "topic_id": tid,
+                                    "title": "Cover topic %d" % n, "participants": ["fixture-notebook-agent", other],
+                                    "body": "Fictional cabin folder %d" % n, "attachments": []},
+                                    {"opening_id": opening}, {"opening_revision": 0})
+                            result = command("opening.publish", opening + "-publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+                            roots.append(result["result"]["message_id"])
+                            topics.append(tid)
+                        hidden = command("message.post", prefix + "-whisper", {"body": "Private cabin choice", "addressees": ["fixture-notebook-agent"], "whisper": True},
+                                         {"topic_id": topics[0]}, sender=other)["result"]["message_id"]
+                        wait = {"waiting": [{"text": "Private choice", "default": "Keep it"}]}
+                        command("stack.cover", prefix + "-hidden-cover", wait, {"message_id": hidden}, {"cover_revision": 0}, sender=other)
+                        answer = {"workspace": workspace, "topics": topics, "roots": roots, "hidden": hidden, "other": other}
+                    elif request["method"] == "item756_act":
+                        mid = request["message_id"]
+                        revision = store().view(actor, "dossier_cover", {"message_id": mid})["cover_revision"]
+                        answer = command("stack.cover", request["operation_id"], {"waiting": request["waiting"]},
+                                         {"message_id": mid}, {"cover_revision": revision})
                     elif request["method"] == "item715_seed":
                         prefix = request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"

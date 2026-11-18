@@ -654,6 +654,8 @@ class Stacks:
             latest, others = _dossier(db, actor, message["id"])
             if value["through"] is None or (others is not None and others > value["through"]):
                 dossier_order.returning(db, actor, message["topic_id"], message["id"], value.get("key"))
+        if kind == "cover":
+            self._index_cover_wait(db, message, value)
         if not tell:
             return version
         for reader in [actor] if owner else self._message_readers(db, message, actor):
