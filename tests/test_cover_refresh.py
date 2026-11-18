@@ -10,6 +10,7 @@ from pathlib import Path
 import sqlite3
 
 from aim_next import Store
+from aim_next.store import SCHEMA_VERSION
 from aim_next.contract import StoreError
 from aim_next.migrations import migrate, MigrationError
 from reader_fixture import ReaderCase
@@ -235,7 +236,7 @@ class CoverRefreshCase(ReaderCase):
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("47",)])
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "48")["schema_version"], "48")
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "49")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT * FROM message_acts ORDER BY id"), acts)
         self.assertEqual(self.sql("SELECT * FROM messages ORDER BY seq"), messages)

@@ -40,6 +40,7 @@ from .outline_order import (ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA, TOPIC_POSI
                             TOPIC_POSITION_OCCUPIED, TOPIC_POSITION_SCHEMA)
 from .stacks import (ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED,
                      COVER_DOWN, COVER_OCCUPIED, COVER_UP)
+from .covers import COVER_WAIT_SCHEMA, COVER_WAIT_BACKFILL, COVER_WAIT_DOWN
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
 from .message_edit import (EDIT_SESSION_DOWN, EDIT_SESSION_OCCUPIED, EDIT_SESSION_UP, MESSAGE_EDIT_DOWN, MESSAGE_EDIT_OCCUPIED,
                            MESSAGE_EDIT_UP)
@@ -210,6 +211,8 @@ STEPS = (
      ["DROP TABLE cover_writers"] + REFRESH_DOWN,
      "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='cover_refresh')"),
     ("48", "49", DOSSIER_ORDER_SCHEMA + [freeze_dossier_order], DOSSIER_ORDER_DOWN, DOSSIER_ORDER_OCCUPIED),
+    # Item 756: indexed current cover waits; the immutable acts retain every fact.
+    ("49", "50", COVER_WAIT_SCHEMA + COVER_WAIT_BACKFILL, COVER_WAIT_DOWN, "SELECT 0"),
 )
 
 

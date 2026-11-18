@@ -498,3 +498,20 @@ test('a press on a topic row\'s unread count opens it at its oldest unread messa
   row('a').onclick({ button: 0, metaKey: true, target: count('a'), preventDefault() { prevented++; } });
   assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a']);
 });
+
+test('item 756 topic row gains and loses cover eligibility without changing question navigation or focus', async t=>{
+  const f=fixture(t);
+  const one=f.item('a');
+  f.queue.push({...f.page(['a']),items:[{...one,cover_waiting:2}]});
+  await f.rail.load();
+  const row=f.rail.links.get('a');
+  row.focus();
+  assert.equal(Object.hasOwn(row.attributes,'data-cover-waiting'),true,'CSS filter can keep a cover-only topic');
+  const before=row.href;
+  f.queue.push({...f.page(['a']),items:[{...one,cover_waiting:0}]});
+  await f.rail.load();
+  assert.equal(f.rail.links.get('a'),row);
+  assert.equal(document.activeElement,row);
+  assert.equal(Object.hasOwn(row.attributes,'data-cover-waiting'),false,'clearing removes the filter eligibility');
+  assert.equal(row.href,before,'existing topic/question route is preserved');
+});

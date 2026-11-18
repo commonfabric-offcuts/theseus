@@ -24,13 +24,13 @@ def plan(root, event_name, event, head):
     # Run release 89's actual inline dealer before the helper exists: this red
     # shows all 52 being dealt, rather than failing on a missing module.
     try:
-        from tools import check_plan
+        from tools import unit_shards as check_plan
     except ImportError:
         source = WORKFLOW.read_text().split("<<'PY' >>", 1)[1].split('\n', 1)[1].split('          PY\n', 1)[0]
         with mock.patch.object(sys, 'argv', ['-', '3']), contextlib.redirect_stdout(io.StringIO()) as out:
             exec(compile(textwrap.dedent(source), str(WORKFLOW), 'exec'), {})
         return {'shards': json.loads(out.getvalue().split('shards=', 1)[1]), 'scoped': None}
-    return check_plan.plan(root, event_name, event, head, 3, {'native-health': 2})
+    return check_plan.plan(root, event_name, event, head, 3, weights=json.loads((ROOT / '.github/check-weights.json').read_text()))
 
 
 def names(result):
@@ -103,7 +103,7 @@ class Plan(unittest.TestCase):
     def test_workflow_calls_the_planner_and_transports_its_scope(self):
         workflow = WORKFLOW.read_text()
         section = workflow.split('  plan:', 1)[1].split('  check:', 1)[0]
-        self.assertIn('python3 -I tools/check_plan.py --github-output', section)
+        self.assertIn('python3 -I tools/unit_shards.py --plan --github-output', section)
         self.assertIn('fetch-depth: 0', section)
         self.assertIn('PLAN_SCOPE: ${{ needs.plan.outputs.scoped }}', workflow)
 
@@ -287,7 +287,7 @@ await check('health colour', async () => {
         self.change(fixtures.HEALTH_FIX)
         expected, why = self.workflow()
         self.env.update(GITHUB_EVENT_NAME='push', GITHUB_EVENT_PATH=str(self.folder / 'absent'), GITHUB_SHA='bad')
-        command = [sys.executable, '-I', '-B', 'tools/check_plan.py', '--event-name', 'pull_request',
+        command = [sys.executable, '-I', '-B', 'tools/unit_shards.py', '--plan', '--event-name', 'pull_request',
                    '--event', str(self.event_path), '--head', self.head, '--browser-shards', '2']
         ran = subprocess.run(command, cwd=self.root, env=self.env, capture_output=True, text=True)
         self.assertEqual(ran.returncode, 0, ran.stderr)

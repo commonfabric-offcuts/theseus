@@ -31,7 +31,7 @@ def migrate(path, instance, binding, target=None):
     this fixture preparation, in test_dossier_order.py. No product gate is bypassed.
     """
     result = migrate_store(path, instance, binding, target)
-    if result['schema_version'] == '49':
+    if int(result['schema_version']) >= 49:
         with sqlite3.connect(str(path)) as db:
             if db.execute("SELECT 1 FROM dossier_order LIMIT 1").fetchone():
                 db.execute("DELETE FROM dossier_order")
@@ -185,6 +185,8 @@ def frozen(statements):
 SCHEMA_46 = (Path(__file__).parent / "fixtures" / "schema_46.sql").read_text().splitlines()
 SCHEMA_47 = (Path(__file__).parent / "fixtures" / "schema_47.sql").read_text().splitlines()
 SCHEMA_48 = (Path(__file__).parent / "fixtures" / "schema_48.sql").read_text().splitlines()
+# Fresh DDL from exact train50 parent 351bce29, before the additive 49->50 step.
+SCHEMA_49 = (Path(__file__).parent / "fixtures" / "schema_49.sql").read_text().splitlines()
 
 
 def step_back_by_hand(path, version):
@@ -192,6 +194,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 50 adds only the rebuildable cover-wait index.
+        db.execute("DROP TABLE cover_waiting")
+        if version == "49":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         db.execute("DROP TABLE dossier_order")
         if version == "48":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -2034,7 +2041,7 @@ def everything(path):
         tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         rows = {}
         for table in tables:
-            if table in ("metadata", "topic_position_clock", "cover_writers", "dossier_order"):
+            if table in ("metadata", "topic_position_clock", "cover_writers", "dossier_order", "cover_waiting"):
                 continue
             columns = [row[1] for row in db.execute("PRAGMA table_info(" + table + ")") if row[1] != "list_position"]
             rows[table] = sorted(db.execute("SELECT " + ",".join(columns) + " FROM " + table).fetchall(), key=repr)
@@ -2084,7 +2091,7 @@ RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("
                      (BEFORE_DRAFT, SCHEMA_BEFORE_DRAFT), (BEFORE_EDIT, SCHEMA_BEFORE_EDIT),
                      (BEFORE_SESSION, SCHEMA_BEFORE_SESSION), (BEFORE_JUDGMENT, SCHEMA_BEFORE_JUDGMENT),
                      (BEFORE_INVITES, SCHEMA_BEFORE_INVITES), (BEFORE_TOOLS, SCHEMA_BEFORE_TOOLS), (BEFORE_ENDS, SCHEMA_BEFORE_ENDS),
-                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47), ("48", SCHEMA_48))
+                     (BEFORE_COVERS, SCHEMA_BEFORE_COVERS), ("46", SCHEMA_46), ("47", SCHEMA_47), ("48", SCHEMA_48), ("49", SCHEMA_49))
 
 
 class Release19ChainCase(MigrationCase):
@@ -4101,6 +4108,11 @@ class InviteStepCase(MigrationCase):
         self.assertEqual(tools_taken(after), stored, "every row of every table is kept")
 
     def test_the_step_follows_the_judgments_and_the_tools_step_follows_it(self):
+        # Match the actual invitations statements, not a shifted tuple which
+        # happens to occupy the same relative slot after newer steps arrive.
+        invitation_up = migrations.INVITATIONS_SCHEMA + migrations.INVITATIONS_BACKFILL
+        self.assertEqual([step[:2] for step in migrations.STEPS if step[2] == invitation_up],
+                         [(BEFORE_INVITES, INVITES_VERSION)], "the actual invitations step follows release 81")
         steps = [step[:2] for step in migrations.STEPS if int(step[1]) <= 47]
         self.assertEqual(steps[-6:-3], [(BEFORE_JUDGMENT, JUDGMENT_VERSION), (BEFORE_INVITES, INVITES_VERSION), (BEFORE_TOOLS, TOOLS_VERSION)])
         self.assertEqual([step for step in steps if step[0] == BEFORE_INVITES or step[1] == INVITES_VERSION],
@@ -4299,7 +4311,7 @@ class CoverStepCase(MigrationCase):
         self.assertEqual(steps[-3:], [(BEFORE_ENDS, ENDS_VERSION), (BEFORE_COVERS, COVERS_VERSION), ("46", "47")])
         self.assertEqual([step for step in steps if step[0] == BEFORE_COVERS or step[1] == COVERS_VERSION],
                          [(BEFORE_COVERS, COVERS_VERSION)], "one step leaves 45 and one reaches 46")
-        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "49"))
+        self.assertEqual((BEFORE_COVERS, COVERS_VERSION, SCHEMA_VERSION), ("45", "46", "50"))
 
     def test_item_641_covers_45_to_46_precedes_positions_46_to_47(self):
         message = self.acted()

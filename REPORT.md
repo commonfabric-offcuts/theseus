@@ -1,109 +1,162 @@
-# Frozen train49 test delta for auditor, before native rereads
+# 740 corrected fit-first builder return
 
-This is the single source-only correction authorized by warp9246. Base is
-bed0a0d46970fa48e200d68008a2f85de4ebcca9, tree
-68d67de20982995f950564579c5b4bf0e3e31f47, on fable/train49-placing9246.
-The final commit, tree, parent and changed paths are in external FREEZE.json.
-SPEC-NOTE.md records the correction contract. Product source is unchanged.
+Ready for independent review of warp9266's corrected contract; not installed or
+self-approved. This fresh builder started exactly at
+`9c7bf7cc0a69c7bf14c529ae9b94592dbee546e5`, tree
+`5d09bd68bb0630dcaf8ee2d14b81eb04413f9404`. Its parent is live98
+`851471193d72f88312d428bb9e0383dae887a4e0`. The corrected commit's exact head,
+tree, parent chain, paths and diff hashes are in external `FROZEN-RETURN.json`.
+No old session was resumed or earlier frozen evidence edited.
 
-Both native drivers now use one checked HTTP response reader. It rejects failed
-HTTP responses, malformed/non-object JSON, error/refusal envelopes and a
-message_acts page without an items array. It retains actual HTTP status and up
-to 2048 redacted body characters in observations and the assertion, including
-truncation metadata; a body-read failure retains the observed status and actual
-read error, with no invented body. It logs no request headers or arguments and
-returns no fake empty items. The original missing response remains unknown.
-The helper's items-shape contract is deliberately specific to message_acts;
-other successful view shapes retain their existing caller contracts.
+## Delivered behavior
 
-Five reading cases receive narrow oracle changes: toolbar Reply asserts the
-embedded source owner/group/focus, a dossier remains below a later standalone
-root, Reset position restores admission order, every writer's replies retain
-positions, and the New line follows stable root positions. External replies
-must actually be drawn before their stable-order assertions. The edited position
-measurement uses stablePositionTolerancePx731=1 CSS px. Card clicks, passage
-quoting and explicit Reader routes keep their existing expectations. No old
-fixture/migration, broad dossier reconstruction or other neighboring oracle is
-silently corrected. Exact old/current names are in RERUN-INVENTORY.json.
+The runnable default is `browser-120m-fit-first-v1`: 120-minute browser capacity,
+5-minute setup/upload reserve, 1.25 times the maximum retained observation by
+step name. Long steps (over46 measured minutes), partial observations and unknown
+steps run alone. Unknowns use full capacity with null timing, never a median.
+Stale observations remain useful timing; `replace_browser_observations` replaces
+those steps after the next run while preserving other steps and leaving raw
+verdicts alone. Source/runtime/inventory equivalence is retained as provenance,
+not reinstated as a timing gate. An actually observed padded step that exceeds
+120 alone refuses explicitly, without emitting an incomplete plan.
 
-Fence-copy's eight surface rows require the approved focusable DIV/button-role
-card. Its two drag rows require exact source selection without opening Reader,
-then use a separate native click for the manual Reader fallback. The remaining
-four observations retain their original assertions: feed320 coverage in both
-engines, Chromium's lost document Selection after the field caret passed, and
-Chromium375 card-space long press selecting After without a menu. Before/after
-instrumentation retains relevant source bytes/hashes, viewport, card/Copy/notice
-and control rectangles, intended and actual hit targets, overlap hit points,
-occlusion, native Selection and field selection separately. Named tolerances
-are geometryTolerancePx=1 and overlapTolerancePx=0.5 CSS px; neither excuses
-an assertion. If later evidence proves coverage is721's own fault,721 leaves
-this train. This phase contains no product patch or attribution ruling.
+The default full plan has **18 browser bins plus seven unit/replay jobs**:
+48 native steps exactly once, 52 logical required steps exactly once after
+combining Python's four partitions. Of38 observed native step names, four bins
+are isolated by long/partial observations; ten unknown modes each run alone.
+No observed maximum exceeds the capacity. The requested four initial bins are a
+packing preference. The resulting25 jobs are a plan, not permission or dispatch;
+the future18-start piece ceiling grants this builder no starts.
 
-Focused evidence (external directory below):
+Python runs exactly its existing four file partitions, each alone with a
+49-minute job capacity, including Python4. Before/after receipts prove identical
+partition indices and file membership. Historical estimates still include setup;
+discovery/import/load hooks remain in the runner's wall accounting. Existing
+allocation fallback is unchanged to preserve inventory, with no new-file timing
+promise. Node5, deploy-refusals3 and replay45-minute limits remain independent.
+Conservative item734 selection, raw collector, continuation and cleanup code
+retain their semantics. The workflow consumes each matrix job's actual capacity.
 
-- http-red.log: legacy unchecked response behavior, 10 focused tests, 9 fail and
-  1 pass, before correction. The original adapters' unchecked JSON behavior is
-  preserved in ORIGINAL-HELPERS.txt. This is an instrument red, not a fabricated
-  response from the original native run.
-- focused-final.log: 15 focused checks pass, in one Node process with test
-  isolation disabled. They cover response refusal/malformed/shape/body-read and
-  success boundaries, bounded/redacted evidence, focusable-card and drag/inline
-  reply contracts, and geometry/occlusion/selection observation behavior.
-- MUTATIONS.json: six actual source mutations applied and read back, each
-  caught red, exact original bytes restored, then its focused control green.
-  They remove the HTTP-status check, items-shape check, body evidence, approved
-  DIV oracle, source-selection oracle and occlusion observation respectively.
-  Hashes and exact red/restored logs are retained. No Python source was mutated.
-- Syntax checks for edited native drivers/modules and git diff --check pass.
-  Source-only registration enumerates 495 Chromium and 483 WebKit reading
-  callbacks; no case callbacks, browser, HTTP server or fixture execute there.
+Run the full default without a server, profile or hosted workload:
 
-Zero hosted/native/whole-unit starts were allocated or consumed. All changed
-native behavior is UNRUN. The proposed reread caps require new coordinator
-allocation after the auditor reads this delta: one dossier start per engine
-(16 cases each), one scoped reading start per engine (168 Chromium /158 WebKit
-cases), and one combined fence driver start (8 Chromium /6 WebKit cases).
-Total proposed ceiling: five starts, no implicit retries. Exact names and
-filters, engine/step/driver bindings and caps are in RERUN-INVENTORY.json.
-The scoped reading inventory includes each offered unchecked-response failure
-and the five corrected cases, excluding the separately scoped dossier cases.
-No whole reading step or Core-mutant native row is implicitly allocated.
+```sh
+/usr/bin/python3 -I tools/unit_shards.py --plan
+```
 
-UNRESOLVED-745.json enumerates all original 495 reading rows with raw verdicts,
-errors and current UNRUN status, plus each engine's complete offered inventory
-outside the proposed scope: 311 Chromium and309 WebKit rows. Even selected
-rows remain unresolved until actually reached by authorized rereads. The
-qualification remains: reading checks on changed inputs are unverified where
-the scoped correction does not reach and prove them. Prior green is not a
-current pass; prior red is not an unchanged-baseline waiver. In particular,
-older partial-page/legacy-placement/reset cases were not adapted wholesale.
+For GitHub transport, append `--github-output`; the existing workflow invokes it.
+The external `DEFAULT-PLAN.json` contains every runnable job, Python file and
+observation provenance; `COVERAGE.json` names every required step, all ten unknowns,
+partial bins and the deterministic reversed-input check. No cases are removed,
+truncated, split, or accepted as a completed prefix.
 
-The original sixteen731 cases reached the original arrival-order red, restored
-candidate, live arrival, reload and native upward move before actsOf stopped at
-unchecked message_acts. They are neither sixteen product failures nor sixteen
-passes. Other-reader isolation, downward move, Undo, new root, archive/return
-and later star/join assertions after that boundary remain unproved. Original
-reading evidence for738 is73/73 and704 is7/7. Reader-mutations is10 literal true
-and4 expected mutant false, never14 literal passes. All original browser1/2
-summaries remain passed=false and quarantine.green=false.
+## Original measurements and cut truth
 
-EXISTING-OWNER-ROWS.json retains63 exact other-owner identities/errors:32
-WebKit Notebook parser stops belong739; target capture, navigation policy,
-list focus, header and rail recurrences keep their existing named owner paths
-under9246. No correction, flaky admission, baseline edit, policy change or raw
-status rewrite occurs here. The newer selected-word header and previously
-passing rail interactions remain observations rather than a common-cause claim.
+Evidence root:
+`/Users/commonfabric/.local/share/theseus/fable-tools/checks/740-fit9266`.
+`retain-timing.py` independently reads original ZIP summary/report/log members
+and compares their bytes/hashes with retained files. Eight browser ZIP receipts
+and the original Python cut/completion ZIP members were read. The earlier ledger,
+case inventories, retained cut receipts, ZIP-byte check and continuation union
+were read without modification. Current compact timing metadata has81 rows:
+59 original PR86/train49 completed summary observations, seven browser3 completion
+observations, two original partial-job final-report case-time sums, one compose
+progress lower bound, and twelve train45 completed log intervals. Five further
+original partial-job final reports retain their named inventories without timings;
+their missing durations are never invented.
 
-Approved items738,721,731,704,650 remain retained until the four observations
-receive their ruling. Original full177/merge0790 and accepted f737 remain in
-history. SOURCE-INTERSECTIONS.json declares changed shared-driver inputs and
-new helper dependencies for later union/guard. The changes affect every mode
-consuming either shared driver, including modes this correction does not run.
-Browser3 completion44348385545 and browser4 completion44348397828 at bed0 are
-untouched; no source, cancellation or evidence substitution was made. Actual98
-reconciliation remains coordinator owned. There was no push, PR, deployment,
-board write, live-store mutation, profile/key/session access or native capture.
+`SOURCE-BOUND-MEASUREMENTS.json` and `CASE-INVENTORIES.json` retain source, case
+count/hash, runtime provenance, raw failure/exit where recorded, original ZIP and
+summary/report/log hashes, and explicit timing qualifications. These inputs are
+not acceptance certificates. Train45 intervals include preflight/transition and
+lack complete named inventories; those inventory hashes stay null. Original
+partial jobs still lack final summaries. Browser3's returned completion was read;
+browser4 run44348397828 remains untouched, with no completion inferred. The
+650/721 own-case job walls were read as context and are never whole-compose bounds.
 
-Evidence: /Users/commonfabric/.local/share/theseus/fable-tools/checks/train49-placing9246
+The compose progress receipt has768 case rows, only two of eight planned phases
+complete, and `harnessCompleted:false`. Successful-case times sum to1955.686s
+(32.595m), excluding failed-case times and overhead; that is the seeded lower
+bound, isolated in its own120-minute bin. The original rail-result-to-cancellation
+interval is2786.362902s (46.439m), including transition. `COMPOSE-TRUTH.json` retains
+both timestamps and the exact log hash. **No completed82-minute compose receipt
+was located or asserted.** Warp's reference is not converted into a measurement.
+The lower bound cannot promise that the complete expanded compose fits.
 
-Frozen delta only. Stop for the auditor before any native or hosted rerun.
+`PYTHON-CUT-TRUTH.json` preserves the original18-minute train49 Python4 cut with
+no final summary, and the separate run44339276514 completion: sourcebed0a0d4,
+1014 tests, raw `OK`, exit0, 809.845373s step wall, 809.019251041s runner wall.
+Its exact4/4 inventory and per-file accounting remain recorded. The original
+73755-minute cut has2624 terminal OK records and no `Ran …` terminal or final
+summary; it remains incomplete. Raw hashd7e07ed2… was checked against its original
+ZIP member. The retained actual PR86 whole-unit and train49 Python4 wrappers both
+carry `timeout:49`; their exact workflow paths/hashes are in the truth receipt.
+This change does not relabel either old cut complete or claim whole-suite49-minute
+validation on the corrected source.
+
+The recovered tested objects0790c718/5896b131 exist in coordinator's separate
+`codex-740-sourcefit9264` clone; this clone does not contain them. That difference
+was observed and is not a gate. No complete-input equivalence is asserted.
+
+## Focused verification and limits
+
+CPython3.9.6: **55 focused checks passed**, final run11.736s. Coverage includes
+planner/default policy, item734 conservative selection, workflow matrix transport,
+collector missing/duplicate/raw-red/partial truth, Python exact file union and
+limits, and four existing continuation union/cleanup contracts. Bytecode prefixes
+are unique and effective for each mutation/restored run, including instrumented
+Python child processes. No browser/native case, whole Python/Node suite, Pool,
+server, signal or hosted workload ran: prior0, allocated0, actual0.
+
+`red.log` and `red-behavior.log` record the genuine inherited-policy failures for
+stale/unknown and partial timing. `focused-final2.log` is the restored final run.
+`MUTATIONS.json`, nine diffs and `mutation-*.log`/`restored-*.log` prove applied,
+caught and exact-hash-restored source changes for missing step, duplicate step,
+dropped unknown, overfilled bin, missing reserve, wrong factor, stale refusal,
+rewritten raw failed result and hidden partial coverage. An initial weaker
+cancellation-guard mutation survived; `attempt1-*` retains that attempt. The
+replacement directly corrupts raw failed results, and a separate mutation drops
+missing partial coverage; both are caught. No failure is waived as a product pass.
+The input audit first refused symbolic HEAD, then found an undeclared read in
+the new default-plan test. Its exact weights input is now declared; the final
+exact-SHA audit passes in `INPUT-DECLARATIONS.json`/`input-audit-final.log`.
+
+No newly measured host setup guarantee, full expanded-compose upper bound,
+future-image stability, new source equivalence or hosted completion is claimed.
+Unknown/stale timing requires the next run and metadata refresh; it does not
+block planning. The bound CLI read attempt returned `AUTHORITY_CHANGED`; warp9266
+was then read in full using `sqlite3 -readonly file:…?mode=ro`. No profile content,
+identity key, session, token or credentials were read or printed.
+
+## Coordinator install/revert proposal (not executed)
+
+1. Independent auditor reads SPEC-NOTE.md, this corrected contract, exact diff,
+   frozen source receipt, original measurement/cut truth and default plan.
+2. In a separate clean coordinator-owned **future-cut source** worktree, apply
+   the cumulative tooling change from live98 to the frozen corrected head. This
+   requires both inherited9c7bf7cc and this correction, not this correction alone
+   on live98. Use the exact cumulative patch in external`FROM-LIVE98.diff`, or
+   cherry-pick those two exact commits in order when the receiving source permits
+   it. Resolve conflicts against the future source; never copy a live tree over it.
+   Carry `.github/check-weights.json`, `.github/workflows/checks.yml` and
+   `tools/unit_shards.py` together, plus `tools/ci-input-reads.json`, docs and
+   focused tests.
+3. Before the next newly authorized cut, make that source the coordinator's
+   installed base/ref for **future** train worktrees. `flight.py train-cut` selects
+   names through installed`steps-for.py` and the candidate's committed source;
+   actual shard planning runs from the candidate's own workflow/planner/weights.
+   Therefore changing only an external helper or report would not install this
+   policy: verify those three candidate files' hashes against the frozen receipt,
+   run `--plan` at its exact commit, check48/52 coverage, then record the new cut.
+   Do not amend any already-cut/in-flight source or frozen wrapper. No current
+   landing waits for this installation. Live application deployment is not part
+   of this tooling install; this builder touches neither live tree nor tools.
+4. Retain the receiving source's prior commit and exact prior three file hashes
+   as the install receipt. Revert via a new reviewed commit restoring that prior
+   planner/workflow/weights coherently (or revert the two tooling commits in reverse
+   order on a clean compatible branch). Verify the restored default at its exact
+   source. Future cuts use the restored source; existing jobs and original evidence
+   stay intact. Never reset live trees, overwrite later edits or rewrite history.
+
+This builder made no store/board/stage/flight writes, install, push, PR, deployment,
+credential access or delegation. The exact committed return is for independent
+review; it grants no start allocation and no self-approval.

@@ -50,7 +50,7 @@ env:
   # The versions the Mac's harnesses run against (the release check's summaries name them).
   CHROME_VERSION: 156.0.8078.47
   PLAYWRIGHT_VERSION: 1.63.0
-  # Item 666: 200.9 measured browser minutes need four shards (about 50.2 each).
+  # Item740: initial bins only; whole-step capacity may require more. Unknown steps run alone; observed oversize is explicit.
   # Four Python partitions, Node, deploy refusals and replay have independent jobs and limits.
   BROWSER_SHARDS: 4
 
@@ -69,16 +69,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I tools/check_plan.py --github-output >> "$GITHUB_OUTPUT"
+          python3 -I tools/unit_shards.py --plan --github-output >> "$GITHUB_OUTPUT"
 
   check:
     name: ${{ matrix.name }}
     needs: plan
     runs-on: macos-26
-    # Browser limits use ceil(longest dealt minutes * 1.5); replay keeps 45. Unit limits are
-    # ceil((measured file/step minutes + measured setup) * 1.5), from
-    # .github/check-weights.json: file timings 44112970996, Node/setup
-    # 44112985174, deploy-refusals train 30 (44007172971). Python 19/18/18/18, Node 5, refusals 3.
+    # Warp9266: browser capacity 120m, 5m setup/upload reserve, 1.25x
+    # retained step maximum; unknown/long steps alone. Capacity is not ETA.
+    # Each Python partition runs alone with a 49m job capacity.
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false

@@ -20653,9 +20653,24 @@
      "(\"45\", \"46\", TOPIC_POSITION_SCHEMA"
     ],
     [
+     "aim_next/migrations.py",
+     "(\"47\", \"48\", REFRESH_UP",
+     "(\"46\", \"47\", REFRESH_UP"
+    ],
+    [
+     "aim_next/migrations.py",
+     "(\"48\", \"49\", DOSSIER_ORDER_SCHEMA",
+     "(\"47\", \"48\", DOSSIER_ORDER_SCHEMA"
+    ],
+    [
+     "aim_next/migrations.py",
+     "(\"49\", \"50\", COVER_WAIT_SCHEMA",
+     "(\"48\", \"49\", COVER_WAIT_SCHEMA"
+    ],
+    [
      "aim_next/store.py",
-     "SCHEMA_VERSION = \"49\"",
-     "SCHEMA_VERSION = \"46\""
+     "SCHEMA_VERSION = \"50\"",
+     "SCHEMA_VERSION = \"49\""
     ]
    ],
    "check": {

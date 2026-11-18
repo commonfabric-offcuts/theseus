@@ -3742,6 +3742,12 @@
         "tests/fixtures/schema_48.sql"
       ],
       "scope": "repository"
+    },
+    "2c4c8dfc06df8f1b46fbc323862c699ea22f285925eddbf70de2deb3aafbfb62": {
+      "inputs": [
+        "tests/fixtures/schema_49.sql"
+      ],
+      "scope": "repository"
     }
   },
   "tests/test_new_line.py": {
@@ -5939,6 +5945,12 @@
         ".github/workflows/checks.yml"
       ],
       "scope": "repository"
+    },
+    "6874a2b4702b8caf7debddfe1c51231283daf14285e25905e292a0cf0be797a6": {
+      "inputs": [
+        ".github/check-weights.json"
+      ],
+      "scope": "repository"
     }
   },
   "tests/thumbnail_open_native.mjs": {
@@ -6951,6 +6963,56 @@
       "scope": "repository",
       "inputs": [
         "web/app.mjs"
+      ]
+    }
+  },
+  "tests/test_cover_waiting_756_fixture.py": {
+    "c38d6838ea143eb479c7e1264eab1491a8155f2030d0c3b34e874621fc1d88b1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "49a4f45b4d568269d786a2dbbf5eeade89e07898c2b2941e414d749d59362e94": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_cover_waiting_756.py": {
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:3": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "2c4c8dfc06df8f1b46fbc323862c699ea22f285925eddbf70de2deb3aafbfb62": {
+      "inputs": [
+        "tests/fixtures/schema_49.sql"
+      ],
+      "scope": "repository"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:4": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "f04226a8894528eed01d2f0fa49fd61b589ee42ac5d54964edab240d8d6d4273:5": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_tools_browser_budget.py": {
+    "4d2d1431f1d74ea2c7bd97335eb48506ebe9af31e96c4663fa00ddbd010f9880": {
+      "scope": "repository",
+      "inputs": [
+        ".github/check-weights.json"
       ]
     }
   }
