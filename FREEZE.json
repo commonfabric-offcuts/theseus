@@ -1,0 +1,103 @@
+{
+  "base": "782dcf9dc4b6810e90bc9dcbf83a870b938b3e61",
+  "branch": "fable/own-receipt-8425",
+  "checks": {
+    "actual_api_control": {
+      "bytes": 4655,
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/actual-control.json",
+      "sha256": "f516e620e53b4b8b038fb0854ac4b0a8018292fb994312c7c56594b2d0fc73cd"
+    },
+    "applied_mutants": 8,
+    "control_log": {
+      "bytes": 4738,
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/final-control-3.log",
+      "sha256": "0ad7290bb6045eb9f9bdbc022472e584963e1b1693c9638362c38b28f9408e05"
+    },
+    "diff_check": "pass",
+    "focused_result": "pass",
+    "focused_tests": 61,
+    "invariants": {
+      "bytes": 3149,
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/invariants.json",
+      "sha256": "4ff118444ee4617672d9f453413f0c7f79aefb3e90b51aee2b15f1f3757350a9"
+    },
+    "mutants": {
+      "bytes": 4791,
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/mutants.json",
+      "sha256": "850b7800099a8a10dd28a3ae800eb5529d3535c517a1cbf44d057dd63683a3a5"
+    },
+    "python": "CPython 3.9.6",
+    "red": "genuine control refused before adapter; installed command shape refusal independently reproduced"
+  },
+  "controller_binding_sha256": "a01aa25c8863bff5b0b2207510c6e549f672301b0aed21c833beb26329f7ef09",
+  "evidence_index": {
+    "bytes": 15925,
+    "path": "/Users/commonfabric/.local/share/theseus/fable-tools/checks/own-receipt-8425/evidence-index.json",
+    "sha256": "ce90af993cd36d4d6c4f7420837b69d4e0367ef6f94b1f9ff1abcf3803c36619"
+  },
+  "genuine": {
+    "assembly": "5a522267fef5a9649d7301200badc9e32ee0fe8a",
+    "attempt": 1,
+    "derived_engine_counts": {
+      "chromium": 293,
+      "webkit": 293
+    },
+    "raw_passes": 586,
+    "raw_rows": 586,
+    "run": 44221559712,
+    "tree": "ffa8f11f33748139b506659e2c524c2dc5652994",
+    "wrapper": "c4af1c667aeb54b193f483ac7f8385c6895eafb2"
+  },
+  "limits": [
+    "one exact pinned workflow/native/release/compose/thumbnail schema; item 651 only; one execution",
+    "unknown source/schema or geometric measurement payload refuses",
+    "expected.json is a derived test fixture; independent auditor must judge complete obligations",
+    "no combined full-source/controller/release validation or installation claimed",
+    "no hosted/browser/full-suite run, push, deployment, live-store/board/flight/Core write or delegation"
+  ],
+  "normalization": "derived internal neutral names and engine from exact source-bound prefix; phase null; no raw byte changes or synthetic raw argv/tool/engine fields",
+  "original_source_context": {
+    "api": {
+      "bytes": 14017,
+      "path": "/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/train43-v4/run-api.json",
+      "sha256": "73c0d43bfdab0c7156c84288c38a0fd9f85861c5d76a703c853f06e85c37d5fc"
+    },
+    "head": "08b4e0ddbcb323c1ed37786e41ef774e693a9614",
+    "run": 44208914389
+  },
+  "remaining": [
+    "root combines controller correction with adapter and checks exact overlap",
+    "root freezes final combined head, then one independent auditor review including #7715 tolerance checklist",
+    "one eventual commit-named installation including tools/own_case_receipt.py"
+  ],
+  "seat": "codex-own-receipt-8425",
+  "self_binding": "FREEZE.json excludes itself from recursive SHA indexing; the resulting Git commit binds its exact bytes. FINAL.json outside the commit records that commit and this file digest.",
+  "sources": {
+    "REVIEW.md": {
+      "bytes": 5545,
+      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/REVIEW.md",
+      "sha256": "a134af401f76506bcd9424ca702fb819cf5e1ad3ea12c8817d3700ca7aca6cf0"
+    },
+    "docs/base-move-evidence.md": {
+      "bytes": 12685,
+      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/docs/base-move-evidence.md",
+      "sha256": "94a672db65b2285f36b472b48b42a44d04dfd32b6010a0b6d0fdee621d61a12a"
+    },
+    "tests/test_tools_own_receipt.py": {
+      "bytes": 18422,
+      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tests/test_tools_own_receipt.py",
+      "sha256": "3b5e2d5ac6fe3e12959380aa68c51401b14cdcc317e05026ca132c7a115b2cf0"
+    },
+    "tools/base_move.py": {
+      "bytes": 38815,
+      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tools/base_move.py",
+      "sha256": "209330f8b7d48eaf7e6d711d94ee29d63274f145100985feb8bc8323314e5e64"
+    },
+    "tools/own_case_receipt.py": {
+      "bytes": 15597,
+      "path": "/Users/commonfabric/aim-worktrees/codex-own-receipt-8425/tools/own_case_receipt.py",
+      "sha256": "90396ff061978503594c0821ce6f90308771b7bd38496e7bc7d14d35814b22ca"
+    }
+  },
+  "version": 1
+}

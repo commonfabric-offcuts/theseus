@@ -143,3 +143,43 @@ Train38 stays red/held and original39/40 retain their original judgments.
 No same-tree acceptance, item719 change or normal-path change is made.
 Independent review must include #7715's measured geometry tolerance rule; no
 measured layout case is expected for this change.
+
+### Genuine Pool own receipts (source-bound adapter)
+
+An own receipt may instead have exactly `{snapshot, step, report, log, pool}`,
+all Refs. This is selected only by the explicit `pool` field; an invalid Pool
+receipt never falls back to the legacy shape. Legacy receipts retain their
+strict command/engine contract. No controller or full-source rule changes.
+
+`pool` holds exactly `{version: 1, run, attempt, wrapper, artifact, api, record}`;
+`record` is the original local `*.pool.json` Ref, checked against the API and spec;
+`artifact` is `{id, archive: Ref}` and `api` maps exactly `run`, `workflow`,
+`jobs`, `artifact` to retained API response Refs. The validator GETs those
+identities independently and compares the complete parsed responses. Preserve
+original API bytes and the original ZIP, authenticated by GitHub's digest.
+ZIP members are read by name, never extracted: `cases.json`, `c1.log`,
+`c1/native-compose.log`, `c1/evidence/native.json`. The latter three must equal
+step/report/log bytes exactly. Only one execution/filter per archive is admitted.
+
+This adapter knows one exact source schema: Pool's executed workflow, native.py,
+release_check.py, compose harness and thumbnail helper, pinned by reviewed SHA-256 constants.
+Unknown source bytes refuse. Wrapper parents must be `[assembly]`; every tree
+entry except the two genuine Pool workflow/spec entries must equal assembly.
+Spec is exactly `{step: "compose", cases: ["item 651"], label, snapshot: assembly}`.
+The raw snapshot is the original pool tree record, with exact assembly head,
+clean before/after, no changed files, and `where: "pool"`. Source input Git OIDs
+are derived from the exact assembly, never supplied as new raw measurements.
+
+Raw stdout has only name/exit/passed/counts; it stays raw. The pinned workflow
+and source establish command/mode/filter, with dynamic executable/output paths
+reported symbolically as derived facts, never as a recorded argv. The adapter
+checks raw PASS lines in row order, final counts, normal exits, both fixtures,
+browser closure and all six planned/completed engine phases before interpreting
+names. Only exact `chromium ` and `webkit ` prefixes are recognized; removing
+one prefix yields the internal engine-neutral case identity. Raw rows have no
+engine or phase fields. Internal phase remains null; no case-to-phase assignment
+is invented. Both engines must have identical nonduplicate neutral inventories,
+matching the independently reviewed obligations exactly, once each. The
+normalized identities, command and input OIDs are labeled `derived`, separately
+from raw counts and original Refs. Geometric measurement schemas are unsupported
+here and refuse; #7715's tolerance checklist still applies to independent review.
