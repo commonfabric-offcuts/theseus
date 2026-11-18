@@ -28733,8 +28733,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "!event.target.closest?.('a, .fold-line, .image-thumb')",
-     "!event.target.closest?.('a, .fold-line')"
+     "!event.target.closest?.('a, .fold-line, .image-thumb, .note-corner, .stack-star')",
+     "!event.target.closest?.('a, .fold-line, .note-corner, .stack-star')"
     ]
    ],
    "check": {
@@ -32210,8 +32210,8 @@
    "break": [
     [
      "web/message-menu.mjs",
-     "'a, .fold-line, .note-corner'",
-     "'a, .fold-line'"
+     "'a, .fold-line, .image-thumb, .note-corner, .stack-star'",
+     "'a, .fold-line, .image-thumb, .stack-star'"
     ]
    ],
    "check": {
