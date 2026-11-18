@@ -1019,7 +1019,7 @@ def carry_sources(data, prior, git):
     return {'paths': len(paths), 'claims': len(claims), 'carry': 48, 'refused': 2}
 
 
-def carry_run(binding, github, repository, git):
+def carry_run(binding, github, repository, git, merged_context=None):
     from tools import continuation_envelope as continuation
     base_move.fields(binding, 'run attempt workflow_head source_head')
     base_move.number(binding['run']); base_move.number(binding['attempt'])
@@ -1036,7 +1036,28 @@ def carry_run(binding, github, repository, git):
     run, jobs = continuation.run_fact(binding, github, repository, binding['workflow_head'], event)
     if event == 'pull_request':
         prs = run.get('pull_requests')
-        carry_require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == 86
+        if prs == []:
+            # GitHub drops the original run's PR association after merge (PR86,
+            # run44284000276); authenticate the actual merged PR/Git chain instead.
+            carry_require(isinstance(merged_context, dict), 'empty run association needs actual merged context')
+            ctx = merged_context
+            pull = ctx.get('pull')
+            carry_require(repository == 'commonfabric-offcuts/theseus' and isinstance(pull, dict)
+                          and ctx.get('number') == pull.get('number') == 86
+                          and ctx.get('mode') == 'merged' and pull.get('merged') is True
+                          and _sha(ctx.get('merge')) and pull.get('merge_commit_sha') == ctx['merge']
+                          and ctx.get('assembly') == pull.get('head', {}).get('sha') == CARRY_752_HEAD
+                          and ctx.get('live') == ctx.get('original_base') == pull.get('base', {}).get('sha') == CARRY_752_BASE
+                          and ctx.get('release_branch') == pull.get('base', {}).get('ref') == 'release/live73'
+                          and ctx.get('source_head') == binding['source_head'] == CARRY_752_OLD,
+                          'empty run association merged PR binding differs')
+            carry_require(github.get(PULL_PATH % (repository, 86)) == pull, 'empty run association fresh PR differs')
+            carry_require(parents_of(git, ctx['merge']) == [CARRY_752_BASE, CARRY_752_HEAD]
+                          and tree_of(git, ctx['merge']) == CARRY_752_TREE
+                          and _contains(git, CARRY_752_OLD, CARRY_752_HEAD, 'original source ancestry'),
+                          'empty run association merge parent/tree/source ancestry differs')
+        else:
+            carry_require(isinstance(prs, list) and len(prs) == 1 and prs[0].get('number') == 86
                       # GitHub updates this association as PR86 moves. It is
                       # not the immutable run.head_sha or tested source. Both
                       # exact historical/current PR heads are independently
@@ -1383,7 +1404,10 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
         carry_require(isinstance(data['runs'], list) and len({r['run'] for r in data['runs']}) == len(data['runs'])
                       and set(CARRY_752_RUNS) <= {r['run'] for r in data['runs']}, 'missing or duplicate source runs')
         bindings = {r['run']: r for r in data['runs']}
-        runs = {n: carry_run(r, github, repository, git) for n, r in bindings.items()}
+        context = {'pull': merged_pull, 'number': pr, 'release_branch': release_branch, 'merge': merge,
+                   'assembly': CARRY_752_HEAD, 'live': live, 'original_base': live, 'source_head': CARRY_752_OLD,
+                   'mode': 'merged' if merged else 'premerge-source-proof'}
+        runs = {n: carry_run(r, github, repository, git, context) for n, r in bindings.items()}
         carry_require(Counter(r['id'] for r in judgment['producer_runs']) == Counter(bindings.keys())
                       and [r['id'] for r in judgment['verdict_checks']] == [134773516808], 'judgment run/check inventory differs')
         carry_require(isinstance(data['history'], dict) and set(CARRY_752_HISTORY) <= set(data['history']),
@@ -1430,9 +1454,6 @@ def validate_source_carry(ref, judgment, git, github, repository, live, merge, i
         original_summary = base_move.loads(archives['original/release-check']['summary.json'])
         carry_require(original_summary.get('commit') == CARRY_752_MERGE and original_summary.get('passed') is False,
                       'original partial/red aggregate relabelled')
-        context = {'pull': merged_pull, 'number': pr, 'release_branch': release_branch, 'merge': merge,
-                   'assembly': CARRY_752_HEAD, 'live': live, 'original_base': live, 'source_head': CARRY_752_OLD,
-                   'mode': 'merged' if merged else 'premerge-source-proof'}
         controller_source = {'run': 44284000276, 'attempt': 1, 'controller': data['controller'],
             'base_at_run': {'ref': release_branch, 'sha': live},
             'tested_merge': {'sha': CARRY_752_MERGE, 'tree': tree_of(git, CARRY_752_MERGE),

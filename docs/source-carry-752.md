@@ -81,6 +81,12 @@ failed Verdict134773516808. Mutable nested PR associations may name either
 exact original/current head; immutable original check/run/publication remain
 6e08/5896. Empty check association still requires actual merged context.
 
+Under warp9138, an exactly empty original-run API association also requires
+the actual merged PR86 context. Re-read that PR and bind its merge, release
+base, corrected source, Git parents/tree and original-source ancestry. An open
+PR, absent association, or wrong nonempty association retains its refusal.
+Run/attempt/workflow/immutable head and every evidence/review check still apply.
+
 `review: Ref` is exactly `{version:1,reviewer,record,judgment_audit,body_sha256,
 inventory_sha256,workflow_sha256,obligations}`. Reviewer is auditor, record
 attribution differs from judgment.audit, and hashes bind the WHOLE canonical
