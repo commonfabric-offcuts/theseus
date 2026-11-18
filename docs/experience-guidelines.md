@@ -73,6 +73,14 @@ never promises a quote that Return would not make.
   takes the focus …" and "reading Tab off a lit passage on a dossier's card
   puts the light out …".
 
+## Image thumbnails open the image
+
+Clicking, tapping or pressing Return on a displayed thumbnail opens that image
+in a new tab, keeping writing and destination (item 651, docs/images.md).
+`tests/thumbnail_open_native.mjs` via `native-compose` checks the thumbnail
+surfaces and their unavailable/recovery states in Chromium and WebKit, at
+320, 375, 390 and laptop widths, light and dark.
+
 ## Every input works
 
 A laptop pointer, the keyboard alone and a phone's touch each reach the same

@@ -15,7 +15,7 @@
 // the row's first part and Remove its last; and it holds its place before it
 // loads, so its loading moves nothing in the row or below it. A row under
 // 30rem wide (a phone) shows none (aim.css).
-import { paintThumb } from './image-pick.mjs';
+import { paintThumb, openThumbnail } from './image-pick.mjs';
 
 const busy = new WeakSet();
 
@@ -90,7 +90,11 @@ export function paintImageRows(host, choices, enabled, press, preview = null) {
       // opens the image's choices in place (openImage).
       row = document.createElement('div'); row.className = 'image-choice'; row.dataset.selection = choice.id;
       const opener = document.createElement('button'); opener.type = 'button'; opener.className = 'image-open';
-      opener.setAttribute('aria-expanded', 'false'); opener.onclick = () => openImage(row, !row.hasAttribute('data-open'));
+      opener.setAttribute('aria-expanded', 'false'); opener.title = 'Image options';
+      opener.onclick = event => {
+        openThumbnail(row.querySelector(':scope > img.image-thumb'), event);
+        openImage(row, !row.hasAttribute('data-open'));
+      };
       opener.append(document.createElement('span')); row.append(opener); host.append(row);
       if (preview) paintThumb(row, choice.id, () => preview(choice.id), image => row.firstElementChild.after(image));
     }

@@ -4250,5 +4250,61 @@
       ],
       "scope": "repository"
     }
+  },
+  "tests/thumbnail_open_native.mjs": {
+    "b18fe37654baa75ab83f386a6567cb7d21cd67b421aca1f4e2d2b931382c370b": {
+      "inputs": [
+        "tests/fixtures/media/screen.png"
+      ],
+      "scope": "repository"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66": {
+      "inputs": [
+        "web/aim.css",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs",
+        "web/card-images.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/thumbnail_open_native.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b:1": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "806e38f5fe8da526c2824e929294d5a6f26a2fa653c37725ca0369911a1df85b:2": {
+      "inputs": [
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs"
+      ],
+      "scope": "repository"
+    },
+    "6fb8bae121b78868160c97c969bc671f794c0047646c319fb580ab48d785ee66:1": {
+      "inputs": [
+        "web/aim.css",
+        "web/image-pick.mjs",
+        "web/image-rows.mjs",
+        "web/message-menu.mjs",
+        "web/card-images.mjs",
+        "tests/reader_compose_native.mjs",
+        "tests/thumbnail_open_native.mjs"
+      ],
+      "scope": "repository"
+    }
   }
 }
