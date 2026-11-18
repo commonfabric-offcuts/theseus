@@ -112,9 +112,10 @@ export class DossierSelectionQuote {
   capture() {
     if (!this.available()) return null;
     const selection = this.doc.getSelection();
-    if (selection?.rangeCount !== 1 || selection.isCollapsed) return null;
+    if (selection?.rangeCount !== 1 || selection.isCollapsed) { this.invalid = null; return null; }
     const range = selection.getRangeAt(0);
     if (sameRange(range, this.invalid)) return null;
+    this.invalid = null;
     const entry = this.entryOf(range.startContainer), card = entry && cardIn(entry);
     const words = card?.querySelector(':scope > .message-preview');
     if (!words || !words.contains(range.startContainer) || !words.contains(range.endContainer) ||

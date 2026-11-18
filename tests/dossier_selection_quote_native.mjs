@@ -42,6 +42,9 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
     await frames(p);
   };
   const select = async (p, id, text = phrase) => {
+    // A drag starting inside an old selection starts native text dragging.
+    // Clear it by an actual click on the inert workspace label first.
+    await centre(p, '#workspace-name'); await p.point('#workspace-name');
     await centre(p, words(id)); await frames(p);
     await drag(p, await pointOf(p, words(id), text, 'start'), await pointOf(p, words(id), text, 'end'));
     assert.equal(await p.evaluate('getSelection().toString()'), text, 'native drag selected exact words');
@@ -86,15 +89,26 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
     const key = `item-674-${device}-${tone}`;
     await check(`reading item 674 exact quote and unchanged default ${device} ${tone}`, async () => {
       const topic = key, ids = await setup(topic);
+      const startingIds=(await view('topic_messages',{topic_id:topic,direction:'before',limit:20})).items.map(m=>m.id).sort();
       await control({ method: 'private_writing', kind: 'draft', message_id: ids.last, topic_id: topic, operation_id: key+'-draft', body: 'My existing reply' });
       await control({ method: 'private_writing', kind: 'note', message_id: ids.last, topic_id: topic, operation_id: key+'-note', body: 'My private note' });
       // Exact pre-feature public bytes, not a reconstructed screenshot.
       await runtime('original', key, () => withPage(key+'-before', device, topic, ids, tone, async p => {
-        await select(p, ids.last); await shot(p, key+'-before');
-        if (device !== 'laptop') await expectedRed(key+'-original-offer', async () => assert.equal(await visible(p), true, 'a selected phone phrase offers Quote'));
+        await shot(p, key+'-before');
+        if (device !== 'laptop') await expectedRed(key+'-original-selection-and-offer', async () => {
+          await select(p, ids.last); assert.equal(await visible(p), true, 'a selected phone phrase offers Quote');
+        });
+        else {
+          await drag(p, await pointOf(p, words(ids.last), phrase, 'start'), await pointOf(p, words(ids.last), phrase, 'end'));
+          assert.equal(await p.evaluate('getSelection().toString()'), '', 'unchanged desktop card button has no native text selection');
+        }
       }));
       await withPage(key+'-after', device, topic, ids, tone, async p => {
-        await select(p, ids.last); await closed(p);
+        if (device === 'laptop') {
+          await drag(p, await pointOf(p, words(ids.last), phrase, 'start'), await pointOf(p, words(ids.last), phrase, 'end'));
+          assert.equal(await p.evaluate('getSelection().toString()'), '', 'desktop card selection behavior is unchanged');
+        } else await select(p, ids.last);
+        await closed(p);
         assert.equal(await p.evaluate("matchMedia('(pointer:coarse)').matches"), device !== 'laptop', 'actual coarse-pointer media condition');
         assert.equal(await visible(p), device !== 'laptop', 'only the coarse-pointer selection offers the pill');
         await shot(p, key+'-selected');
@@ -113,7 +127,7 @@ export async function dossierSelectionQuoteChecks({ check, until, view, control,
         await p.send('Input.insertText', { text: 'Still writing' });
         assert.equal(await field(p), body+'Still writing', 'native typing follows the quote without overwriting the draft');
         await shot(p, key+'-quoted');
-        assert.equal((await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.length, 2, 'quote and typing send nothing');
+        assert.deepEqual((await view('topic_messages', { topic_id: topic, direction: 'before', limit: 20 })).items.map(m=>m.id).sort(), startingIds, 'quote and typing send nothing');
         await closeReader(p, 'phone');
       });
     });

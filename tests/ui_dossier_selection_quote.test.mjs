@@ -116,3 +116,35 @@ for(const state of ['normal','read only','adopting','recovery'])test('item 674 e
     assert.deepEqual(JSON.parse(JSON.stringify(draft.quotes)),[...before.quotes,{source:{kind:'message',id:'selected-reply',revision:7},excerpt:'Amber birds'}]);
   }else{assert.equal(reader.field.value,before.body);assert.deepEqual(draft,before);}
 });
+
+test('item 674 a changed native selection releases repaint quarantine, even when the same phrase is selected again',()=>{
+  const f=fixture();f.c.invalid={...f.range};
+  assert.equal(f.c.capture(),null,'the invalidated selection stays blocked');
+  f.selection.isCollapsed=true;
+  assert.equal(f.c.capture(),null,'collapsing offers nothing');
+  f.selection.isCollapsed=false;
+  assert.ok(f.c.capture(),'a deliberate new selection of the same words is eligible again');
+});
+
+test('item 674 original repaint quarantine fails reselect then final source restores it',()=>redRestore('reselection quarantine',
+  'if (selection?.rangeCount !== 1 || selection.isCollapsed) { this.invalid = null; return null; }',
+  'if (selection?.rangeCount !== 1 || selection.isCollapsed) return null;',s=>{
+    const f=fixture(s);f.c.invalid={...f.range};assert.equal(f.c.capture(),null);
+    f.selection.isCollapsed=true;assert.equal(f.c.capture(),null);f.selection.isCollapsed=false;
+    assert.ok(f.c.capture(),'new selection is admitted after an actual collapse');
+  }));
+const stackSource=readFileSync(new URL('../web/stack-feed.mjs',import.meta.url),'utf8');
+const swipeMethod=stackSource.match(/^  swiped\(event\) \{\n[\s\S]*?^  \}\n/m)[0];
+function swipeCheck(method){
+  const swipe=vm.runInNewContext('({'+method+'}).swiped');
+  for(const selected of [true,false]){
+    const acts=[],controller={swipe:{x:0,y:10,target:'reply'},doc:{getSelection:()=>({isCollapsed:!selected})},swipeAct:(...args)=>acts.push(args)};
+    swipe.call(controller,{changedTouches:[{clientX:110,clientY:10}],altKey:false});
+    assert.equal(acts.length,selected?0:1,'selection takes priority, ordinary swipe retains its owner');assert.equal(controller.swipe,null);
+  }
+}
+test('item 674 swipe selection priority mutant red then restored ordinary swipe contract',()=>{
+  const guard='this.doc.getSelection()?.isCollapsed === false || ',mutant=exactMutation(swipeMethod,guard,'');
+  assert.throws(()=>swipeCheck(mutant),/selection takes priority/);swipeCheck(swipeMethod);
+  console.log(JSON.stringify({name:'item 674 swipe priority',native:false,applied:1,mutant:sha(mutant),restored:sha(swipeMethod),caught:true}));
+});
