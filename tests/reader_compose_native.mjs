@@ -21,6 +21,7 @@
 // AIM_PLAYWRIGHT_CORE names a playwright-core directory. The release check runs
 // it as native-compose; tools/native.py compose [filter] runs it alone.
 import assert from 'node:assert/strict';
+import { whisperOutlineCompose } from './whisper_outline_native.mjs';
 import { thumbnailChecks } from './thumbnail_open_native.mjs';
 import { spawn } from 'node:child_process';
 import { fixtureControl } from './fixture_control.mjs';
@@ -288,6 +289,7 @@ const NAMING = {
 const namedIn = (p, at) => p.evaluate(s => [...document.querySelector(s).querySelectorAll('[data-name]')].map(el => el.dataset.name), at.named);
 
 async function run() {
+  await whisperOutlineCompose({ check, control, facts, engine, page, until, press, picture, close });
   await cardEditor652({ check, page, until, press, picture, control, facts, engine, evidence, root });
   if (!filter || filter.includes('item 651')) await thumbnailChecks({ check, page, press, until, picture, close, control, facts, root, engine, evidence });
   // Items 644 and 668: observe every frame, including focus and layout changes during the act.
