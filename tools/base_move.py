@@ -570,18 +570,25 @@ TEST_ADAPTATION_REASON = ('Preserve live item 644 pointer focus(preventScroll) w
                           'or scrolling on ordinary redraw at all four widths.')
 
 
+TEST_ADAPTATIONS = {TEST_ADAPTATION_PATH: dict(TEST_ADAPTATION_BLOBS, reason=TEST_ADAPTATION_REASON),
+    'tests/card_editor_652.mjs': {'original_blob': None, 'source_blob': '68f60f880e532186cc49b972b3208a46203e4dfe', 'live_blob': None, 'assembly_blob': 'cb188b6c11f8aee76f61332e32e302ea45522736', 'reason': 'Preserve native press/focus requirements, retain original causes, capture missing delivery/media/failure evidence and unique normal/mutant/restored geometry; unchanged456 identities and six phases.'},
+    'tests/ui_card_editor_652_contract.test.mjs': {'original_blob': None, 'source_blob': None, 'live_blob': None, 'assembly_blob': 'b90dc6e506d7c474e27e6bb4009e4f3e168a6bfa', 'reason': 'New browser-free contract checks hold phone-width44px rule and truthful diagnostic/error/phase preservation.'},
+}
+
+
 def resolution_scope(git, old, head, live, assembly, review, adaptations):
-    """Compare every Git entry; only the explicit reviewed test may differ."""
+    """Compare every Git entry; only the explicit reviewed test bytes may differ."""
     require(isinstance(adaptations, list), 'invalid test adaptations')
     listed = {}
     original, source, base, result = (entries(git, h) for h in (old, head, live, assembly))
     for row in adaptations:
         fields(row, 'path original_blob source_blob live_blob assembly_blob reason')
         path = row['path']
-        require(path == TEST_ADAPTATION_PATH, 'unsupported test adaptation path')
+        require(isinstance(path, str) and path in TEST_ADAPTATIONS, 'unsupported test adaptation path')
+        bound = TEST_ADAPTATIONS[path]
         require(path not in listed, 'duplicate test adaptation')
-        require(row['reason'] == TEST_ADAPTATION_REASON, 'test adaptation reason differs')
-        require({k: row[k] for k in TEST_ADAPTATION_BLOBS} == TEST_ADAPTATION_BLOBS,
+        require(row['reason'] == bound['reason'], 'test adaptation reason differs')
+        require({k: row[k] for k in TEST_ADAPTATION_BLOBS} == {k: bound[k] for k in TEST_ADAPTATION_BLOBS},
                 'test adaptation reviewed blobs differ')
         for key, actual in (('original_blob', original), ('source_blob', source),
                             ('live_blob', base), ('assembly_blob', result)):

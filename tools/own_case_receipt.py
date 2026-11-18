@@ -33,6 +33,8 @@ COMPOSE = 'tests/reader_compose_native.mjs'
 # never a spec/receipt claim, authorize the additional exact filter.
 COMPOSE_652 = 'ee64a06f2626d5cd7c2893b65727168d03a240e87eb06b13a5094be5ea1f76ee'
 HELPER_652 = {'tests/card_editor_652.mjs': '11b2e0570b7c6be12515a0551f75a49af593cd2c95cb84211e26b186f31716a6'}
+# Exact8652 diagnostic correction; original profile remains separate and valid.
+HELPER_652_CORRECTED = {'tests/card_editor_652.mjs': 'e400b065311cc5212a14ed8eeff5ab536dd2f6967b2bb7a0ed450d68d9e44c6d'}
 # Narrow fallback: independent producer test trees bind all imports and fixtures.
 FAMILIES = {'717': {'head': 'f31e319994ecc96c5565828a53fde75c01bd3386',
          'tests_tree': '4371130014b2cab2853e8831516c2d1f5cfb1f75',
@@ -240,6 +242,8 @@ def validate(receipt, git, github, repository, assembly, assembly_tree, expected
             authorized[COMPOSE] = COMPOSE_652
             authorized.update(HELPER_652)
             sources.update(source_bytes(git, wrapper, list(HELPER_652)))
+            if all(b.digest(sources[p]) == value for p, value in HELPER_652_CORRECTED.items()):
+                authorized.update(HELPER_652_CORRECTED)
             case_filter = 'item 652'
     for path, expected_digest in authorized.items():
         b.require(b.digest(sources[path]) == expected_digest, 'Pool executed source/command differs: ' + path)

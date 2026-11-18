@@ -22,6 +22,9 @@ COMPOSE = 'tests/reader_compose_native.mjs'
 
 
 class Synthetic652(unittest.TestCase):
+    assembly = ASSEMBLY
+    tree = TREE
+    helper_sha = "11b2e0570b7c6be12515a0551f75a49af593cd2c95cb84211e26b186f31716a6"
     @classmethod
     def setUpClass(cls):
         # A local, unreferenced wrapper object. It is never pushed or executed.
@@ -29,7 +32,7 @@ class Synthetic652(unittest.TestCase):
         cls.addClassCleanup(cls.temp.cleanup)
         cls.git = staticmethod(lambda *args: subprocess.run(['git'] + list(args), capture_output=True, text=True))
         workflow = own.source_bytes(cls.git, 'c4af1c667aeb54b193f483ac7f8385c6895eafb2', [own.WORKFLOW])[own.WORKFLOW]
-        spec = json.dumps({'step': 'compose', 'cases': ['item 652'], 'label': 'synthetic652', 'snapshot': ASSEMBLY}).encode()
+        spec = json.dumps({'step': 'compose', 'cases': ['item 652'], 'label': 'synthetic652', 'snapshot': cls.assembly}).encode()
         # Explicit Git-only environment; no credential/profile/environment reads.
         git_env = {'PATH': '/usr/bin:/bin', 'GIT_INDEX_FILE': cls.temp.name + '/index',
                    'GIT_CONFIG_GLOBAL': '/dev/null', 'GIT_CONFIG_NOSYSTEM': '1',
@@ -38,20 +41,20 @@ class Synthetic652(unittest.TestCase):
                    'GIT_AUTHOR_DATE': '2026-11-17T00:00:00Z', 'GIT_COMMITTER_DATE': '2026-11-17T00:00:00Z'}
         def git(*args, data=None):
             return subprocess.run(['git'] + list(args), input=data, capture_output=True, env=git_env, check=True).stdout.decode().strip()
-        git('read-tree', ASSEMBLY)
+        git('read-tree', cls.assembly)
         for path, data in [(own.WORKFLOW, workflow), (own.SPEC, spec)]:
             blob = git('hash-object', '-w', '--stdin', data=data)
             git('update-index', '--add', '--cacheinfo', '100644,' + blob + ',' + path)
         tree = git('write-tree')
-        cls.wrapper = git('commit-tree', tree, '-p', ASSEMBLY, data=b'SYNTHETIC parser fixture; not a Pool run\n')
+        cls.wrapper = git('commit-tree', tree, '-p', cls.assembly, data=b'SYNTHETIC parser fixture; not a Pool run\n')
 
     def setUp(self):
         self.f = genuine.GenuinePoolReceipt()
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
         f = self.f
-        f.assembly, f.tree = ASSEMBLY, TREE
-        branch = 'pool/synthetic652-' + ASSEMBLY[:10]
+        f.assembly, f.tree = self.assembly, self.tree
+        branch = 'pool/synthetic652-' + self.assembly[:10]
         f.binding['wrapper'] = self.wrapper
         for key in ('run', 'jobs', 'artifact'):
             data = copy.deepcopy(b.document(f.binding['api'][key]))
@@ -66,13 +69,13 @@ class Synthetic652(unittest.TestCase):
                         'artifact': 'actions/artifacts/14391686887'}[key]
             f.answers[endpoint] = data
         record = copy.deepcopy(b.document(f.binding['record']))
-        record.update(branch=branch, pool_commit=self.wrapper, snapshot=ASSEMBLY)
+        record.update(branch=branch, pool_commit=self.wrapper, snapshot=self.assembly)
         record['run'].update(headBranch=branch, headSha=self.wrapper)
         record['jobs'][0]['name'] = branch
         f.binding['record'] = f.save('synthetic-record.json', record)
         snap = copy.deepcopy(b.document(f.receipt['snapshot']))
-        snap['commit'] = ASSEMBLY
-        snap['tree_before']['head'] = snap['tree_after']['head'] = ASSEMBLY
+        snap['commit'] = self.assembly
+        snap['tree_before']['head'] = snap['tree_after']['head'] = self.assembly
         f.receipt['snapshot'] = f.save('synthetic-snapshot.json', snap)
         f.freeze()
         name = 'item 652 synthetic parser control'
@@ -102,7 +105,7 @@ class Synthetic652(unittest.TestCase):
         keys, facts = self.f.consume()
         self.assertEqual(keys, self.f.expected)
         self.assertEqual(facts['derived']['command']['filter'], 'item 652')
-        self.assertEqual(facts['derived']['source_sha256'][HELPER], '11b2e0570b7c6be12515a0551f75a49af593cd2c95cb84211e26b186f31716a6')
+        self.assertEqual(facts['derived']['source_sha256'][HELPER], self.helper_sha)
         self.assertEqual(facts['derived']['engine_counts'], {'chromium': 1, 'webkit': 1})
         self.assertEqual(facts['originals'], {k: self.f.receipt[k] for k in ('snapshot', 'step', 'report', 'log', 'pool')})
 
@@ -162,4 +165,11 @@ class Synthetic652(unittest.TestCase):
         for path, digest in facts['derived']['source_sha256'].items():
             self.assertEqual(b.digest(own.source_bytes(self.f.git, self.wrapper, [path])[path]), digest)
         for path, oid in facts['derived']['snapshot']['inputs'].items():
-            self.assertEqual(b.ask(self.f.git, 'rev-parse', ASSEMBLY + ':' + path).strip(), oid)
+            self.assertEqual(b.ask(self.f.git, 'rev-parse', self.assembly + ':' + path).strip(), oid)
+
+
+class Synthetic652Corrected(Synthetic652):
+    """Same independent parser negatives at exact corrected source; synthetic only."""
+    assembly = '7c4e13ba506c9eb4443ebe70202d8ee490db7bcc'
+    tree = 'f21f186b7ee8482935844ee7142d87939590b04a'
+    helper_sha = 'e400b065311cc5212a14ed8eeff5ab536dd2f6967b2bb7a0ed450d68d9e44c6d'

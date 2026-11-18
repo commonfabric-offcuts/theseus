@@ -320,3 +320,9 @@ all claimed source hashes are checked. No failed raw row is accepted, including
 the historical 717 intended-assertion/restore red and four WebKit Tab reds, or
 715's twelve phone drawer reds. Synthesized controls are parser evidence only;
 no final-base 717/715 receipt exists or is implied by this change.
+
+### Exact 652 correction addendum (warp8652)
+
+The reviewed correction2f4996b4, canonically assembled as7c4e13ba on the same original source/live parents, adds two exact test-only adaptations alongside the existing four-width pointer unit. tests/card_editor_652.mjs changes source blob68f60f880e532186cc49b972b3208a46203e4dfe tocb188b6c11f8aee76f61332e32e302ea45522736, absent in original and live. tests/ui_card_editor_652_contract.test.mjs is absent in original/source/live and adds blobb90dc6e506d7c474e27e6bb4009e4f3e168a6bfa. Each requires the exact fixed reason, mode100644, independently read Git entries and the same final canonical-body review binding. Only these enumerated bytes qualify; product and all unlisted non-overlap entries remain strict. New test addition is explicit null source, not permission to add arbitrary tests.
+
+The exact corrected652 helper SHA256e400b065311cc5212a14ed8eeff5ab536dd2f6967b2bb7a0ed450d68d9e44c6d is an additional independently reviewed reporter profile. The original11b2e057 helper remains supported separately. Both use unchanged compose entrypoint ee64a06f, all456 expected identities and six phases. The correction preserves native press/focus obligations and captures original errors, event/handler delivery, media/computed rules and distinct restored artifacts. Additive diagnostic files do not replace original report/log/ZIP/API proof. No candidate-selected hash/schema override and no acceptance of a red receipt is introduced. Unknown helper bytes refuse. Final own receipt and narrow corrected assembly review remain mandatory.

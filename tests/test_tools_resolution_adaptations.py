@@ -234,3 +234,81 @@ class TestAdaptations(existing.BaseMoveFixture):
                                           capture_output=True, text=True)
         with self.assertRaisesRegex(b.Refused, 'test adaptation Git entry differs: live_blob'):
             b.resolution_scope(git, self.old, self.head, other, self.assembly, self.review, [LISTING])
+
+
+CORRECTION_LISTING = [{'path': 'tests/card_editor_652.mjs', 'original_blob': None, 'source_blob': '68f60f880e532186cc49b972b3208a46203e4dfe', 'live_blob': None, 'assembly_blob': 'cb188b6c11f8aee76f61332e32e302ea45522736', 'reason': 'Preserve native press/focus requirements, retain original causes, capture missing delivery/media/failure evidence and unique normal/mutant/restored geometry; unchanged456 identities and six phases.'}, {'path': 'tests/ui_card_editor_652_contract.test.mjs', 'original_blob': None, 'source_blob': None, 'live_blob': None, 'assembly_blob': 'b90dc6e506d7c474e27e6bb4009e4f3e168a6bfa', 'reason': 'New browser-free contract checks hold phone-width44px rule and truthful diagnostic/error/phase preservation.'}]
+CORRECTION_OLD = 'f4b4524c5859212b62062f030a84c8d309b3cd72'
+CORRECTION_NEW = '7c4e13ba506c9eb4443ebe70202d8ee490db7bcc'
+
+def correction_bytes(revision, path, blob):
+    observed = subprocess.check_output(['git', 'rev-parse', revision + ':' + path], text=True).strip()
+    if observed != blob:
+        raise AssertionError('independent correction fixture blob differs')
+    return subprocess.check_output(['git', 'show', revision + ':' + path]).decode()
+
+
+class CorrectionAdaptations(existing.BaseMoveFixture):
+    """Exact helper and newly added contract, immutable Git synthetic envelopes."""
+    replace_assembly = existing.BaseMove.replace_assembly
+
+    def branch(self, name, start, changes):
+        if name == 'judged':
+            row = CORRECTION_LISTING[0]
+            changes = list(changes) + [(row['path'], correction_bytes(CORRECTION_OLD, row['path'], row['source_blob']))]
+        return super().branch(name, start, changes)
+
+    def setUp(self):
+        super().setUp()
+        self.replace_assembly([(row['path'], correction_bytes(CORRECTION_NEW, row['path'], row['assembly_blob'])) for row in CORRECTION_LISTING])
+        self.evidence_body['test_adaptations'] = copy.deepcopy(CORRECTION_LISTING)
+
+    def test_exact_helper_and_new_contract_adaptations(self):
+        self.trained(self.host(), self.candidate(), self.merged, self.github)
+        measured = self.evidence_of('02-release')['record']['measurements']['train']['base_move']
+        body = b.document(measured['evidence'])
+        self.assertEqual(body['test_adaptations'], CORRECTION_LISTING)
+        self.assertFalse(measured['source_observed']['passed'])
+
+    def test_new_contract_requires_explicit_absent_source(self):
+        self.evidence_body['test_adaptations'][1]['source_blob'] = '0' * 40
+        self.refuse('reviewed blobs differ')
+
+    def test_unlisted_added_contract_refuses(self):
+        self.evidence_body['test_adaptations'].pop()
+        self.refuse('scope widening')
+
+    def test_wrong_diagnostic_helper_bytes_refuse(self):
+        row = CORRECTION_LISTING[0]
+        self.replace_assembly([(row['path'], '// unreviewed helper\n')])
+        self.refuse('Git entry differs')
+
+    def test_product_with_reviewed_helper_bytes_refuses(self):
+        row = self.evidence_body['test_adaptations'][0]
+        raw = correction_bytes(CORRECTION_NEW, row['path'], row['assembly_blob'])
+        self.replace_assembly([('web/helper.mjs', raw)])
+        row['path'] = 'web/helper.mjs'
+        self.refuse('unsupported test adaptation path')
+
+    def test_unlisted_product_beside_exact_addendum_refuses(self):
+        self.replace_assembly([('web/extra.mjs', '// not authorized\n')])
+        self.refuse('scope widening')
+
+    def test_reviewed_reason_is_exact(self):
+        self.evidence_body['test_adaptations'][0]['reason'] += ' extra'
+        self.refuse('reason differs')
+
+    def test_new_contract_requires_regular_mode(self):
+        self.git(self.work, 'checkout', '-q', '--detach', self.assembly)
+        self.git(self.work, 'update-index', '--chmod=+x', CORRECTION_LISTING[1]['path'])
+        self.replace_assembly([])
+        self.refuse('Git entry differs')
+
+    def test_candidate_cannot_authorize_changed_helper_bytes(self):
+        row = self.evidence_body['test_adaptations'][0]
+        self.replace_assembly([(row['path'], '// unreviewed diagnostic helper\n')])
+        row['assembly_blob'] = self.git(self.work, 'rev-parse', self.assembly + ':' + row['path'])
+        self.refuse('reviewed blobs differ')
+
+    def test_malformed_path_refuses(self):
+        self.evidence_body['test_adaptations'][0]['path'] = []
+        self.refuse('unsupported test adaptation path')
