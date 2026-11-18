@@ -36,7 +36,8 @@ from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 from .reactions import REACTION_DOWN, REACTION_OCCUPIED, REACTION_SCHEMA
-from .outline_order import ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA
+from .outline_order import (ORDER_DOWN, ORDER_OCCUPIED, ORDER_SCHEMA, TOPIC_POSITION_DOWN,
+                            TOPIC_POSITION_OCCUPIED, TOPIC_POSITION_SCHEMA)
 from .stacks import (ACT_DOWN, ACT_OCCUPIED, ACT_SCHEMA, FOLD_DOWN, FOLD_OCCUPIED, FOLD_UP, ASIDE_UP, ASIDE_DOWN, ASIDE_OCCUPIED,
                      COVER_DOWN, COVER_OCCUPIED, COVER_UP)
 from .blocking import BLOCKS_DOWN, BLOCKS_OCCUPIED, BLOCKS_SCHEMA
@@ -200,6 +201,8 @@ STEPS = (
     # covers a message delivered the payload of. Stepping back is refused once any cover was written, even one
     # cleared since.
     ("45", "46", COVER_UP, COVER_DOWN, COVER_OCCUPIED),
+    # Item 641: default topic positions never move with activity.
+    ("46", "47", TOPIC_POSITION_SCHEMA, TOPIC_POSITION_DOWN, TOPIC_POSITION_OCCUPIED),
 )
 
 

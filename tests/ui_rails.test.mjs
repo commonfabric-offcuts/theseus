@@ -576,7 +576,7 @@ test('an outcome\'s Build topics are listed apart from the outline\'s: its open 
   assert.deepEqual(listArgs('active', true), { build: false }, 'the outline\'s open list asks for the topics that are not Build topics');
   assert.deepEqual([listArgs('active'), listArgs('done', true), listArgs('archived', true)], [TOPIC_LISTS.active, TOPIC_LISTS.done, TOPIC_LISTS.archived],
     'a list with no right rail beside it is as before, and the done and archived lists hold Build topics as any');
-  const topic = (id, activity, more = {}) => ({ id, workspace_id: 'w1', title: id, activity_ms: activity, state: 'active', archived: false, ...more });
+  const topic = (id, activity, more = {}) => ({ id, workspace_id: 'w1', title: id, activity_ms: activity, list_position: activity, state: 'active', archived: false, ...more });
   const answer = items => ({ instance_id: 'i', items, next_cursor: null, groups: { done: 0, archived: 0 } });
   // Read apart, the open topic being a Build topic: the outline does not put it back among the others.
   const building = topic('t-build', 50, { build: true });

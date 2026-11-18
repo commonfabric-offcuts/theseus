@@ -101,7 +101,7 @@ export class WorkspacePages {
 
 // An outcome's topics come in three lists (docs/topic-list.md): the ones that
 // are neither done nor archived, the done ones and the archived ones, each
-// latest activity first. A topic's place is its position, DONE:ACTIVITY_MS:ID.
+// newest stable position first. A topic's place is DONE:LIST_POSITION:ID.
 // Where the right rail shows an outcome's Build topics (item 297, docs/rails.md),
 // the open list leaves them out (apart): a Build topic not done or archived is in none of the three.
 export const TOPIC_LISTS = { active: {}, done: { done: true }, archived: { archived: true } };
@@ -109,18 +109,18 @@ const listOf = (item, apart = false) => item.archived === true ? 'archived' : it
 // What a list asks Core for: an open list kept apart from the Build topics leaves them out.
 export const listArgs = (list, apart = false) => list === 'active' && apart ? { build: false } : TOPIC_LISTS[list];
 const doneFlag = item => item.state === 'done' ? 1 : 0;
-export const topicPosition = item => `${doneFlag(item)}:${item.activity_ms}:${item.id}`;
+export const topicPosition = item => `${doneFlag(item)}:${item.list_position}:${item.id}`;
 function position(cursor) {
   const first = cursor.indexOf(':'), second = cursor.indexOf(':', first + 1);
   return [Number(cursor.slice(0, first)), Number(cursor.slice(first + 1, second)), cursor.slice(second + 1)];
 }
 // Negative when a comes before b in a list: the topics not done first, then
-// later activity, then, at the same time, the larger id (compared as the server
+// newer position, then, at the same position, the larger id (compared as the server
 // does, by code point).
-function compare([doneA, activityA, idA], [doneB, activityB, idB]) {
-  return doneA - doneB || activityB - activityA || (idA === idB ? 0 : afterId(idA, idB) ? -1 : 1);
+function compare([doneA, positionA, idA], [doneB, positionB, idB]) {
+  return doneA - doneB || positionB - positionA || (idA === idB ? 0 : afterId(idA, idB) ? -1 : 1);
 }
-const key = item => [doneFlag(item), Number.isSafeInteger(item.activity_ms) ? item.activity_ms : 0, item.id];
+const key = item => [doneFlag(item), Number.isSafeInteger(item.list_position) ? item.list_position : 0, item.id];
 
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
@@ -151,7 +151,7 @@ export class TopicPages {
     let previous = cursor === null ? null : position(cursor); const ids = new Set();
     for (const item of answer.items) {
       if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id) || item.workspace_id !== this.workspaceId ||
-          typeof item.title !== 'string' || !Number.isSafeInteger(item.activity_ms) || item.activity_ms < 0 || listOf(item, this.apart) !== this.list ||
+          typeof item.title !== 'string' || !Number.isSafeInteger(item.list_position) || item.list_position < 0 || listOf(item, this.apart) !== this.list ||
           previous !== null && compare(previous, key(item)) >= 0) fail();
       previous = key(item); ids.add(item.id);
     }

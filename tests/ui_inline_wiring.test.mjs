@@ -247,7 +247,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
       if(failure) throw failure;
       return {instance_id:'fixture',workspace:{id:'w1',title:'Real outcome',purpose:'Purpose'}};
     }
-    return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1}]:[],next_cursor:null};
+    return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1,list_position:1}]:[],next_cursor:null};
   };
   await f.initialize();
   assert.equal(f.get('topic-title').textContent,'Real outcome');
@@ -285,7 +285,7 @@ test('an outcome page back from a refusal shows its topics only once what stands
         if (denied) throw Object.assign(Error('Access denied'), { code: 'FORBIDDEN' });
         return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: 'Purpose' } };
       }
-      return { instance_id: 'fixture', items: name === 'workspace_topics' ? [{ ...f.topic, activity_ms: 1 }] : [], next_cursor: null };
+      return { instance_id: 'fixture', items: name === 'workspace_topics' ? [{ ...f.topic, activity_ms: 1, list_position: 1 }] : [], next_cursor: null };
     } finally { out--; }
   };
   // Every read the commit made has landed but the held one, and the page has done with what they brought.
@@ -511,7 +511,7 @@ test('actual home wordmark, Outcomes and topic links preserve dirty writing befo
   f.registry.keepEditorsLocal=async()=>{};
   Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
   f.registry.flush=async()=>({recorded:false,status:'unknown'});
-  f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1}],next_cursor:null}:read(name,args);
+  f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1,list_position:1}],next_cursor:null}:read(name,args);
   await f.initialize();await drain();
   const row=()=>f.get('topics').children.find(child=>child.dataset?.topicId==='t2');
   for(const control of [f.get('outcomes-home'),f.get('wordmark'),row()]){

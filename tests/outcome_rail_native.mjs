@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { withPageCleanup } from './native-page-cleanup.mjs';
 
 // The side rail inside an outcome and the page without a header bar (pipeline
 // items 101 and 107), in the real browser against the real server, at 1280
@@ -801,6 +802,94 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(async () => (await placeOf(p).catch(() => null))?.origin > before, what + ': a new document');
     await settled(p, what);
   };
+  // Item 641: each width/theme has its own result, so one red cannot hide another surface.
+  for (const size of ['laptop', 'w320', 'w375', 'phone']) for (const theme of ['light', 'dark']) {
+    for (const placed of [false, true]) await check(`rail item 641 ${placed ? 'new topics enter at the top of a saved order' : 'activity never moves an unplaced topic'} at ${size} ${theme}`, async () => {
+      const tag = `rail-641-${size}-${theme}-${placed ? 'placed' : 'default'}`;
+      const oid = tag + '-o', a = tag + '-a', b = tag + '-b', c = tag + '-c';
+      await control({ method: 'light_outcome', outcome: oid, title: 'Topics stay put', topic: { id: a, title: 'Topic A' } });
+      await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: b, title: 'Topic B' } });
+      if (placed) await control({ method: 'order_as', workspace_id: oid, ids: [a, b], operation_id: tag + '-place' });
+      const p = await open(tag, '/?topic=' + b, size, theme);
+      const ids = async () => (await outline(p)).outcomes[oid]?.topics.map(row => row.id);
+      const press = async selector => {
+        await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+        await until(() => p.evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect();
+          return b.top>=0 && b.bottom<=innerHeight && e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})()`), tag + ': ' + selector + ' is in view and uncovered');
+        if (SIZES[size].mobile) await tap(p, selector); else await p.point(selector);
+      };
+      const show = async () => {
+        await until(() => p.evaluate("document.body?.dataset.ready==='true'").catch(() => false), tag + ': page is ready');
+        if (SIZES[size].mobile && !(await drawer(p)).open) {
+          await press('#rail-open');
+          await until(async () => (await drawer(p)).open, tag + ': drawer opens');
+        }
+        await outlineAtRest(p, tag);
+      };
+      const reload = async why => {
+        const before = await loaded(p);
+        await p.send('Page.reload');
+        await until(async () => (await loaded(p).catch(() => before)) !== before, why + ': new document');
+        await show();
+      };
+      const expect = async (wanted, why) => {
+        await outlineAtRest(p, tag + ': ' + why);
+        assert.deepEqual(await ids(), wanted, why);
+      };
+      await withPageCleanup(p, async () => {
+        await show();
+        await until(async () => (await ids())?.length === 2, tag + ': both topic rows drawn');
+        let wanted = placed ? [a, b] : [b, a];
+        await expect(wanted, 'initial order');
+        if (placed) {
+          await control({ method: 'light_outcome', outcome: oid, exists: true, topic: { id: c, title: 'Topic C — new' } });
+          await until(async () => (await ids())?.includes(c), tag + ': new topic is drawn');
+          wanted = [c, a, b];
+          await expect(wanted, 'a topic new to the reader enters at the top once');
+        }
+        await shot(p, tag + '-before-activity');
+        const target = a;
+        const unread = (await outline(p)).outcomes[oid].topics.find(row => row.id === target).unread;
+        const sent = await control({ method: 'agent_message', operation_id: tag + '-news', topic_id: target, join: true, addressees: [], body: 'Another person’s new message leaves topic positions alone.' });
+        assert.equal(sent.status, 'committed', 'the message actually committed');
+        await until(async () => (await outline(p)).outcomes[oid]?.topics.find(row => row.id === target)?.unread > unread, tag + ': the message updates the row');
+        // Move the pointer out so the hover protection cannot mask a recency reorder.
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await shot(p, tag + '-after-activity');
+        await expect(wanted, 'a new message changes the count and never moves a topic');
+        await reload(tag + ': reopen the page');
+        await show();
+        await expect(wanted, 'the same topic order survives a reload');
+        // Negative: the reader can still move a topic, with the native keys, on phones too.
+        await keysTo(p, 'topic:' + target);
+        const movedOrder = [...wanted], at = wanted.indexOf(target);
+        [movedOrder[at - 1], movedOrder[at]] = [movedOrder[at], movedOrder[at - 1]];
+        await p.key('ArrowUp', 4);
+        await until(async () => JSON.stringify(await ids()) === JSON.stringify(movedOrder), tag + ': own reorder moves the topic');
+        await until(async () => JSON.stringify((await control({ method: 'order_as', workspace_id: oid })).ids) === JSON.stringify(movedOrder), tag + ': Core records the move');
+        await reload(tag + ': reopen after own move');
+        await show();
+        await expect(movedOrder, 'the reader’s move holds after reload');
+        if (SIZES[size].mobile) {
+          await p.key('Escape');
+          await until(async () => !(await drawer(p)).open, tag + ': close the drawer to write');
+        }
+        const body = 'My message in Topic B keeps Topic A above it — ' + tag;
+        await press('#inline-writing-body');
+        await p.send('Input.insertText', { text: body });
+        await until(() => p.evaluate("!document.getElementById('inline-send').disabled"), tag + ': send is available');
+        await press('#inline-send');
+        await until(() => p.evaluate(`document.getElementById('messages').textContent.includes(${JSON.stringify(body)})`), tag + ': own send is drawn');
+        await show();
+        await expect(movedOrder, 'sending in B keeps A above B throughout');
+        await reload(tag + ': reopen after sending');
+        await expect(movedOrder, 'A stays above B after sending and reopening');
+        await shot(p, tag + '-own-move');
+        assert.deepEqual(p.errors, []);
+      });
+    });
+  }
+
   // The same address loaded fresh in a page of its own: what both rails show there.
   const fresh = async (search, name) => {
     const q = await page(name, null, true, { url: facts.origin + '/' + search, beforeNavigate: async r => { await r.send('Emulation.setDeviceMetricsOverride', SIZES.laptop); } });
