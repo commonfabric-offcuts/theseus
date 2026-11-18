@@ -117,3 +117,10 @@ negative-tabindex controls are skipped. A WebKit applied-source control removes
 this boundary and must reproduce the actual native access failure before exact
 restoration restores activation. This is keyboard access, with the approved
 cover presentation unchanged.
+
+Image comparison captures use the same native writing state in the live-source
+and candidate Reader. They capture expanded writing separately, then fold it on
+a phone by its source tap before comparing the visible cover. Every item-738
+capture waits for actual finite animation.finished, an animation frame and an
+opaque Reader, and retains that qualification receipt. An in-flight transition
+or mismatched writing state is not accepted as an equal-state comparison.

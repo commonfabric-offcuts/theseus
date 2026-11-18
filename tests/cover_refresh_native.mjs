@@ -112,7 +112,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
       details:[...document.querySelectorAll('#reader details')].map(e=>({id:e.id,open:e.open})),target:(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e?.getBoundingClientRect();return {html:e?.outerHTML,tabIndex:e?.tabIndex,box:b?{x:b.x,y:b.y,width:b.width,height:b.height}:null}})()})`);
     observations.push({name:'item 738 native keyboard', selector, reverse, plainTab, reached, trace, receipt});
     await p.evaluate('window.coverWatchKeys=false');
-    if (!reached) await shot(p, 'refresh738-keyboard-failure-' + observations.length);
+    if (!reached) await capture(p, 'refresh738-keyboard-failure-' + observations.length);
     assert.equal(reached, true, 'native Tab reaches refresh: ' + JSON.stringify({reverse,trace,receipt}));
     await p.evaluate('window.coverWatchKeys=true');
     await p.key('Enter');
@@ -169,12 +169,38 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
       }
     }
   };
+  const capture = async (p, name) => {
+    const receipt = await p.evaluate(`(async()=>{const finite=()=>document.getAnimations().filter(a=>a.effect?.getTiming().iterations!==Infinity);
+      const animations=finite();for(const animation of animations)await animation.finished;
+      await new Promise(done=>requestAnimationFrame(done));
+      const reader=document.querySelector('#reader');return {waited:animations.length,unfinished:finite().filter(a=>['running','pending','paused'].includes(a.playState)).length,
+        readerOpen:reader?.open,opacity:reader?.open?Number(getComputedStyle(reader).opacity):null,
+        readerCompose:document.querySelector('#reader-composer')?.dataset.compose,coverShown:Boolean(document.querySelector('#reader-cover')?.getClientRects().length),
+        writing:document.querySelector(reader?.open?'#writing-body':'#inline-writing-body')?.value,to:document.querySelector(reader?.open?'#writing-to':'#inline-writing-to')?.textContent}})()`);
+    observations.push({name:'item 738 qualified capture', image:name, ...receipt});
+    assert.equal(receipt.unfinished, 0, 'capture waits for actual finite animation completion');
+    if (receipt.readerOpen) assert.ok(Math.abs(receipt.opacity-1)<=0.001, 'capture opacityTolerance738=0.001: Reader is opaque');
+    await shot(p, name);
+    return receipt;
+  };
+  const writingComparison = async (p, device, surface, name) => {
+    if (surface !== 'reader') return;
+    await centre(p, '#writing-body'); await press(p, inputFor(device), '#writing-body');
+    await capture(p, name + '-writing');
+    if (device !== 'laptop') {
+      // Typing hides the cover under the existing phone rule. Fold the writing
+      // through the source's actual touch gesture in both source versions.
+      await centre(p, '#source-body'); await press(p, 'phone', '#source-body');
+      await until(() => p.evaluate(`document.querySelector('#reader-composer').dataset.compose==='line'`), 'native source tap folds writing for equal-state cover comparison');
+    }
+  };
   const originalCover = state => ({ stands: state.cover.stands, waiting: state.cover.waiting, payload: state.cover.payload, by: state.cover.by, at_ms: state.cover.at_ms });
 
   for (const device of ['laptop', 'phone-320', 'phone-375', 'phone']) for (const theme of ['light', 'dark']) {
     for (const surface of ['sheet', 'singleton', 'reader']) await check(`reading item 738 ${surface} ${device} ${theme}: native request, busy, durable pending, request link and real writer completion`, async () => {
       const topic = `refresh738-${surface}-${device}-${theme}`, ids = await setup(topic, surface === 'singleton');
       const before = await read(ids.root);
+      let baselineCapture;
       // The actual live source at the supplied live94 commit, on these same
       // invented records after real read reports settle, gives unmodified before
       // images. Later reports are held in both versions to keep equal read state.
@@ -185,13 +211,16 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
           await old.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
           if (surface === 'reader') { await exposeReply(old, device, ids.root); await openReader(old, inputFor(device), ids.answer, 'The lake opens in May'); await press(old, inputFor(device), '#reader-cover > summary'); }
           await keepWriting(old, device, surface);
+          await until(() => old.evaluate('window.coverReadReceipts.length>0 && window.fetchesOut===0'), 'actual live read reports settled before comparison');
+          await old.evaluate('window.holdReads=true');
+          await writingComparison(old, device, surface, topic + '-before');
           const at = scope(surface, ids.root); await centre(old, at);
           await until(() => old.evaluate('window.coverReadReceipts.length>0 && window.fetchesOut===0'), 'actual live read reports settled before equal-state capture');
           await old.evaluate('window.holdReads=true');
           observations.push({ name: 'item 738 baseline actual read receipts', topic, receipts: await old.evaluate('window.coverReadReceipts') });
           assert.equal(await old.evaluate(`Boolean(document.querySelector(${JSON.stringify(at + ' ' + CONTROL)}))`), false, 'live source has no refresh glyph');
           assert.equal(await old.evaluate(`document.querySelector('script[type="module"][src]').src.includes('/b/${receipt.stamp}/')`), true);
-          await shot(old, topic + '-before');
+          baselineCapture = await capture(old, topic + '-before');
         } finally { if (old) await old.close(); }
       });
       let p;
@@ -200,9 +229,12 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         let where = await show(p, device, topic, ids, surface);
         const heldWriting = await keepWriting(p, device, surface);
+        await writingComparison(p, device, surface, topic + '-idle');
         await centre(p, where);
         const idle = await look(p, where); geometry(idle, device); assert.equal(idle.svg, 'refresh');
-        await shot(p, topic + '-idle');
+        const idleCapture = await capture(p, topic + '-idle');
+        const comparisonState = r => ({readerOpen:r.readerOpen,readerCompose:r.readerCompose,coverShown:r.coverShown,writing:r.writing,to:r.to});
+        assert.deepEqual(comparisonState(idleCapture), comparisonState(baselineCapture), 'before/idle captures have equal actual writing, To and cover disclosure state');
         await startFrames(p, where, surface);
         await p.evaluate("window.coverGate='hold'");
         await activate(p, device, where + ' ' + CONTROL, surface === 'reader' || device === 'laptop');
@@ -210,7 +242,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         const busy = await look(p, where);
         assert.equal(busy.status, 'Requesting update…'); assert.equal(busy.dots, 3);
         assert.equal((await read(ids.root)).refresh, null, 'busy is not a Core pending fact');
-        await shot(p, topic + '-busy');
+        await capture(p, topic + '-busy');
         await activate(p, device, where + ' ' + CONTROL);
         assert.equal(await p.evaluate('window.coverSends.length'), 1, 'repeated pending tap coalesces before dispatch');
         await p.evaluate('window.releaseCovers()');
@@ -222,7 +254,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         assert.equal(pending.refresh.recipient, 'aim-core', 'recorded writer, no hardcoded coordinator');
         assert.deepEqual(originalCover(pending), originalCover(before), 'whole original cover preserved');
         assert.ok(painted.href.includes(pending.refresh.request_message_id), 'request link names actual published message');
-        await shot(p, topic + '-pending');
+        await capture(p, topic + '-pending');
         observations.push({ name: 'item 738 native lifecycle', topic, device, theme, surface, idle, busy, pending, painted,
           envelopes: await p.evaluate('window.coverSends'), receipts: await p.evaluate('window.coverReceipts') });
         await assertWriting(p, surface, heldWriting, 'request preserves exact writing and To');
@@ -235,10 +267,10 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         await assertWriting(p, surface, heldWriting, 'reload restores exact writing and To');
         const reloaded = await look(p, where); pendingShape(reloaded, false);
         assert.equal(await p.evaluate('window.coverSends.length'), 0, 'reload sends no new request');
-        await shot(p, topic + '-reload');
+        await capture(p, topic + '-reload');
         await activate(p, device, where + ' ' + CONTROL, device === 'laptop');
         await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('Please rewrite this dossier')`), 'pending link opens the actual recorded request');
-        await shot(p, topic + '-request');
+        await capture(p, topic + '-request');
         assert.equal((await control({ method: 'item_738_audit', root: ids.root })).requests.filter(x => JSON.parse(x.addressees).includes('aim-core') && x.intent === 'ask').length, 1, 'exactly one ordinary request in Core');
         await closeReader(p, inputFor(device));
         if (surface === 'reader') where = await show(p, device, topic, ids, surface);
@@ -249,16 +281,16 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         assert.equal((await read(ids.root)).refresh.state, 'pending', 'human edit cannot complete');
         await until(async () => (await look(p, where)).words.includes('Human checked the road again'), 'actual human cover reaches native render while pending');
         await assertWriting(p, surface, heldWriting, 'human cover preserves writing and To');
-        await centre(p, where); await shot(p, topic + '-human');
+        await centre(p, where); await capture(p, topic + '-human');
         await write(topic, ids.root, { stands: 'Human checked the road again' }, 'noop');
         assert.equal((await read(ids.root)).refresh.state, 'pending', 'no-op agent write cannot complete');
         pendingShape(await look(p, where));
-        await shot(p, topic + '-noop');
+        await capture(p, topic + '-noop');
         await control({ method: 'agent_thumb', sender: facts.actor, message_id: ids.answer ?? ids.root, operation_id: topic + '-done' });
         assert.equal((await read(ids.root)).refresh.state, 'pending', 'owner Done cannot complete');
         await until(async () => (await look(p, where)).words.includes('done · your 👍'), 'actual owner Done reaches native cover while pending');
         await assertWriting(p, surface, heldWriting, 'owner Done preserves writing and To');
-        await shot(p, topic + '-owner-done');
+        await capture(p, topic + '-owner-done');
         const newCover = await write(topic, ids.root, { stands: 'The cabin is booked for May' }, 'real-writer');
         await until(async () => (await read(ids.root)).refresh?.state === 'completed', 'real agent Core cover command completes');
         await until(async () => (await look(p, where)).tag === 'BUTTON', 'native control follows actual completion');
@@ -270,7 +302,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         assert.equal(completed.cover.payload.link, before.cover.payload.link);
         assert.deepEqual(completed.cover.waiting, before.cover.waiting);
         await centre(p, where);
-        await shot(p, topic + '-completed');
+        await capture(p, topic + '-completed');
         assert.deepEqual([painted.status, reloaded.status], ['', ''], 'Tony8505: no visible pending label before or after reload');
         assert.deepEqual(p.errors, []);
       } finally { if (p) await p.close(); }
@@ -299,7 +331,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
           assert.equal((await read(ids.root)).cover, null);
           assert.equal(await p.evaluate(`Boolean(document.querySelector('#messages .cover-refresh-glyph'))`), false, 'missing cover advertises no rewrite');
           await centre(p, `#messages .reply-stack[data-stack="${ids.root}"]`);
-          await shot(p, topic + '-missing');
+          await capture(p, topic + '-missing');
           assert.equal(await p.evaluate('window.coverSends.length'), 0);
           await write(topic, ids.root, { stands: 'Actual writer supplies a new cover' }, 'new-cover');
           await show(p, device, topic, ids, 'sheet');
@@ -316,13 +348,13 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
           const sent = await p.evaluate('window.coverSends'), receipts = await p.evaluate('window.coverReceipts');
           assert.equal(sent.length, 1); assert.equal(receipts.length, 1); assert.equal(receipts[0].status, 'committed');
           assert.deepEqual(originalCover(await read(ids.root)), originalCover(before));
-          await shot(p, topic + '-lost-response');
+          await capture(p, topic + '-lost-response');
           await p.close(); p = await open(topic + '-reload', device, topic, ids.root, GATE);
           await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
           await show(p, device, topic, ids, 'sheet'); pendingShape(await look(p, where));
           await assertWriting(p, 'sheet', heldWriting, 'lost response reload preserves writing and To');
           assert.equal(await p.evaluate('window.coverSends.length'), 0, 'reload reconciles without a duplicate prompt');
-          await shot(p, topic + '-reload');
+          await capture(p, topic + '-reload');
           observations.push({ name: 'item 738 actual lost receipt', topic, device, theme, sent, receipts, pending: await read(ids.root) });
           assert.deepEqual(p.errors, []); return;
         }
@@ -335,7 +367,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         else assert.match(failed.status, /not confirmed/);
         assert.equal((await read(ids.root)).refresh, null);
         assert.deepEqual(originalCover(await read(ids.root)), originalCover(before));
-        await shot(p, topic + '-error');
+        await capture(p, topic + '-error');
         const sent = await p.evaluate('window.coverSends');
         await p.close(); p = await open(topic + '-reload', device, topic, ids.root, GATE);
         await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
@@ -355,7 +387,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
           await until(async () => (await look(p, where)).tag === 'A', 'retry reaches durable activity');
           pendingShape(await look(p, where));
           await assertWriting(p, 'sheet', heldWriting, 'exact retry preserves writing and To');
-          await shot(p, topic + '-retry');
+          await capture(p, topic + '-retry');
         }
         observations.push({ name: 'item 738 failure boundary', topic, failure, device, theme, failed, sent });
         assert.deepEqual(p.errors, []);
@@ -380,7 +412,7 @@ export async function coverRefreshChecks({ check, until, view, control, shot, fa
         }
         const state = await look(p, where);
         assert.throws(() => phase === 'small-target' ? geometry(state, 'phone') : pendingShape(state), { name: 'AssertionError' }, 'applied source mutant must fail the real native assertion');
-        await shot(p, topic + '-' + phase);
+        await capture(p, topic + '-' + phase);
         observations.push({ name: 'item 738 killed native mutant', phase, state });
       } finally { if (p) await p.close(); }
     });
