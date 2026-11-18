@@ -9742,6 +9742,117 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await write(ids.lone, { stands: 'Answered in the message itself', payload: { text: 'The lake opens in May', message_id: ids.lone } }, 'lone');
     return ids;
   };
+  // Item 769: source/whitespace assertions are separate from painted line geometry.
+  // The same shared sheet serves the feed and the Reader; neither may lose a wait or payload on a rewrite.
+  for (const [device, width] of [['phone-320', 320], ['phone-375', 375], ['phone', 390], ['laptop', 1280]]) {
+    for (const theme of ['light', 'dark']) await check(`reading item 769 cover lines in feed and Reader at ${width} ${theme}, updates reload and writing kept`, async () => {
+      const lineGeometryTolerancePx = 2; // engine rounding; a collapsed line is ~20px away and fails.
+      const input = device === 'laptop' ? 'laptop' : 'phone';
+      const topic = `cover-lines-769-${width}-${theme}`, ids = await coverSeed(topic);
+      const three = 'Discussed: cabin\nDecisions: none\nNext: choose', one = 'Ready.';
+      const write = async (stands, op) => {
+        const answer = await control({ method: 'stack_act', sender: other, kind: 'stack.cover', message_id: ids.root,
+          operation_id: `${topic}-${op}`, args: { stands } });
+        assert.equal(answer.status, 'committed', JSON.stringify(answer));
+        assert.equal(answer.result.cover.stands, stands, 'source: command receipt retains actual LF bytes');
+        const held = await view('dossier_cover', { message_id: ids.note });
+        assert.equal(held.cover.stands, stands, 'source: HTTP view retains actual LF bytes');
+        return held.cover;
+      };
+      const initial = await write(three, 'lines');
+      const p = await open(topic, device, topic, ids.root);
+      try {
+        await dossierTheme(p, theme);
+        const feed = `#messages .reply-stack[data-stack="${ids.root}"] > .dossier-cover`;
+        const reader = '#reader-cover > .dossier-cover';
+        const look = selector => p.evaluate(`(()=>{const sheets=[...document.querySelectorAll(${JSON.stringify(selector)})],s=sheets[0],w=s?.querySelector('.cover-stands .cover-words');
+          if(!w)return null;const t=w.firstChild,lines=w.textContent.split('\\n'),box=s.getBoundingClientRect(),rects=[];let at=0;
+          for(const line of lines){const r=document.createRange();r.setStart(t,at);r.setEnd(t,at+line.length);const b=r.getBoundingClientRect();
+            rects.push({top:b.top,bottom:b.bottom,left:b.left,right:b.right,height:b.height});at+=line.length+1}
+          return {count:sheets.length,text:w.textContent,rects,lineHeight:parseFloat(getComputedStyle(w).lineHeight),
+            box:{top:box.top,bottom:box.bottom,left:box.left,right:box.right},
+            waits:[...s.querySelectorAll('.cover-wait')].map(x=>x.textContent),payloads:[...s.querySelectorAll('.cover-payload')].map(x=>x.textContent),
+            defaults:[...s.querySelectorAll('.cover-note')].map(x=>x.textContent),citations:[...s.querySelectorAll('.cover-src')].map(x=>x.textContent),
+            visible:s.getClientRects().length>0&&getComputedStyle(w).visibility==='visible',sideways:document.documentElement.scrollWidth>innerWidth+${lineGeometryTolerancePx}}})()`);
+        const prove = async (selector, stands, phase) => {
+          await until(async () => (await look(selector))?.text === stands, `${phase}: the new words arrive`);
+          const at = await look(selector);
+          assert.equal(at.text, stands, `${phase}: source text is literal, no label parsing`);
+          assert.equal(at.count, 1, `${phase}: one shared sheet`);
+          assert.equal(at.visible, true, `${phase}: the stands text is shown`);
+          assert.equal(at.sideways, false, `${phase}: no horizontal overflow (lineGeometryTolerancePx=2)`);
+          assert.equal(at.rects.length, stands.split('\n').length, `${phase}: each supplied line is measured`);
+          for (const [i, r] of at.rects.entries()) {
+            assert.ok(Math.abs(r.height - at.rects[0].height) <= lineGeometryTolerancePx, `${phase}: one visual line per supplied line (lineGeometryTolerancePx=2)`);
+            assert.ok(r.height > lineGeometryTolerancePx && r.left >= at.box.left - lineGeometryTolerancePx && r.right <= at.box.right + lineGeometryTolerancePx &&
+              r.top >= at.box.top - lineGeometryTolerancePx && r.bottom <= at.box.bottom + lineGeometryTolerancePx,
+            `${phase}: line is whole inside its sheet (lineGeometryTolerancePx=2): ${JSON.stringify(at)}`);
+            if (i) assert.ok(Math.abs(r.top - at.rects[i - 1].top - at.lineHeight) <= lineGeometryTolerancePx,
+              `${phase}: distinct consecutive painted lines (lineGeometryTolerancePx=2): ${JSON.stringify(at)}`);
+          }
+          assert.equal(at.waits.length, 1, `${phase}: one wait`);
+          assert.match(at.waits[0], /Book the cabin for that weekend\?/);
+          assert.deepEqual(at.defaults, ['Default: booked on Friday if nothing is said.']);
+          assert.equal(at.payloads.length, 1, `${phase}: one payload`);
+          assert.match(at.payloads[0], /The second weekend.*payload proposed/);
+          assert.equal(at.citations.length, 1, `${phase}: payload source retained`);
+          observations.push({ name: 'item 769', engine, width, theme, phase, lineGeometryTolerancePx, ...at });
+        };
+        await centre(p, feed); await prove(feed, three, 'feed initial'); await shot(p, `item-769-${width}-${theme}-feed`);
+        await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        await prove(reader, three, 'Reader initial'); await settleDialogCapture655(p); await shot(p, `item-769-${width}-${theme}-reader`);
+        // A single-line value remains a single painted line on both surfaces.
+        const single = await write(one, 'single');
+        assert.deepEqual([single.waiting, single.payload], [initial.waiting, initial.payload], 'source: partial write retains waits/defaults/payload');
+        await prove(reader, one, 'Reader one line');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, one, 'feed one line');
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        const updated = three.replace('none', 'Friday');
+        await write(updated, 'update');
+        await prove(reader, updated, 'Reader update');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, updated, 'feed before reload');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'reads finish before cover reload');
+        const coverOrigin = await p.evaluate('performance.timeOrigin');
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`performance.timeOrigin !== ${coverOrigin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(feed)}))`), 'new document retains updated cover');
+        await centre(p, feed); await prove(feed, updated, 'feed cover reload');
+        const toggle = `#messages .reply-stack[data-stack="${ids.root}"] > .stack-toggle`;
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state !== 'open'`)) await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        await press(p, input, '#reader-cover > summary');
+        await prove(reader, updated, 'Reader cover reload');
+        await press(p, input, '#reader-cover > summary');
+        const writing = 'Keep my reply\nexactly as written.';
+        await press(p, input, '#writing-body');
+        await p.send('Input.insertText', { text: writing });
+        await until(() => p.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(writing)}`), 'the reply is written by native input');
+        await write(three, 'while-writing');
+        await until(() => p.evaluate(`document.querySelector('#reader-cover .cover-stands')?.textContent === ${JSON.stringify(three)}`), 'the cover updates while writing');
+        assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, 'cover update keeps unsent writing');
+        await closeReader(p, input);
+        await centre(p, feed); await prove(feed, three, 'feed update');
+        await until(() => p.evaluate('window.fetchesOut === 0'), 'writing and reads finish before reload');
+        const origin = await p.evaluate('performance.timeOrigin');
+        await p.send('Page.reload');
+        await until(() => p.evaluate(`performance.timeOrigin !== ${origin} && document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(feed)}))`), 'new document after reload');
+        await centre(p, feed); await prove(feed, three, 'feed reload');
+        if (await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state !== 'open'`)) await dossierOpen(p, input, ids.root);
+        await openReader(p, input, ids.note, 'I checked the road report');
+        assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, 'reload keeps unsent writing');
+        assert.equal(await p.evaluate(`window.sent.filter(kind=>kind==='message.send').length`), 0, 'nothing sends the reply');
+        const held = await view('dossier_cover', { message_id: ids.note });
+        assert.deepEqual([held.cover.stands, held.cover.waiting, held.cover.payload], [three, initial.waiting, initial.payload], 'source: reload retains all stored fields');
+        await closeReader(p, input);
+        assert.deepEqual(p.errors, []);
+      } finally { await p.close(); }
+    });
+  }
+
   // What the page draws of a dossier's cover, and where: its sheet's place among the folder's parts, its box against the
   // tab and the first part after it, and its words; null when the folder has none.
   const coverOn = (p, root) => p.evaluate(`(()=>{const s=document.querySelector('#messages .reply-stack[data-stack=${JSON.stringify(root)}]');if(!s)return 'no folder';
