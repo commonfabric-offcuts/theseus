@@ -573,6 +573,11 @@ def combine_unit_results(docs, plan, receipts):
         if present:
             doc, _ = matches[0]
             present = sorted(s['name'] for s in doc.get('steps', [])) == sorted(job['steps'].split(','))
+            if job.get('compose_group'):
+                actual_group = doc.get('compose_group') or {}
+                present = (present and actual_group == job['compose_group']
+                           and doc['steps'][0].get('compose_receipt', {}).get('complete') is True
+                           and doc['steps'][0].get('compose_receipt', {}).get('cleanup') is True)
             if job.get('python_shard'):
                 index, total = map(int, job['python_shard'].split('/'))
                 actual = doc.get('python_shard') or {}
@@ -604,6 +609,21 @@ def combine_unit_results(docs, plan, receipts):
                           'passed': counts['tests'] > 0 and all(
                               p.get('passed') is True and p['counts'].get('tests', -1) >= 0 for p in parts),
                           'shards': parts})
+    compose_jobs = [job for job in plan if job.get('compose_group')]
+    if compose_jobs:
+        from tools import compose_groups
+        expected = {'groups': [job['compose_group'] for job in compose_jobs]}
+        offered = [step.get('compose_receipt', {}) for step in steps if step['name'] == 'native-compose']
+        try:
+            union = compose_groups.collect(expected, offered)
+        except compose_groups.Refused as error:
+            raise Refused(str(error))
+        steps = [step for step in steps if step['name'] != 'native-compose']
+        if union['complete']:
+            steps.append({'name': 'native-compose', 'tool': 'compose-group-union-775',
+                          'passed': union['passed'], 'exit': 0 if union['passed'] else 1,
+                          'counts': {'tests': len(union['results']), 'failed': len(union['raw_false'])},
+                          'compose_union': union, 'shards': offered})
     names = [step['name'] for step in steps]
     if len(names) != len(set(names)):
         raise Refused('a step ran in two shards: %s' % sorted(n for n in set(names) if names.count(n) > 1))

@@ -383,15 +383,22 @@ def plan(root, event_name, event, head, browser_shards=4, measured=None, weights
     # Timing is chosen by step name under warp9266. The item734 scope proof
     # above still binds the event/source; timing never grants acceptance.
     identities = {}
-    shards = browser_jobs(native, weights.get('browser_observations', []), identities,
+    ordinary_native = [name for name in native if name != 'native-compose']
+    shards = browser_jobs(ordinary_native, weights.get('browser_observations', []), identities,
                           weights.get('browser_budget', {}), browser_shards)
+    if 'native-compose' in native:
+        from tools import compose_groups
+        source = {'head': head, 'tree': check.git(root, 'rev-parse', head + '^{tree}').stdout.strip(),
+                  'parents': check.git(root, 'rev-list', '--parents', '-n', '1', head).stdout.split()[1:]}
+        compose = compose_groups.partition(compose_groups.enumerate_source(root, head), source)
+        shards.extend(compose_groups.group_jobs(compose, weights.get('compose_group_observations', []), compact=True))
     for job in jobs(root, weights):
         job['timeout_minutes'] = job.pop('timeout')
         shards.append(job)
     shards.append({'name': 'wake replay', 'steps': check.WAKE_REPLAY, 'timeout_minutes': 45})
     expected = set(check.REQUIRED) - set(scoped['not_run'] if scoped else [])
-    ordinary = [s for shard in shards if not shard.get('python_shard') for s in shard['steps'].split(',')]
-    assert sorted(ordinary + ['python-units']) == sorted(expected)
+    ordinary = [s for shard in shards if not shard.get('python_shard') and not shard.get('compose_group') for s in shard['steps'].split(',')]
+    assert sorted(ordinary + ['python-units'] + (['native-compose'] if 'native-compose' in native else [])) == sorted(expected)
     return {'shards': shards, 'scoped': scoped, 'why': why}
 
 

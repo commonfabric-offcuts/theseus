@@ -43,7 +43,8 @@ SHA = re.compile(r"[0-9a-f]{40}")
 # differs from event base"), the controller (.github/: the workflows and the policy they read) and the service's data
 # migrations, every schema step of which is a row of aim_next/migrations.py's STEPS. tests/test_tools_train.py derives
 # the first two from the code itself, so a module either starts loading is guarded here or that test fails.
-DEPLOY_TOOL = ("tools/deploy.py", "tools/release_check.py", "tools/unit_shards.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
+DEPLOY_TOOL = ('tools/compose_groups.py', 'tools/compose_inventory.cjs', 'tools/compose_instrument.cjs', 'tools/compose_deadline_775.mjs', 'tools/compose_worker_775.mjs', 'tools/run_compose_group.py',
+               "tools/deploy.py", "tools/release_check.py", "tools/unit_shards.py", "tools/known_reds.py", "tools/releases.py", "tools/train.py",
                "tools/checks.py", "tools/ci_known_reds.py", "tools/ci_input_reads.py", "tools/ci-input-reads.json",
                "tools/quarantine.py", "tools/steps_for.py", "tools/base_move.py", "tools/own_case_receipt.py", "tools/continuation_envelope.py")
 CONTROLLER = ".github/"

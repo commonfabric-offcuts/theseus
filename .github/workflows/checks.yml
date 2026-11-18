@@ -65,6 +65,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
       - id: plan
         shell: bash
         run: |
@@ -117,8 +120,17 @@ jobs:
           echo "AIM_PLAYWRIGHT_CORE=$browsers/playwright/node_modules/playwright-core" >> "$GITHUB_ENV"
       - name: Release check, ${{ matrix.steps }}
         shell: bash
+        env:
+          COMPOSE_GROUP: ${{ toJSON(matrix.compose_group) }}
         run: |
           set -euo pipefail
+          if [[ "$COMPOSE_GROUP" != "null" && -n "$COMPOSE_GROUP" ]]; then
+            printf '%s' "$COMPOSE_GROUP" > "$RUNNER_TEMP/compose-group.json"
+            /usr/bin/python3 tools/run_compose_group.py --root "$GITHUB_WORKSPACE" --group "$RUNNER_TEMP/compose-group.json" \
+              --evidence "$RUNNER_TEMP/check/native/compose" --chrome "$AIM_CHROME_FOR_TESTING" \
+              --playwright "$AIM_PLAYWRIGHT_CORE" --node "$(command -v node)" --release-out "$RUNNER_TEMP/check"
+            exit $?
+          fi
           # The quarantine is read at the event's base: a pull request's base, or the commit a push moved the branch from.
           /usr/bin/python3 -I tools/release_check.py --out "$RUNNER_TEMP/check" --node "$(command -v node)" --only "${{ matrix.steps }}" \
             --quarantine-at event ${{ matrix.python_shard && format('--python-shard {0}', matrix.python_shard) || '' }}

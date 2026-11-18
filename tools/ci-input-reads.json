@@ -5013,5 +5013,53 @@
         ".github/check-weights.json"
       ]
     }
+  },
+  "tests/compose_deadline_775.test.mjs": {
+    "286f8da1a099f25abb797147e864bf0aab2b48a6b57a7faf6bfdb8f26fd8cc8f": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/compose_instrument_775.test.mjs": {
+    "3f23eb9dc40b2a84f24ddd2503848ad5362e2d8448c06ca7dab6b033f542eff1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "0cc65d70cce661fcb723c78e7d69fc2d7f806bbf1d0cd88fa12683c23418aadb": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "0cc65d70cce661fcb723c78e7d69fc2d7f806bbf1d0cd88fa12683c23418aadb:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/compose_worker_775.test.mjs": {
+    "a90325e3b0f8a009dd7e82f6cb8f09d717573f2ec54b39ad75642748b1106cbc": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "20e328ea746fe33538d6cbf86249a773fdaefca69610629521329325f9505077": {
+      "scope": "repository",
+      "inputs": [
+        "tools/compose_worker_775.mjs"
+      ]
+    },
+    "a90325e3b0f8a009dd7e82f6cb8f09d717573f2ec54b39ad75642748b1106cbc:1": {
+      "scope": "generated/system/product",
+      "inputs": []
+    },
+    "a90325e3b0f8a009dd7e82f6cb8f09d717573f2ec54b39ad75642748b1106cbc:2": {
+      "scope": "generated/system/product",
+      "inputs": []
+    }
+  },
+  "tests/test_compose_groups_775.py": {
+    "4d2d1431f1d74ea2c7bd97335eb48506ebe9af31e96c4663fa00ddbd010f9880": {
+      "scope": "repository",
+      "inputs": [
+        ".github/check-weights.json"
+      ]
+    }
   }
 }
