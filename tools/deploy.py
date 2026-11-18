@@ -652,6 +652,24 @@ def judged_tree(config, sha, judged):
     return {"judged_commit": judged, "commit": sha, "tree": tree}
 
 
+def scoped_live_records(config, live):
+    records = live_records(config)
+    latest = max(records, key=lambda r: r['release']) if records else None
+    require(latest is not None and latest.get('commit') == live,
+            'scoped deployment needs the actual recorded live release')
+    return records
+
+
+def recheck_scoped_live(config, trained):
+    """Last read before stopping; long evidence/planning work cannot move base."""
+    current = run(['git', '-C', str(config.live), 'rev-parse', 'HEAD'])
+    dirty = run(['git', '-C', str(config.live), 'status', '--porcelain', '--untracked-files=all'])
+    require(current.returncode == 0 and current.stdout.strip() == trained['live']
+            and dirty.returncode == 0 and not dirty.stdout.strip(), 'scoped live checkout moved or became dirty before stop')
+    require(scoped_live_records(config, trained['live']) == trained['scoped_live_records'],
+            'scoped release record moved before stop')
+
+
 def take_train(config, sha, evidence, train, known_reds, github):
     """00-train (items 481, 482): the merged train, each of its facts read again from the live checkout's git and from
     GitHub, or Refused before anything else is read. A record never claims a local check that did not run."""
@@ -672,6 +690,8 @@ def take_train(config, sha, evidence, train, known_reds, github):
     except train_check.Refused as refusal:
         record(evidence, "00-train", {"train": str(train), "commit": sha, "refused": str(refusal)})
         raise Refused("train: %s; nothing was stopped" % refusal)
+    if 'scoped' in trained:
+        trained['scoped_live_records'] = scoped_live_records(config, trained['live'])
     record(evidence, "00-train", trained)
     print(train_check.said(trained))
     return trained
@@ -688,6 +708,14 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # changed since the live commit, read here, lets them be skipped; one scoped to a small fix only when the steps
     # that change touches, chosen again here, all ran (item 608).
     # Item 588: a summary of another commit is taken when its tree, read here, is SHA's; the deploy records both.
+    if trained is None:
+        try:
+            doc = json.loads(Path(summary).read_text())
+            local_scope = doc.get('scoped') if isinstance(doc, dict) else None
+        except (OSError, ValueError):
+            local_scope = None  # the existing summary judge reports this refusal
+        require(not isinstance(local_scope, dict) or local_scope.get('version') != 2,
+                'input-scoped deployment requires authenticated train evidence')
     judged = []
     foreign, unpassed = (release_check.judge_summary(summary, sha, lambda: skip_basis(config, sha), lambda: scope_basis(config, sha),
                                                      lambda commit: judged.append(judged_tree(config, sha, commit)))
@@ -813,6 +841,9 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         return
     if view is not None:
         enter_deploy(config, evidence, view, planned)
+
+    if trained is not None and 'scoped' in trained:
+        recheck_scoped_live(config, trained)
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
     # passes the stop to its runner and exits only after the runner has.

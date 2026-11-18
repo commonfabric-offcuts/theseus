@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -I
 from __future__ import annotations
 
-"""Deal the Checks workflow's shards, using the deploy's small-fix decision.
+"""Deal the Checks workflow's shards using complete committed input coverage (734).
 
 Reads committed Git data only. Any unavailable scope means a full run.
 See docs/scoped-ci.md. --github-output writes the two workflow outputs.
@@ -16,7 +16,7 @@ import sys
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools import release_check as check
+from tools import release_check as check, ci_input_reads
 
 
 def scope_record(base, changed, chosen, notes):
@@ -45,13 +45,9 @@ def plan(root, event_name, event, head, browser_shards=3, measured=None):
                 parents = check.git(root, 'rev-list', '--parents', '-n', '1', head)
                 if parents.returncode or parents.stdout.strip().split() != [head, base, pr_head]:
                     raise check.Refused('tested merge does not bind the event base and PR head')
-            changed, chosen, notes = check.scope(root, base, head)
-            problems = check.small_fix_problems(changed)
-            if problems:
-                raise check.Refused('; '.join(problems))
-            scoped = scope_record(base, changed, chosen, notes)
+            scoped = ci_input_reads.pr_record(root, base, head)
             why = scoped['why']
-        except (check.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, SyntaxError) as error:
+        except (check.Refused, ci_input_reads.Refused, OSError, ValueError, KeyError, TypeError, AttributeError, SyntaxError) as error:
             why = 'full run: scope unavailable: %s' % error
     native = scoped['steps'] if scoped is not None else ['native-' + step.name for step in check.NATIVE_STEPS]
     measured = measured or {}
@@ -71,7 +67,7 @@ def plan(root, event_name, event, head, browser_shards=3, measured=None):
     return {'shards': shards, 'scoped': scoped, 'why': why}
 
 
-def main(argv=None):
+def plan_main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--event-name', default=os.environ.get('GITHUB_EVENT_NAME', ''))
     parser.add_argument('--event', default=os.environ.get('GITHUB_EVENT_PATH'))
@@ -93,6 +89,13 @@ def main(argv=None):
     else:
         print(json.dumps(result, indent=2))
     return 0
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] != ['--plan']:
+        raise SystemExit('use --plan; this installed-base composition does not run unit partitions')
+    return plan_main(argv[1:])
 
 
 if __name__ == '__main__':

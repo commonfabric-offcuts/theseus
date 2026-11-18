@@ -361,6 +361,8 @@ def train_measurements(train):
                                                   "items", "hosted_run", "judgment")}}
     if "base_move" in train:
         result["train"]["base_move"] = train["base_move"]
+    if "scoped" in train:
+        result["scoped"] = train["scoped"]
     return result
 
 
